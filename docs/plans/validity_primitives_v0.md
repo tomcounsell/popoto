@@ -625,13 +625,22 @@ alongside `ObservationProtocol` (`__init__.py:49`, `__all__` at `:192`), and the
 - [ ] Supersession chains traverse both directions from any record; records are closed, never
       deleted.
 - [ ] Gate-disabled decay scores are identical to pre-change scores (byte-parity test).
-- [ ] ~~p50 validity-gated retrieval within 1 ms of ungated at 20k records, measured by an
-      in-repo deterministic micro-benchmark test.~~ **WAIVED by the PM on 2026-08-17**; the
-      measured miss is ~1.4x and structural (the decay Lua full-scans its partition, so a 1 ms
-      absolute budget is unreachable on any full-scan path). Tracked in
-      [#585](https://github.com/tomcounsell/popoto/issues/585). What shipped instead: a
-      deterministic ratio-based micro-benchmark asserting < 4.0 against a same-process ungated
-      control. See Scope Amendments below.
+- [ ] p50 validity-gated retrieval costs **≤ 2.0x** ungated retrieval at 20k records, measured
+      by an in-repo deterministic micro-benchmark against a same-process, same-data ungated
+      control (`tests/test_validity_field.py::TestValidityBenchmark`, ceiling pinned at
+      `BENCH_MAX_RATIO`).
+
+      *Restated 2026-09-16 by [#585](https://github.com/tomcounsell/popoto/issues/585); see
+      `docs/plans/sdlc-585.md` for the measurements.* Supersedes the original ~~"p50 validity-
+      gated retrieval within 1 ms of ungated at 20k records"~~, which the PM waived on
+      2026-08-17 at a measured ~1.4x miss and which is now **withdrawn as mis-specified rather
+      than merely unmet**: `DECAY_SCORE_LUA` full-scans its partition, so at 20k the *ungated*
+      p50 is itself ~37 ms and a 1 ms budget is a 2.6% overhead allowance on a cost the gate
+      does not control. The budget also *shrinks* with partition size (11.8% at n=5k, 1.0% at
+      n=50k) while the gate's own ratio stays flat — so the absolute form measures the scan,
+      not the gate. The ratio is the stable quantity. #585 also tightened the shipped ceiling
+      from 4.0 to 2.0 on the back of a pre-trim optimization that brought the measured ratio to
+      0.94x. See Scope Amendments below.
 - [ ] **Validity state survives a `popoto.transfer` round trip** — all six derived keys,
       including the identity-scoped open-claim pointer, so a post-import `supersede()` on the
       same identity still closes the incumbent. *Added 2026-08-17 by scope amendment; see
@@ -960,6 +969,17 @@ path regardless of the gate's cost. Tracked in
 [#585](https://github.com/tomcounsell/popoto/issues/585), which owes the decision on restating
 the target as a ratio versus scoping it to a non-full-scan path. The waiver is for this PR only;
 the criterion is not deleted, it is moved.
+
+**Resolved 2026-09-16 by #585** (`docs/plans/sdlc-585.md`). The ratio form was chosen and the
+absolute form withdrawn — not merely waived — because the 1 ms budget is a fixed fraction of a
+cost the gate does not control and that fraction moves with partition size (2.6% at n=20k,
+11.8% at n=5k, 1.0% at n=50k) while the gate's own ratio holds flat across the same sweep. The
+alternative the waiver named, *scoping to a non-full-scan path*, was rejected on inspection: no
+non-full-scan path exists for this gate, since `DECAY_SCORE_LUA` must decay-score every member
+to rank them. #585 additionally landed a pre-trim of the partition against the interval ZSETs
+(two `ZRANGEBYSCORE` reads into a Lua lookup table, guarded by a `ZCOUNT` cardinality check),
+which removed the gate's measured overhead entirely and let the shipped ceiling tighten from
+4.0 to 2.0. See the restated Success Criteria row above.
 
 ### Amendment 3 — The LongMemEval-S gate is DEFERRED
 

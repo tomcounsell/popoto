@@ -75,6 +75,22 @@ ceiling are harness A. No number from one is ever quoted as the other.
 Against the original (redis-py 7.1.1): ungated 32–37 ms, gated 47–51 ms, ~1.4x. The miss
 is reproduced, not inherited. It is ~17.6 ms of absolute overhead against a 1 ms budget.
 
+### Post-change (harness A, same environment, pre-trim landed)
+
+```
+[validity p50 @ 20000] ungated=37.70ms gated=35.59ms delta=-2.11ms ratio=0.94x
+[validity excluded-key resolution p50 @ 20000] 1.87ms
+```
+
+**1.46x → 0.94x.** The gated path now measures at parity with ungated; the −2.11 ms delta
+is jitter, not a speedup over ungated — the honest reading is "the gate's cost is no longer
+resolvable above run-to-run noise on this harness." The ungated control moved 37.93 → 37.70 ms
+across the two runs, which sets the scale of that noise at roughly ±0.2 ms on the control and
+visibly more on the gated arm. The absolute 1 ms criterion is *still* not assertable from this
+— a −2.11 ms delta is inside 1 ms of ungated only by accident of which way the jitter fell, and
+the next run could land at +1.5 ms without anything regressing. That is the whole argument for
+the ratio form, restated: even at parity the absolute number is not a stable thing to gate on.
+
 ## Why the criterion is wrong, in numbers rather than assertion
 
 The criterion asks for gating overhead **≤ 1 ms** at 20k records. The *ungated* p50 on the
@@ -299,15 +315,15 @@ KEYS/ARGV array (#648/#662). **No call site changes.**
 
 ## Success Criteria
 
-- [ ] `validity_primitives_v0.md`'s waived criterion is replaced (not deleted) by the ratio
+- [x] `validity_primitives_v0.md`'s waived criterion is replaced (not deleted) by the ratio
       form, with the waiver history preserved.
-- [ ] Gated/ungated p50 ratio at 20k is **≤ 2.0**, asserted in-repo, measured against a
+- [x] Gated/ungated p50 ratio at 20k is **≤ 2.0**, asserted in-repo, measured against a
       same-process ungated control. **Harness A** (the pytest benchmark) — the ceiling is
       never checked against a harness-B number.
-- [ ] Pre-trim and per-member gate return identical replies on every shape tested.
-- [ ] A dwarfing exclusion set falls back to the per-member path (no 16x regression).
-- [ ] `black src/ tests/` and `ruff check src/` clean; `scripts/mypy_ratchet.py` not raised.
-- [ ] Docs updated (`docs/features/validity-and-supersession.md` performance note).
+- [x] Pre-trim and per-member gate return identical replies on every shape tested.
+- [x] A dwarfing exclusion set falls back to the per-member path (no 16x regression).
+- [x] `black src/ tests/` and `ruff check src/` clean; `scripts/mypy_ratchet.py` not raised.
+- [x] Docs updated (`docs/features/validity-and-supersession.md` performance note).
 
 ## Restated criterion (the text that lands in `validity_primitives_v0.md`)
 
@@ -332,15 +348,17 @@ input for confirming it later. This lane does not wait on #586 and does not touc
 ## Follow-ups (filed, not left as open questions)
 
 Critique C1 asked for the 4.0 re-verification to be a tracked commitment rather than a
-question in a plan doc. These are filed as issues after this plan is approved, and referenced
-from the `VALIDITY_GATE_PRETRIM_MAX_RATIO` docstring:
+question in a plan doc. Both are now filed, and referenced from the
+`VALIDITY_GATE_PRETRIM_MAX_RATIO` comment in `constants.py`:
 
-1. **Confirm the pre-trim crossover against #586's realistic skew data**, on a second
+1. **[#716](https://github.com/tomcounsell/popoto/issues/716) — Confirm the pre-trim
+   crossover against #586's realistic skew data**, on a second
    environment. The crossover is a ratio of Lua table-insert cost to `redis.call` dispatch
    cost, which *should* be machine-stable, but has been measured on exactly one machine. If
    the true crossover on another host is below 4.0, the guard greenlights pre-trim into the
    regression shape it exists to prevent.
-2. **Decide whether the pre-trim/fallback branch should be observable in production.** Today
+2. **[#717](https://github.com/tomcounsell/popoto/issues/717) — Decide whether the
+   pre-trim/fallback branch should be observable in production.** Today
    the choice is invisible to the caller. A counter or debug log would make production skew
    diagnosable, at the cost of a write on the hot Lua path. Deliberately out of scope here.
 

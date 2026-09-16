@@ -2547,6 +2547,187 @@ class TestCyclicDecayGatingGap:
 
 
 # ---------------------------------------------------------------------------
+# K2. Pre-trim path (#585)
+# ---------------------------------------------------------------------------
+
+
+def _seed_pretrim(model, partition_n, archive_n, field_name="relevance"):
+    """Write members straight into the three ZSETs; return the keys and ``now``.
+
+    Hand-written for the same reason ``_seed_bench_partition`` is: the path
+    under test only ever reads these ZSETs, and ``save()`` cost would swamp
+    both the command counts and the shapes we care about.
+
+    The partition gets ``partition_n`` open members. The archive gets
+    ``archive_n`` members that are closed *and absent from the partition* —
+    which is the skew that makes the model+field-scoped interval ZSETs much
+    larger than the one partition being scanned.
+    """
+    zkey = DecayingSortedField.get_special_use_field_db_key(model, field_name).redis_key
+    valid_from, invalid_at = ValidityField.get_interval_keys(model, "validity")
+    r = get_REDIS_DB()
+    r.delete(zkey, valid_from, invalid_at)
+    now = time.time()
+    pipe = r.pipeline()
+    for i in range(partition_n):
+        member = f"{model.__name__}:hot{i}"
+        pipe.zadd(zkey, {member: now - (i % 4096)})
+        pipe.zadd(valid_from, {member: now - 10_000})
+        pipe.zadd(invalid_at, {member: "+inf"})
+        if i % 2000 == 0:
+            pipe.execute()
+            pipe = r.pipeline()
+    for i in range(archive_n):
+        member = f"{model.__name__}:cold{i}"
+        pipe.zadd(valid_from, {member: now - 10_000})
+        pipe.zadd(invalid_at, {member: now - 5})
+        if i % 2000 == 0:
+            pipe.execute()
+            pipe = r.pipeline()
+    pipe.execute()
+    return zkey, valid_from, invalid_at, now
+
+
+def _zscore_calls():
+    """``INFO commandstats`` ZSCORE counter, or fail loudly.
+
+    Verified empirically: this counter DOES include calls a Lua script issues,
+    so it is a usable witness for which branch ``DECAY_SCORE_LUA`` took.
+    """
+    stats = get_REDIS_DB().info("commandstats")
+    entry = stats.get("cmdstat_zscore")
+    if entry is None:
+        # Never treat an absent counter as "zero calls" -- that would make the
+        # pre-trim assertion below vacuously true on a server with commandstats
+        # disabled.
+        pytest.fail(
+            "INFO commandstats has no cmdstat_zscore entry; this test cannot "
+            "observe which branch DECAY_SCORE_LUA took"
+        )
+    return int(entry["calls"])
+
+
+class TestValidityPretrim:
+    """The two gate branches must agree; only their command cost differs.
+
+    ``DECAY_SCORE_LUA`` answers "is this member excluded at ``as_of``?" two
+    ways: a ``ZSCORE`` pair per scanned member, or two ``ZRANGEBYSCORE`` reads
+    up front into a Lua lookup table (#585). The per-member path is the parity
+    oracle -- it predates the optimization and is what
+    ``VALIDITY_GATE_PRETRIM_MAX_RATIO <= 0`` restores byte-for-byte.
+    """
+
+    def _eval(self, zkey, invalid_at, valid_from, now, pretrim):
+        return get_REDIS_DB().eval(
+            DECAY_SCORE_LUA,
+            4,
+            zkey,
+            "",
+            invalid_at,
+            valid_from,
+            repr(now),
+            "0.5",
+            # ARGV[3] is the result cap. Kept above every partition these
+            # tests seed, so the reply is the FULL gated set rather than a
+            # top-N slice that could hide a misclassified member.
+            "1000000",
+            "",
+            "0",
+            "0.5",
+            repr(now),
+            str(pretrim),
+        )
+
+    def test_pretrim_matches_per_member_gate(self):
+        """Same data, same as-of, ARGV[8] off vs on: identical replies.
+
+        Covers all three membership classes, including members absent from
+        both interval ZSETs -- those are *unmanaged* and must stay visible
+        under either branch (the exclusion-rule, not whitelist, semantics).
+        """
+        zkey, valid_from, invalid_at, now = _seed_pretrim(ValidFact, 40, 0)
+        r = get_REDIS_DB()
+        # Reshape a slice of the partition into the other membership classes.
+        for i in range(0, 40, 4):  # closed before as_of
+            r.zadd(invalid_at, {f"ValidFact:hot{i}": now - 5})
+        for i in range(1, 40, 4):  # not yet started
+            r.zadd(valid_from, {f"ValidFact:hot{i}": now + 5_000})
+        for i in range(2, 40, 4):  # unmanaged: in neither interval ZSET
+            r.zrem(valid_from, f"ValidFact:hot{i}")
+            r.zrem(invalid_at, f"ValidFact:hot{i}")
+        # ...and members sitting exactly ON the boundary, which is where a
+        # reformatted range bound would misclassify.
+        r.zadd(invalid_at, {"ValidFact:hot3": now})
+        r.zadd(valid_from, {"ValidFact:hot7": now})
+
+        per_member = self._eval(zkey, invalid_at, valid_from, now, 0)
+        pretrimmed = self._eval(zkey, invalid_at, valid_from, now, 4.0)
+        assert per_member == pretrimmed
+        # Guard against both branches trivially returning everything: the
+        # closed and not-yet-started members must actually be gone.
+        returned = {m for m in per_member[0::2]}
+        assert b"ValidFact:hot0" not in returned
+        assert b"ValidFact:hot1" not in returned
+        assert b"ValidFact:hot2" in returned  # unmanaged stays visible
+
+    def test_pretrim_falls_back_when_exclusion_set_dwarfs_partition(self):
+        """Past the ratio guard, the gate must return to the per-member path.
+
+        The interval ZSETs are model+field scoped while the scan is one
+        partition, so a small hot partition beside a large closed archive
+        makes the range read pull far more than the scan touches -- measured
+        at 16x ungated before the guard existed. The witness is the ZSCORE
+        counter: the per-member path issues one or two per scanned member,
+        the pre-trim path issues none.
+
+        Asserted as thresholds rather than equalities, and with no
+        ``CONFIG RESETSTAT`` -- the counter is instance-global on a Redis
+        shared with other test lanes, so only the delta across our own EVAL
+        is ours, and even that can be inflated by a concurrent lane. Both
+        bounds are one-sided in the safe direction.
+        """
+        partition_n = 200
+        # 5x the partition, past VALIDITY_GATE_PRETRIM_MAX_RATIO (4.0).
+        zkey, valid_from, invalid_at, now = _seed_pretrim(
+            ValidFact, partition_n, partition_n * 5
+        )
+        assert Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO == 4.0
+
+        before = _zscore_calls()
+        skewed = self._eval(zkey, invalid_at, valid_from, now, 4.0)
+        fallback_calls = _zscore_calls() - before
+        assert fallback_calls >= partition_n, (
+            f"expected the per-member path (>= {partition_n} ZSCOREs) on a "
+            f"partition dwarfed by its archive; saw {fallback_calls}"
+        )
+        # Falling back is a latency decision, never a correctness one.
+        assert skewed == self._eval(zkey, invalid_at, valid_from, now, 0)
+        assert len(skewed) == partition_n * 2  # nothing in the archive scanned
+
+        # Same partition, archive back inside the budget: pre-trim engages.
+        zkey, valid_from, invalid_at, now = _seed_pretrim(
+            ValidFact, partition_n, partition_n
+        )
+        before = _zscore_calls()
+        self._eval(zkey, invalid_at, valid_from, now, 4.0)
+        pretrim_calls = _zscore_calls() - before
+        assert pretrim_calls < partition_n // 2, (
+            f"expected the pre-trim path (no ZSCOREs) inside the budget; saw "
+            f"{pretrim_calls}"
+        )
+
+    def test_pretrim_disabled_restores_per_member_path(self):
+        """``<= 0`` is the deploy-time kill switch, read at call time."""
+        partition_n = 200
+        zkey, valid_from, invalid_at, now = _seed_pretrim(
+            ValidFact, partition_n, partition_n
+        )
+        before = _zscore_calls()
+        self._eval(zkey, invalid_at, valid_from, now, 0)
+        assert _zscore_calls() - before >= partition_n
+
+
+# ---------------------------------------------------------------------------
 # L. p50 micro-benchmark (plan Success Criterion: 20k records)
 # ---------------------------------------------------------------------------
 
@@ -2554,11 +2735,14 @@ class TestCyclicDecayGatingGap:
 BENCH_N = 20_000
 BENCH_SAMPLES = 21
 BENCH_WARMUP = 3
-#: Ceiling on the gated/ungated p50 ratio. NOT the plan's "within 1 ms"
-#: criterion, which is not achievable on this path -- see the test docstring.
-#: Calibrated with ~3x headroom over the measured ~1.4x so it fails on a real
-#: regression (a second scan, a per-member round trip) and not on jitter.
-BENCH_MAX_RATIO = 4.0
+#: Ceiling on the gated/ungated p50 ratio. This IS the restated success
+#: criterion (#585) -- see ``docs/plans/validity_primitives_v0.md``, which no
+#: longer states an absolute "within 1 ms of ungated" budget.
+#: Tightened 4.0 -> 2.0 in #585 once the pre-trim path landed. 4.0 was three
+#: times the pre-trim ratio and so would have passed a silent return to the
+#: per-member ZSCORE path; 2.0 fails it while leaving the pre-trim path (which
+#: measures at parity with ungated) a wide jitter margin.
+BENCH_MAX_RATIO = 2.0
 
 
 def _seed_bench_partition(closed_every=10):
@@ -2603,17 +2787,22 @@ class TestValidityBenchmark:
     def test_p50_gated_retrieval_overhead_at_20k(self):
         """Gated vs ungated p50 for a 20k-record ``top_by_decay``.
 
-        Reported as a RATIO, not the plan's absolute "within 1 ms of ungated".
-        That criterion is not reachable on this path and the discrepancy is
-        structural, not machine-dependent: ``DECAY_SCORE_LUA`` scans the whole
-        partition, so gating adds up to two ``ZSCORE``s for each of 20k
-        members — tens of thousands of extra server-side operations. Measured
-        locally at ~37 ms ungated / ~51 ms gated (~1.4x, ~14 ms absolute).
-        Asserting "< 1 ms" would be a permanently red gate; asserting a wall
-        clock number on shared CI hardware would be a coin flip. A ratio
-        against a same-process, same-data ungated control is the part that is
-        actually stable, and it still catches the regressions that matter:
-        an extra pass over the partition, or a per-member round trip.
+        Reported as a RATIO. The V0 plan's original absolute form — "within
+        1 ms of ungated" — was withdrawn in #585 as mis-specified rather than
+        merely unmet: ``DECAY_SCORE_LUA`` scans its whole partition, so the
+        *ungated* p50 at 20k is itself tens of milliseconds and a 1 ms budget
+        is a sub-3% allowance on a cost the gate does not control. Worse, that
+        allowance shrinks as the partition grows while the gate's own ratio
+        stays flat, so the absolute form measures the scan, not the gate. A
+        ratio against a same-process, same-data ungated control is the stable
+        quantity, and it still catches the regressions that matter: an extra
+        pass over the partition, or a per-member round trip.
+
+        Measured on this machine after the #585 pre-trim landed: ratio 0.94x
+        (37.70 ms ungated / 35.59 ms gated) on Python 3.12.14, redis-py 8.1.0,
+        Redis DB 8, Darwin 25.6.0 / Apple silicon. The number to compare
+        against is whatever this test prints on the machine running it; the
+        ceiling, not the recorded figure, is the contract.
         """
         _seed_bench_partition()
 

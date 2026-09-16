@@ -124,6 +124,15 @@ class TestDefaultsSync:
             # without any registry entry.)
             "VALIDITY_GATING_ENABLED",
             "VALIDITY_OPEN_SENTINEL",
+            # Validity-gate pre-trim budget (#585) — read directly from
+            # Defaults at call time in decaying_sorted_field.rank_decayed and
+            # passed as ARGV[8], for the same runtime-flippability reason as
+            # VALIDITY_GATING_ENABLED; <= 0 restores the pre-#585 per-member
+            # ZSCORE path. Not swept: it is a latency changeover point
+            # calibrated against command counts, and no nDCG signal moves with
+            # it — both branches return identical replies by construction
+            # (tests/test_validity_field.py::TestValidityPretrim).
+            "VALIDITY_GATE_PRETRIM_MAX_RATIO",
             # Never-record firewall (#561) — all read directly from Defaults
             # at scan time in privacy/never_record.py; no module-level alias
             # exists, so none are in MODULE_CONSTANTS. They are also
