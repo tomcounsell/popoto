@@ -34,7 +34,8 @@ src/popoto/` → 0, verified against this worktree at `5955d141`).
 
 **Desired outcome:** `import_records(model_class, stream, ...,
 preserve_keys=True, key_map=None)`. With `preserve_keys=True` (default),
-behavior is byte-for-byte unchanged. With `preserve_keys=False`, every record
+behavior is unchanged apart from one reason string (see below). With
+`preserve_keys=False`, every record
 gets a freshly minted key, every `Relationship` field pointing at a
 remapped key is rewritten to point at the new one, and the mapping used is
 returned on the report so a caller can chain a second model's import through
@@ -422,9 +423,11 @@ untouched code path.
   real-file arm is mandatory — every existing transfer test uses
   `io.StringIO`, which is precisely the stream type that hides the
   `tell()`-after-`next()` failure.
-- `preserve_keys=True` remains **byte-for-byte** the old behavior: no temp
-  file created (assert via monkeypatching `tempfile.TemporaryFile` to raise
-  if called on this path) and re-import converges.
+- `preserve_keys=True` keeps the old record flow: no temp file created
+  (assert via monkeypatching `tempfile.TemporaryFile` to raise if called on
+  this path) and re-import converges. The one deliberate difference is the
+  `ERRORED` reason for a record with no usable `key`, now the shared
+  `_NO_KEY_REASON` text so both paths explain it the same way.
 - `key_map` **seeding across two models** chains correctly: import model A
   with `preserve_keys=False`, feed `report_a.key_map` into model B's import,
   assert B's `Relationship` fields pointing at A's old keys resolve to A's
@@ -572,9 +575,10 @@ is the regression pin.
 
 ## Success Criteria
 
-- [x] `preserve_keys=True` (default) is byte-for-byte the pre-existing
-      behavior: no temp file created, no `key_map` computation, identical
-      record flow to `main` before this change.
+- [x] `preserve_keys=True` (default) keeps the pre-existing behavior: no
+      temp file created, no `key_map` computation, identical record flow to
+      `main` before this change. Only the no-`key` `ERRORED` reason string
+      changed, deliberately and in both paths.
 - [x] `preserve_keys=False` refuses before any write for a model whose key
       field(s) have no minting path (plain `KeyField`/`UniqueKeyField`, or a
       composite mixing an auto field with declared key fields), naming the

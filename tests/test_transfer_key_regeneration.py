@@ -515,3 +515,117 @@ def test_carried_state_keys_are_not_remapped():
     if isinstance(link, bytes):
         link = link.decode()
     assert link == source_new_key
+
+
+# --- Explicit AutoKeyField, gate pruning, and the CLI end to end --------
+
+
+class RegenTicket(popoto.Model):
+    """One explicit ``AutoKeyField`` instead of the implicit ``_auto_key``.
+
+    ``_mint_key`` predicts the minted record's key by composing a ``DB_key``
+    from the model's sorted key field names, which is only the same thing as
+    "``_auto_key``" for a model that never declared one. This model is the
+    other half of that predicate: the field is named ``ticket_id``, so a mint
+    that hardcoded the implicit name would land the record somewhere the key
+    map does not point.
+    """
+
+    ticket_id = popoto.AutoKeyField()
+    subject = popoto.Field(type=str)
+
+
+def test_explicit_auto_key_field_is_minted_and_predicted():
+    original = RegenTicket.create(subject="s")
+    original_key = original.db_key.redis_key
+    text = _export_text(RegenTicket)
+
+    report = import_records(RegenTicket, io.StringIO(text), preserve_keys=False)
+
+    assert report.count("landed") == 1
+    new_key = report.key_map[original_key]
+    assert new_key != original_key
+    # The prediction in the key map is the key the record actually landed at.
+    landed = RegenTicket.query.get(redis_key=new_key)
+    assert landed is not None
+    assert landed.subject == "s"
+    assert landed.db_key.redis_key == new_key
+    # And the minted value is the one stored on the declared field.
+    assert new_key.endswith(str(landed.ticket_id))
+
+
+class RegenGated(popoto.WriteFilterMixin, popoto.Model):
+    """Mintable key plus a write gate, for the key-map pruning contract."""
+
+    _wf_min_threshold = 0.0
+
+    subject = popoto.Field(type=str)
+    importance = popoto.FloatField(default=0.0)
+
+    def compute_filter_score(self):
+        return self.importance or 0.0
+
+
+def test_key_map_drops_mints_whose_record_did_not_land():
+    """A mint is not a write: a gate-rejected record must leave no pair.
+
+    Pass 1 mints before anything is written, so the raw mint log over-reports.
+    Handing that log to the next model's run would aim its references at keys
+    that were never created.
+    """
+    RegenGated.create(subject="hi", importance=0.9)
+    RegenGated.create(subject="lo", importance=0.1)
+    text = _export_text(RegenGated)
+
+    previous = RegenGated.__dict__.get("_wf_min_threshold")
+    RegenGated._wf_min_threshold = 0.5
+    try:
+        report = import_records(RegenGated, io.StringIO(text), preserve_keys=False)
+    finally:
+        RegenGated._wf_min_threshold = previous
+
+    assert report.count("landed") == 1
+    assert report.count("rejected") == 1
+    assert len(report.key_map) == 1
+    landed_key = next(iter(report.key_map.values()))
+    landed = RegenGated.query.get(redis_key=landed_key)
+    assert landed is not None and landed.subject == "hi"
+    # Every surviving pair names a key that exists in the destination.
+    for new_key in report.key_map.values():
+        assert RegenGated.query.get(redis_key=new_key) is not None
+    assert any("dropped from the key map" in w for w in report.warnings)
+
+
+def test_cli_regenerate_keys_runs_end_to_end(tmp_path, capsys):
+    """The flag is wired through ``main``, not merely parsed."""
+    from popoto.transfer.cli import main
+
+    a = RegenNode.create(label="cli")
+    a.peer = a
+    a.save()
+    original_key = a.db_key.redis_key
+    path = tmp_path / "nodes.jsonl"
+    path.write_text(_export_text(RegenNode))
+
+    exit_code = main(
+        [
+            "import",
+            "--model",
+            "tests.test_transfer_key_regeneration:RegenNode",
+            "--in",
+            str(path),
+            "--regenerate-keys",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["counts"]["landed"] == 1
+    # The key map really is reachable from the CLI, via --json.
+    new_key = payload["key_map"][original_key]
+    assert new_key != original_key
+    copy = RegenNode.query.get(redis_key=new_key)
+    assert copy is not None and copy.label == "cli"
+    # The self-reference followed the copy rather than pointing back home.
+    assert _reference(copy, "peer") == new_key

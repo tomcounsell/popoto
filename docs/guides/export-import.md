@@ -145,6 +145,13 @@ warning: key regeneration: 1284 key(s) minted; 903 reference value(s) remapped;
   references dangle). ...
 ```
 
+A dangling reference is stored, not dropped: the rewritten-or-not string is saved
+as the field's value, so the relationship's reverse index
+(`$RelationshipF:<SourceModel>:<field>:<target_key>`) gains a member naming a key that does
+not exist in the destination. Reading the field yields `None` rather than raising,
+but a reverse lookup from the *other* side still counts it. Clean those up from the
+dangling counts in the warning before treating the destination as consistent.
+
 To make your own field participate, override `remap_references` on it. The base
 implementation returns the value unchanged:
 
@@ -166,9 +173,12 @@ meaningful value for a key the application chose.
 
 #### Chaining across models
 
-`ImportReport.key_map` carries every old-to-new pair this run minted, merged over
-whatever you seeded. Feed it into the next model to keep cross-model references
-pointing at the right copies:
+`ImportReport.key_map` carries every old-to-new pair this run actually wrote,
+merged over whatever you seeded. Keys are minted before any write, so a record
+that conflicted, was rejected by the write gate or raised on save has its mint
+pruned from the map once the run finishes, and the regeneration warning says how
+many were dropped. Feed the map into the next model to keep cross-model
+references pointing at the right copies:
 
 ```python
 with open("authors.jsonl") as fh:
@@ -387,9 +397,10 @@ fresh key for every record and rewrites the references between them. Read
 [Regenerating keys on import](#regenerating-keys-on-import) first — the mode is
 **not idempotent** (each run adds a full copy of the dataset), the remap covers
 declared references only, and it is refused for a model whose key is not a single
-auto key. There is no way to recover the old-to-new key map from the CLI, so a
-multi-model migration that needs cross-model references remapped has to use the
-Python API and chain `report.key_map`.
+auto key. The old-to-new key map is reachable from the CLI only through `--json`,
+which includes the report's `key_map` in its stdout payload; there is no flag that
+*seeds* one, so a multi-model migration has to either feed that JSON into the next
+run itself or use the Python API and chain `report.key_map` directly.
 
 ### `--json` and where the summary goes
 

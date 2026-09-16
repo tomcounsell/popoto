@@ -136,10 +136,17 @@ class ImportReport:
         source_matched_count: The manifest's ``matched_count``, for comparison
             against the number of record lines actually present.
         key_map: Old ``redis_key`` to new ``redis_key`` for every record this
-            run minted, merged over whatever the caller seeded. Empty under
-            the default ``preserve_keys=True``, where no key changes. Feed it
-            into the next model's ``import_records(key_map=...)`` to carry a
-            multi-model migration's cross-references across runs.
+            run actually wrote, merged over whatever the caller seeded. Empty
+            under the default ``preserve_keys=True``, where no key changes.
+            Feed it into the next model's ``import_records(key_map=...)`` to
+            carry a multi-model migration's cross-references across runs.
+            Keys are minted before any write, so a record that conflicted, was
+            rejected by the write gate or raised on save has its mint pruned
+            from this map once the run finishes -- only ``landed`` and
+            ``partial`` records are represented, and the regeneration warning
+            says how many mints were dropped. References *within* the same run
+            are remapped against the unpruned map, so a surviving record can
+            still point at a sibling that failed to write.
     """
 
     model: str

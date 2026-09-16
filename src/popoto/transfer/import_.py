@@ -450,6 +450,25 @@ def _spool_and_mint(
         ``(field_value, redis_key)`` pair.
     """
     spool = tempfile.TemporaryFile(mode="w+", encoding="utf-8", newline="")
+    try:
+        return _fill_spool(model_class, lines, auto_key_name, key_map, spool)
+    except BaseException:
+        # The caller's try/finally does not cover this function's own body:
+        # get_new_auto_key_value() raises ImportError for the ulid/ksuid
+        # strategies when the package is absent, which would escape with the
+        # handle left to refcounting.
+        spool.close()
+        raise
+
+
+def _fill_spool(
+    model_class: "type[Model]",
+    lines: "Any",
+    auto_key_name: str,
+    key_map: "dict[str, str]",
+    spool: "Any",
+) -> "tuple[Any, list[int], dict[str, tuple[str, str]]]":
+    """Body of :func:`_spool_and_mint`, split out so the spool has an owner."""
     line_numbers: "list[int]" = []
     minted: "dict[str, tuple[str, str]]" = {}
 
@@ -553,7 +572,8 @@ def _import_regenerating(
     unmapped_total = 0
     batch: "list[dict[str, Any]]" = []
     try:
-        for (_spool_line, raw), line_number in zip(iter_lines(spool), line_numbers):
+        spooled = zip(iter_lines(spool), line_numbers, strict=True)
+        for (_spool_line, raw), line_number in spooled:
             try:
                 record = parse_line(raw)
             except ValueError as exc:
@@ -598,15 +618,56 @@ def _import_regenerating(
             )
     finally:
         spool.close()
+        # In the finally so a raise in pass 2 still leaves the partial
+        # counts on the report the caller is holding.
+        dropped = _prune_unlanded_mints(report, minted, key_map)
+        report.warnings.append(
+            f"key regeneration: {len(minted)} key(s) minted; {remapped_total} "
+            f"reference value(s) remapped; {unmapped_total} reference value(s) "
+            f"left pointing at keys absent from the key map (those references "
+            f"dangle). Only fields that declare a reference are remapped -- an "
+            f"application-level pointer stored in a plain Field is never "
+            f"rewritten."
+            + (
+                f" {dropped} minted key(s) were dropped from the key map "
+                f"because their record did not land."
+                if dropped
+                else ""
+            )
+        )
 
-    report.warnings.append(
-        f"key regeneration: {len(minted)} key(s) minted; {remapped_total} "
-        f"reference value(s) remapped; {unmapped_total} reference value(s) "
-        f"left pointing at keys absent from the key map (those references "
-        f"dangle). Only fields that declare a reference are remapped -- an "
-        f"application-level pointer stored in a plain Field is never "
-        f"rewritten."
-    )
+
+def _prune_unlanded_mints(
+    report: ImportReport,
+    minted: "dict[str, tuple[str, str]]",
+    key_map: "dict[str, str]",
+) -> int:
+    """Drop mints whose record never reached storage, and count them.
+
+    Pass 1 mints a key for every line that carries one, before anything is
+    written, so the raw mint log over-reports: a record that conflicted, was
+    rejected by the write gate or raised on save still has an entry. Handing
+    that map to the next model's run would point its references at keys that
+    do not exist. Only ``landed`` and ``partial`` records are in storage, so
+    everything else is pruned here -- after pass 2, since pass 2's own
+    reference remapping legitimately reads the full map.
+
+    A seeded entry is only removed when this run overwrote it with its own
+    mint; an untouched seed is left alone.
+    """
+    in_storage = {
+        outcome.key
+        for outcome in report.outcomes
+        if outcome.category in (LANDED, PARTIAL)
+    }
+    dropped = 0
+    for old_key, (_new_value, new_key) in minted.items():
+        if new_key in in_storage:
+            continue
+        if key_map.get(old_key) == new_key:
+            del key_map[old_key]
+            dropped += 1
+    return dropped
 
 
 def import_records(
