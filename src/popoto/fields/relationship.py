@@ -116,10 +116,53 @@ class Relationship(Field):
     null: bool = True
 
     # Export/import: the reverse-lookup Set is fully rebuilt from the stored
-    # redis_key value by on_save(). Since v1 always preserves keys on import
-    # (see #557 for the deferred key-regeneration opt-out), a carried
-    # redis_key string round-trips correctly with no extra state.
+    # redis_key value by on_save(), so a carried redis_key string round-trips
+    # with no extra state. That holds under both import modes: preserving
+    # keys leaves the stored value alone, and regenerating them
+    # (preserve_keys=False) rewrites it through remap_references below before
+    # the instance is constructed, so on_save rebuilds the Set from the new
+    # key. The policy is about state this field would otherwise have to
+    # carry, and there is none either way.
     roundtrip_policy: str = "rebuild"
+
+    @classmethod
+    def remap_references(
+        cls,
+        field_name: str,
+        field_value: Any,
+        key_map: "dict[str, str]",
+        **kwargs: Any,
+    ) -> Any:
+        """Rewrite a stored ``redis_key`` to the target's regenerated key.
+
+        This is the one field Popoto ships that declares a reference, so it
+        is the one field ``preserve_keys=False`` can remap. The value is a
+        plain ``redis_key`` string (``encode_popoto_model_obj`` treats such a
+        string as already being in storage format), so the remap is a string
+        substitution and the related record is never loaded -- deliberately.
+        ``Relationship`` lazy-loads to survive circular references, and
+        hydrating the target here would recurse right back through the
+        pointer being remapped.
+
+        A target absent from ``key_map`` keeps its old key: it either was not
+        part of this import or belongs to a model the caller did not chain a
+        ``key_map`` from, and inventing a key for it would be worse than a
+        pointer the import report counts and names.
+
+        Args:
+            field_name: Name of this field on the model.
+            field_value: The exported value -- a ``redis_key`` string, or
+                ``None`` for an unset relationship (``null`` defaults True).
+            key_map: Old ``redis_key`` to new ``redis_key``.
+            **kwargs: Reserved for future extension.
+
+        Returns:
+            The remapped ``redis_key``, or ``field_value`` unchanged when it
+            is not a non-empty string or the target is not in ``key_map``.
+        """
+        if isinstance(field_value, str) and field_value:
+            return key_map.get(field_value, field_value)
+        return field_value
 
     def __init__(self, **kwargs):
         """

@@ -513,74 +513,101 @@ the same key, not a cross-process race).
 
 ### Feature Documentation
 
-- [ ] `docs/guides/export-import.md` — new subsection under `## Importing`
+- [x] `docs/guides/export-import.md` — new subsection under `## Importing`
       documenting `preserve_keys`/`key_map`, the non-idempotency warning,
       the partial-remap guarantee (plain-string-pointer caveat stated
       prominently), and the multi-model `key_map` chaining pattern with a
       worked two-model example; extend `## From the command line` (#555)
       with `--regenerate-keys` and its non-idempotency warning.
-- [ ] `CHANGELOG.md` — `### Added` entry under `[Unreleased]` naming
+- [x] `CHANGELOG.md` — `### Added` entry under `[Unreleased]` naming
       `preserve_keys`, `key_map`, `remap_references`, and
       `--regenerate-keys`, flagging the non-idempotency change relative to
       every other import mode.
 
 ### Inline Documentation
 
-- [ ] `import_records` docstring: `preserve_keys`/`key_map` args, a
+- [x] `import_records` docstring: `preserve_keys`/`key_map` args, a
       non-idempotency `Note:`, and the partial-remap guarantee restated
       verbatim — this is guarantee-location 1 of the required 3.
-- [ ] `Field.remap_references` docstring: signature, identity default, when
+- [x] `Field.remap_references` docstring: signature, identity default, when
       to override, and the partial-remap guarantee restated — location 2 of 3.
-- [ ] `docs/guides/export-import.md`'s guarantee text above is location 3
+- [x] `docs/guides/export-import.md`'s guarantee text above is location 3
       of 3; `Relationship.remap_references` docstring separately explains
       why it rewrites the string without dereferencing, citing
       `encoding.py`'s "already in storage format" branch as the round-trip
       proof.
-- [ ] Rewrite `Relationship.roundtrip_policy`'s comment
+- [x] Rewrite `Relationship.roundtrip_policy`'s comment
       (`relationship.py:118-122`) to drop "since v1 always preserves keys
       ... see #557 for the deferred opt-out" — the value is unchanged
       (`"rebuild"`), but the reasoning must state that the reverse-lookup
       Set is rebuilt by `on_save` from the (possibly remapped) stored value,
       true under both `preserve_keys` settings.
 
+### Build finding: construction resolves relationship strings eagerly
+
+Measured on this branch (CPython 3.12.14, redis-py 8.1.0), and the reason
+`_process_batch` re-asserts reference values after construction.
+
+`Model.__init__` (`src/popoto/models/base.py:646-656`) does **not** honor the
+documented lazy-loading contract for a `Relationship` supplied as a redis_key
+string: it calls `field.model.query.get(redis_key=...)` immediately and
+substitutes `None` when the target is not present. Records are written one at
+a time in file order, so under any import the first half of a cycle -- and
+every forward reference -- points at a key that does not exist yet at its own
+construction time, and the reference is silently dropped.
+
+This is pre-existing and **not** introduced by #557: an import with the
+default `preserve_keys=True` into an empty database loses the same reference,
+which was reproduced directly before any of this work was written. It is left
+unfixed at its source (that is a change to `Model.__init__`'s semantics,
+outside this appetite) and worked around inside the regenerating path only:
+`_remap_record` stashes the rewritten strings under
+`REMAPPED_REFERENCES_KEY`, and `_process_batch` re-assigns them onto the
+instance after construction, which stores them verbatim. The preserving path
+is untouched, and a value of that name read off a file is discarded rather
+than honored.
+
+`tests/test_transfer_key_regeneration.py::test_circular_pair_is_remapped_in_both_directions`
+is the regression pin.
+
 ## Success Criteria
 
-- [ ] `preserve_keys=True` (default) is byte-for-byte the pre-existing
+- [x] `preserve_keys=True` (default) is byte-for-byte the pre-existing
       behavior: no temp file created, no `key_map` computation, identical
       record flow to `main` before this change.
-- [ ] `preserve_keys=False` refuses before any write for a model whose key
+- [x] `preserve_keys=False` refuses before any write for a model whose key
       field(s) have no minting path (plain `KeyField`/`UniqueKeyField`, or a
       composite mixing an auto field with declared key fields), naming the
       model, the key field(s), and the reason.
-- [ ] `preserve_keys=False` round-trips a self-referential `Relationship`
+- [x] `preserve_keys=False` round-trips a self-referential `Relationship`
       into the same database: imported copies point at new keys, originals
       untouched, no eager hydration.
-- [ ] A circular reference pair (A→B, B→A) survives regeneration with both
+- [x] A circular reference pair (A→B, B→A) survives regeneration with both
       pointers correctly remapped.
-- [ ] A `Relationship` target absent from `key_map` is reported by name/count
+- [x] A `Relationship` target absent from `key_map` is reported by name/count
       in `ImportReport.warnings` and keeps its old value.
-- [ ] A plain-string application-level pointer is never rewritten.
-- [ ] A real opened file, an `io.StringIO`, and a non-seekable shim all
+- [x] A plain-string application-level pointer is never rewritten.
+- [x] A real opened file, an `io.StringIO`, and a non-seekable shim all
       produce the same imported records via the unconditional temp-file spool
       path, with the temp file cleaned up. No `seek()`/`tell()` is called on
       the caller's stream.
-- [ ] `key_map` seeds correctly across two chained model imports.
-- [ ] `key_map` passed with `preserve_keys=True` raises `ValueError`.
-- [ ] `ValidityField`/`CoOccurrenceField` cross-record key staleness under
+- [x] `key_map` seeds correctly across two chained model imports.
+- [x] `key_map` passed with `preserve_keys=True` raises `ValueError`.
+- [x] `ValidityField`/`CoOccurrenceField` cross-record key staleness under
       regeneration is pinned by an explicit regression test, not silently
       passing or silently "fixed".
-- [ ] `popoto-transfer import --regenerate-keys` wraps `preserve_keys=False`
+- [x] `popoto-transfer import --regenerate-keys` wraps `preserve_keys=False`
       and its `--help` text states the non-idempotency warning.
-- [ ] Both merged anti-criteria (`generic_export_import_roundtrip.md:1116`,
+- [x] Both merged anti-criteria (`generic_export_import_roundtrip.md:1116`,
       `transfer_cli.md:929`) are retired: `remap_references` exists in
       `src/popoto/`, and `--regenerate-keys` exists in `cli.py`.
-- [ ] `mypy_ratchet.py` does not regress (or is explicitly re-banked per
+- [x] `mypy_ratchet.py` does not regress (or is explicitly re-banked per
       `CLAUDE.md`'s ratchet instructions).
-- [ ] `ruff check src/` and `black --check src/ tests/` pass.
-- [ ] Tests pass (`/do-test`), including
+- [x] `ruff check src/` and `black --check src/ tests/` pass.
+- [x] Tests pass (`/do-test`), including
       `tests/test_transfer_key_regeneration.py` and the unmodified existing
       transfer suite, run with `POPOTO_TEST_DB=6`.
-- [ ] Documentation updated (`/do-docs`).
+- [x] Documentation updated (`/do-docs`).
 
 ## Questions for the architect
 

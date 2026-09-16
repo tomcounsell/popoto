@@ -299,6 +299,66 @@ class Field(metaclass=FieldBase):
         return None
 
     @classmethod
+    def remap_references(
+        cls,
+        field_name: str,
+        field_value: Any,
+        key_map: "dict[str, str]",
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Return this field's value with record references remapped, or as-is.
+
+        Called once per field per imported record by ``popoto.transfer`` when
+        importing under ``preserve_keys=False``, which mints a new key for
+        every record and must rewrite anything pointing at an old one. The
+        base implementation returns ``field_value`` unchanged, which is
+        correct for every field that stores no reference to another record.
+
+        Override this on a field whose *stored value* is another record's
+        ``redis_key`` -- ``Relationship`` is the only such field Popoto ships.
+        An override looks up ``field_value`` in ``key_map`` and returns the
+        new key, falling back to ``field_value`` when the target is not in
+        the map.
+
+        Two rules an override must honor:
+
+        - **Rewrite the stored string; never dereference it.** ``Relationship``
+          stores a ``redis_key`` string and loads the related object lazily,
+          specifically so a circular reference does not recurse forever.
+          Hydrating the target here to inspect it would reintroduce exactly
+          that recursion, and the string rewrite is sufficient on its own --
+          ``encode_popoto_model_obj`` accepts a plain ``redis_key`` string as
+          already being in storage format.
+        - **Never guess.** Only a field that *declares* it holds a reference
+          is remapped. A plain ``Field(type=str)`` that an application happens
+          to fill with another record's key is indistinguishable from ordinary
+          text, so it is left alone and will dangle after regeneration. That
+          partial guarantee is documented; a heuristic that scanned strings
+          for things that "look like" keys would trade a loud, documented
+          limitation for occasional silent corruption.
+
+        Called before the instance is constructed -- the value is rewritten in
+        the record's ``values`` dict on its way into ``model_class(**values)``
+        -- so there is no ``model_instance`` parameter, unlike
+        ``export_state``/``import_state``.
+
+        Args:
+            field_name: Name of this field on the model.
+            field_value: The field's exported value, in its JSON-serializable
+                form (for a ``Relationship``, a ``redis_key`` string).
+            key_map: Old ``redis_key`` to new ``redis_key``, covering every
+                record minted so far in this import plus any mapping the
+                caller seeded from a previous import of another model.
+            **kwargs: Reserved for future extension.
+
+        Returns:
+            The value to store, remapped if this field holds a reference and
+            the target is in ``key_map``; otherwise ``field_value`` unchanged.
+        """
+        return field_value
+
+    @classmethod
     def import_state(
         cls,
         model_instance: "Model",

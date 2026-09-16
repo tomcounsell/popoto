@@ -135,6 +135,11 @@ class ImportReport:
             write gate deliberately bypassed.
         source_matched_count: The manifest's ``matched_count``, for comparison
             against the number of record lines actually present.
+        key_map: Old ``redis_key`` to new ``redis_key`` for every record this
+            run minted, merged over whatever the caller seeded. Empty under
+            the default ``preserve_keys=True``, where no key changes. Feed it
+            into the next model's ``import_records(key_map=...)`` to carry a
+            multi-model migration's cross-references across runs.
     """
 
     model: str
@@ -143,6 +148,7 @@ class ImportReport:
     warnings: "list[str]" = field(default_factory=list)
     write_gate_bypassed: int = 0
     source_matched_count: "int | None" = None
+    key_map: "dict[str, str]" = field(default_factory=dict)
 
     def add(
         self, key: str, category: str, reason: "str | None" = None
