@@ -103,9 +103,14 @@ does `ZRANGE key 0 -1 WITHSCORES` and scores every member of the partition. Two 
 measurements show the denominator, not the gate, is what moves it:
 
 - **The budget shrinks as the partition grows, for reasons unrelated to gating.** At n=5k
-  the ungated p50 is 8.51 ms (1 ms = 11.8% of it); at n=20k it is 37 ms (2.7%); at n=50k it
-  is 98.4 ms (1.0%). A criterion whose difficulty is set by the scan it is not measuring is
-  measuring the wrong thing.
+  the ungated p50 is 8.51 ms (1 ms = 11.8% of it); at n=20k it is 37.03 ms (2.7%); at n=50k
+  it is 98.4 ms (1.0%). A criterion whose difficulty is set by the scan it is not measuring
+  is measuring the wrong thing.
+
+  These are harness-B numbers, so the n=20k entry reads 2.7% where the harness-A figure above
+  reads 2.6% (1 ms over 37.03 ms vs over 37.93 ms). Same quantity, two harnesses — see "Two
+  harnesses, two numbers". The argument does not turn on which one you take; both round to
+  "under three percent".
 - **The gate's own cost is proportional to the scan, so the ratio is the stable quantity.**
   Measured pre-change (harness B) across three partition sizes at a fixed 10%-closed shape: 1.57x
   (n=5k), 1.55x (n=20k), 1.45x (n=50k). The ratio is flat to ±8%; the absolute delta is not
