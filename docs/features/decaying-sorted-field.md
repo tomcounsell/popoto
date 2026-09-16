@@ -135,8 +135,9 @@ hot = Memory.query.filter(agent_id="agent-1").top_by_decay(5, decay_rate=1.0)
 ```
 
 On a model that also declares a [`ValidityField`](validity-and-supersession.md)
-*and* whose records have had intervals closed by a supersession producer, a
-keyword-only `as_of` reconstructs ranking at a past moment instead of now:
+and whose records have interval state that changes over time (closed by a
+supersession producer, or a declared future `valid_from`), a keyword-only
+`as_of` reconstructs ranking at a past moment instead of now:
 
 ```python
 past = Memory.query.filter(agent_id="agent-1").top_by_decay(5, as_of=two_weeks_ago)

@@ -77,7 +77,7 @@ SupersessionProtocol.chain(new)  # -> [old, new], oldest first
     `ObservationProtocol.on_context_used()` with the `"contradicted"` outcome
     and `instance._superseded_by` set (see
     [Observation Protocol](observation-protocol.md#effects-matrix)). All
-    five are explicit application calls. Whether this should stay imperative
+    four are explicit application calls. Whether this should stay imperative
     is [issue #693](https://github.com/tomcounsell/popoto/issues/693).
 
 ## Keyspace

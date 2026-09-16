@@ -59,8 +59,8 @@ Example:
     new = Fact(fact_id="plan-2").save()
 
     # The explicit close below is NOT optional (issue #693). Saving alone only
-    # ever OPENS intervals, so a save-only model's exclusion set stays empty
-    # forever no matter how many records it writes.
+    # ever OPENS intervals, so a save-only model's exclusion set stays empty,
+    # unless a save declares a future `valid_from`.
     # Close `old` and chain it to `new` in one atomic EVAL:
     ValidityField.execute_supersede(
         Fact, "validity", new_member=new.db_key.redis_key,
@@ -455,7 +455,7 @@ class ValidityField(Field):
     ``SupersessionProtocol.supersede(successor, identity_key=...)`` finds no
     incumbent, closes nothing, and returns ``None``.
 
-    Closing an interval requires an explicit producer. Today there are five:
+    Closing an interval requires an explicit producer. Today there are four:
 
     - :meth:`SupersessionProtocol.supersede` /
       :meth:`~popoto.fields.supersession.SupersessionProtocol.save_and_supersede`

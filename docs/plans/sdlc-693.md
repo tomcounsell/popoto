@@ -94,8 +94,8 @@ adopters and by the benchmark harnesses.
 `docs/features/validity-and-supersession.md`, and in `docs/query.md`'s filter
 section, that declaring the field opens intervals and nothing more: exclusion
 requires a supersession producer (`SupersessionProtocol.supersede` /
-`save_and_supersede` / `invalidate`, `ProvenanceJournal`, or a
-`_superseded_by`-tagged `on_context_used` call).
+`save_and_supersede` / `invalidate` / `save_and_invalidate`,
+`ProvenanceJournal`, or a `_superseded_by`-tagged `on_context_used` call).
 
 **Blast radius.** Nil. Docs only.
 

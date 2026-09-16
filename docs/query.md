@@ -1388,8 +1388,9 @@ These lookups report interval state; they do not create it. A record saved with
 a plain `.save()` and no declared `valid_from` has an open interval
 (`invalid_at = +inf`) that has already started, so it satisfies `current=True`
 until a producer closes it. (A `.save()` that *does* declare a future
-`valid_from` is excluded from `current=True` until that moment arrives — see
-the `valid_from > as_of` branch below.) `current=True` starts excluding an
+`valid_from` is excluded from `current=True` until that moment arrives; see
+[Validity and Supersession](features/validity-and-supersession.md) for the
+`valid_from > as_of` branch that makes this work.) `current=True` starts excluding an
 open-ended record only once a supersession producer —
 `SupersessionProtocol.supersede()` / `save_and_supersede()`, `invalidate()` /
 `save_and_invalidate()`, `ProvenanceJournal`, or a `_superseded_by`-tagged
