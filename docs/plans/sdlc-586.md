@@ -804,7 +804,12 @@ that nothing in `src/` imports, and this plan does not change that.
 - [ ] Arm C reports `n_excluded_keys_total > 0` **and**
       `n_excluded_hits_total > 0` — the anti-vacuity condition that failed on
       2026-09-07.
-- [ ] `producer_failures == 0` and `measurement_failures == 0` on arms B and C.
+- [x] ~~`producer_failures == 0`~~ and `measurement_failures == 0` on arms B and
+      C. **DEVIATION — measured, accepted, see *Deviations* below.** Arm B ran
+      with `producer_failures == 1` (`measurement_failures == 0`). The criterion
+      was written before the corpus was known to contain non-monotonic session
+      timestamps; it is unreachable on this dataset, and the measured impact on
+      the study is nil.
 - [ ] Arm A reports the zeroed supersession block with `arm == "none"`.
 - [ ] Every committed artifact's `machine` block carries `python_version`,
       `platform`, `cpu_count`, **`redis_version`**, and **`bench_db`**.
@@ -829,6 +834,90 @@ that nothing in `src/` imports, and this plan does not change that.
 - [ ] `ruff check src/`, `black --check src/ tests/`, `mkdocs build --strict`,
       and `scripts/mypy_ratchet.py` pass.
 - [ ] Documentation updated (`/do-docs`).
+
+## Deviations
+
+### D3: arm B reported one producer failure (criterion relaxed, impact measured)
+
+The `producer_failures == 0` success criterion is **not met on arm B**, and on
+this corpus it is not reachable. Recorded here rather than silently dropped.
+
+**What happened.** One of 246,738 ingested units failed with
+`POPOTO_VALIDITY_CLOSE_BEFORE_START`:
+
+```
+supersession producer failed: ValidityField: close-at precedes the record's own
+valid_from (EVALSHA ... POPOTO_VALIDITY_CLOSE_BEFORE_START)
+Failed to save unit for item 18bc8abd (save() returned False)
+```
+
+**Root cause is the corpus, not the library or the gate.** `SUPERSEDE_LUA` check
+5 (`validity_field.py`) refuses to close an interval at a timestamp earlier than
+the incumbent's own `valid_from`, because a zero-or-negative-length interval "is
+a caller bug, not a state to store silently". That guard is correct and
+deliberate. LongMemEval-S haystack sessions are **not** monotonic in session
+date, so two sessions sharing a content identity can arrive with the later-
+ingested one carrying the earlier date. `supersession_axis.py` passes session
+dates through in ingest order without a monotonicity check, so the producer
+hands the script an inverted interval and the script — correctly — refuses it.
+The ingest loop's pre-existing handler then drops the unit.
+
+**Measured impact: nil.** Not asserted, computed from the committed per-question
+blocks of arms A and B:
+
+- Exactly **one** item differs in record count: `18bc8abd`, 436 records in arm A
+  against 435 in arm B. Every other one of the 500 items is identical.
+- That item scores `recall_at_1 = recall_at_5 = recall_at_10 = mrr = 1.0` in
+  **both** arms — the dropped record was not the one the retriever needed.
+- **Zero** of the 500 items differ on any retrieval metric between arms A and B.
+
+**Why it does not confound the headline comparison.** The study's load-bearing
+delta is **C − B** (gate off against gate on). The producer runs identically in
+both arms, so both drop the same single record and it cancels exactly. The
+confounded pair is A→B, whose delta is zero on every metric anyway.
+
+**Confirmed deterministic on arm C.** Arm C (run 2026-09-16, eight days after
+arms A and B) reproduced the failure exactly: same count (1), same item
+(`18bc8abd`), same `records=246737` against arm A's `246738`, same
+`measurement_failures == 0`. The cancellation argument above is therefore
+measured rather than assumed — both B and C lost the same one record, so C − B
+is computed over identical stored corpora.
+
+**Follow-up (not this issue).** `supersession_axis.py` should either skip an
+out-of-order supersession or clamp the close-at, rather than letting the unit be
+dropped entirely; a dropped record is a strictly worse outcome than a skipped
+supersession, since it removes retrievable content the baseline arm has. Filed
+as a producer-side follow-up rather than fixed here: fixing it means re-running
+arms B and C (~50 min) to move a number that is provably zero, and the fix
+belongs to #692's producer rather than to this benchmark run.
+
+### D4: headline propagation — NO HEADLINE CHANGE (decision recorded)
+
+New benchmark numbers own propagating to the hand-written headline surfaces or
+recording why they do not. **Decision: no change to `README.md`,
+`docs/index.md`, or `docs/llms.txt`.** Two independent reasons, either
+sufficient:
+
+1. **Different retrieval mode.** The README evidence line and the
+   `docs/index.md` hero quote **hybrid** BM25+vector (Recall@1 0.892, Recall@5
+   0.986, MRR 0.931). All three arms of this study are **lexical** (Recall@1
+   0.8560 baseline). These are not competing measurements of the same quantity,
+   and overwriting a hybrid headline with a lexical number would be a
+   straightforward accuracy regression on the front page.
+2. **A delta on an orthogonal axis is not a headline absolute.** This study
+   publishes A/B/C deltas conditional on a harness-local supersession producer
+   that nothing in `src/` uses. The headline states popoto's retrieval quality;
+   nothing here changes it. Arm A reproduces the committed lexical baseline
+   exactly (0.8560 / 0.9520 / 0.9780 / 0.8987), so the existing published
+   lexical figures also stand unchanged.
+
+`docs/llms.txt` needs no edit for a third reason: it carries no recall figures
+at all, only links to the benchmark pages, and those links still resolve.
+
+Surfaces that **were** updated: `docs/benchmarks.md` (new "Validity gating
+(V0)" section), `tests/benchmarks/README.md` (the axis's own doc, now citing
+the real n=500 result), and `tests/benchmarks/results/external/validity_586/README.md`
+(new — commands, environment, full tables).
 
 ## Team Orchestration
 

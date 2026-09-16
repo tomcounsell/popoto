@@ -542,6 +542,113 @@ deterministic `TestRefusalGateMechanics` class runs unconditionally in CI; the
 `~/.cache/popoto_benchmarks/locomo.json` and prints the same caveat inline
 with the report).
 
+#### Validity gating (V0): three-arm LongMemEval-S study
+
+Wave A of the validity axis (`ValidityField`, `SupersessionProtocol`,
+three-layer assembler gating) shipped in PR #582 **unbenchmarked**, because at
+the time it would have measured nothing: no unit produced supersessions, so
+every gate was a subtractive no-op and before/after were identical by
+construction. [#692](https://github.com/tomcounsell/popoto/issues/692) added a
+label-blind content-identity supersession *producer* to the external harness,
+which makes the gate measurable. This is that measurement
+([#586](https://github.com/tomcounsell/popoto/issues/586)).
+
+**Environment** (all three arms): Python 3.12.14, redis-py **8.1.0**, Redis DB
+12, macOS-26.6.2-arm64 10-core Apple silicon, full LongMemEval-S 500/500
+questions, **lexical** retrieval, session ranking unit. Arms A and B ran
+2026-09-08; arm C ran 2026-09-16 on the same machine and corpus. Artifacts and
+the three exact commands:
+`tests/benchmarks/results/external/validity_586/`.
+
+!!! warning "These are lexical numbers and are not the headline"
+    Every figure in this section is **lexical** (BM25 only). The Recall@1 0.892
+    quoted in the README and on the docs home page is **hybrid** BM25+vector —
+    a different retrieval mode, not a different result for the same thing. Do
+    not read a number from this section against one from there. And per the
+    metric-family doctrine, none of these recall figures may be compared
+    against any judged-accuracy number, including those in the section below.
+
+Two arms cannot attribute a delta, because the producer and the gate are two
+changes shipped together. Hence three:
+
+| Arm | Model declares `ValidityField` | Producer runs | Gate |
+|---|---|---|---|
+| **A** — baseline | no | no | n/a |
+| **B** — producer, gate off | yes | yes | `False` |
+| **C** — producer, gate on | yes | yes | `True` |
+
+| Metric | A | B | C | A→B | **B→C** |
+|---|---|---|---|---|---|
+| Recall@1 | 0.8560 | 0.8560 | 0.8480 | +0.0000 | **−0.0080** |
+| Recall@5 | 0.9520 | 0.9520 | 0.9480 | +0.0000 | **−0.0040** |
+| Recall@10 | 0.9780 | 0.9780 | 0.9780 | +0.0000 | **+0.0000** |
+| MRR | 0.8987 | 0.8987 | 0.8935 | +0.0000 | **−0.0052** |
+
+**A→B is exactly zero on every metric and on all 500 questions individually**,
+which is what licenses reading B→C as the gate alone: declaring the field, the
+extra per-save Lua command, and the producer's write ordering cost nothing
+measurable.
+
+**The gate is live.** Arm C excluded 3699 keys and — the condition an earlier
+attempt failed — **177 excluded hits**, against arm B's 0. The three gating
+layers really do subtract on a real corpus at 246,738 records; the machinery is
+not structurally nil. That is this study's primary positive finding.
+
+**The retrieval effect is a small, strictly one-directional cost.** Across all
+500 questions, **4 lost their rank-1 hit and 0 gained one**. A paired bootstrap
+(20,000 resamples, seed 0) puts Recall@1 at −0.0080, 95% CI [−0.0160, −0.0020]
+and MRR at −0.0052, CI [−0.0111, −0.0005]; Recall@5's CI includes zero. The
+intervals exclude zero because the direction is perfectly one-sided, **not**
+because the magnitude is large — four questions out of 500 is the whole effect.
+
+Per category, with flip counts beside the deltas (the two categories #586 named
+are the first two rows):
+
+| Category | n | Δ Recall@1 | Δ MRR | R@1 lost / gained |
+|---|---|---|---|---|
+| **knowledge-update** | 78 | **+0.0000** | **+0.0000** | 0 / 0 |
+| **temporal-reasoning** | 133 | −0.0150 | −0.0071 | 2 / 0 |
+| multi-session | 133 | −0.0075 | −0.0076 | 1 / 0 |
+| single-session-user | 70 | −0.0143 | −0.0107 | 1 / 0 |
+| single-session-assistant | 56 | +0.0000 | +0.0000 | 0 / 0 |
+| single-session-preference | 30 | +0.0000 | +0.0033 | 0 / 0 |
+
+**The finding, stated plainly: on this corpus with this producer, V0's gating
+machinery demonstrably works but buys no retrieval accuracy — and
+knowledge-update, the category subtractive validity gating exists to serve,
+moved by exactly zero with not one question changing rank.** The cost it does
+impose falls on temporal-reasoning and multi-session. Published regardless of
+sign, per the issue's fourth criterion.
+
+That is a finding about *subtractive* gating under a content-identity
+heuristic, and the honest reading is that a gate which removes records can only
+ever lose recall — recall counts what was retrieved, and subtraction never adds
+a hit. The case for validity gating is answer correctness (not retrieving a
+*stale* fact), which is a judged-accuracy question this study does not and
+cannot answer.
+
+**What it does not establish:** not "V0 validity gating changes LongMemEval-S
+by X" — V0 ships no producer, so every number is a property of the pair (this
+harness heuristic, V0's gate), and the heuristic is a harness artifact nothing
+in `src/` uses. Not a generalization to a semantic or LLM-derived producer,
+which would close a different and probably larger set. Not comparable to the
+published 2026-06-30 baseline as a "before" — arm A is the before; the older
+artifact ran in a different environment with an unrecorded redis-py version.
+
+!!! note "One producer failure in 246,738 units (measured impact: nil)"
+    Arms B and C each report `producer_failures: 1`. `SUPERSEDE_LUA` refuses to
+    close an interval at a timestamp earlier than the incumbent's own
+    `valid_from` — a correct guard. LongMemEval-S haystack sessions are not
+    monotonic in session date, so two sessions sharing a content identity can
+    arrive with the later-ingested one carrying the earlier date, and the
+    producer passes dates through in ingest order without a monotonicity check.
+
+    Impact, computed from the committed per-question blocks: exactly one item
+    (`18bc8abd`) holds 435 records instead of 436, it scores 1.0 on every
+    metric in all three arms, and **zero** of the 500 items differ on any
+    metric between A and B. Arm C reproduced the failure identically, so B and
+    C are computed over identical stored corpora and the drop cancels in C−B.
+
 ### Judged-Answer Accuracy (Tier 5)
 
 The metrics above are **retrieval-level** — did the right memory get retrieved.

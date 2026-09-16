@@ -1,0 +1,81 @@
+12:53:22 ExternalBenchmark: Benchmark isolation: Popoto connection pointed at DB 12 (override via POPOTO_BENCH_DB; db0 rejected).
+12:53:22 ExternalBenchmark: Swept 0 stale benchmark key(s) from DB 12 at startup.
+12:53:22 POPOTO.Benchmark.LongMemEvalS: LongMemEval-S: using cached file at /Users/valorengels/.cache/popoto_benchmarks/longmemeval_s_cleaned.json
+12:53:24 POPOTO.Benchmark.LongMemEvalS: LongMemEval-S: yielded 500 items (sample=stride seed=0)
+12:53:24 ExternalBenchmark: Starting benchmark: dataset=longmemeval-s limit=all sample=stride seed=0 retrieval_mode=lexical dry_run=False bench_db=12
+12:53:24 ExternalBenchmark: Progress: 1 questions processed (0.0s elapsed)
+12:53:37 ExternalBenchmark: Progress: 10 questions processed (12.8s elapsed)
+12:53:51 ExternalBenchmark: Progress: 20 questions processed (27.1s elapsed)
+12:54:08 ExternalBenchmark: Progress: 30 questions processed (44.5s elapsed)
+12:54:25 ExternalBenchmark: Progress: 40 questions processed (61.0s elapsed)
+12:54:41 ExternalBenchmark: Progress: 50 questions processed (77.3s elapsed)
+12:54:56 ExternalBenchmark: Progress: 60 questions processed (92.0s elapsed)
+12:55:10 ExternalBenchmark: Progress: 70 questions processed (106.3s elapsed)
+12:55:25 ExternalBenchmark: Progress: 80 questions processed (121.0s elapsed)
+12:55:41 ExternalBenchmark: Progress: 90 questions processed (137.0s elapsed)
+12:55:54 ExternalBenchmark: Progress: 100 questions processed (150.6s elapsed)
+12:56:10 ExternalBenchmark: Progress: 110 questions processed (165.7s elapsed)
+12:56:28 ExternalBenchmark: Progress: 120 questions processed (183.7s elapsed)
+12:56:43 ExternalBenchmark: Progress: 130 questions processed (198.9s elapsed)
+12:57:00 ExternalBenchmark: Progress: 140 questions processed (216.2s elapsed)
+12:57:15 ExternalBenchmark: Progress: 150 questions processed (231.2s elapsed)
+12:57:31 ExternalBenchmark: Progress: 160 questions processed (247.3s elapsed)
+12:57:45 ExternalBenchmark: Progress: 170 questions processed (261.6s elapsed)
+12:58:00 ExternalBenchmark: Progress: 180 questions processed (276.3s elapsed)
+12:58:17 ExternalBenchmark: Progress: 190 questions processed (293.0s elapsed)
+12:58:29 ExternalBenchmark: Progress: 200 questions processed (305.5s elapsed)
+12:58:43 ExternalBenchmark: Progress: 210 questions processed (318.9s elapsed)
+12:58:57 ExternalBenchmark: Progress: 220 questions processed (333.4s elapsed)
+12:59:12 ExternalBenchmark: Progress: 230 questions processed (347.7s elapsed)
+12:59:26 ExternalBenchmark: Progress: 240 questions processed (362.0s elapsed)
+12:59:40 ExternalBenchmark: Progress: 250 questions processed (376.2s elapsed)
+12:59:54 ExternalBenchmark: Progress: 260 questions processed (390.1s elapsed)
+13:00:06 ExternalBenchmark: Progress: 270 questions processed (402.2s elapsed)
+13:00:20 ExternalBenchmark: Progress: 280 questions processed (416.4s elapsed)
+13:00:34 ExternalBenchmark: Progress: 290 questions processed (430.0s elapsed)
+13:00:47 ExternalBenchmark: Progress: 300 questions processed (443.0s elapsed)
+13:01:01 ExternalBenchmark: Progress: 310 questions processed (456.7s elapsed)
+13:01:15 ExternalBenchmark: Progress: 320 questions processed (470.9s elapsed)
+13:01:28 ExternalBenchmark: Progress: 330 questions processed (484.0s elapsed)
+13:01:42 ExternalBenchmark: Progress: 340 questions processed (498.6s elapsed)
+13:01:56 ExternalBenchmark: Progress: 350 questions processed (512.6s elapsed)
+13:02:10 ExternalBenchmark: Progress: 360 questions processed (526.1s elapsed)
+13:02:26 ExternalBenchmark: Progress: 370 questions processed (541.8s elapsed)
+13:02:41 ExternalBenchmark: Progress: 380 questions processed (557.4s elapsed)
+13:02:59 ExternalBenchmark: Progress: 390 questions processed (574.8s elapsed)
+13:03:16 ExternalBenchmark: Progress: 400 questions processed (592.2s elapsed)
+13:03:34 ExternalBenchmark: Progress: 410 questions processed (610.0s elapsed)
+13:03:51 ExternalBenchmark: Progress: 420 questions processed (627.5s elapsed)
+13:04:08 ExternalBenchmark: Progress: 430 questions processed (644.1s elapsed)
+13:04:25 ExternalBenchmark: Progress: 440 questions processed (661.1s elapsed)
+13:04:42 ExternalBenchmark: Progress: 450 questions processed (678.2s elapsed)
+13:04:59 ExternalBenchmark: Progress: 460 questions processed (695.4s elapsed)
+13:05:16 ExternalBenchmark: Progress: 470 questions processed (712.2s elapsed)
+13:05:33 ExternalBenchmark: Progress: 480 questions processed (729.5s elapsed)
+13:05:51 ExternalBenchmark: Progress: 490 questions processed (747.5s elapsed)
+13:06:09 ExternalBenchmark: Progress: 500 questions processed (765.1s elapsed)
+13:06:11 ExternalBenchmark: Benchmark complete: 500 questions in 766.9s
+13:06:11 ExternalBenchmark: Saved JSON report: tests/benchmarks/results/external/validity_586/longmemeval_s_20260908.json
+13:06:11 ExternalBenchmark: Saved Markdown report: tests/benchmarks/results/external/validity_586/longmemeval_s_20260908.md
+13:06:11 ExternalBenchmark: Swept 1000 benchmark key(s) from DB 12 at teardown.
+
+============================================================
+BENCHMARK RESULTS: LONGMEMEVAL-S
+============================================================
+  Retrieval mode      : lexical
+  Ingest arm          : raw
+    facts/turn        : 1.0 (turns=246738 records=246738 dropped=0)
+  Supersession arm    : none
+  Questions evaluated : 500 / 500
+  Errors              : 0
+  Recall@1            : 0.8560
+  Recall@5            : 0.9520
+  Recall@10           : 0.9780
+  MRR                 : 0.8987
+  Latency p50 (ms)    : 10.98
+  Latency p95 (ms)    : 23.13
+============================================================
+
+Reports saved:
+  JSON: tests/benchmarks/results/external/validity_586/longmemeval_s_20260908.json
+  Markdown: tests/benchmarks/results/external/validity_586/longmemeval_s_20260908.md
