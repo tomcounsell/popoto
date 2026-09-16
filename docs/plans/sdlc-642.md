@@ -183,9 +183,15 @@ not in `~/.zshrc`, `~/.zshenv`, `~/.zprofile` or any `settings*.json`, so this i
 documented "unset falls back to `DEFAULT_URL`" hazard in CLAUDE.md — it is an *actively bound*
 value no lane can correct from the inside. Two consequences the existing docs do not cover:
 
-- `scripts/scratch_repro.py` uses `os.environ.setdefault("REDIS_URL", ...)`, which is a **no-op**
-  when the variable is already set. The template CLAUDE.md recommends as the safe starting point
-  binds to DB 0 in this harness.
+- `scripts/scratch_repro.py` is **not** affected, and it is worth saying so explicitly because the
+  `os.environ.setdefault("REDIS_URL", ...)` on its step 1 *is* a no-op here and reads like a hole.
+  It is not one: the no-op is intentional and documented ("honors an already-exported `REDIS_URL`"),
+  and the protection is step 2, which resolves the database popoto actually bound to and
+  `sys.exit`s on 0 before issuing a command. Its code comment names this exact case — "a stray
+  `REDIS_URL` from the environment could still point elsewhere". Under the injected binding a
+  script copied from the template refuses to run, which is the design working. The only residual
+  is wording: the docstring's opening paragraph frames DB 0 as the fallback *when `REDIS_URL` is
+  unset*, and never describes an actively-bound DB 0. The guard covers both regardless.
 - Shell state does not persist between tool calls, so `export REDIS_URL=…` does not stick; each
   command must be prefixed inline.
 - A second binder exists further in: the benchmark harness's `_resolve_bench_db()` overrides the
