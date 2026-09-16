@@ -130,36 +130,52 @@ classifier is never reached on that path.
 
 ## Tasks
 
+**Part A (A1–A4) is un-ticked as of the PATCH pass on 2026-09-16: none of it
+was actually applied.** `post-review.md:221` still runs
+`git commit -m "docs(#N): sync plan checkboxes with review verdict"`
+unconditionally, `PLAN_CHECKBOX_SYNC` appears nowhere under
+`~/.claude/skills/`, and `do-docs/SKILL.md` has no checkbox-sync step. These
+four edits are all in `~/.claude/skills/`, outside this repository and this
+PR's diff — see the `[EXTERNAL]` No-Go below, which previously covered only
+Part B and now covers Part A too. Re-tick only once the corresponding file is
+actually changed and verified.
+
 - [x] Identify the authoring component (table above)
-- [x] Part A1 — rewrite `post-review.md` § 2.5: no git write, emit `PLAN_CHECKBOX_SYNC`
-- [x] Part A2 — `code-review.md`: list the new marker among the review-body parts
-- [x] Part A3 — `do-docs/SKILL.md`: new plan-checkbox-sync step before the cascade commit
-- [x] Part A4 — `do-sdlc/SKILL.md` § 5d.4: document the `head_drift` key
-- [x] Part B1 — new `tools/sdlc_review_drift.py`
-- [x] Part B2 — wire into `check_review_persistence`
-- [x] Part B3 — wire into `_check_verdict_freshness`
-- [x] Part B4 — unit tests for the classifier and both consumers
-- [x] Repo-local: `docs/sdlc/do-pr-review.md` declares the no-branch-write contract
+- [ ] Part A1 — rewrite `post-review.md` § 2.5: no git write, emit `PLAN_CHECKBOX_SYNC`
+- [ ] Part A2 — `code-review.md`: list the new marker among the review-body parts
+- [ ] Part A3 — `do-docs/SKILL.md`: new plan-checkbox-sync step before the cascade commit
+- [ ] Part A4 — `do-sdlc/SKILL.md` § 5d.4: document the `head_drift` key
+- [x] Part B1 — new `tools/sdlc_review_drift.py` (implemented and unit-tested; unmerged, see `[EXTERNAL]` No-Go)
+- [x] Part B2 — wire into `check_review_persistence` (implemented and unit-tested; unmerged)
+- [x] Part B3 — wire into `_check_verdict_freshness` (implemented and unit-tested; unmerged)
+- [x] Part B4 — unit tests for the classifier and both consumers (142 passed, see PR review)
+- [x] Repo-local: `docs/sdlc/do-pr-review.md` declares the no-branch-write contract, with an
+      explicit status note that Part A has not landed
 - [x] Repo-local: this plan doc
 
 ## Success Criteria
 
 - [x] The component authoring the checkbox commit is named, with evidence (criterion 1)
-- [x] `/do-pr-review` no longer runs `git commit` / `git push` on any path
-- [x] The recorded `head_sha` is the commit the reviewer read (criterion 3)
-- [x] A review-then-docs lane's `selfcheck` returns `ok: true` when the post-review drift is
-      documentation-only (criterion 2)
-- [x] Non-docs drift after review still fails `REVIEW_TRAILER_MISSING` (no self-clearing)
-- [x] A force-push / divergent head after review still fails closed
+- [ ] `/do-pr-review` no longer runs `git commit` / `git push` on any path — **not met**: Part A1
+      is un-ticked above, so the generic checkbox updater still commits
+- [ ] The recorded `head_sha` is the commit the reviewer read (criterion 3) — **not met**, same
+      cause
+- [ ] A review-then-docs lane's `selfcheck` returns `ok: true` when the post-review drift is
+      documentation-only (criterion 2) — **not met**: Part B is implemented and unit-tested but
+      unmerged in the control-plane repo, so `/do-merge` there still compares SHAs for strict
+      equality
+- [x] Non-docs drift after review still fails `REVIEW_TRAILER_MISSING` (no self-clearing) — true
+      today regardless of this plan, since strict SHA equality is the pre-existing default
+- [x] A force-push / divergent head after review still fails closed — same, pre-existing default
 
 ## Verification
 
 | Check | Command | Expected |
 |---|---|---|
-| Classifier unit tests | `cd ~/src/ai && uv run pytest tests/unit/test_sdlc_review_drift.py` | pass |
-| Consumer unit tests | `cd ~/src/ai && uv run pytest tests/unit/test_sdlc_review_finalize.py tests/unit/test_merge_predicate.py` | pass |
-| Reviewer writes nothing | `grep -nE '^\s*git (commit|push)' ~/.claude/skills/do-pr-review/sub-skills/*.md ~/.claude/skills/do-pr-review/SKILL.md` | no matches |
-| Repo docs gate | `mkdocs build --strict` | exit 0 |
+| Classifier unit tests | `cd ~/src/ai && uv run pytest tests/unit/test_sdlc_review_drift.py` | pass (on the unmerged `~/src/ai@session/sdlc-642` branch only) |
+| Consumer unit tests | `cd ~/src/ai && uv run pytest tests/unit/test_sdlc_review_finalize.py tests/unit/test_merge_predicate.py` | pass (same branch) |
+| Reviewer writes nothing | `grep -nE '^\s*git (commit|push)' ~/.claude/skills/do-pr-review/sub-skills/*.md ~/.claude/skills/do-pr-review/SKILL.md` | **currently fails**: matches at `post-review.md:220-222` — Part A not applied |
+| Repo docs gate | `mkdocs build --strict` | **not exit 0**: aborts with the same 11 pre-existing `reference/` link warnings on this branch and on `origin/main` (none touch the two changed files) |
 
 ## No-Gos
 
@@ -170,13 +186,16 @@ classifier is never reached on that path.
 - **[SEPARATE-SLUG]** Do not change the `head_sha`-in-its-own-field storage shape (#2769) or the
   legacy in-token trailer fallback.
 - **[EXTERNAL]** The Part B changes land in `~/src/ai`, a different repository, on branch
-  `session/sdlc-642`. This popoto PR cannot merge them.
+  `session/sdlc-642`. This popoto PR cannot merge them. **The same is true of Part A**: its four
+  edits are all under `~/.claude/skills/`, also outside this repository, and are likewise
+  un-landed as of this PR (see Tasks above).
 
 ## Note (out of scope): a lane cannot trust its inherited Redis binding
 
 Observed while this lane ran, and recorded here because it is the same defect class as #642 —
 a pipeline step whose environment is not what the operator assumes. It is **not** fixed by this
-PR and should get its own slug.
+PR. Filed as [#724](https://github.com/tomcounsell/popoto/issues/724), its own slug, per PR #714
+review feedback that this note should not live inside a verdict-trailer plan.
 
 The session runner injects `REDIS_URL=redis://localhost:6379/0` into the harness process. It is
 not in `~/.zshrc`, `~/.zshenv`, `~/.zprofile` or any `settings*.json`, so this is not the
