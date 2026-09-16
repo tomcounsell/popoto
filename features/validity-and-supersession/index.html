@@ -1460,6 +1460,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-gating-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gating costs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#point-in-time-reconstruction" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3419,6 +3430,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-gating-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gating costs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#point-in-time-reconstruction" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3943,10 +3965,12 @@ membership decision stays where it belongs, inside the script. Reads never raise
 the <code>filters</code> dict entirely. That single fact is why validity gating is not
 one mechanism but three, each with a distinct, non-overlapping job:</p>
 <p><strong>Layer 1 — decay-Lua gate.</strong> <code>DECAY_SCORE_LUA</code> grows <code>KEYS[3]</code> (<code>invalid_at</code>),
-<code>KEYS[4]</code> (<code>valid_from</code>), and <code>ARGV[7]</code> (as-of). Per member, before the
-base-score <code>HGET</code> and before any decay math, up to two <code>ZSCORE</code>s decide
-inclusion: skip if <code>invalid_at &lt;= as_of</code> (closed) or <code>valid_from &gt; as_of</code> (not
-yet started). Every <code>KEYS[n]</code> read is guarded <code>KEYS[n] or ''</code>, so a caller
+<code>KEYS[4]</code> (<code>valid_from</code>), and <code>ARGV[7]</code> (as-of). Before the base-score <code>HGET</code>
+and before any decay math, the script decides inclusion: skip if
+<code>invalid_at &lt;= as_of</code> (closed) or <code>valid_from &gt; as_of</code> (not yet started). It
+answers that question one of two ways, chosen at run time — see "What gating
+costs" below — and the two answers are identical by construction. Every
+<code>KEYS[n]</code> read is guarded <code>KEYS[n] or ''</code>, so a caller
 that passes a short <code>numkeys</code> (existing hand-<code>eval</code> test call sites included)
 gets <code>nil</code> → <code>''</code> → gate disabled, with byte-identical scores to the
 pre-#580 script. This layer is <strong>authoritative for <code>top_by_decay</code> on a plain
@@ -3983,8 +4007,46 @@ the only mechanism for <code>top_by_decay</code> on a plain <code>DecayingSorted
 is the only one that enforces membership on the composite path; Layer 3 is the
 only one that reaches <code>fuse</code>/BM25/graph. The one path no layer covers is a
 direct <code>top_by_decay</code> on a <code>CyclicDecayField</code> — see "Known limitations".</p>
+<h2 id="what-gating-costs">What gating costs<a class="headerlink" href="#what-gating-costs" title="Permanent link">&para;</a></h2>
+<p>Gating a <code>top_by_decay</code> at 20k records measures at <strong>0.94x</strong> ungated retrieval
+— parity, within jitter (Python 3.12.14, redis-py 8.1.0, Redis DB 8,
+Darwin 25.6.0 / Apple silicon; p50 of 21 samples, ungated 37.70 ms / gated
+35.59 ms). <code>tests/test_validity_field.py::TestValidityBenchmark</code> pins the
+ceiling at 2.0x against a same-process, same-data ungated control.</p>
+<p>Read that as a <strong>ratio</strong>, never as a wall-clock budget. <code>DECAY_SCORE_LUA</code>
+full-scans its partition to rank it, so the ungated cost at 20k is already
+tens of milliseconds and dominates whatever the gate adds; an absolute budget
+would be measuring the scan. The V0 plan originally stated one ("within 1 ms
+of ungated"), and
+<a href="https://github.com/tomcounsell/popoto/issues/585">#585</a> withdrew it for that
+reason.</p>
+<p>The parity comes from <strong>pre-trimming</strong>. The naive gate costs up to two
+<code>ZSCORE</code> round trips per scanned member — 40,000 extra server-side dispatches
+at 20k. Instead, the script reads the excluded members up front with two
+<code>ZRANGEBYSCORE</code>s and builds a Lua lookup table, making the per-member decision
+O(1) with no round trip.</p>
+<p>That is not always the cheaper shape, and the script checks before committing
+to it. The interval ZSETs are <strong>model+field scoped</strong> while the scan is <strong>one
+partition</strong>, so a small hot partition sitting beside a large archive of closed
+records makes the range read pull far more than the scan touches — measured at
+16x ungated before the guard existed. Two <code>ZCOUNT</code>s bound it: pre-trim runs
+only while</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>ZCOUNT(closed) + ZCOUNT(not-yet-started) &lt;= ZCARD(partition) * Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO
+</code></pre></div>
+<p><code>VALIDITY_GATE_PRETRIM_MAX_RATIO</code> defaults to <code>4.0</code> (measured crossover is
+~5x, flat across partition sizes). Past it, the script falls back to the
+per-member path. Setting it to <code>0</code> or less disables pre-trim entirely and
+restores the pre-#585 per-member path byte-for-byte; like every other switch
+on this path it is read from <code>Defaults</code> at call time, never captured at
+import, so it is flippable at deploy time by an adopter who cannot edit model
+code. It is a latency knob, never a correctness one — both branches return
+identical replies, asserted by
+<code>tests/test_validity_field.py::TestValidityPretrim</code>.</p>
+<p>Layers 2 and 3 are already sub-scan and unchanged: four core commands per
+<code>composite_score</code> call and two <code>ZRANGEBYSCORE</code>s per <code>assemble()</code>, neither
+per-member.</p>
 <h2 id="point-in-time-reconstruction">Point-in-time reconstruction<a class="headerlink" href="#point-in-time-reconstruction" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Fact</span><span class="p">)</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"plan"</span><span class="p">},</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Fact</span><span class="p">)</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"plan"</span><span class="p">},</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
 </code></pre></div>
 <p><code>assemble()</code> gains a keyword-only <code>as_of: float | None = None</code>. The default
 <code>None</code> means "now" — only currently-valid records. Passing an epoch
@@ -3997,8 +4059,8 @@ keyword-only <code>as_of</code> directly, for callers that bypass the assembler.
 and all three gating layers a pure passthrough; retrieval stays byte-identical
 to pre-#580 behavior.</p>
 <h2 id="kill-switch">Kill switch<a class="headerlink" href="#kill-switch" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">VALIDITY_GATING_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># restores byte-identical pre-#580 retrieval</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">VALIDITY_GATING_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># restores byte-identical pre-#580 retrieval</span>
 </code></pre></div>
 <p><code>Defaults.VALIDITY_GATING_ENABLED</code> is a deploy-level boolean, default <code>True</code>,
 read <strong>at call time</strong> in every gating layer — never captured at import — so
@@ -4040,12 +4102,17 @@ and <strong>drops it</strong>. So the omission is now a documented property of t
 cyclic override rather than of a dispatch branch in the query builder —
 read it there, and in the comment above the call site in
 <code>models/query.py</code>.
-- <strong>Gating costs up to two <code>ZSCORE</code>s per member inside the decay Lua</strong>, and
-  <code>DECAY_SCORE_LUA</code> full-scans its partition regardless of gating (a
-  pre-existing property, not introduced here). Measured locally on a 20k-record
-  partition: <code>top_by_decay</code> at ~1.4x wall time gated vs. ungated (~37ms
-  ungated / ~51ms gated). The cost scales with partition size, not with how
-  many records are actually closed.
+- <strong><code>DECAY_SCORE_LUA</code> full-scans its partition regardless of gating</strong> (a
+  pre-existing property, not introduced here) — the cost scales with partition
+  size, not with how many records are actually closed. Since
+  <a href="https://github.com/tomcounsell/popoto/issues/585">#585</a> the gate itself is
+  no longer the expensive part: see <a href="#what-gating-costs">What gating costs</a>
+  above for the measured 0.94x figure and the pre-trim mechanism that buys it.
+  The <strong>fallback</strong> path — reached when the exclusion sets are more than
+  <code>VALIDITY_GATE_PRETRIM_MAX_RATIO</code> times the partition, or when pre-trim is
+  disabled — still costs up to two <code>ZSCORE</code>s per scanned member, which is what
+  the pre-#585 ~1.4x measurement (~37ms ungated / ~51ms gated on a 20k-record
+  partition) reflected.
 - <strong>The TTL warning fires on first save, not at model-definition time.</strong>
   <code>ValidityField.warn_if_ttl</code> logs once per <code>(model, field)</code> pair the first
   time a record on a <code>Meta.ttl</code>-bearing model is saved, not when the class

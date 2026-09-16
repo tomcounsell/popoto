@@ -3858,6 +3858,12 @@ data-loss behavior on the first save after upgrading an over-cap deployment.</p>
 <td>n/a (boolean)</td>
 <td>n/a</td>
 </tr>
+<tr>
+<td><code>VALIDITY_GATE_PRETRIM_MAX_RATIO</code></td>
+<td>4.0 (2026-09-16)</td>
+<td>[1.0, 5.0]</td>
+<td>Unmeasured beyond the crossover</td>
+</tr>
 </tbody>
 </table>
 <p><code>DECAY_CONFIDENCE_MODULATION_STRENGTH</code> is the <code>s</code> in the per-record effective rate
@@ -3869,6 +3875,16 @@ data-loss behavior on the first save after upgrading an over-cap deployment.</p>
 <code>DECAY_CONFIDENCE_MODULATION_ENABLED</code> is a deploy-level kill switch, not a tuning knob: modulation
 is default-on via auto-detection, and setting this <code>False</code> restores pre-modulation behavior
 byte-for-byte without editing any model definition.</p>
+<p><code>VALIDITY_GATE_PRETRIM_MAX_RATIO</code> (<a href="https://github.com/tomcounsell/popoto/issues/585">#585</a>)
+caps how much larger the validity exclusion sets may be than the partition being scanned before
+the gate abandons the up-front pre-trim (two <code>ZRANGEBYSCORE</code> range reads into a Lua lookup table)
+and falls back to the per-member <code>ZSCORE</code> pair. Below the cap the pre-trim wins — validity-gated
+<code>top_by_decay</code> measured at 0.94x ungated on a 20k partition; the measured crossover is around 5x,
+so 4.0 sits just inside it with margin. Confirming that crossover against realistic skew and a
+second machine is <a href="https://github.com/tomcounsell/popoto/issues/716">#716</a>. Like
+<code>DECAY_CONFIDENCE_MODULATION_ENABLED</code> this doubles as a deploy-level kill switch: any value
+<code>&lt;= 0</code> disables pre-trim entirely and restores pre-#585 gating behavior byte-for-byte. It is read
+at call time, so it can be set on a running process.</p>
 <h3 id="memorylifecycle">MemoryLifecycle<a class="headerlink" href="#memorylifecycle" title="Permanent link">&para;</a></h3>
 <p>Source: <code>src/popoto/recipes/memory_lifecycle.py</code></p>
 <table>
