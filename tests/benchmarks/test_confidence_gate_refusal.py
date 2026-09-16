@@ -156,18 +156,26 @@ def _build_refusal_model(prefix: str):
     ``ExternalBenchmarkMemory`` build, trimmed to only what the gate needs
     (no DecayingSortedField/push path — this benchmark only exercises the
     pull-path gate).
+
+    Built with ``type()`` so the metaclass captures the unique
+    ``db_class_key`` at class creation (#701) — a post-hoc ``__name__``
+    rename would not reach ``_meta``, leaving every field's Redis namespace
+    shared across items.
     """
-
-    class RefusalMemory(popoto.Model):
-        turn_id = popoto.AutoKeyField()
-        agent_id = popoto.KeyField()
-        content = popoto.StringField(default="")
-        certainty = ConfidenceField(initial_confidence=0.5)
-        content_index = BM25Field(source="content")
-
-    RefusalMemory.__name__ = f"RefusalMem{prefix}"
-    RefusalMemory.__qualname__ = RefusalMemory.__name__
-    return RefusalMemory
+    class_name = f"RefusalMem{prefix}"
+    return type(
+        class_name,
+        (popoto.Model,),
+        {
+            "__module__": __name__,
+            "__qualname__": class_name,
+            "turn_id": popoto.AutoKeyField(),
+            "agent_id": popoto.KeyField(),
+            "content": popoto.StringField(default=""),
+            "certainty": ConfidenceField(initial_confidence=0.5),
+            "content_index": BM25Field(source="content"),
+        },
+    )
 
 
 def _teardown_model(model_class) -> None:

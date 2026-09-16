@@ -8,6 +8,7 @@ Agent-memory primitives and composed layers shipped in Popoto. Start at
 |---------|-------------|--------|
 | [Agent Memory](agent-memory.md) | The map: 17 primitives, the layers composed on them, and where each reference lives | Stable |
 | [Auditable Extraction](auditable-extraction.md) | Opt-in candidate generator + enum-verdict LLM stage + per-candidate decision log — extraction precision/recall computable offline | Stable |
+| [Belief-Sheet View](belief-sheet-view.md) | Read-path claim resolver over the journal: retractions dropped, supersessions collapsed, reader gate, replayable | Stable |
 | [CoOccurrenceField](co-occurrence-field.md) | Associative co-occurrence graph for candidate expansion | Stable |
 | [CompositeScoreQuery](composite-score-query.md) | Multi-factor ranked retrieval across sorted indexes | Stable |
 | [ConfidenceField](confidence-field.md) | Capped-evidence certainty tracking with corroborate/contradict updates | Stable |
@@ -27,6 +28,7 @@ Agent-memory primitives and composed layers shipped in Popoto. Start at
 | [PolicyCache](policy-cache.md) | Learned action selection with crystallization and TD updates | Stable |
 | [PredictionLedger](prediction-ledger.md) | Prediction recording, resolution, and `error_summary` aggregation | Stable |
 | [Provenance Journal](provenance-journal.md) | Append-only attributed entries with confirm/supersede/retract annotations | Stable |
+| [Reconciliation](reconciliation.md) | Groups journal entries asserting one claim into equivalence classes, resolves typed contradictions by a total precedence table, and stores a tie as an explicit disjunct pair | Stable |
 | [Reference Resolution](reference-resolution.md) | Post-M3 stage that resolves pronouns, relative dates, and definite references into an audited statement, with a four-way status ladder and a `res:{status}` journal tag | Stable |
 | [Tombstone Negative Prior](tombstone-negative-prior.md) | Forgetting draws down the write-filter score of future duplicates, escalating with each burial | Stable |
 | [ValidityField and SupersessionProtocol](validity-and-supersession.md) | Bitemporal validity intervals and supersession chains — validity decides membership, decay decides ordering | Stable |

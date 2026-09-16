@@ -50,7 +50,7 @@ means the turn is stored with no tool call.
 |---|---|---|---|---|
 | Claude Code | yes (`UserPromptSubmit`) | yes (`Stop`, async) | yes (MCP) | 2 commands, or 8 config lines |
 | Codex | yes (`UserPromptSubmit`) | yes (`Stop`) | yes (MCP) | config + feature flag + `/hooks` trust review |
-| Hermes | yes (`pre_llm_call`) | yes (`post_llm_call`) | yes (MCP) | 2-file hook directory |
+| Hermes | yes (`pre_llm_call`) | yes (`post_llm_call`) | yes (MCP) | 2-file plugin directory |
 | OpenClaw | yes (`before_prompt_build`) | yes (`llm_output`) | yes (MCP) | MCP config + plugin install + hook opt-in |
 
 Verification is not uniform either, and the difference matters more than the
@@ -60,7 +60,7 @@ capability table:
 |---|---|
 | Claude Code | a live `claude` 2.1.220 run; payloads captured and committed as test fixtures |
 | Codex | the `codex-cli` 0.144.4 binary's own hook-input schema, not a live turn |
-| Hermes | vendor documentation only |
+| Hermes | the real `hermes-agent` 0.19.0 plugin loader and `invoke_hook` dispatcher; no live model turn |
 | OpenClaw | a live OpenClaw 2026.9.2 run through the shipped plugin; payloads captured and committed as test fixtures |
 
 Guides: [Claude Code](../guides/harness-claude-code.md) (the reference),
@@ -86,8 +86,10 @@ next turn's assembly is better
 ```
 
 **Read path.** The harness fires its pre-model event with the user's prompt.
-The adapter normalizes the payload to `(event, query_text, session_id, cwd)`,
-`MemoryService.assemble()` runs `ContextAssembler` over
+The adapter normalizes the payload to `(event, query_text, session_id, turn_id,
+cwd)` — `cwd` only when the harness sends one; Hermes's plugin hooks carry no
+`cwd` key at all, so that field is always `None` for Hermes and the plugin
+passes a prebuilt service instead. `MemoryService.assemble()` runs `ContextAssembler` over
 [`DefaultMemory`](agent-memory.md) on the lexical/BM25 path, and the
 formatted block goes back in the harness's own response shape:
 `{"hookSpecificOutput": {"additionalContext": "..."}}` for Claude Code and
@@ -123,12 +125,14 @@ OpenClaw sends one, though not on the event: its hooks take a second
 `before_prompt_build` and `llm_output`, and the plugin forwards it as
 `turn_id`. That matters more there than elsewhere, because `llm_output` is an
 Observe hook whose handlers run concurrently and may overlap the next turn --
-keyed pairing makes the overlap correct by construction. Hermes sends no turn
-identifier in the payloads popoto sees (#688), so those sessions keep the
-positional FIFO pairing, which is correct for it because its hooks are
-synchronous. A queue written entirely before this behavior shipped is also
-claimed positionally, so an in-flight upgrade loses no pending turn. Both
-paths are bounded by `MAX_PENDING_TURNS` (32) per session and a one-hour TTL.
+keyed pairing makes the overlap correct by construction. Hermes sends one too:
+both plugin invoke sites carry `turn_id` as a flat kwarg
+(`agent/turn_context.py:696-707`, `agent/turn_finalizer.py:484-493`), so its
+sessions are keyed the same way (#704 closed #688 with this). A session
+using a harness that genuinely sends no turn id, or a queue written entirely
+before this behavior shipped, still falls back to positional FIFO pairing so
+no pending turn is lost. Both paths are bounded by `MAX_PENDING_TURNS` (32)
+per session and a one-hour TTL.
 Set `POPOTO_MEMORY_TURN_KEYED=0` to restore the pre-1.9 session-wide FIFO for
 every harness. Shipped in
 [#574](https://github.com/tomcounsell/popoto/issues/574).
@@ -488,7 +492,9 @@ src/popoto/integrations/
     mcp_server.py   stdio MCP server, four frozen tool names
     cli.py          popoto-memory: hook | mcp | doctor | demo
     demo.py         the zero-key loop
-plugins/            declarative harness assets, one directory per harness
+plugins/            one directory per harness -- declarative (Claude Code,
+                    Codex) or an executable plugin with a register() entry
+                    point (Hermes, OpenClaw)
 .claude-plugin/     marketplace manifest for the Claude Code plugin
 ```
 

@@ -159,7 +159,7 @@ merge/equivalence kind, a queue-able kind, an exposure kind) register them
 instead:
 
 ```python
-JournalEntry.register_kind("merge", closing=True)
+JournalEntry.register_kind("consolidate", closing=True)
 
 claim = ProvenanceJournal.append(
     agent_id="agent-1", statement="Launch date is the 30th"
@@ -167,12 +167,23 @@ claim = ProvenanceJournal.append(
 
 ProvenanceJournal.append(
     agent_id="agent-1",
-    kind="merge",
+    kind="consolidate",
     target=claim,
     statement="Folded into the canonical launch-date claim",
 )   # -> target_closed=True: appends the annotation AND closes claim's
     #    interval, exactly like a supersede
 ```
+
+The example says `consolidate` rather than `merge` for a reason worth reading
+before you copy it. Because registration is process-global, kind names are
+**reserved by whichever module registers them first**, and
+[Claim Reconciliation](reconciliation.md) registers both `merge` and `disjoin`
+at its own import time — with `closing=False`, since folding two claims into
+one equivalence class closes nobody's interval. So in any process that imports
+`popoto.recipes.reconciliation`, the line above written as
+`register_kind("merge", closing=True)` raises `ValueError`: the name is taken
+under different flags, and re-registering it would reclassify stored entries.
+Pick a name your own module owns.
 
 `register_kind` is a **registration call, not a model subclass** — see
 [Do not subclass `JournalEntry`](#do-not-subclass-journalentry) for why a
@@ -628,3 +639,11 @@ occurrence of the record's *key* does not:
   distills accepted candidates into `statement` (leaving `verbatim`
   untouched), writes the `res:{status}` subject tag, and is the sole
   producer of a caller-supplied `valid_from` on the auditable path
+- [Belief-Sheet View](belief-sheet-view.md) — the read-path resolver that
+  folds the journal into surviving claims: retractions dropped, supersessions
+  collapsed to winners, disjunctions as explicit uncertainty
+- [Claim Reconciliation](reconciliation.md) — the M5 stage that groups
+  equivalent claims into classes, writing its merge log as `merge`/`disjoin`
+  annotations through `append()` and closing supersession losers only through
+  `supersede()`; it reserves both of those kind names process-globally, and
+  is why the `register_kind` example above says `consolidate`

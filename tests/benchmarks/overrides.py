@@ -27,6 +27,7 @@ from src.popoto.fields.constants import Defaults
 import src.popoto.fields.observation as observation_mod
 import src.popoto.recipes.policy_cache as policy_cache_mod
 import src.popoto.recipes.context_assembler as context_assembler_mod
+import src.popoto.recipes.reconciliation as reconciliation_mod
 from src.popoto.fields.prediction_ledger import PredictionLedgerMixin
 from src.popoto.fields.write_filter import WriteFilterMixin
 
@@ -79,6 +80,22 @@ MODULE_CONSTANTS = {
     "DEFAULT_SURFACING_THRESHOLD": (
         context_assembler_mod,
         "DEFAULT_SURFACING_THRESHOLD",
+    ),
+    # Reconciliation (reconciliation.py, #564)
+    "M5_SHORTLIST_CAP": (reconciliation_mod, "M5_SHORTLIST_CAP"),
+    "M5_SYMMETRY_PROBE_ENABLED": (
+        reconciliation_mod,
+        "M5_SYMMETRY_PROBE_ENABLED",
+    ),
+    "M5_JUDGE_MODEL": (reconciliation_mod, "M5_JUDGE_MODEL"),
+    "M5_JUDGE_MAX_TOKENS": (reconciliation_mod, "M5_JUDGE_MAX_TOKENS"),
+    "M5_REPLAY_WATERMARK_FIELD": (
+        reconciliation_mod,
+        "M5_REPLAY_WATERMARK_FIELD",
+    ),
+    "MEGA_CLASS_VELOCITY_ALERT": (
+        reconciliation_mod,
+        "MEGA_CLASS_VELOCITY_ALERT",
     ),
 }
 

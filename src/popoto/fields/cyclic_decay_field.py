@@ -46,7 +46,7 @@ import msgpack
 import redis
 
 from ..exceptions import ModelException
-from ..redis_db import POPOTO_REDIS_DB, get_REDIS_DB, run_lua
+from ..redis_db import get_REDIS_DB, run_lua
 from .decaying_sorted_field import MODULATION_DISABLED, DecayingSortedField
 
 logger = logging.getLogger("POPOTO.CyclicDecayField")
@@ -211,6 +211,226 @@ end
 return result
 """
 
+# Atomic read-modify-write of both companion hashes for one on_save() call
+# (#699). Replaces two client-side HGET-then-HSET round trips (one per hash)
+# with one server-side script, closing the lost-update race between save()
+# and strengthen_cycle()/weaken_cycle() (cycles) and between save() and
+# resolve_pressure() (pressure).
+#
+# KEYS[1] = cycles companion hash key
+# KEYS[2] = pressure companion hash key
+# ARGV[1] = member key
+# ARGV[2] = declared cycle count N (0 => HDEL the cycles entry)
+# ARGV[3 .. 3N+2] = N triples: period, declared_amplitude, phase
+# ARGV[3N+3] = pressure_rate (<= 0 => HDEL the pressure entry)
+# ARGV[3N+4] = now (only used on a pressure first-save)
+#
+# Returns cmsgpack.pack({decode_failed, resets}) where resets is an array of
+# {period, old_baseline, declared_amplitude, discarded_amplitude} tuples --
+# one per period where an edited declaration won the #698 merge and a
+# learned amplitude was discarded. Python turns decode_failed into the
+# existing "Could not decode cycles" warning and each reset into the
+# existing #698 logger.info reset line -- both signals move server-side but
+# stay observable exactly as before.
+#
+# Every ARGV-sourced numeric slot (period, amplitude, phase,
+# declared_baseline) is a Lua STRING and must be converted before it is
+# written back. Redis also converts a bare Lua number to an integer over the
+# wire, so the return value is always cmsgpack-packed, never a raw table.
+CYCLES_MERGE_LUA = """
+local cycles_hash_key = KEYS[1]
+local pressure_hash_key = KEYS[2]
+local member = ARGV[1]
+local n = tonumber(ARGV[2])
+
+-- Type-safe match key: a period may legitimately be a string (a named
+-- TemporalPeriod alias), and Lua's default tostring() on a float does not
+-- agree with Python's repr(), so numeric and string periods are normalized
+-- through one function on both the stored and declared sides.
+local function match_key(v)
+    local num = tonumber(v)
+    if num then
+        return 'n:' .. string.format('%.17g', num)
+    end
+    return 's:' .. tostring(v)
+end
+
+-- ARGV is always a Lua string. A numeric-looking period becomes a number
+-- (matching what Python originally stored); a genuinely non-numeric period
+-- stays a string. Never store the raw ARGV string or the match key itself.
+local function coerce_period(raw)
+    local num = tonumber(raw)
+    if num then
+        return num
+    end
+    return raw
+end
+
+local decode_failed = 0
+local resets = {}
+local output = {}
+
+if n > 0 then
+    -- learned[match_key] = FIFO queue of {amp, baseline} pairs, one per
+    -- stored entry for that period -- mirrors Python's dict-of-lists bucket.
+    local learned = {}
+    local raw = redis.call('HGET', cycles_hash_key, member)
+    if raw then
+        local ok, stored = pcall(cmsgpack.unpack, raw)
+        if ok and type(stored) == 'table' then
+            for _, entry in ipairs(stored) do
+                if type(entry) == 'table' and entry[1] ~= nil and entry[2] ~= nil then
+                    local p = entry[1]
+                    -- A table-valued (unhashable) period has no Lua
+                    -- analogue of Python's TypeError -- nothing raises, so
+                    -- this must be an explicit type guard, not a pcall. On
+                    -- trip, discard the WHOLE bucket (not just this entry):
+                    -- that is what makes one malformed entry take an
+                    -- earlier well-formed entry down with it, matching the
+                    -- Python except-clause's all-or-nothing fallback.
+                    if type(p) ~= 'number' and type(p) ~= 'string' then
+                        decode_failed = 1
+                        learned = {}
+                        break
+                    end
+                    local key = match_key(p)
+                    learned[key] = learned[key] or {}
+                    -- Booleans decode from msgpack as Lua booleans, so
+                    -- type(entry[4]) == 'number' already excludes them --
+                    -- same effect as Python's isinstance(x, bool) guard,
+                    -- different mechanism.
+                    local baseline = nil
+                    if type(entry[4]) == 'number' then
+                        baseline = entry[4]
+                    end
+                    table.insert(learned[key], {amp = entry[2], baseline = baseline})
+                end
+            end
+        else
+            decode_failed = 1
+        end
+    end
+
+    for i = 0, n - 1 do
+        local idx = 3 + i * 3
+        local period_raw = ARGV[idx]
+        local declared_amp = tonumber(ARGV[idx + 1])
+        local phase = tonumber(ARGV[idx + 2]) or 0
+        local key = match_key(period_raw)
+        local amplitude = declared_amp
+        local new_baseline = declared_amp
+
+        local bucket = learned[key]
+        if bucket and #bucket > 0 then
+            -- FIFO within duplicate periods: pop the front.
+            local picked = table.remove(bucket, 1)
+            if picked.baseline == nil then
+                -- Baseline unknown (legacy entry, or a bucket cleared by
+                -- the guard above) -- preserve the learned amplitude.
+                amplitude = picked.amp
+            elseif picked.baseline == declared_amp then
+                -- Declaration unchanged -- learning wins.
+                amplitude = picked.amp
+            else
+                -- The developer edited the declared amplitude -- the
+                -- declaration wins and the learned amplitude is discarded,
+                -- reported so Python can log it loudly.
+                amplitude = declared_amp
+                table.insert(resets, {
+                    coerce_period(period_raw), picked.baseline, declared_amp, picked.amp
+                })
+            end
+        end
+
+        table.insert(output, {
+            coerce_period(period_raw),
+            tonumber(amplitude),
+            phase,
+            tonumber(new_baseline),
+        })
+    end
+
+    redis.call('HSET', cycles_hash_key, member, cmsgpack.pack(output))
+else
+    redis.call('HDEL', cycles_hash_key, member)
+end
+
+-- Pressure: rate is declarative, last_resolved is learned. This is the
+-- read-modify-write being fixed -- resolve_pressure() is a blind HSET and
+-- stays untouched (spike-4).
+local pressure_rate = tonumber(ARGV[3 * n + 3])
+local now = tonumber(ARGV[3 * n + 4])
+
+if pressure_rate and pressure_rate > 0 then
+    local praw = redis.call('HGET', pressure_hash_key, member)
+    if praw then
+        local pdata = cmsgpack.unpack(praw)
+        pdata['rate'] = pressure_rate
+        redis.call('HSET', pressure_hash_key, member, cmsgpack.pack(pdata))
+    else
+        redis.call('HSET', pressure_hash_key, member, cmsgpack.pack({
+            rate = pressure_rate,
+            last_resolved = now,
+        }))
+    end
+else
+    redis.call('HDEL', pressure_hash_key, member)
+end
+
+return cmsgpack.pack({decode_failed, resets})
+"""
+
+# Atomic read-modify-write of the cycles companion hash for
+# strengthen_cycle()/weaken_cycle() (#699). Slot numbering here is 1-based
+# Lua throughout (matching CYCLES_MERGE_LUA above), NOT the 0-based Python
+# indexing used in Model._adjust_cycle_amplitudes's comments (critique C5):
+# this script mutates only c[2] (amplitude) of each entry and re-packs the
+# same tables, so an optional c[4] (declared_baseline, #698) survives
+# untouched -- see Model._adjust_cycle_amplitudes.
+#
+# KEYS[1] = cycles companion hash key
+# ARGV[1] = member key
+# ARGV[2] = factor
+# ARGV[3] = max_amplitude
+# ARGV[4] = min_threshold
+#
+# Returns cmsgpack.pack(cycles) after the write, or Lua nil (-> Python None)
+# when the member has no stored entry -- the existence check this replaces
+# (`if not raw: return []`) moves into the script, so the no-entry case must
+# be distinguishable from an empty msgpack payload. nil is the only shape
+# that carries no numbers to truncate over the protocol; every other return
+# is cmsgpack-packed.
+CYCLES_ADJUST_LUA = """
+local cycles_hash_key = KEYS[1]
+local member = ARGV[1]
+local factor = tonumber(ARGV[2])
+local max_amplitude = tonumber(ARGV[3])
+local min_threshold = tonumber(ARGV[4])
+
+local raw = redis.call('HGET', cycles_hash_key, member)
+if not raw then
+    return nil
+end
+
+local cycles = cmsgpack.unpack(raw)
+for _, cycle in ipairs(cycles) do
+    local new_amp = cycle[2] * factor
+    if new_amp < 0 then
+        new_amp = 0
+    elseif new_amp > max_amplitude then
+        new_amp = max_amplitude
+    end
+    if new_amp < min_threshold then
+        new_amp = 0
+    end
+    cycle[2] = new_amp
+end
+
+local packed = cmsgpack.pack(cycles)
+redis.call('HSET', cycles_hash_key, member, packed)
+return packed
+"""
+
 
 class CyclicDecayField(DecayingSortedField):
     """A DecayingSortedField with cyclical resonance and homeostatic pressure.
@@ -283,7 +503,7 @@ class CyclicDecayField(DecayingSortedField):
         member_key = model_instance.db_key.redis_key
         state = {}
 
-        cycles_raw = POPOTO_REDIS_DB.hget(
+        cycles_raw = get_REDIS_DB().hget(
             field.get_cycles_hash_key(model_instance, field_name), member_key
         )
         if cycles_raw:
@@ -296,9 +516,34 @@ class CyclicDecayField(DecayingSortedField):
                 )
                 cycles = None
             if isinstance(cycles, (list, tuple)):
-                state["cycles"] = [list(cycle) for cycle in cycles]
+                normalized = []
+                for cycle in cycles:
+                    cycle = list(cycle)
+                    # #699 Risk 1: integral amplitudes/phases round-trip from
+                    # the Lua scripts as msgpack integers (Lua 5.1 has one
+                    # number type). Coerce whole-number slots back to float
+                    # here so exporters see the same types as pre-#699;
+                    # period (slot 0) is left alone since it may
+                    # legitimately be a string. Only int values are
+                    # touched — floats, strings and bools pass through, so
+                    # a malformed entry can never raise out of this read
+                    # path.
+                    if (
+                        len(cycle) > 1
+                        and isinstance(cycle[1], int)
+                        and not isinstance(cycle[1], bool)
+                    ):
+                        cycle[1] = float(cycle[1])
+                    if (
+                        len(cycle) > 2
+                        and isinstance(cycle[2], int)
+                        and not isinstance(cycle[2], bool)
+                    ):
+                        cycle[2] = float(cycle[2])
+                    normalized.append(cycle)
+                state["cycles"] = normalized
 
-        pressure_raw = POPOTO_REDIS_DB.hget(
+        pressure_raw = get_REDIS_DB().hget(
             field.get_pressure_hash_key(model_instance, field_name), member_key
         )
         if pressure_raw:
@@ -376,7 +621,7 @@ class CyclicDecayField(DecayingSortedField):
                 # (#698 / see the docstring above): the declared baseline is
                 # deployment-local and must never come from the exporter.
                 normalized.append([period, amplitude, phase])
-            POPOTO_REDIS_DB.hset(
+            get_REDIS_DB().hset(
                 field.get_cycles_hash_key(model_instance, field_name),
                 member_key,
                 msgpack.packb(normalized),
@@ -384,7 +629,7 @@ class CyclicDecayField(DecayingSortedField):
 
         pressure = state.get("pressure")
         if pressure:
-            POPOTO_REDIS_DB.hset(
+            get_REDIS_DB().hset(
                 field.get_pressure_hash_key(model_instance, field_name),
                 member_key,
                 msgpack.packb(
@@ -490,7 +735,7 @@ class CyclicDecayField(DecayingSortedField):
             MODULATION_DISABLED if confidence is None else confidence
         )
         if n is None:
-            n = int(POPOTO_REDIS_DB.zcard(zset_key))
+            n = int(get_REDIS_DB().zcard(zset_key))
             if not n:
                 return []
         effective_rate = self.decay_rate if decay_rate is None else decay_rate
@@ -498,7 +743,7 @@ class CyclicDecayField(DecayingSortedField):
             base_score_field = self.base_score_field or ""
 
         return run_lua(
-            POPOTO_REDIS_DB,
+            get_REDIS_DB(),
             CYCLIC_DECAY_LUA,
             # numkeys: zset + cycles + pressure + confidence (KEYS[4]).
             # Passing the confidence key without bumping this would shunt it
@@ -587,10 +832,18 @@ class CyclicDecayField(DecayingSortedField):
         on first save (no existing entry) the full dict is written with
         ``last_resolved=now``; on subsequent saves only the rate is updated.
 
-        Note that an amplitude adjustment queued on the *same* pipeline as this
-        save is still lost, because ``_adjust_cycle_amplitudes`` writes through
-        the pipeline while both it and this method read directly. Queue
-        ``save()`` first when sharing one pipeline.
+        Both companion hashes are read-modified-written by one Lua script,
+        ``CYCLES_MERGE_LUA`` (#699), run eagerly against the live connection
+        regardless of a caller-supplied ``pipeline`` — the merge decision
+        (which amplitude/rate wins) has to be known synchronously to emit the
+        #698 reset log, and a pipeline-queued script's return value is not
+        available until ``execute()``, which ``save()`` does not surface.
+        Running it eagerly is also what closes the race this exists for:
+        without it, two concurrent ``save()`` calls — or a ``save()`` racing
+        ``strengthen_cycle()``/``weaken_cycle()``/``resolve_pressure()`` —
+        each read-then-write the hash independently and the last writer
+        clobbers the other's update; the script makes the whole
+        read-decide-write sequence one atomic server-side step.
         """
         # Call parent to store timestamp in sorted set
         result = super().on_save(
@@ -605,133 +858,65 @@ class CyclicDecayField(DecayingSortedField):
         cycles_hash_key = field.get_cycles_hash_key(model_instance, field_name)
         pressure_hash_key = field.get_pressure_hash_key(model_instance, field_name)
 
-        # Cycle periods and phases are declarative; amplitudes are LEARNED
-        # (mutated by strengthen_cycle / weaken_cycle) and must survive an
-        # ordinary save. Mirror the pressure branch below: refresh the declared
-        # parameters from the field, preserve the learned one from storage.
-        # Read directly from Redis (not the pipeline) because the result is
-        # needed immediately to build the value being written.
-        #
-        # Gated on field.cycles so a pressure-only CyclicDecayField pays no
-        # extra round trip — it falls straight through to the hdel branch.
-        # Each bucket entry is an (amplitude, baseline) pair, popped together
-        # as one decision (never two independent .pop(0) calls that could
-        # drift under a malformed payload). baseline is None when slot 3 is
-        # absent or non-numeric — "baseline unknown".
-        learned: dict[Any, list[tuple[Any, Optional[float]]]] = {}
-        if field.cycles:
-            stored_raw = get_REDIS_DB().hget(cycles_hash_key, member_key)
-            if stored_raw:
-                # The guarded region covers the decode AND the shape
-                # normalization: a payload can decode cleanly and still be
-                # malformed (an entry whose period slot is itself a list is
-                # unhashable, and would raise TypeError out of save()). Both
-                # failures mean the same thing — the stored state is not
-                # usable — so both take the same fallback. This also covers
-                # baseline extraction (#698): a half-read payload must not
-                # contribute a baseline to some cycles and not others, so the
-                # bucket is cleared on the same fallback path as the learned
-                # amplitudes.
-                try:
-                    stored = msgpack.unpackb(stored_raw, raw=False)
-                    if isinstance(stored, (list, tuple)):
-                        for entry in stored:
-                            if isinstance(entry, (list, tuple)) and len(entry) >= 2:
-                                baseline = None
-                                if (
-                                    len(entry) >= 4
-                                    and isinstance(entry[3], (int, float))
-                                    and not isinstance(entry[3], bool)
-                                ):
-                                    baseline = float(entry[3])
-                                learned.setdefault(entry[0], []).append(
-                                    (entry[1], baseline)
-                                )
-                except Exception:
-                    # Mirror export_state's handler: #679 exists because this
-                    # state was destroyed silently. Do not add a second mute
-                    # path — fall back to declared defaults, but say so.
-                    logger.warning(
-                        f"Could not decode cycles data for {member_key}; "
-                        f"falling back to declared amplitudes for {field_name}"
-                    )
-                    # Discard any partial merge — a half-read payload must not
-                    # contribute amplitudes/baselines to some cycles and not
-                    # others.
-                    learned = {}
-
-        # Normalize cycles to 4-tuples for storage (#698): a stored entry may
-        # carry an optional declared-baseline slot. Match stored to declared
-        # by period, FIFO within duplicates. The truth test for "has a
-        # learned amplitude" is on the bucket list, not the amplitude value,
-        # so a learned 0.0 from weaken_cycle is preserved rather than reset to
-        # the default.
-        normalized_cycles = []
+        # Build ARGV: member, N, then N (period, amplitude, phase) triples,
+        # then pressure_rate, then now. Periods may be TemporalPeriod
+        # aliases (strings) or raw numbers — EVAL only accepts string/number
+        # ARGV, so every slot is stringified; the script's coerce_period()
+        # converts numeric-looking strings back before storage (B1).
+        argv: list[Any] = [member_key, str(len(field.cycles))]
         for cycle in field.cycles:
             period, declared_amplitude = cycle[0], cycle[1]
             phase = cycle[2] if len(cycle) > 2 else 0
-            amplitude = declared_amplitude
-            new_baseline = declared_amplitude
+            argv.extend([str(period), str(declared_amplitude), str(phase)])
+        argv.append(str(field.pressure_rate))
+        argv.append(str(time.time()))
 
-            bucket = learned.get(period)
-            if bucket:
-                learned_amplitude, old_baseline = bucket.pop(0)
-                if old_baseline is None:
-                    # Baseline unknown (legacy entry, or corrupt slot 3):
-                    # preserve today's (#679) behavior and acquire a baseline
-                    # from this save.
-                    amplitude = learned_amplitude
-                elif old_baseline == declared_amplitude:
-                    # Declaration unchanged — learning wins, as #679 intends.
-                    amplitude = learned_amplitude
-                else:
-                    # The developer edited the declared amplitude — the
-                    # declaration wins. The learned amplitude is discarded by
-                    # design (#698); this destroys real state, so it is
-                    # logged loudly.
-                    amplitude = declared_amplitude
-                    logger.info(
-                        f"CyclicDecayField declared amplitude changed for "
-                        f"{model_instance.__class__.__name__}.{field_name} "
-                        f"member={member_key} period={period!r}: "
-                        f"declared baseline {old_baseline!r} -> "
-                        f"{declared_amplitude!r}; discarded learned "
-                        f"amplitude {learned_amplitude!r}"
-                    )
-
-            normalized_cycles.append([period, amplitude, phase, new_baseline])
-
-        db = (
-            pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
+        packed_report = run_lua(
+            get_REDIS_DB(),
+            CYCLES_MERGE_LUA,
+            2,
+            cycles_hash_key,
+            pressure_hash_key,
+            *argv,
         )
+        decode_failed, resets = msgpack.unpackb(packed_report, raw=False)
 
-        # Store cycles data (declared periods/phases, learned amplitudes)
-        if normalized_cycles:
-            db.hset(cycles_hash_key, member_key, msgpack.packb(normalized_cycles))
-        else:
-            # Remove any stale cycles data if field now has no cycles
-            db.hdel(cycles_hash_key, member_key)
+        if decode_failed:
+            # Mirror export_state's handler: #679 exists because this state
+            # was destroyed silently. Do not add a second mute path — fall
+            # back to declared defaults, but say so.
+            logger.warning(
+                f"Could not decode cycles data for {member_key}; "
+                f"falling back to declared amplitudes for {field_name}"
+            )
 
-        # Store pressure data — preserve existing last_resolved
-        if field.pressure_rate > 0:
-            # Read directly from Redis (not the pipeline) because we need
-            # the result immediately to decide whether to preserve last_resolved.
-            existing_raw = POPOTO_REDIS_DB.hget(pressure_hash_key, member_key)
-            if existing_raw:
-                # Only update rate, preserve last_resolved
-                existing = msgpack.unpackb(existing_raw, raw=False)
-                existing["rate"] = field.pressure_rate
-                db.hset(pressure_hash_key, member_key, msgpack.packb(existing))
-            else:
-                # First save: set last_resolved to now
-                pressure_data = {
-                    "rate": field.pressure_rate,
-                    "last_resolved": time.time(),
-                }
-                db.hset(pressure_hash_key, member_key, msgpack.packb(pressure_data))
-        else:
-            # Remove any stale pressure data
-            db.hdel(pressure_hash_key, member_key)
+        for period, old_baseline, declared_amplitude, learned_amplitude in resets:
+            # cmsgpack packs an integral Lua number as a msgpack integer
+            # (Lua 5.1 has one number type), so a whole-number amplitude or
+            # baseline round-trips as int rather than float. Coerce back to
+            # float here so the log line matches the pre-#699 Python-float
+            # formatting; period is left alone since it may legitimately be
+            # a non-numeric string. Coercion is display-only and defensive:
+            # a hand-written/migrated payload can carry a non-numeric value
+            # that still decodes as valid msgpack, and the pre-#699 code
+            # logged such values fine — never raise out of save() here.
+            try:
+                old_baseline = float(old_baseline)
+                declared_amplitude = float(declared_amplitude)
+                learned_amplitude = float(learned_amplitude)
+            except (TypeError, ValueError):
+                pass
+            # The developer edited the declared amplitude — the declaration
+            # wins. The learned amplitude is discarded by design (#698); this
+            # destroys real state, so it is logged loudly.
+            logger.info(
+                f"CyclicDecayField declared amplitude changed for "
+                f"{model_instance.__class__.__name__}.{field_name} "
+                f"member={member_key} period={period!r}: "
+                f"declared baseline {old_baseline!r} -> "
+                f"{declared_amplitude!r}; discarded learned "
+                f"amplitude {learned_amplitude!r}"
+            )
 
         return result
 
@@ -752,7 +937,7 @@ class CyclicDecayField(DecayingSortedField):
             db = (
                 pipeline
                 if isinstance(pipeline, redis.client.Pipeline)
-                else POPOTO_REDIS_DB
+                else get_REDIS_DB()
             )
             db.hdel(cycles_hash_key, member_key)
             db.hdel(pressure_hash_key, member_key)

@@ -7,7 +7,7 @@ created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/699
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-08T05:44:30Z
+revision_applied_at: 2026-09-08T05:54:25Z
 ---
 
 # #699 — Make the cycles/pressure companion read-modify-write atomic
@@ -505,38 +505,38 @@ distinguishable from a packed empty result, which an empty bulk string is not.
 
 ## Test Impact
 
-- [ ] `tests/test_cyclic_decay_field.py` (88 tests) — UPDATE only where a test asserts
+- [x] `tests/test_cyclic_decay_field.py` (88 tests) — UPDATE only where a test asserts
       *how* the write happens. Every test that asserts merge outcomes, reset logging,
       decode fallback or return shapes must pass **unchanged**; that invariance is the
       main regression signal for the Lua port. Audit each test that patches or spies on
       `hget`/`hset` — those spies stop firing once the work moves into a script and
       must be re-pointed at the script's effect (or at `run_lua`), not deleted.
-- [ ] **`tests/test_cyclic_decay_field.py:1512` and `:1534` are the named acceptance
+- [x] **`tests/test_cyclic_decay_field.py:1512` and `:1534` are the named acceptance
       tests for critique C4** — `test_unhashable_period_falls_back_instead_of_raising`
       and `test_partial_merge_discarded_when_a_later_entry_is_malformed`. Both write a
       table-valued period and assert the whole learned bucket is discarded with the
       decode warning. They must pass **unmodified**; if either needs editing to
       accommodate the port, the Lua is missing the C4 `type` guard, not the tests being
       stale.
-- [ ] `tests/test_observation_protocol.py:693-701` (`test_pipeline_support`) — UPDATE
+- [x] `tests/test_observation_protocol.py:693-701` (`test_pipeline_support`) — UPDATE
       for critique C6. It only asserts `result is pipe`, so it cannot see that a
       pipelined `strengthen_cycle`/`weaken_cycle` against a member with **no** stored
       cycles now queues one `EVALSHA` where it previously queued nothing. Extend it, or
       add a sibling test asserting `len(pipe.execute())` for the no-entry pipelined
       case, so the result-list shift is recorded rather than discovered downstream.
-- [ ] `tests/test_transfer_fidelity_fields.py:466-600` — UPDATE if anything asserts a
+- [x] `tests/test_transfer_fidelity_fields.py:466-600` — UPDATE if anything asserts a
       value's *type*. Its current assertions are `pytest.approx` and a
       `len(exported_cycles[0]) == 4` arity check, both int/float-agnostic, so the
       expectation is no change; verify rather than assume (spike-2).
-- [ ] `tests/test_observation_protocol.py`, `tests/test_validity_field.py` — call
+- [x] `tests/test_observation_protocol.py`, `tests/test_validity_field.py` — call
       `strengthen_cycle`/`weaken_cycle`/`resolve_pressure` via the observation path
       with pipelines. UPDATE only if the eager-write placement changes an ordering they
       assert.
-- [ ] `tests/test_cyclic_subclass_companion_keys.py` — no change expected (key
+- [x] `tests/test_cyclic_subclass_companion_keys.py` — no change expected (key
       derivation only); listed so the builder confirms rather than skips it.
-- [ ] **New**: `tests/test_cyclic_decay_atomicity.py` — the concurrency tests
+- [x] **New**: `tests/test_cyclic_decay_atomicity.py` — the concurrency tests
       (Task 4). No existing coverage of concurrent writers exists.
-- [ ] **New coverage for critique B1** — no listed file asserts the stored period's
+- [x] **New coverage for critique B1** — no listed file asserts the stored period's
       *type* (`test_transfer_fidelity_fields.py`'s arity check is period-blind). Add,
       in `tests/test_cyclic_decay_field.py`: (a) after a `save()`, the stored cycles
       entry decodes with a **numeric** period (and a declared string period stays a
@@ -545,10 +545,10 @@ distinguishable from a packed empty result, which an empty bulk string is not.
       #698 baseline-preservation test that would fail if slot 4 were stored as a
       string (save, `strengthen_cycle`, save again with an unchanged declaration →
       learned amplitude survives).
-- [ ] **New coverage for critique B2** — `strengthen_cycle()` / `weaken_cycle()` on a
+- [x] **New coverage for critique B2** — `strengthen_cycle()` / `weaken_cycle()` on a
       member with no stored cycles entry returns `[]` (or the pipeline) and does not
       raise.
-- [ ] No xfail markers relate to this bug — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
+- [x] No xfail markers relate to this bug — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
       tests/` returns nothing matching cycles/amplitude/pressure. Nothing to convert.
 
 ## Rabbit Holes
@@ -710,76 +710,76 @@ public methods keep their signatures.
 ## Documentation
 
 ### Feature Documentation
-- [ ] `docs/features/cyclic-decay-field.md:165-180` — **delete** the "queue the
+- [x] `docs/features/cyclic-decay-field.md:165-180` — **delete** the "queue the
       **save first**" pipeline caveat and its worked example; replace with a short
       statement that both writers are atomic server-side and pipeline ordering no
       longer matters for them, plus the one new fact a user can observe (the
       companion write executes eagerly, not at `pipeline.execute()`).
-- [ ] Same file — note that integral amplitudes may read back as `int` (Risk 1) and
+- [x] Same file — note that integral amplitudes may read back as `int` (Risk 1) and
       that popoto coerces at its own boundaries.
-- [ ] `docs/features/cyclic-decay-field.md:150-152` — **extend the existing rolling-
+- [x] `docs/features/cyclic-decay-field.md:150-152` — **extend the existing rolling-
       deploy caveat** (critique C2, Race 4). It currently covers mixed in-process
       *declarations*; add that during a rolling deploy the atomicity guarantee itself
       does not hold, because a pre-fix process's client-side read-modify-write is not
       excluded by a server-side script, so the lost update stays reachable until every
       writer of that model is upgraded.
-- [ ] `docs/features/README.md` — index entry already exists; verify no text there
+- [x] `docs/features/README.md` — index entry already exists; verify no text there
       repeats the deleted caveat.
 
 ### External Documentation Site
-- [ ] `mkdocs build --strict` passes.
+- [x] `mkdocs build --strict` passes.
 
 ### Inline Documentation
-- [ ] `CyclicDecayField.on_save` docstring (`:542-597`) — remove the "an amplitude
+- [x] `CyclicDecayField.on_save` docstring (`:542-597`) — remove the "an amplitude
       adjustment queued on the *same* pipeline as this save is still lost" paragraph;
       state instead that the companion write is one eager atomic script, and why it
       is eager (Risk 2 / #476 precedent).
-- [ ] `Model._adjust_cycle_amplitudes` docstring (`:2703-2723`) — the long comment
+- [x] `Model._adjust_cycle_amplitudes` docstring (`:2703-2723`) — the long comment
       explaining why the baseline slot is repacked untouched must survive the port; the
       property is now enforced by the Lua, so the comment moves next to it. **Translate
       the index when it moves (critique C5):** the Python comment at `base.py:2776`
       calls it `cycle[3]` (0-based); in the Lua it is `c[4]`. Do not carry "slot 3"
       across — `c[3]` is *phase*.
-- [ ] Both Lua scripts get header comments in the style of `CYCLIC_DECAY_LUA`
+- [x] Both Lua scripts get header comments in the style of `CYCLIC_DECAY_LUA`
       (`:60-68`): KEYS/ARGV layout, and an explicit note that the return value is
       `cmsgpack`-packed because bare Lua numbers are truncated to integers over the
       protocol.
 
 ## Success Criteria
 
-- [ ] A concurrency test (N threads interleaving `save()` with `strengthen_cycle()`
+- [x] A concurrency test (N threads interleaving `save()` with `strengthen_cycle()`
       on one member) ends with the amplitude equal to `declared * factor**K` for the
       K adjustments performed — no lost updates.
-- [ ] The same test, run against pre-fix `main`, **fails** — red-state output pasted
+- [x] The same test, run against pre-fix `main`, **fails** — red-state output pasted
       into the PR description (spike-3).
-- [ ] A concurrency test for `save()` vs `resolve_pressure()` shows `last_resolved`
+- [x] A concurrency test for `save()` vs `resolve_pressure()` shows `last_resolved`
       never regresses.
-- [ ] Every existing test in `tests/test_cyclic_decay_field.py` passes **unmodified**,
+- [x] Every existing test in `tests/test_cyclic_decay_field.py` passes **unmodified**,
       except where a test spied on `hget`/`hset` directly (Test Impact).
-- [ ] `grep` confirms no client-side `hget` of either companion hash remains in
+- [x] `grep` confirms no client-side `hget` of either companion hash remains in
       `on_save` or `_adjust_cycle_amplitudes`.
-- [ ] A saved record's stored cycles entry decodes with a **numeric** period, and a
+- [x] A saved record's stored cycles entry decodes with a **numeric** period, and a
       ranked query (`top_by_decay`) over a cycle-declaring model returns without
       `ResponseError` (critique B1).
-- [ ] `strengthen_cycle()` on a member with no stored cycles entry returns `[]`
+- [x] `strengthen_cycle()` on a member with no stored cycles entry returns `[]`
       rather than raising (critique B2).
-- [ ] The rolling-deploy caveat (Race 4 / critique C2) is present in
+- [x] The rolling-deploy caveat (Race 4 / critique C2) is present in
       `docs/features/cyclic-decay-field.md`, not only in this plan.
-- [ ] `POPOTO_REDIS_DB` no longer appears in `fields/cyclic_decay_field.py`.
+- [x] `POPOTO_REDIS_DB` no longer appears in `fields/cyclic_decay_field.py`.
       *(Task 3 only. Delete this criterion if Open Question 3 is answered "split it
       out" — edit 4 of the removal procedure, critique C7.)*
-- [ ] `tests/test_cyclic_decay_field.py:1512` and `:1534` (table-valued period →
+- [x] `tests/test_cyclic_decay_field.py:1512` and `:1534` (table-valued period →
       whole learned bucket discarded with the decode warning) pass **unmodified** —
       the acceptance test for the C4 `type` guard.
-- [ ] A pipelined `strengthen_cycle`/`weaken_cycle` against a member with no stored
+- [x] A pipelined `strengthen_cycle`/`weaken_cycle` against a member with no stored
       cycles entry is covered by a test that pins `pipe.execute()`'s result length,
       recording the one-entry shift (critique C6).
-- [ ] The "queue the save first" caveat is gone from the docstring and the docs page.
-- [ ] Tests pass (`/do-test`) on `POPOTO_TEST_DB=9`, environment stated with the count.
-- [ ] `scripts/mypy_ratchet.py`, `ruff check src/`, `black --check src/ tests/`,
+- [x] The "queue the save first" caveat is gone from the docstring and the docs page.
+- [x] Tests pass (`/do-test`) on `POPOTO_TEST_DB=9`, environment stated with the count.
+- [x] `scripts/mypy_ratchet.py`, `ruff check src/`, `black --check src/ tests/`,
       `mkdocs build --strict` all pass.
-- [ ] Documentation updated (`/do-docs`).
-- [ ] No xfail conversions needed (none exist for this bug).
+- [x] Documentation updated (`/do-docs`).
+- [x] No xfail conversions needed (none exist for this bug).
 
 ## Team Orchestration
 
@@ -1011,8 +1011,9 @@ public methods keep their signatures.
 | No-entry adjust returns `[]` (B2) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "no_stored_cycles"` | exit code 0 |
 | Table-valued period still falls back, whole bucket (C4) | `POPOTO_TEST_DB=9 python -m pytest tests/test_cyclic_decay_field.py -q -k "unhashable_period or partial_merge_discarded"` | exit code 0, **with the tests unmodified** (`git diff origin/main -- tests/test_cyclic_decay_field.py \| grep -c "unhashable_period"` → 0) |
 | Lua type guard present, not a `pcall` (C4) | `grep -c "type(p) ~= 'number'" src/popoto/fields/cyclic_decay_field.py` | output > 0 |
-| Baseline slot protected in Lua terms, not Python's (C5) | `grep -c "slot 3" src/popoto/fields/cyclic_decay_field.py` | match count == 0 |
-| Pipelined no-entry result shift pinned by a test (C6) | `grep -c "pipe.execute()" tests/test_observation_protocol.py` | output > 0 |
+| Baseline slot protected in Lua terms, not Python's — negative (C5, row fixed per C9) | `grep -Ec "slot[ -]3 writer" src/popoto/fields/cyclic_decay_field.py` | match count == 0 (measured **0** at `3ed94376`; hyphen-tolerant, so a verbatim copy of `base.py:2776`'s `slot-3 writer/deleter` into the new Lua is caught). Do **not** replace this with a whole-file `grep -c "slot 3"` — that returns **4** at `3ed94376` from correct 0-based Python prose at `:344`, `:558`, `:619`, `:680`, which no task rewrites |
+| Baseline slot protected in Lua terms, not Python's — positive (C5, row fixed per C9) | `grep -c "c\[4\]" src/popoto/fields/cyclic_decay_field.py` | output > 0 (measured **0** at `3ed94376`, so this is red pre-build and green only once `CYCLES_ADJUST_LUA` names the baseline in 1-based Lua) |
+| Pipelined no-entry result shift pinned by a test (C6, row fixed per C8) | `grep -c "len(pipe.execute())" tests/test_observation_protocol.py` | output > 0 (measured **0** at `3ed94376`. The earlier row grepped bare `pipe.execute()`, which returns **1** on unmodified `main` from `test_pipeline_support:701` — the very test C6 exists to strengthen — and so certified nothing) |
 | Rolling-deploy caveat documented (C2) | `grep -c "rolling deploy" docs/features/cyclic-decay-field.md` | output >= 2 |
 | Anti-criterion: `resolve_pressure` body left alone | `git diff origin/main -- src/popoto/models/base.py \| grep -c "^[-+][^-+].*resolve_pressure"` | match count == 0 |
 | Anti-criterion: pipeline caveat removed from docs | `grep -c "save first" docs/features/cyclic-decay-field.md` | match count == 0 |
@@ -1334,7 +1335,7 @@ concerns are folded into the plan **body**, not only into this table.
 | Finding | Disposition | Where the plan now says it |
 |---|---|---|
 | C4 table-valued period accepted by the match-key function | **Fixed** | Technical Approach → `CYCLES_MERGE_LUA` contract (new "type guard, not a `pcall`" bullet with the verbatim Lua, plus a note on the match-key bullet forbidding a `pcall`/`tostring` fallback); Task 1 (new step); Test Impact (`:1512`/`:1534` named as the acceptance tests, must pass unmodified); Success Criteria; Verification (2 rows) |
-| C5 mixed 1-based Lua / 0-based Python slot numbering | **Fixed** | Solution → Key Elements: `CYCLES_ADJUST_LUA` bullet rewritten to "index 2 in place / index 4 untouched", plus a new **"Slot numbering is 1-based Lua everywhere in this plan"** bullet fixing the convention and translating both halves of `base.py:2774-2777`; Technical Approach → `CYCLES_ADJUST_LUA` contract; Task 2 (step rewritten — "slot 3" removed); Inline Documentation; Verification (`grep -c "slot 3"` == 0) |
+| C5 mixed 1-based Lua / 0-based Python slot numbering | **Fixed** | Solution → Key Elements: `CYCLES_ADJUST_LUA` bullet rewritten to "index 2 in place / index 4 untouched", plus a new **"Slot numbering is 1-based Lua everywhere in this plan"** bullet fixing the convention and translating both halves of `base.py:2774-2777`; Technical Approach → `CYCLES_ADJUST_LUA` contract; Task 2 (step rewritten — "slot 3" removed); Inline Documentation; Verification (the round-2 row was `grep -c "slot 3"` == 0 — **superseded by the round-3 fold-in below**, see C9) |
 | C6 pipelined no-entry call now queues an `EVALSHA` | **Disclosed (no code fix — correct trade)** | Architectural Impact → Interface changes (new bullet); Technical Approach → "Pipeline handling after the change" (new table row); Task 2 (new step); Test Impact (`test_observation_protocol.py:693-701` to be extended); Success Criteria; Verification |
 | C7 escape hatch is two edits short of executable | **Fixed** | Solution → Straggler cleanup (the false "depends on nothing that depends on it" claim replaced with the accurate narrower one); Task 3 scope note now enumerates the **four** edits; Task 5's `Depends On` annotated as a sequencing edge; the `POPOTO_REDIS_DB` Success Criterion annotated as Task-3-conditional |
 
@@ -1345,6 +1346,115 @@ Verified against the tree while folding in: `tests/test_cyclic_decay_field.py:15
 `base.py:2748-2755` is the `if not raw:` short-circuit returning `pipeline` or `[]`
 with **no** command queued (C6 confirmed); `base.py:2774-2777` reads "mutates only
 index 1 … slot-3 writer/deleter" in 0-based Python (C5 confirmed).
+
+**Round 3 (concern re-critique)** — 2026-09-08 · FULL depth · independent roster
+(3 critics: Risk & Robustness, Scope & Value, History & Consistency) · **Verdict:
+READY TO BUILD (with concerns)** (0 blockers, 2 concerns, 0 nits).
+
+This is the router's row-2b concern round (the critique verdict was stale after the
+round-2 fold-in), bounded by `MAX_CONCERN_RECRITIQUE_ROUNDS` — **not** a third G2
+cycle. The round-2 fold-in note above says "there is no round 3" of the G2 loop;
+that remains true and is not contradicted by this entry. Scope was restricted to
+verifying that C4–C7 landed correctly in the plan body. Scope & Value and History &
+Consistency each returned **No findings** — the C4/C5/C6/C7 body text, its citations
+(`base.py:2774-2777`, `tests/test_cyclic_decay_field.py:1512`/`:1534`,
+`tests/test_observation_protocol.py:693-701`) and the Task 3 four-edit escape hatch
+all verified accurate. The two findings below are **not** about the folded reasoning,
+which is correct; they are about two of the *Verification rows* the fold-in added,
+both of which are vacuous or unsatisfiable as written.
+
+| Severity | Critic(s) | Finding | Location |
+|---|---|---|---|
+| CONCERN | Risk & Robustness (measured independently by the aggregator before dispatch) | C8 — the C6 verification row `grep -c "pipe.execute()" tests/test_observation_protocol.py` \| `output > 0` **already returns 1 on unmodified `main`** (the pre-existing `test_pipeline_support` at `:701`). The gate is green before the C6 test exists and stays green if the builder skips it. | Verification table, "Pipelined no-entry result shift pinned by a test (C6)" |
+| CONCERN | Risk & Robustness (measured independently by the aggregator before dispatch) | C9 — the C5 verification row `grep -c "slot 3" src/popoto/fields/cyclic_decay_field.py` \| `== 0` **cannot reach 0**: four legitimate pre-existing 0-based *Python* uses live at `:344`, `:558`, `:619`, `:680`, three of them (`export_state`, and the `on_save` docstring/comment prose) in code no task rewrites. As written the gate either fails the build or forces edits to correct, out-of-scope comments. | Verification table, "Baseline slot protected in Lua terms, not Python's (C5)" |
+
+### C8 (CONCERN) — the C6 verification row is vacuous: it passes on unmodified `main`
+
+*Critic: Risk & Robustness, corroborated by the aggregator's own pre-dispatch
+measurement.*
+**Location:** Verification table, row "Pipelined no-entry result shift pinned by a
+test (C6)".
+
+Measured at HEAD `4cb3cd24`: `grep -c "pipe.execute()"
+tests/test_observation_protocol.py` → **1**, from the bare `pipe.execute()` at
+`tests/test_observation_protocol.py:701` inside the pre-existing
+`test_pipeline_support` — the very test the plan says "only asserts `result is pipe`
+… and cannot see" the shift. The row therefore certifies nothing: it is satisfied by
+the code the concern exists to strengthen. This is the #661 vacuity trap in
+verification-row form — a check that cannot distinguish done from not-done.
+
+**Implementation Note:** retarget the row at a string that is **absent today** and
+present only once the C6 test lands. The plan's own prose already names the
+assertion shape ("add a sibling test asserting `len(pipe.execute())` for the no-entry
+pipelined case"), so use:
+`grep -c "len(pipe.execute())" tests/test_observation_protocol.py` | expected
+`output > 0`. Confirm it reads **0** before the build starts — if it does not, pick a
+different unique literal (e.g. the new test's function name) rather than shipping a
+row that is already green.
+
+### C9 (CONCERN) — the C5 verification row is unsatisfiable without editing out-of-scope comments
+
+*Critic: Risk & Robustness, corroborated by the aggregator's own pre-dispatch
+measurement.*
+**Location:** Verification table, row "Baseline slot protected in Lua terms, not
+Python's (C5)".
+
+`grep -n "slot 3" src/popoto/fields/cyclic_decay_field.py` at `4cb3cd24` returns
+**four** hits, every one a correct 0-based *Python* reference to `entry[3]`:
+
+- `:344` — `export_state`'s docstring ("never carries slot 3 through"). `export_state`
+  is explicitly outside this plan's rewrite ("the other six are in `export_state`
+  (`:286`, `:301`), `import_state` … and the ranking path").
+- `:558` — the `on_save` docstring's baseline rule ("a non-numeric slot 3").
+- `:619`, `:680` — `on_save` comments ("baseline is None when slot 3 is …",
+  "Baseline unknown (legacy entry, or corrupt slot 3)").
+
+The C5 concern is about a *Lua* instruction inheriting Python's numbering, not about
+these Python comments, which are right as they stand. A whole-file ban on the
+substring is over-broad in one direction (it flags correct prose) while still being
+weak in the other: `base.py:2776`'s actual wording is **`slot-3`** with a hyphen, so a
+builder who copies that phrase verbatim into the new Lua is **not** caught by a grep
+for `slot 3` at all.
+
+**Implementation Note:** replace the row with a check that is both scoped and
+hyphen-tolerant. Either (a) scope it to the new script literal —
+`sed -n '/CYCLES_ADJUST_LUA = /,/^"""/p' src/popoto/fields/cyclic_decay_field.py |
+grep -Ec "slot[ -]3"` | expected `0` (adjust the `sed` range to the literal's actual
+delimiters once written) — or (b) grep the whole file for the specific mis-copied
+phrase, `grep -Ec "slot[ -]3 (writer|writer/deleter)"
+src/popoto/fields/cyclic_decay_field.py` | expected `0`, which measures 0 today and
+is a true signal. Pair it with a positive check that the protection actually exists,
+e.g. `grep -c "c\[4\]" src/popoto/fields/cyclic_decay_field.py` | `output > 0`. Do
+**not** satisfy the row as currently written by editing `:344`/`:558`/`:619`/`:680`
+— those are correct Python-side comments and rewording them is out of scope.
+
+### Round 3 fold-in — applied 2026-09-08T05:54:25Z
+
+Targeted pass. Both round-3 concerns are defects in *Verification rows* the round-2
+fold-in added, not in the folded reasoning; no plan reasoning, task, or scope was
+re-opened. Each replacement command was **run against the tree at `3ed94376` before
+being written into the table** — a verification row that has never been executed is
+what produced C8 and C9 in the first place.
+
+| Finding | Disposition | Where the plan now says it |
+|---|---|---|
+| C8 the C6 row is vacuous (green on unmodified `main`) | **Fixed** | Verification table: the C6 row now greps `len(pipe.execute())` in `tests/test_observation_protocol.py` (`output > 0`). Measured **0** at `3ed94376`, so it is red pre-build and can only go green once the sibling no-entry-length test lands. The row records why the bare `pipe.execute()` form (which measures **1**, from `test_pipeline_support:701`) was rejected |
+| C9 the C5 row is unsatisfiable and hyphen-blind | **Fixed** | Verification table: the single whole-file `grep -c "slot 3"` == 0 row is replaced by a **pair** — a scoped, hyphen-tolerant negative (`grep -Ec "slot[ -]3 writer"`, measured **0** at `3ed94376`, and it *does* match `base.py:2776`'s `slot-3 writer/deleter` so a verbatim copy into the new Lua is caught) plus a positive (`grep -c "c\[4\]"`, measured **0** at `3ed94376`, green only once `CYCLES_ADJUST_LUA` names the baseline in 1-based Lua). The row carries an explicit do-not-revert note that the whole-file form returns **4** from correct 0-based Python prose at `:344`, `:558`, `:619`, `:680`, which no task rewrites. The round-2 fold-in table's stale pointer to the old row is annotated as superseded |
+
+Measured at `3ed94376` while folding in (`SDLC_TARGET_REPO`/main checkout):
+`grep -c "len(pipe.execute())" tests/test_observation_protocol.py` → **0**;
+`grep -c "pipe.execute()" tests/test_observation_protocol.py` → **1** (C8 confirmed);
+`grep -Ec "slot[ -]3 writer" src/popoto/fields/cyclic_decay_field.py` → **0**;
+`grep -c "c\[4\]" src/popoto/fields/cyclic_decay_field.py` → **0**;
+`grep -c "slot 3" src/popoto/fields/cyclic_decay_field.py` → **4** (C9 confirmed);
+`sed -n '2770,2780p' src/popoto/models/base.py` contains the literal
+`slot-3 writer/deleter` (C9's hyphen-blindness confirmed).
+
+Option (a) from C9's Implementation Note — a `sed` range scoped to the
+`CYCLES_ADJUST_LUA` literal — was **rejected**: that literal does not exist yet, so
+the `sed` range yields nothing and `grep -c` returns 0 vacuously today, reproducing
+exactly the defect C8 names. Option (b) plus the positive `c[4]` check was taken
+instead.
 
 ### Structural check results
 
@@ -1363,6 +1473,18 @@ index 1 … slot-3 writer/deleter" in 0-based Python (C5 confirmed).
 | File paths exist (r2) | PASS | 16/17; `tests/test_cyclic_decay_atomicity.py` is intentionally new (Task 4) |
 | Prerequisites met (r2) | PASS (3/4) | `redis-cli -u redis://localhost:6379/9 ping` → `PONG` (Redis 8.6.2); `eval "return type(cmsgpack)" 0` → `table`; `import msgpack, redis, pytest` → ok. `POPOTO_TEST_DB` unset in the critique shell — the build lane must export `9` |
 | Round-1 fold-in landed (r2) | PASS | B1, B2, C1, C2, C3, N1 each verified present in the plan **body**, not only the fold-in table. N1's count re-measured: 1 import (`:49`) + 9 uses |
+
+**Round 3** — re-measured at HEAD `4cb3cd24`.
+
+| Check | Status | Detail |
+|---|---|---|
+| Required sections (r3) | PASS | All plan-template sections present and non-empty |
+| Task numbering (r3) | PASS | Tasks 1-7, no gaps |
+| Dependencies valid (r3) | PASS | All `Depends On` IDs resolve to real task IDs; no cycles |
+| File paths exist (r3) | PASS | Every referenced source/test/doc path exists except `tests/test_cyclic_decay_atomicity.py`, intentionally new (Task 4) |
+| Cross-references (r3) | PASS | Every Success Criterion maps to a task; Rabbit Holes stay excluded from the tasks |
+| Round-2 fold-in landed (r3) | PASS | C4 (type guard + verbatim Lua, Task 1 step, `:1512`/`:1534` named), C5 (1-based-Lua bullet, Key Elements + Task 2 rewritten, "slot 3" removed from the Lua instructions), C6 (Architectural Impact bullet, pipeline-table row, Task 2 step, Test Impact), C7 (four-edit removal procedure, Task 5 sequencing annotation, conditional Success Criterion) each verified present in the plan **body** |
+| Verification rows are non-vacuous (r3) | **FAIL (2 of 24)** | Pre-measured at `4cb3cd24`: `type(p) ~= 'number'` → 0, `CYCLES_MERGE_LUA` → 0, `CYCLES_ADJUST_LUA` → 0, `hget(cycles_hash_key)` → 1 (cdf) / 1 (base), `hget(pressure_hash_key)` → 1, `POPOTO_REDIS_DB` → 10, `save first` → 1, `rolling deploy` → 1 — all correctly red pre-build. The two exceptions are the C6 row (`pipe.execute()` → **1**, already green: C8) and the C5 row (`slot 3` → **4**, unsatisfiable in scope: C9) |
 
 ---
 
@@ -1399,12 +1521,21 @@ What still needs supervisor input:
    The alternative (queue the EVAL) keeps the write inside the caller's transaction
    but makes the #698 reset log and the decode warning unreachable from `on_save` —
    the exact observability #698's round-2 critique (C8) hardened.
-   Confirm the trade at that scope, not merely at #476's.
+   ~~Confirm the trade at that scope, not merely at #476's.~~
+   **CLOSED — supervisor, 2026-09-10: CONFIRMED at the broader scope.** The eager
+   companion write proceeds in **both** branches of `Model.save`. The
+   caller-supplied-pipeline orphan risk is accepted and documented (the entry is
+   inert; Risk 2 / Race 3), and the queued-EVAL alternative was declined precisely
+   because it would sever the #698 reset log and decode warning from `on_save`.
 2. **Numeric type drift (Risk 1).** Values round-trip exactly, but integral
    amplitudes come back as `int` instead of `float` once Lua does the packing
    (measured, spike-2). The plan coerces at popoto's own read boundaries and
-   documents it. Is that acceptable, or is preserving the stored msgpack *type* a
-   requirement — which would mean a different on-disk encoding and a migration?
+   documents it.
+   ~~Is that acceptable, or is preserving the stored msgpack *type* a
+   requirement — which would mean a different on-disk encoding and a migration?~~
+   **CLOSED — supervisor, 2026-09-10: acceptable.** Coerce at popoto's read
+   boundaries and document it; no on-disk encoding change, no migration. The built
+   code already implements this default.
 3. **Straggler scope (Task 3) — critique C3.** Converting this module's stale
    `POPOTO_REDIS_DB` import is small (one import + nine sites, one file, no behavior
    change), is called for by `CLAUDE.md`, and fixes a latent wrong-database read on

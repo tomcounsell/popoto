@@ -164,18 +164,42 @@ If you want to intentionally discard learning for a period without changing its 
     record.save()   # declared amplitudes restored
     ```
 
-!!! note "Pipeline ordering"
+!!! note "The cycles/pressure merge is atomic, but a rolling deploy still has a window"
 
-    When a save and an amplitude adjustment share one pipeline, queue the **save first**:
+    `save()`'s read-decide-write against the cycles and pressure companion
+    hashes, and `strengthen_cycle()`/`weaken_cycle()`'s read-clamp-write
+    against the cycles hash, each run as one atomic server-side Lua script —
+    two concurrent writers on the *same* process generation can no longer
+    clobber each other's update, and there is no longer a pipeline-ordering
+    hazard between `save()` and an amplitude adjustment sharing one pipeline
+    (`save()`'s companion-hash write runs eagerly and immediately, regardless
+    of any pipeline you pass it, precisely so its merge decision is available
+    to log synchronously — only the parent timestamp update is queued onto
+    your pipeline).
 
-    ```python
-    pipe = popoto.get_redis().pipeline()
-    record.save(pipeline=pipe)
-    record.strengthen_cycle("relevance", factor=1.2, pipeline=pipe)
-    pipe.execute()
-    ```
+    That atomicity is a property of the *script*, not of the stored data, so
+    it only protects writers that are actually running the script. During a
+    rolling deploy, an old-version process (client-side `HGET`/`HSET`) and a
+    new-version process (the Lua script) can still race each other on the
+    same member — the lost-update window this feature closes is closed only
+    once every writer has rolled forward. This is the same shape as the
+    existing baseline-swallow caveat above, and the same remedy applies: it
+    is a transient rollout window, not a persistent hazard, and resolves
+    itself once the deploy completes.
 
-    Both operations read directly but write through the pipeline, so queuing the adjustment first means the save's read runs before the adjustment's write executes, and the save's write lands last — silently discarding the adjustment.
+!!! note "A whole-number learned amplitude may round-trip as `int`"
+
+    Cycle amplitudes and declared baselines pass through the Lua scripts as
+    msgpack values. Lua 5.1 has a single number type, so a whole-number
+    amplitude (e.g. `10.0` after `strengthen_cycle(factor=5.0)` on a
+    declared `2.0`) is indistinguishable from an integer inside the script
+    and round-trips back to Python as `10`, not `10.0`. The *value* is
+    unaffected — `10 == 10.0` and arithmetic on it behaves identically —
+    only `isinstance(x, float)` checks can observe the difference. Popoto
+    coerces amplitude back to `float` at the public boundaries that matter
+    (the `strengthen_cycle()`/`weaken_cycle()` return value, the reset log
+    line); a *period*, by contrast, is never coerced, since it may
+    legitimately be a non-numeric `TemporalPeriod` string alias.
 
 ### Refreshing the Decay Clock
 

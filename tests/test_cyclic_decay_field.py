@@ -1628,12 +1628,17 @@ class TestLearnedAmplitudePreservedOnSave:
         assert [c[1] for c in stored] == [pytest.approx(6.0), pytest.approx(4.0)]
 
     # TC10 — the cost claim in the plan's Risks table, enforced.
-    def test_no_cycles_read_when_field_declares_no_cycles(self, monkeypatch):
+    def test_no_client_side_hget_during_save(self, monkeypatch):
         """Implementation-pinning: update deliberately on refactor.
 
-        Asserts the ``if field.cycles:`` gate in ``on_save`` — a pressure-only
-        CyclicDecayField must not pay a cycles HGET. Any refactor that keeps
-        the cost contract but moves the read may legitimately rewrite this.
+        #699: the cycles/pressure read-modify-write moved server-side into
+        ``CYCLES_MERGE_LUA``, so ``on_save`` must issue zero *client-side*
+        ``HGET`` calls now, whether or not the field declares cycles — the
+        read that used to happen in Python happens inside the script, where
+        a spy on the Python client cannot see it. This is also what closes
+        the race: a client-side read-then-write is exactly the window a
+        concurrent writer can land in, and there is no such window left to
+        spy on.
         """
         from src.popoto.fields import cyclic_decay_field as cdf
 
@@ -1657,7 +1662,10 @@ class TestLearnedAmplitudePreservedOnSave:
         item = CyclicLearned.create(name="tc10b")
         monkeypatch.setattr(cdf, "get_REDIS_DB", lambda: CountingClient())
         item.save()
-        assert len(calls) == 1, "a declared-cycles field must read exactly once"
+        assert calls == [], (
+            f"a declared-cycles field must not read via a client-side HGET "
+            f"during save(): {calls}"
+        )
 
     # TC11 — Decision 2: a learned 0.0 is preserved, and is recoverable.
     def test_zero_amplitude_is_preserved_not_reset(self):
@@ -1916,6 +1924,89 @@ class TestDeclaredAmplitudeOverridesLearned:
         assert all(len(c) == 3 for c in returned)
         stored = _read_cycles(CyclicLearned, item)
         assert all(len(c) == 4 for c in stored)
+
+    # 11. #699 critique B1 — every ARGV-sourced numeric slot (period included)
+    # is a Lua STRING crossing the wire, so CYCLES_MERGE_LUA must convert a
+    # numeric-looking period back to a number before storage. Getting this
+    # wrong doesn't crash on save — it crashes the *next* ranked query,
+    # because the scorer does a bare `period > 0` outside any pcall.
+    def test_stored_period_type_is_numeric_not_string(self):
+        item = CyclicLearned.create(name="periodtype")
+        stored = _read_cycles(CyclicLearned, item)
+        assert len(stored) == 1
+        period = stored[0][0]
+        assert isinstance(period, (int, float)) and not isinstance(period, bool), (
+            f"stored period must be numeric (TemporalPeriod.DAILY is an int "
+            f"alias), got {type(period).__name__}: {period!r}"
+        )
+
+    def test_ranked_query_over_cycle_declaring_model_does_not_raise(self):
+        # A regression here is silent at save() time and only surfaces as a
+        # ResponseError from `local period = c[1] ... if period > 0`
+        # (`cyclic_decay_field.py`'s scorer) the next time this model is
+        # ranked -- exactly the failure mode B1 exists to close.
+        CyclicLearned.create(name="scoretype1")
+        CyclicLearned.create(name="scoretype2")
+        results = CyclicLearned.query.top_by_decay("relevance", n=10)
+        assert len(results) == 2
+
+    def test_baseline_slot_stored_as_number_survives_unchanged_declaration(self):
+        # If the baseline slot were ever stored as a string, an unchanged
+        # declaration (`old_baseline == declared_amplitude`, both read back
+        # via ARGV/coerce_period-style conversion) would fail the equality
+        # check and silently discard learned amplitude on every save.
+        item = CyclicLearned.create(name="baselinetype")
+        item.strengthen_cycle("relevance", factor=5.0)  # learned -> 10.0
+        item.save()  # declaration unchanged -> learned amplitude must survive
+        stored = _read_cycles(CyclicLearned, item)[0]
+        assert stored[1] == pytest.approx(10.0), (
+            "learned amplitude was discarded on an unchanged declaration -- "
+            "the baseline comparison likely failed a string/number mismatch"
+        )
+
+    # 12. #699 Risk 1 — weaken_cycle()/strengthen_cycle() must return
+    # floats, not the msgpack integers Lua packs for whole-number values
+    # (Lua 5.1 has one number type). The coercion in
+    # Model._adjust_cycle_amplitudes must not be "simplified" away: without
+    # it a declared 2.0 weakened by 0.5 comes back as int 1, breaking any
+    # caller that relies on isinstance(x, float). Period is deliberately
+    # not asserted — it may legitimately be a string.
+    def test_weaken_cycle_returns_floats_not_ints(self):
+        item = CyclicLearned.create(name="floatreturn")
+        result = item.weaken_cycle("relevance", factor=0.5)
+        assert len(result) == 1
+        _period, amplitude, phase = result[0]
+        assert isinstance(amplitude, float), (
+            f"amplitude must be float, got {type(amplitude).__name__}: "
+            f"{amplitude!r}"
+        )
+        assert isinstance(
+            phase, float
+        ), f"phase must be float, got {type(phase).__name__}: {phase!r}"
+        assert amplitude == pytest.approx(1.0)
+
+    # 13. #699 critique B2 — strengthen_cycle()/weaken_cycle() on a member
+    # with no stored cycles entry must return [] (or the pipeline), not
+    # raise. The pre-#699 client-side existence check (`if not raw: return
+    # []`) moved inside CYCLES_ADJUST_LUA, which must return Lua nil for
+    # this case -- an unconditional cmsgpack.unpack(nil) would crash instead.
+    def test_strengthen_cycle_with_no_stored_cycles_returns_empty_list(self):
+        item = CyclicLearned.create(name="noentry-strengthen")
+        field = item._meta.fields["relevance"]
+        cycles_hash_key = field.get_cycles_hash_key(item, "relevance")
+        popoto.get_redis().hdel(cycles_hash_key, item.db_key.redis_key)
+
+        result = item.strengthen_cycle("relevance", factor=1.2)
+        assert result == []
+
+    def test_weaken_cycle_with_no_stored_cycles_returns_empty_list(self):
+        item = CyclicLearned.create(name="noentry-weaken")
+        field = item._meta.fields["relevance"]
+        cycles_hash_key = field.get_cycles_hash_key(item, "relevance")
+        popoto.get_redis().hdel(cycles_hash_key, item.db_key.redis_key)
+
+        result = item.weaken_cycle("relevance", factor=0.8)
+        assert result == []
 
 
 # --- Export tests ---

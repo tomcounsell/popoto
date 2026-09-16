@@ -1,11 +1,13 @@
 {
-  "_provenance": "captured-from: the Hermes hook contract as documented by Nous Research (docs.nousresearch.com Hermes hooks reference, read 2026-08-07), not from a live turn. Hermes is not installed on any machine this repo is developed on. Recapture: install Hermes, create ~/.hermes/hooks/capture/ with a HOOK.yaml listing `events: [pre_llm_call, post_llm_call]` and a handler.py whose `handle` writes `context` to a file, then run one turn. Confidence in the field names is medium; the maintainer's acceptance pass replaces this file with a live capture.",
-  "event_type": "pre_llm_call",
-  "session_id": "hermes-6c1c1f0a",
-  "cwd": "/Users/dev/src/demo",
-  "extra": {
-    "user_message": "how does the deploy roll back when health checks fail?",
-    "is_first_turn": false,
-    "conversation_history": []
-  }
+  "_provenance": "captured-from: real `hermes-agent` 0.19.0 plugin loader and `invoke_hook` dispatcher; kwargs verbatim from the 0.19.0 invoke sites; not a live model turn. This file is byte-for-byte the envelope `plugins/hermes/__init__.py` built and teed while `hermes_cli.plugins.invoke_hook(\"pre_llm_call\", ...)` drove it, with only this _provenance key added. `telemetry_schema_version` is injected by the dispatcher, not by the invoke site. Recapture: `pip install --only-binary :all: hermes-agent==0.19.0` into a scratch venv, copy `plugins/hermes/{plugin.yaml,__init__.py}` to $HERMES_HOME/plugins/popoto-memory/, write $HERMES_HOME/config.yaml with `plugins: {enabled: [popoto-memory]}`, export POPOTO_HOOK_CAPTURE=<dir>, then call PluginManager().discover_and_load(force=True) followed by invoke_hook(\"pre_llm_call\", **kwargs) -- see tests/test_hermes_plugin_contract.py, which performs exactly this. No provider credentials are needed and none were used: a live model turn is out of scope for this repo's CI.",
+  "hook_event_name": "pre_llm_call",
+  "is_first_turn": true,
+  "model": "claude-sonnet-4-6",
+  "platform": "cli",
+  "sender_id": "local",
+  "session_id": "sess-4f2a9c",
+  "task_id": "task-7b31",
+  "telemetry_schema_version": "hermes.observer.v1",
+  "turn_id": "sess-4f2a9c:task-7b31:9d41c0ab",
+  "user_message": "How did we end up handling health checks for the worker pool?"
 }

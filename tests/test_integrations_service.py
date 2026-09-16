@@ -448,7 +448,14 @@ def test_subagent_stop_resolves_the_parent_turn_once(tmp_path):
 
 
 def test_untagged_harness_keeps_fifo_order(tmp_path):
-    """Hermes and OpenClaw send no turn id and keep the positional pairing.
+    """A harness that genuinely sends no turn id keeps positional pairing.
+
+    Naming Hermes and OpenClaw here was true when this test was written and
+    is false now: both send a per-turn id (#704, #552), and Hermes reaching
+    this branch is the #688 defect rather than the contract. The fallback
+    still has to work -- ``POPOTO_MEMORY_TURN_KEYED=0`` selects it, and any
+    harness added later starts here -- so the coverage stays, described by
+    what it is instead of by a harness that outgrew it.
 
     The returned keys are asserted, not the count: the decode step must reach
     into the payload, and a fallback that parsed a tagged entry as a bare
@@ -464,6 +471,28 @@ def test_untagged_harness_keeps_fifo_order(tmp_path):
     assert service._pop_pending("s1", turn_id=None) == [key_of(first)]
     assert service._pop_pending("s1", turn_id=None) == [key_of(second)]
     assert service._pop_pending("s1", turn_id=None) == []
+
+
+def test_a_hermes_turn_is_paired_by_its_id_not_its_position(tmp_path):
+    """The #688 half of #704, asserted on the ids Hermes actually sends.
+
+    Two turns are staged in order and the *second* is reported first, using
+    the ``<session>:<task>:<hex8>`` id shape the 0.19.0 invoke sites pass.
+    Positional pairing resolves the first turn's record here and passes any
+    count-only assertion; keyed pairing resolves the record that turn really
+    read. The returned keys are what separate them.
+    """
+    service = make_service(tmp_path)
+    first, second = seed(service, "Deploys are blue-green", "Bundles use esbuild")
+    early = "sess-4f2a9c:task-7b31:9d41c0ab"
+    late = "sess-4f2a9c:task-7b31:1e77b3d5"
+
+    service._push_pending("s1", [first], turn_id=early)
+    service._push_pending("s1", [second], turn_id=late)
+
+    assert service._pop_pending("s1", turn_id=late) == [key_of(second)]
+    assert service._pop_pending("s1", turn_id=early) == [key_of(first)]
+    assert service._pop_pending("s1", turn_id=early) == []
 
 
 def test_legacy_entries_are_claimed_after_an_upgrade(tmp_path):

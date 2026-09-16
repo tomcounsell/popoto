@@ -126,8 +126,8 @@ class MemoryConfig:
         url_is_explicit: ``True`` when ``POPOTO_MEMORY_URL`` was set by the
             caller. :func:`bind_connection` refuses to rebind an already
             established Popoto connection unless this is ``True``, which is
-            what keeps an in-process caller (a test, a Hermes handler) on
-            the connection it already configured.
+            what keeps an in-process caller (a test, the Hermes plugin's
+            ``_service()``) on the connection it already configured.
         turn_keyed: When ``True`` (the default) the read-to-write handoff is
             keyed on the harness's per-turn identifier, so an outcome report
             resolves the turn that actually staged it or resolves nothing.
@@ -380,8 +380,9 @@ def bind_connection(config: MemoryConfig) -> bool:
     ``localhost:6379/0``) already produced the same target, and leaving the
     live connection alone is the safe behavior for an in-process caller --
     a test running under the Popoto pytest plugin on an isolated database,
-    or a Hermes ``handler.py`` inside a long-lived harness -- which has
-    already chosen its connection. Rebinding those to a default would move
+    or the Hermes plugin (``plugins/hermes/__init__.py``) inside a
+    long-lived harness -- which has already chosen its connection. Rebinding
+    those to a default would move
     writes to database 0 behind the caller's back.
 
     The rebind swaps the *pool* on the existing client object rather than

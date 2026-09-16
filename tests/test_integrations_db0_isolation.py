@@ -14,7 +14,7 @@ Two properties are asserted here, and neither was covered before:
 2. Constructing a `MemoryService` is what binds the connection. That is the
    single chokepoint, so the paths that do not go through the CLI --
    `popoto-memory demo`, `examples/harness_memory/seed.py`,
-   `examples/harness_memory/verify.py`, `plugins/hermes/handler.py` -- are
+   `examples/harness_memory/verify.py`, `plugins/hermes/__init__.py` -- are
    covered by construction rather than by remembering to call it.
 
 **These tests deliberately do not use the pytest plugin's DB-0 tripwire.**
@@ -220,13 +220,25 @@ def test_constructing_a_service_binds_the_configured_database():
     assert _resolved_db(RESOLVE, _env()) == int(TEST_DB)
 
 
-def test_the_hermes_handler_binds_too():
-    """The handler builds its service lazily; that still has to bind."""
+def test_the_hermes_plugin_binds_too():
+    """The plugin builds its service lazily; that still has to bind.
+
+    Loaded by file path through ``importlib.util.spec_from_file_location``
+    rather than by ``import plugins.hermes``. Two reasons, both load-bearing:
+    Hermes itself loads a user plugin from ``$HERMES_HOME/plugins/<name>/``
+    by path, so this exercises the real entry route; and ``hermes-agent``
+    ships its own top-level regular package named ``plugins``, so importing
+    popoto's repo-root ``plugins/`` as a package would collide with it (which
+    is also why ``plugins/__init__.py`` must never exist -- the directory has
+    to stay a PEP 420 namespace portion).
+    """
+    plugin_path = REPO_ROOT / "plugins" / "hermes" / "__init__.py"
     script = (
-        "import json, sys;"
-        f"sys.path.insert(0, {str(REPO_ROOT / 'plugins' / 'hermes')!r});"
-        "import handler;"
-        "handler._service();"
+        "import importlib.util, json;"
+        f"spec = importlib.util.spec_from_file_location('popoto_hermes_plugin', {str(plugin_path)!r});"
+        "mod = importlib.util.module_from_spec(spec);"
+        "spec.loader.exec_module(mod);"
+        "mod._service();"
         "from popoto.redis_db import POPOTO_REDIS_DB as c;"
         "print(json.dumps(c.connection_pool.connection_kwargs.get('db')))"
     )

@@ -7,7 +7,7 @@ created: 2026-09-08
 tracking: https://github.com/tomcounsell/popoto/issues/704
 last_comment_id: none
 revision_applied: true
-revision_applied_at: 2026-09-08T05:42:16Z
+revision_applied_at: 2026-09-08T05:51:00Z
 ---
 
 # Hermes: re-target the shipped plugin at the real hook system, and plumb `turn_id`
@@ -1030,7 +1030,7 @@ a Hermes agent reaches popoto's memory. Concretely:
 
 ### Feature Documentation
 
-- [ ] `docs/features/harness-integration.md` — six edits: the capability-matrix
+- [x] `docs/features/harness-integration.md` — six edits: the capability-matrix
       Hermes row `:53` (Setup cell "2-file hook directory" → the plugin install,
       and note the opt-in step), the verification-matrix Hermes row `:63`
       ("vendor documentation only" → the new grade), the turn-id section `:126-129`
@@ -1107,59 +1107,69 @@ Research section documents two places where that site is currently wrong.
 
 ## Success Criteria
 
-- [ ] `plugins/hermes/` contains `plugin.yaml` + `__init__.py` + `README.md` and no
+- [x] `plugins/hermes/` contains `plugin.yaml` + `__init__.py` + `README.md` and no
       `HOOK.yaml`, `handler.py`, or `__pycache__`.
-- [ ] `plugins/hermes/__init__.py` defines `register(ctx)`, registers exactly
+- [x] `plugins/hermes/__init__.py` defines `register(ctx)`, registers exactly
       `pre_llm_call` and `post_llm_call`, and contains **no** `async def`.
-- [ ] The real `hermes_cli.plugins.PluginManager` loads the plugin from a scratch
+- [x] The real `hermes_cli.plugins.PluginManager` loads the plugin from a scratch
       `HERMES_HOME` with `error is None`, both hooks registered, every registered
       name in `VALID_HOOKS`, and **does not** load it when `plugins.enabled` is
       empty.
-- [ ] `hooks.normalize()` extracts non-empty `text` from a `post_llm_call` payload
+- [x] `hooks.normalize()` extracts non-empty `text` from a `post_llm_call` payload
       carrying `assistant_response`, proven by a test that fails on the current
       `_RESPONSE_FIELDS`.
-- [ ] Hermes read and write fixtures carry the **same** `turn_id`, and
+- [x] Hermes read and write fixtures carry the **same** `turn_id`, and
       `TURN_IDS[hermes_pre] == TURN_IDS[hermes_post] is not None`.
-- [ ] `service._push_pending` stages a **tagged** entry (`{"t": …, "k": […]}`) for a
+- [x] `service._push_pending` stages a **tagged** entry (`{"t": …, "k": […]}`) for a
       Hermes-shaped payload, and `feedback` claims it by value — asserted on the
       encoding, not on a return count.
-- [ ] No file in `src/` or `tests/` still claims Hermes sends no turn id.
-- [ ] The Hermes rows in `tests/fixtures/harness_payloads/README.md` no longer read
+- [x] No file in `src/` or `tests/` still claims Hermes sends no turn id.
+- [x] The Hermes rows in `tests/fixtures/harness_payloads/README.md` no longer read
       "docs only", and the replacement grade names what executed and what did not.
-- [ ] `plugins/hermes/README.md` and `docs/guides/harness-hermes.md` both install to
+- [x] `plugins/hermes/README.md` and `docs/guides/harness-hermes.md` both install to
       `~/.hermes/plugins/popoto-memory/` and both teach
       `hermes plugins enable popoto-memory`; neither contains
       `mkdir -p ~/.hermes/hooks`.
-- [ ] `hermes-agent` appears in no published dependency surface — not
+- [x] `hermes-agent` appears in no published dependency surface — not
       `pyproject.toml`, not `uv.lock`, not `scripts/check_lock_imports.py`.
-- [ ] **`plugins/__init__.py` does not exist** (critique C5) — popoto's `plugins/`
+- [x] **`plugins/__init__.py` does not exist** (critique C5) — popoto's `plugins/`
       stays a PEP 420 namespace portion so it can never shadow `hermes-agent`'s
       regular `plugins` package.
-- [ ] The contract test's assertion (e) asserts on a **seeded sentinel's presence in
+- [x] The contract test's assertion (e) asserts on a **seeded sentinel's presence in
       the injected context**, not merely that a dict came back (critique C1), and the
-      contract job declares a Redis service unconditionally.
-- [ ] `.github/workflows/hermes-contract.yml` states in its header that the job is
+      contract job declares a Redis service unconditionally. The *wiring* is checked,
+      not the word (round-2 R2-C2): the file must contain a real `.capture(` call and
+      an `assert … in …["context"]` containment assertion, since a comment, docstring
+      or unused local named `sentinel` satisfies a bare `grep -ci 'sentinel'` while
+      the corner-cut version of (e) survives.
+- [x] `.github/workflows/hermes-contract.yml` states in its header that the job is
       **advisory and must not be a required status check**, and its `hermes-agent`
       install line carries a **dated pin comment** (critique C2, C3). The PR body
       carries the matching post-merge note about branch protection.
-- [ ] `tests/fixtures/harness_payloads/README.md` no longer contains the string
-      "remaining four", and its replacement names **two** files in the
-      not-yet-live-verified bucket (critique C4).
-- [ ] `plugins/hermes/` is black-formatted and ruff-clean, verified lane-locally
+- [x] `tests/fixtures/harness_payloads/README.md` no longer contains the phrase
+      "remaining four" **even across a line break** — the check is
+      `tr '\n' ' ' < … | grep -cE 'remaining +four'` → 0, because the phrase is
+      currently wrapped between lines 19-20 and a plain `grep -c 'remaining four'`
+      returns 0 at baseline and therefore cannot detect its own violation
+      (critique C4, round-2 R2-C1). Its replacement names **two** files in the
+      not-yet-live-verified bucket, and the new middle tier label is positively
+      asserted present (`grep -c 'real harness, no model' …` → output > 0), so the
+      criterion is red before the edit and green only after it.
+- [x] `plugins/hermes/` is black-formatted and ruff-clean, verified lane-locally
       (`black --check plugins/hermes/`, `ruff check plugins/hermes/`) since no CI job
       covers `plugins/` and this lane deliberately does not widen `lint.yml`
       (critique C5, second half).
-- [ ] Red-state proof recorded in the PR: the new tests, run against the pre-fix
+- [x] Red-state proof recorded in the PR: the new tests, run against the pre-fix
       tree, fail — specifically the plugin-envelope turn-id assertion and the
       `assistant_response` assertion.
-- [ ] Tests pass (`/do-test`), stating the environment and the DB (`POPOTO_TEST_DB=9`).
-- [ ] Documentation updated (`/do-docs`); `mkdocs build --strict` green.
-- [ ] `ruff check src/`, `black --check src/ tests/`, `scripts/mypy_ratchet.py` all
+- [x] Tests pass (`/do-test`), stating the environment and the DB (`POPOTO_TEST_DB=9`).
+- [x] Documentation updated (`/do-docs`); `mkdocs build --strict` green.
+- [x] `ruff check src/`, `black --check src/ tests/`, `scripts/mypy_ratchet.py` all
       green.
-- [ ] The PR body carries `Closes #704` **and** `Closes #688` outright, with no
+- [x] The PR body carries `Closes #704` **and** `Closes #688` outright, with no
       "partially addresses" hedge (critique ruling 4), plus the red-state proof and
       the C2 post-merge branch-protection note.
-- [ ] No xfail conversions needed — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
+- [x] No xfail conversions needed — `grep -rn 'pytest.mark.xfail\|pytest.xfail('
       tests/` returns nothing at the baseline commit, so there is no expected-failure
       marker documenting this bug.
 
@@ -1320,8 +1330,12 @@ with `POPOTO_TEST_DB=9` exported for every test run.
   count sentence together with the tier table — *live turn* (Claude Code, OpenClaw),
   *real dispatcher, not a live turn* (Hermes), *binary/docs, not a live turn*
   (Codex, 2 files) — so the number and the grade cannot drift apart. The
-  Verification row `grep -c 'remaining four' …` → 0 pins that the old sentence is
-  gone.
+  Verification row pins that the old sentence is gone — and it must be the
+  **newline-collapsing** form, `tr '\n' ' ' < … | grep -cE 'remaining +four'` → 0,
+  because the phrase is line-wrapped at `README.md:19-20` and a plain
+  `grep -c 'remaining four'` already returns 0 at baseline (round-2 R2-C1). Pair it
+  with the positive companion row `grep -c 'real dispatcher' …` → output > 0 so the
+  new tier label is asserted present, not merely the old wording absent.
 
 ### 4. Contract test and its CI job
 
@@ -1344,6 +1358,15 @@ with `POPOTO_TEST_DB=9` exported for every test run.
   A bare `isinstance(result[0], dict)` passes on the swallowed-exception path and is
   rejected. If (e) is split out instead, its skip must be explicit and visible, never
   a silent pass; (a)–(d) need no Redis and stay the Redis-free gate.
+- **The Verification rows for (e) check the wiring, not the word** (round-2 R2-C2).
+  `grep -ci 'sentinel'` alone is satisfied by a comment, a docstring, or an unused
+  local, so the corner-cut version of (e) would pass the row that exists to catch it.
+  Two additional rows are required and are already in the Verification table:
+  `grep -c '\.capture(' tests/test_hermes_plugin_contract.py` → output > 0 and
+  `grep -cE 'assert .+ in .+\["context"\]' tests/test_hermes_plugin_contract.py` →
+  output > 0. Both are red at baseline by construction (the file does not exist), so
+  they need no separate red-state demonstration. The `sentinel` row stays — it is
+  harmless, just insufficient alone.
 - `.github/workflows/hermes-contract.yml`: one job, own venv, `pip install
   hermes-agent==0.19.0` plus `-e .[dev]`, **an unconditional Redis service** (C1 —
   the earlier "if the test needs one" hedge is resolved to *yes*), run `pytest`
@@ -1442,34 +1465,41 @@ with `POPOTO_TEST_DB=9` exported for every test run.
 | Plugin manifest present | `test -f plugins/hermes/plugin.yaml && test -f plugins/hermes/__init__.py` | exit code 0 |
 | `register(ctx)` entry point exists | `python -c "import ast,pathlib;t=ast.parse(pathlib.Path('plugins/hermes/__init__.py').read_text());raise SystemExit(0 if any(getattr(n,'name',None)=='register' for n in t.body) else 1)"` | exit code 0 |
 | Both hooks registered | `grep -c 'register_hook' plugins/hermes/__init__.py` | output > 1 |
-| No async callbacks in the plugin | `grep -c 'async def' plugins/hermes/__init__.py` | match count == 0 |
+| No async callbacks in the plugin | `python -c "import ast,pathlib;t=ast.parse(pathlib.Path('plugins/hermes/__init__.py').read_text());raise SystemExit(0 if not any(isinstance(n,ast.AsyncFunctionDef) for n in ast.walk(t)) else 1)"` | exit code 0 |
 | `assistant_response` mapped in the adapter | `grep -c 'assistant_response' src/popoto/integrations/hooks.py` | output > 0 |
 | Contract workflow present | `test -f .github/workflows/hermes-contract.yml` | exit code 0 |
 | Anti-criterion: no "Hermes sends no turn id" claim survives | `grep -rn 'Hermes sends none\|no turn id (Hermes' src/ tests/ docs/features docs/guides plugins/` | exit code 1 |
 | Anti-criterion: no gateway install instruction survives | `grep -rn 'mkdir -p ~/.hermes/hooks' plugins/ docs/guides/ docs/features/ README.md` | exit code 1 |
-| Anti-criterion: Hermes fixtures no longer graded "docs only" | `grep -c 'docs only' tests/fixtures/harness_payloads/README.md` | match count == 0 |
+| Anti-criterion: Hermes fixtures no longer graded "docs only" | `grep -i 'hermes' tests/fixtures/harness_payloads/README.md \| grep -c 'docs only'` | match count == 0 |
 | Anti-criterion: `hermes-agent` absent from published deps | `grep -c 'hermes-agent' pyproject.toml uv.lock scripts/check_lock_imports.py` | match count == 0 |
-| Anti-criterion: plugin never imported as a package | `grep -rn 'import plugins.hermes\|from plugins.hermes' tests/ src/` | exit code 1 |
+| Anti-criterion: plugin never imported as a package | `grep -rn 'import plugins.hermes\|from plugins.hermes' tests/ src/ \| grep -v '\`\`'` | exit code 1 |
 | `plugins.enabled` step taught in the guide | `grep -c 'hermes plugins enable' docs/guides/harness-hermes.md` | output > 0 |
 | `plugins.enabled` step taught in the plugin README | `grep -c 'hermes plugins enable' plugins/hermes/README.md` | output > 0 |
 | Correct install path in both READMEs | `grep -l '\.hermes/plugins/popoto-memory' plugins/hermes/README.md docs/guides/harness-hermes.md \| wc -l` | output > 1 |
 | Fixtures keep a provenance string | `grep -l 'captured-from:' tests/fixtures/harness_payloads/hermes_pre_llm_call.json tests/fixtures/harness_payloads/hermes_post_llm_call.json \| wc -l` | output > 1 |
 | No stale xfails | `grep -rn 'xfail' tests/ \| grep -v '# open bug'` | exit code 1 |
 | Anti-criterion: repo-root `plugins/` stays a namespace portion (C5) | `test ! -e plugins/__init__.py` | exit code 0 |
-| Anti-criterion: the "remaining four" count is gone (C4) | `grep -c 'remaining four' tests/fixtures/harness_payloads/README.md` | match count == 0 |
+| Anti-criterion: the "remaining four" count is gone — whitespace-insensitive (C4, R2-C1) | `tr '\n' ' ' < tests/fixtures/harness_payloads/README.md \| grep -cE 'remaining +four'` | output == 0 |
+| Positive companion: the new middle tier label is present (R2-C1) | `grep -c 'real harness, no model' tests/fixtures/harness_payloads/README.md` | output > 0 |
 | New plugin module is black-clean (C5) | `black --check plugins/hermes/` | exit code 0 |
 | New plugin module is ruff-clean (C5) | `ruff check plugins/hermes/` | exit code 0 |
 | Contract job declares an unconditional Redis service (C1) | `grep -c 'services:' .github/workflows/hermes-contract.yml` | output > 0 |
 | Contract job is marked advisory (C2) | `grep -ci 'advisory' .github/workflows/hermes-contract.yml` | output > 0 |
 | Pin carries a dated staleness comment (C3) | `grep -c 'pinned 2026-09-08' .github/workflows/hermes-contract.yml` | output > 0 |
 | Contract test seeds a sentinel rather than asserting bare `dict` (C1) | `grep -ci 'sentinel' tests/test_hermes_plugin_contract.py` | output > 0 |
+| Contract test actually captures the sentinel through a real service (R2-C2) | `grep -c '\.capture(' tests/test_hermes_plugin_contract.py` | output > 0 |
+| Contract test asserts containment in the injected context (R2-C2) | `grep -cE 'assert .+ in .+\["context"\]' tests/test_hermes_plugin_contract.py` | output > 0 |
 
-**Red-state proof required.** Before the implementation lands, run the two
+**Red-state proof required.** Before the implementation lands, run the three
 anti-criteria that can be falsified today — *"no `Hermes sends no turn id` claim
-survives"* and *"Hermes fixtures no longer graded docs only"* — against the baseline
-tree, confirm they FAIL, and paste that output into the PR description. An
-anti-criterion never demonstrated red is indistinguishable from one that cannot
-detect its violation.
+survives"*, *"Hermes fixtures no longer graded docs only"*, and the
+newline-collapsing *"remaining four"* row (`tr '\n' ' ' < … | grep -cE 'remaining +four'`,
+which returns **1** at baseline) — against the baseline tree, confirm they FAIL, and
+paste that output into the PR description. An anti-criterion never demonstrated red
+is indistinguishable from one that cannot detect its violation. That is not
+hypothetical here: the round-1 form of the third row, `grep -c 'remaining four'`,
+returned 0 at baseline because the phrase wraps across `README.md:19-20`, and it was
+caught only in critique round 2 (R2-C1).
 
 ## Critique Results
 
@@ -1715,6 +1745,87 @@ substantive instructions they guard are correct as written.
 concerns are **accepted on the record** and the build proceeds. Both are single-row
 edits to the Verification table that the builder (Task 4 / Task 3) applies in place;
 neither changes the implementation contract.
+
+**Round-2 fold-in applied** (2026-09-08, `revision_applied_at` below):
+
+| Item | Folded into |
+|---|---|
+| R2-C1 (line-wrapped `remaining four`) | Verification row replaced with the `tr`-collapsing form + new positive companion row on `real dispatcher`; Success Criteria bullet rewritten; Task 3 bullet corrected; Red-state proof paragraph widened from two rows to three |
+| R2-C2 (bare `sentinel` word grep) | Two Verification rows added (`\.capture(`, `assert … in …["context"]`); Success Criteria (e) bullet extended; Task 4 bullet added |
+
+No implementation-contract text changed. The plan is settled; the `plan_revising`
+lock is cleared.
+
+---
+
+## Critique Results — Round 3 (final bounded round — confirmation of the round-2 fold-ins)
+
+**Verdict:** READY TO BUILD (no concerns) — 0 blockers, 0 concerns, 2 nits.
+**Depth:** FULL. **Mode:** independent roster (3 critics) — Risk & Robustness,
+Scope & Value, History & Consistency; roster 3/3 complete, all grounded. Run
+`d46186192d5346478dc7853b5e958068`, 2026-09-08, against revised plan commit
+`8d6ec6cb`.
+
+**R2-C1 fold-in — verified real and non-vacuous (commands executed at baseline):**
+
+| Command | Baseline result | Meaning |
+|---|---|---|
+| `tr '\n' ' ' < tests/fixtures/harness_payloads/README.md \| grep -cE 'remaining +four'` | **1** | genuinely RED before the edit — detects its own violation |
+| `grep -c 'remaining four' tests/fixtures/harness_payloads/README.md` | 0 (exit 1) | the round-1 form, vacuously green — the defect R2-C1 named, confirmed |
+| `grep -c 'real dispatcher' tests/fixtures/harness_payloads/README.md` | 0 | positive companion row is RED before the edit, green only after |
+
+The phrase does wrap at `tests/fixtures/harness_payloads/README.md:19-20`
+(`…and the remaining` / `four are still the maintainer's acceptance pass`),
+exactly as R2-C1 stated.
+
+**R2-C2 fold-in — verified red at baseline by construction:**
+`tests/test_hermes_plugin_contract.py` does not exist, so
+`grep -c '\.capture(' …` and `grep -cE 'assert .+ in .+\["context"\]' …` both
+produce no matching output (exit 2). Both rows can only go green once the test
+is written with real wiring; neither is satisfiable by a comment, a docstring, or
+an unused local named `sentinel`.
+
+**Regression check on the two revision diffs** (`b508e8c7`, `8d6ec6cb`): every hunk
+is additive or a strict correction. No prior correct content was deleted, weakened,
+or left contradicting the new text; no new build scope entered through the
+Verification table — the `.capture(`/containment rows machine-check a requirement
+round 1 had already written into the Technical Approach. The four R2-C1 touch
+points (Verification row, Success Criteria bullet, Task 3 bullet, red-state-proof
+paragraph, now correctly "three" rows) agree with each other, and the surviving
+plain-`grep -c 'remaining four'` mentions are confined to the historical critique
+records where they describe the defect under discussion.
+
+**Structural checks:** required sections present; tasks 1-8 sequential with no gaps
+or dangling dependencies; every referenced existing path resolves; prerequisites
+green (`redis-cli -n 9 PING` → PONG, lane worktree present); success criteria all
+map to tasks; no No-Go or Rabbit Hole appears as planned work.
+
+### N-R3-1 — `README.md:23` still says "the other four"
+
+- **Severity:** NIT
+- **Location:** Task 3 / `tests/fixtures/harness_payloads/README.md:23`
+- **Finding:** The same stale count survives a second time at line 23 ("a warning
+  about the other four"), which no anti-criterion covers; after the Task 3 edit the
+  README could still assert four unverified fixtures while every Verification row is
+  green.
+- **Suggestion:** When rewriting the count sentence in Task 3, correct line 23 in the
+  same pass — the tier rewrite should leave no "four" describing the
+  not-yet-live-verified bucket.
+
+### N-R3-2 — the containment regex is single-line
+
+- **Severity:** NIT · **Critic:** Scope & Value
+- **Location:** Verification row *"Contract test asserts containment in the injected
+  context (R2-C2)"*
+- **Finding:** `assert .+ in .+\["context"\]` is a single-line regex and can
+  false-negative on a correct assertion that black wraps across lines.
+- **Suggestion:** If the builder's formatted assertion does not match during Task 4
+  self-check, widen the row to the newline-collapsing `tr '\n' ' ' | grep -cE …`
+  form used two rows above, rather than reading the red result as a plan failure.
+
+**Disposition.** Both round-2 concerns are answered by the `8d6ec6cb` revision and
+neither survives round 3. Nits do not block and require no revision pass; the
+`plan_revising` lock stays clear. Proceed to `/do-build`.
 
 ---
 

@@ -596,3 +596,8 @@ including `DefaultMemory`, does.
   bridge that auto-detects a model's `ValidityField` and applies `as_of`
 - [ConfidenceField](confidence-field.md) — the arm whose contribution the
   composite mask (Layer 2) must subtract out, not merely zero
+- [Claim Reconciliation](reconciliation.md) — the M5 stage that closes a
+  supersession loser's interval; it reaches this mechanism only through
+  `ProvenanceJournal.supersede()`, never by calling
+  `save_and_supersede()` itself, so the journal annotation and the close stay
+  in one `MULTI`/`EXEC`

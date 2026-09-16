@@ -1,0 +1,15 @@
+name: popoto-memory
+version: 1.9.0
+description: >-
+  Subconscious memory on your own Redis or Valkey. Recalls relevant memories
+  before each model call and captures the response after it. No API keys.
+author: popoto
+# `provides_hooks` is parsed into hermes_cli.plugins's manifest dataclass
+# (hermes_cli/plugins.py:1642) but read by nothing that decides loading,
+# registration, or gating -- it is documentation for the operator and for
+# `hermes plugins list`, not a registration mechanism. Registration happens
+# exclusively through ctx.register_hook(...) in __init__.py's register().
+# Do not "fix" a registration problem by editing this key.
+provides_hooks:
+  - pre_llm_call
+  - post_llm_call

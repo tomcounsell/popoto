@@ -2719,8 +2719,19 @@ class Model(metaclass=ModelBase):
             baseline, #698) slot the stored entry already carried — this
             method never writes or strips it, only truncates the public
             return.
+
+        Note:
+            The read-clamp-write is one atomic server-side script
+            (``CYCLES_ADJUST_LUA``, #699), closing the lost-update race
+            against a concurrent ``save()``/``strengthen_cycle()``/
+            ``weaken_cycle()`` on the same member. When ``pipeline`` is
+            given and the member currently has no stored cycles entry, this
+            now queues one ``EVALSHA`` where the pre-#699 client-side
+            existence check queued nothing — the no-entry short-circuit
+            moved server-side, so the pipeline is one command longer than
+            before in that specific case.
         """
-        from ..fields.cyclic_decay_field import CyclicDecayField
+        from ..fields.cyclic_decay_field import CYCLES_ADJUST_LUA, CyclicDecayField
 
         if field_name not in self._meta.fields:
             raise AttributeError(
@@ -2745,49 +2756,48 @@ class Model(metaclass=ModelBase):
         member_key = self._redis_key or self.db_key.redis_key
         cycles_hash_key = field.get_cycles_hash_key(self, field_name)
 
-        # Read current cycles
-        raw = get_REDIS_DB().hget(cycles_hash_key, member_key)
-        if not raw:
-            # No cycles stored — nothing to adjust
-            if isinstance(pipeline, redis.client.Pipeline):
-                return pipeline
-            return []
-
-        cycles = msgpack.unpackb(raw, raw=False)
-
-        # Multiply each amplitude by factor, clamp to [0.0, 100.0]
         max_amplitude = 100.0
         min_threshold = 0.01
-        for cycle in cycles:
-            # cycle = [period, amplitude, phase] or, once a member has saved
-            # (#698), [period, amplitude, phase, declared_baseline]. Only
-            # index 1 is mutated; any 4th slot is repacked untouched below.
-            new_amp = cycle[1] * factor
-            new_amp = max(0.0, min(new_amp, max_amplitude))
-            if new_amp < min_threshold:
-                new_amp = 0.0
-            cycle[1] = new_amp
-
-        # Pack with whatever arity is stored — a cycle entry may carry an
-        # optional 4th slot, the declared-baseline value ``on_save`` uses
-        # (#698). This method never writes or strips that slot; it mutates
-        # only index 1 and repacks the same list objects, so an unknown slot
-        # survives the write untouched. Truncating here (before packb) would
-        # turn this method into a slot-3 writer/deleter and destroy the
-        # baseline mechanism — see CyclicDecayField.on_save.
-        packed = msgpack.packb(cycles)
 
         if isinstance(pipeline, redis.client.Pipeline):
-            pipeline.hset(cycles_hash_key, member_key, packed)
+            run_lua(
+                pipeline,
+                CYCLES_ADJUST_LUA,
+                1,
+                cycles_hash_key,
+                member_key,
+                str(factor),
+                str(max_amplitude),
+                str(min_threshold),
+            )
             return pipeline
-        else:
-            get_REDIS_DB().hset(cycles_hash_key, member_key, packed)
-            # Truncate at the return site only (#698, critique B1): the
-            # public return contract of strengthen_cycle()/weaken_cycle() is
-            # "[period, amplitude, phase]" and must stay 3-element even once
-            # stored entries carry a 4th, internal baseline slot. The packed
-            # value above keeps all four slots.
-            return [cycle[:3] for cycle in cycles]
+
+        packed = run_lua(
+            get_REDIS_DB(),
+            CYCLES_ADJUST_LUA,
+            1,
+            cycles_hash_key,
+            member_key,
+            str(factor),
+            str(max_amplitude),
+            str(min_threshold),
+        )
+        if packed is None:
+            # No cycles stored — nothing to adjust (critique B2: the script
+            # returns Lua nil for this case, never a bare table/number, so
+            # it survives the wire without a stray integer truncation).
+            return []
+
+        cycles = msgpack.unpackb(packed, raw=False)
+        # Truncate at the return site only (#698, critique B1): the public
+        # return contract of strengthen_cycle()/weaken_cycle() is
+        # "[period, amplitude, phase]" and must stay 3-element even once
+        # stored entries carry a 4th, internal baseline slot. cmsgpack packs
+        # an integral Lua amplitude as a msgpack integer (Lua has one number
+        # type), so amplitude is coerced back to float here for callers that
+        # rely on isinstance(x, float); period is left alone since it may
+        # legitimately be a string.
+        return [[cycle[0], float(cycle[1]), float(cycle[2])] for cycle in cycles]
 
     @classmethod
     def get_info(cls) -> dict:

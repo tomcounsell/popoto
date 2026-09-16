@@ -540,6 +540,24 @@ class Defaults:
     # magic-number rule.
     M3_ASSEMBLY_CLAIM_TTL_MS = 30_000
 
+    # -- belief-sheet view resolver (recipes/view_resolver.py, #565) ---------
+    # Policy numerics for the M6 read path. Read directly from Defaults at
+    # call time (per-resolve policy resolution), never via a module-level
+    # alias: an import-time-bound alias would defeat runtime overrides and
+    # per-call policy dicts. Registered as exemptions in
+    # tests/benchmarks/test_defaults_sync.py, same shape as the validity and
+    # journal switches above.
+    # Per-record staleness cutoff: a claim whose decayed relevance is below
+    # this is annotated stale. Mirrors DEFAULT_SURFACING_THRESHOLD (0.5).
+    VIEW_RESOLVER_STALENESS_THRESHOLD = 0.5
+    # Retrieval widening while the reader gate is active: the resolver asks
+    # the assembler for max_items * this many candidates so pre-truncation
+    # gating can back-fill from headroom instead of returning short.
+    VIEW_RESOLVER_GATE_OVERFETCH_MULTIPLIER = 2
+    # Capped extra pulls when gate rejection still leaves the sheet short:
+    # at most this many re-retrievals excluding already-seen keys.
+    VIEW_RESOLVER_MAX_BACKFILL_PULLS = 1
+
     # -- reference resolution (extraction/resolution.py, #563) --
     # Deploy-level kill switch, not a tuning constant. Default True per the
     # repo's default-on doctrine; a PyPI adopter who cannot edit model code
@@ -593,6 +611,38 @@ class Defaults:
     # a parameterised test flips it to ("onset", "deadline") and asserts a
     # deadline reference then does emit.
     M4_VALID_FROM_ROLES = ("onset",)
+
+    # -- reconciliation (recipes/reconciliation.py, #564) ---------------------
+    # Upper bound on candidate classes the shortlist hands the judge for one
+    # entry. Bounds judge-call cost per entry at 2x this number (one forward
+    # ask plus one swapped-order symmetry probe per candidate), which is the
+    # bound AC5 asserts. Also bounds the degraded same-subject+type index scan
+    # used when no embedding provider is available.
+    M5_SHORTLIST_CAP = 8
+    # Whether a forward "same" verdict is re-asked with the claim order
+    # swapped before a join commits. On by default: the probe converts the
+    # worst failure mode (a silent mega-class built out of non-transitive
+    # "same" verdicts) into the safe one (an explicit disjunct pair). Pinned
+    # rather than exposed as a constructor kwarg per the magic-number rule;
+    # flipping it off is a measurement action, not a deployment one.
+    M5_SYMMETRY_PROBE_ENABLED = True
+    # Pinned model for the one sameness-judge call, mirroring
+    # ``extraction/verdict.py``'s ``VERDICT_MODEL``. A constrained two-value
+    # enum classification, not open-ended generation, so the smaller model is
+    # the right one.
+    M5_JUDGE_MODEL = "claude-haiku-4-5-20251001"
+    # Pinned max_tokens for the sameness-judge call. The reply is one enum
+    # key, so this mirrors ``VERDICT_MAX_TOKENS`` rather than sizing for prose.
+    M5_JUDGE_MAX_TOKENS = 256
+    # Name of the ``JournalEntry`` field the replay watermark filters on with a
+    # strict ``>`` (borrowing ``crystallize``'s watermark shape). A constant
+    # rather than a literal so the field rename is one edit.
+    M5_REPLAY_WATERMARK_FIELD = "captured_at"
+    # Joins into one class, within one reconciler pass, past which a
+    # class-size-velocity signal is logged. **Telemetry only, never a gate**
+    # (Risk 1): a legitimately large class must not be blocked, so this
+    # threshold reports and never refuses.
+    MEGA_CLASS_VELOCITY_ALERT = 5
 
 
 class TemporalPeriod:
