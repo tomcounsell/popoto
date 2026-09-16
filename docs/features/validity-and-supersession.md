@@ -58,22 +58,27 @@ SupersessionProtocol.chain(new)  # -> [old, new], oldest first
 
     Every `SupersessionProtocol` call in the example above is load-bearing,
     including the *first* one that returns `None`. A plain `.save()` only ever
-    **opens** an interval (`valid_from = save time`, `invalid_at = +inf`) and
-    never registers the record as the incumbent for any identity. So a model
-    that declares `validity = ValidityField()` and writes records with `.save()`
-    alone gets two fully populated interval ZSETs and an exclusion set that is
-    **permanently empty** — no error, no warning, and Redis state that looks
-    like gating is working. Worse, skipping the first `supersede()` is not a
-    small omission: without it the *second* claim finds no incumbent, closes
-    nothing, and returns `None` too.
+    **opens** an interval (`valid_from = save time`, or a declared future
+    epoch — see below) and never registers the record as the incumbent for
+    any identity. So a model that declares `validity = ValidityField()` and
+    writes records with `.save()` alone, with no declared future `valid_from`,
+    gets two fully populated interval ZSETs and an exclusion set that is
+    **permanently empty with respect to the closed-interval (`invalid_at`)
+    check** — no error, no warning, and Redis state that looks like gating is
+    working. The one thing a plain `.save()` *can* exclude is itself: a save
+    that declares a future `valid_from` is excluded until that moment arrives,
+    via the interval-not-yet-started check. Worse, skipping the first
+    `supersede()` is not a small omission: without it the *second* claim finds
+    no incumbent, closes nothing, and returns `None` too.
 
     Closing an interval requires one of: `SupersessionProtocol.supersede()` /
-    `save_and_supersede()`, `SupersessionProtocol.invalidate()`,
-    `ProvenanceJournal`, or `ObservationProtocol.on_context_used()` with the
-    `"contradicted"` outcome and `instance._superseded_by` set (see
-    [Observation Protocol](observation-protocol.md)). All four are explicit
-    application calls. Whether this should stay imperative is
-    [issue #693](https://github.com/tomcounsell/popoto/issues/693).
+    `save_and_supersede()`, `SupersessionProtocol.invalidate()` /
+    `save_and_invalidate()`, `ProvenanceJournal`, or
+    `ObservationProtocol.on_context_used()` with the `"contradicted"` outcome
+    and `instance._superseded_by` set (see
+    [Observation Protocol](observation-protocol.md#effects-matrix)). All
+    five are explicit application calls. Whether this should stay imperative
+    is [issue #693](https://github.com/tomcounsell/popoto/issues/693).
 
 ## Keyspace
 

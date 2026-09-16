@@ -134,7 +134,8 @@ Override `decay_rate` per query for different retrieval contexts:
 hot = Memory.query.filter(agent_id="agent-1").top_by_decay(5, decay_rate=1.0)
 ```
 
-On a model that also declares a [`ValidityField`](validity-and-supersession.md), a
+On a model that also declares a [`ValidityField`](validity-and-supersession.md)
+*and* whose records have had intervals closed by a supersession producer, a
 keyword-only `as_of` reconstructs ranking at a past moment instead of now:
 
 ```python

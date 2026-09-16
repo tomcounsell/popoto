@@ -1385,12 +1385,16 @@ Fact.query.filter(validity__as_of=two_weeks_ago)
 ```
 
 These lookups report interval state; they do not create it. A record saved with
-a plain `.save()` has an open interval (`invalid_at = +inf`), so it satisfies
-`current=True` forever. `current=True` starts excluding records only once a
-supersession producer — `SupersessionProtocol.supersede()`, `invalidate()`,
-`ProvenanceJournal`, or a `_superseded_by`-tagged `ObservationProtocol`
-`"contradicted"` outcome — has closed one. Declaring the field alone never
-closes anything; see
+a plain `.save()` and no declared `valid_from` has an open interval
+(`invalid_at = +inf`) that has already started, so it satisfies `current=True`
+until a producer closes it. (A `.save()` that *does* declare a future
+`valid_from` is excluded from `current=True` until that moment arrives — see
+the `valid_from > as_of` branch below.) `current=True` starts excluding an
+open-ended record only once a supersession producer —
+`SupersessionProtocol.supersede()` / `save_and_supersede()`, `invalidate()` /
+`save_and_invalidate()`, `ProvenanceJournal`, or a `_superseded_by`-tagged
+`ObservationProtocol` `"contradicted"` outcome — has closed one. Declaring the
+field alone never closes anything; see
 [ValidityField and SupersessionProtocol](features/validity-and-supersession.md).
 
 Using either lookup consumes a filter slot, so it disables sorted-range `limit`

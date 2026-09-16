@@ -128,6 +128,7 @@ Each row lists what the field/mixin does for each outcome. `—` means no effect
 | DecayingSortedField | touch           | —               | —            | —        | —                   |
 | AccessTracker       | confirm         | confirm         | discard      | discard  | discard             |
 | PredictionLedger    | auto-resolve    | moderate err    | auto-resolve | —        | auto-resolve        |
+| ValidityField       | —               | —               | —            | —        | close + chain (opt-in, see below) |
 
 Supporting notes:
 
@@ -136,6 +137,16 @@ Supporting notes:
 - **CyclicDecayField**: `acted` strengthens cycles and resolves pressure; `dismissed` and `contradicted` weaken cycles (`contradicted` more aggressively). These adjustments are durable — an ordinary `save()` preserves the learned amplitude rather than resetting it to the model's declared default, so repeated outcomes accumulate. See [Learned amplitudes persist across saves](cyclic-decay-field.md#learned-amplitudes-persist-across-saves). One ordering caveat: if you pass a shared `pipeline` to both `apply_outcome()` and `save()`, queue the `save()` first, or the amplitude adjustment is discarded when the pipeline executes.
 - **ConfidenceField**: `acted` corroborates; `contradicted` contradicts.
 - **PredictionLedgerMixin**: `acted`, `used`, `dismissed`, and `contradicted` auto-resolve pending predictions with appropriate error values (`used` maps to moderate error `Defaults.PL_AUTO_RESOLVE_USED`).
+- **ValidityField** (issue #580): a bare `contradicted` outcome is a no-op for this field — `on_context_used` has no slot in `outcome_map` for a second, correcting instance. To close the contradicted record's interval and chain it to its correction, tag the contradicted instance with the private `_superseded_by` attribute *before* reporting it:
+
+    ```python
+    stale._superseded_by = corrected
+    ObservationProtocol.on_context_used(
+        [stale], {stale.db_key.redis_key: "contradicted"}
+    )
+    ```
+
+    This routes through `_apply_supersession`, which delegates to `SupersessionProtocol.invalidate` — the same closure-and-chain primitive used by [ValidityField and SupersessionProtocol](validity-and-supersession.md). It is a strict no-op unless the model declares a `ValidityField` *and* `_superseded_by` is set; on every other model, or without the attribute, `contradicted` behaves exactly as the rest of this table describes.
 
 ## Outcomes Now Reach Forgetting
 
