@@ -315,7 +315,8 @@ class Defaults:
     # Calibrated on one machine against synthetic shapes. It is a latency knob,
     # never a correctness one — both branches return identical replies, pinned
     # by tests/test_validity_field.py::TestValidityPretrim. Confirming it
-    # against realistic skew is tracked as follow-up work to #585.
+    # against realistic skew and a second machine is tracked in #716; whether
+    # the pre-trim/fallback choice should be observable in production is #717.
     # Magic number for experimental tuning, not user config. Not swept.
     VALIDITY_GATE_PRETRIM_MAX_RATIO = 4.0
 
