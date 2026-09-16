@@ -45,6 +45,24 @@ server-side Lua timings — the scan and the `ZSCORE`s execute inside Redis — 
 re-measurement below reproduces the original figure closely, which is the evidence that
 the version change is not confounding this result.
 
+## Two harnesses, two numbers — read this before comparing any ratio below
+
+This document reports ratios from **two different measurement harnesses**, and they are not
+interchangeable. Conflating them was flagged in critique (C3) and is exactly the kind of
+"confident, wrong number" CLAUDE.md warns about.
+
+| Harness | What it times | Pre-change n=20k, 10%-closed |
+|---|---|---|
+| **A — pytest benchmark** (`TestValidityBenchmark`) | `BenchFact.query.top_by_decay(...)`, the full Python query path: arg resolution, `EVAL`, reply parse, key hydration | **1.46x** |
+| **B — raw `EVAL` probe** (scratch A/B script) | one `r.eval(script, ...)` and nothing else — server-side Lua only | **1.55x** |
+
+B shows a higher ratio because harness A dilutes the same server-side delta with constant
+Python-side overhead. **Harness A is authoritative for the criterion**, because the criterion
+is asserted by the in-repo benchmark, which is harness A. Harness B is authoritative for
+*comparing script variants*, because it isolates the thing being changed. Every table in "The
+pre-trim lever" below is harness B; the "Fresh baseline" block and the Success Criteria
+ceiling are harness A. No number from one is ever quoted as the other.
+
 ## Fresh baseline: the miss reproduces
 
 `tests/test_validity_field.py::TestValidityBenchmark`, unmodified, on the environment above:
@@ -73,7 +91,7 @@ measurements show the denominator, not the gate, is what moves it:
   is 98.4 ms (1.0%). A criterion whose difficulty is set by the scan it is not measuring is
   measuring the wrong thing.
 - **The gate's own cost is proportional to the scan, so the ratio is the stable quantity.**
-  Measured pre-change across three partition sizes at a fixed 10%-closed shape: 1.57x
+  Measured pre-change (harness B) across three partition sizes at a fixed 10%-closed shape: 1.57x
   (n=5k), 1.55x (n=20k), 1.45x (n=50k). The ratio is flat to ±8%; the absolute delta is not
   (4.9 ms / 20.2 ms / 44.5 ms).
 
@@ -169,6 +187,36 @@ Crossover sits at **≈5x** for both, so the guard threshold is pinned at **4.0*
 measured crossover with margin, and it bounds the Lua table at 4x the partition already being
 scanned.
 
+**The sweep's ratio and the runtime guard use the same formula** (critique N1). The guard
+computes `ZCOUNT(invalid, -inf, as_of) + ZCOUNT(valid, (as_of, +inf)`, a *sum* that
+double-counts a member present in both ranges — a malformed interval where
+`valid_from > invalid_at`. The `excluded` table de-duplicates via `excluded[m] = true`, so
+double-counting never affects correctness; it only makes the guard fall back *sooner*, which
+is the safe direction. The sweep's seed data has disjoint ranges (every member is either
+closed or open-and-started, never both), so sum == union there and the calibration is
+measured against the same quantity the guard compares. Do not "fix" the double-count into a
+union count: that would loosen the guard relative to its calibration.
+
+**The 4.0 default is calibrated on one machine and on synthetic shapes** (critique C1/C4). It
+is shipped anyway, for three reasons, and the reasons are the record of the trade-off rather
+than a dismissal of it:
+
+1. **It is a performance knob, not a correctness knob.** Both branches return identical
+   replies — that is what `test_pretrim_matches_per_member_gate` pins. A mis-calibrated
+   threshold costs latency, never a wrong answer.
+2. **The failure it could cause is bounded and already measured.** Worst case is the
+   un-pretrimmed skew shape: 16.26x on the extreme (2k partition / 200k archive), 2.54x on the
+   realistic one. Bad, but not unbounded, and `ARGV[8] <= 0` is a genuine kill switch that
+   restores the pre-#585 path exactly.
+3. **Blast radius today is zero.** No shipped model declares a `ValidityField`
+   (`constants.py`, `VALIDITY_GATING_ENABLED` docstring), so `validity_gate_args` returns
+   `VALIDITY_GATE_DISABLED` for every model in the tree and this code does not execute in any
+   current workload. The calibration has until the first adopter to be confirmed.
+
+**Confirmation is owed, not waived.** #586's LongMemEval-S run produces the first realistic
+closed-fraction and partition/archive skew. Re-checking the crossover against it is filed as a
+follow-up rather than left as an open question in this document — see Follow-ups.
+
 ## Technical Approach
 
 One chokepoint makes this small: all three production `DECAY_SCORE_LUA` call sites
@@ -218,11 +266,32 @@ KEYS/ARGV array (#648/#662). **No call site changes.**
   absent from both ZSETs (the unmanaged-stays-visible rule).
 - **New** `test_pretrim_falls_back_when_exclusion_set_dwarfs_partition` — seeds an archive
   past the 4.0 threshold and asserts the per-member path is taken *and* the result is still
-  correct. Asserted by command count (`ZSCORE` calls issued), not by timing.
+  correct.
+
+  **Mechanism, pinned here rather than left to the builder** (critique C2). Which branch ran
+  is observed via `INFO commandstats`, diffing `cmdstat_zscore:calls` across the single
+  `EVAL`. **Verified empirically on this environment before writing this plan**: an `EVAL`
+  issuing 100 `redis.call('ZSCORE', ...)` moves the counter by exactly 100, so script-internal
+  dispatches *are* counted. `INFO` is a core command on both Redis and Valkey — no module, no
+  new infrastructure.
+
+  Two details make it robust rather than flaky:
+  - **Threshold, never equality.** This Redis instance is shared across lanes, so another
+    lane's traffic can only inflate the delta. The two branches differ by ~2N (N = partition
+    size), which no amount of background noise closes: assert `delta >= N` for the fallback
+    branch and `delta < N // 2` for the pre-trim branch.
+  - **No `CONFIG RESETSTAT`.** It is instance-global and would clobber other lanes' counters.
+    Take a before/after delta instead.
+
+  If the counter is unavailable on some future server build, the test must **fail loudly**,
+  not silently degrade to a correctness-only assertion — a correctness assertion passes on
+  both branches and would therefore assert nothing about the thing under test.
 - **Update** `TestValidityBenchmark::test_p50_gated_retrieval_overhead_at_20k` — tighten
   `BENCH_MAX_RATIO` from 4.0 to **2.0**, and rewrite the docstring (it currently narrates the
-  1.4x as the accepted state). 2.0 keeps ~2x headroom over the new 1.00x while still failing
-  a return to the un-pretrimmed 1.55x.
+  1.4x as the accepted state). The rewritten docstring cites **one** number, the harness-A
+  figure this benchmark itself produces — never the harness-B 1.55x from the scratch probe
+  (critique C3). 2.0 still fails a return to the per-member path, whose harness-A ratio is
+  1.46x.
 - Existing byte-parity and gate-semantics tests must pass unmodified — they are the
   regression net for point 1.
 
@@ -233,7 +302,8 @@ KEYS/ARGV array (#648/#662). **No call site changes.**
 - [ ] `validity_primitives_v0.md`'s waived criterion is replaced (not deleted) by the ratio
       form, with the waiver history preserved.
 - [ ] Gated/ungated p50 ratio at 20k is **≤ 2.0**, asserted in-repo, measured against a
-      same-process ungated control.
+      same-process ungated control. **Harness A** (the pytest benchmark) — the ceiling is
+      never checked against a harness-B number.
 - [ ] Pre-trim and per-member gate return identical replies on every shape tested.
 - [ ] A dwarfing exclusion set falls back to the per-member path (no 16x regression).
 - [ ] `black src/ tests/` and `ruff check src/` clean; `scripts/mypy_ratchet.py` not raised.
@@ -259,16 +329,32 @@ skew. This plan's threshold of 4.0 is calibrated on synthetic shapes; #586's dat
 input for confirming it later. This lane does not wait on #586 and does not touch its Redis DB
 (11).
 
+## Follow-ups (filed, not left as open questions)
+
+Critique C1 asked for the 4.0 re-verification to be a tracked commitment rather than a
+question in a plan doc. These are filed as issues after this plan is approved, and referenced
+from the `VALIDITY_GATE_PRETRIM_MAX_RATIO` docstring:
+
+1. **Confirm the pre-trim crossover against #586's realistic skew data**, on a second
+   environment. The crossover is a ratio of Lua table-insert cost to `redis.call` dispatch
+   cost, which *should* be machine-stable, but has been measured on exactly one machine. If
+   the true crossover on another host is below 4.0, the guard greenlights pre-trim into the
+   regression shape it exists to prevent.
+2. **Decide whether the pre-trim/fallback branch should be observable in production.** Today
+   the choice is invisible to the caller. A counter or debug log would make production skew
+   diagnosable, at the cost of a write on the hot Lua path. Deliberately out of scope here.
+
 ## Questions for the architect
 
-1. **Is 2.0 the right new ceiling, or should it be tighter?** Measured is 1.00x. A ceiling of
-   1.25x would catch a return to the per-member path immediately, but would also go red on the
-   fallback shape (a legitimately dwarfing exclusion set), which the benchmark does not
-   currently seed. 2.0 was chosen because it fails the old 1.55x and passes both branches.
-2. **Should the fallback branch be observable?** Today the choice between pre-trim and
-   per-member is invisible to the caller. A counter or a debug log would make production skew
-   diagnosable, but adds a write to the hot Lua path. Left out; happy to add if wanted.
-3. **`VALIDITY_GATE_PRETRIM_MAX_RATIO` is calibrated on this machine.** The crossover is a
-   ratio of Lua table-insert cost to `redis.call` dispatch cost, which should be
-   machine-stable, but it has only been measured on one. #586's run is the natural second
-   data point.
+*(The architect was AFK for this lane; these are recorded, and the lane proceeded on the
+stated default in each case rather than blocking.)*
+
+1. **Is 2.0 the right new ceiling, or should it be tighter?** Harness-A measured is well under
+   it. A ceiling of 1.25x would catch a return to the per-member path immediately, but would
+   also go red on the fallback shape (a legitimately dwarfing exclusion set), which the
+   benchmark does not currently seed. **Proceeded with 2.0**, which fails the pre-change 1.46x
+   and passes both branches.
+2. **Should `VALIDITY_GATE_PRETRIM_MAX_RATIO` ship at 4.0, or hold as experimental until #586
+   lands?** **Proceeded with 4.0**, on the three-part argument recorded above (perf knob not
+   correctness knob; bounded and measured worst case; zero blast radius today). Follow-up 1
+   is the confirmation gate.
