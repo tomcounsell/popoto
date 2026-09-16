@@ -10,6 +10,16 @@
 > plan therefore delivers a **Popoto-only, within-system hint-gap study** on StructMemEval
 > data, which is the part of the issue's thesis that is actually falsifiable here, and
 > explicitly descopes the competitor arms. See §No-Gos and §Questions for the architect.
+>
+> **Second verdict, found while planning and more consequential than the first.** The
+> issue's premise — that Popoto's typed primitives already give StructMemEval's structures
+> as substrate — does not hold against the code. `ExtractedFact` has no slot for a typed
+> value under *any* extraction provider, and `PredictionLedgerMixin` is a prediction-*error*
+> ledger, not an accounting ledger. **There is no subconscious write path into a typed
+> structure today** (§Spike Results). One of the three families has a free, informative arm
+> (state machine, via `ValidityField`), one needs a paid extractor to be informative at all
+> (tree), and one has nothing to route to (accounting). The plan reports that gap rather
+> than scoring it as 0%, and Q6/Q7 ask whether to file the feature it implies.
 
 ---
 
@@ -42,9 +52,11 @@ Two hypotheses, stated so they can fail:
   typed primitives scores materially above a snippet-retrieval control run inside this same
   harness on the same items.
 - **H2 (subconscious — the headline).** For Popoto, the **hint gap is ≈ 0**: accuracy with
-  the structural hint in the prompt does not exceed accuracy without it by more than the
-  paired confidence interval. If H2 fails, the typed-substrate thesis is wrong as stated
-  and we report that.
+  the structural hint in the prompt does not exceed accuracy without it, judged against the
+  pre-registered criteria in §Research ("Pre-registered statistical criteria") — an exact
+  McNemar test at alpha 0.05 plus a declared minimum detectable effect, so a small `n`
+  cannot pass H2 by widening the interval. If H2 fails, the typed-substrate thesis is wrong
+  as stated and we report that.
 
 H2 is the one worth chasing because it is **measurable without a competitor**. It is an
 intra-system, paired, same-metric-family difference computed over identical item ids. That
@@ -52,16 +64,20 @@ is the design's load-bearing property: it needs nothing we cannot run.
 
 ### Anti-hypothesis (where we expect to lose)
 
-Issue question 4 is correct and this plan treats it as the likely negative result.
-`PredictionLedgerMixin` guarantees clean aggregation **once entries are in it**. Nothing
-proves `SubconsciousMemory.extract_memories()` routes `"Alice: Paid €179 for museum -
-split with Bob"` into a typed ledger entry without a human writing the schema mapping.
-StructMemEval's documented accounting failure modes — omission, duplication, hallucination
-of transactions — land on that extraction step, not on the aggregation step we are strong
-at. So **extraction fidelity is a first-class measured output of this plan**, with its own
-metric family, and a plausible outcome of the whole track is "the substrate is right and
-the write path does not populate it." That is a useful result and the plan must be able to
-report it without being called a failure.
+Issue question 4 is correct, and the spikes below turned it from a suspicion into a
+confirmed structural gap. Nothing routes `"Alice: Paid €179 for museum - split with Bob"`
+into a typed ledger entry, because (a) `ExtractedFact` has no slot for a typed value under
+any provider, and (b) `PredictionLedgerMixin` is a prediction-*error* ledger, not an
+accounting ledger — see §Spike Results, spike-1 and spike-2. StructMemEval's documented
+accounting failure modes — omission, duplication, hallucination of transactions — land on
+that extraction step, not on the aggregation step the issue assumed we were strong at.
+
+So **extraction fidelity is a first-class measured output of this plan**, with its own
+metric family, and the most likely outcome of the whole track is "the substrate exists, the
+subconscious loop exists, and nothing connects them." That is a useful result — arguably
+the most useful thing this benchmark can produce — and the plan is built so it can be
+reported as a finding rather than laundered into a score (§Solution, "The zero-by-construction
+rule").
 
 ---
 
@@ -111,6 +127,79 @@ family entirely. The repo has moved since the issue was written. Logged as Q1.
   Their numbers come from a different harness, different models, different prompts. Putting
   them in a table beside ours is precisely the cross-comparison the repo's doctrine bans
   (§Metric Families). They may appear as **prose context with a citation**, never as a row.
+
+---
+
+## Spike Results
+
+These are **source-read spikes**, not executed runs: nothing below required Redis, an API
+key, or a benchmark run, and none of it was assumed from the issue text. Each claim cites
+the file and line that establishes it. They change the plan materially — see the corrected
+routing table in §Research.
+
+### spike-1: What does the subconscious write path actually emit?
+
+`SubconsciousMemory.extract_memories()` (`src/popoto/recipes/subconscious_memory.py:427`)
+delegates to an extraction provider. There are three:
+
+| Provider | Location | Output |
+|---|---|---|
+| `HeuristicExtractionProvider` (**the default**) | `src/popoto/extraction/__init__.py:149` | splits text on `(?<=[.!?])\s+`, drops sentences under 10 chars, emits `ExtractedFact(text=sentence)` — **`entities=[]`, `importance=None`, `confidence=None`** |
+| `RawTurnExtractionProvider` | `src/popoto/extraction/__init__.py:213` | whole turn as one fact |
+| `ClaudeExtractionProvider` | `src/popoto/extraction/claude.py:112` | Anthropic structured output, `EXTRACTION_MODEL = "claude-opus-4-8"`, key from **`ANTHROPIC_API_KEY`** |
+
+**The decisive finding is `ExtractedFact`'s shape** (`src/popoto/extraction/__init__.py`,
+and `FACTS_SCHEMA` at `claude.py:83-90`, which requires exactly `["text", "entities",
+"importance", "confidence"]`):
+
+> `ExtractedFact` has slots for `text`, `entities`, `importance`, `confidence`, plus
+> provenance offsets. **It has no slot for a typed value of any kind** — no number, no
+> relation, no role. Neither provider, including the paid Claude one, can emit
+> "payer=Alice, amount=179, split_with=[Bob]".
+
+So the subconscious write path produces **untyped text facts with an optional entity list**,
+for every provider. That is the ceiling.
+
+### spike-2: Does `PredictionLedgerMixin` do what the issue claims?
+
+**No.** The issue's mapping table lists it under "Ledger / count / netting". Its actual API
+(`src/popoto/fields/prediction_ledger.py:309-624`) is `record_prediction(instance,
+predicted)`, `resolve_prediction(instance, actual)`, `compute_prediction_error()`,
+`get_highest_errors()`, `error_summary()`. It is a **prediction-error ledger** — a
+calibration/regret structure — not an accounting ledger of debits and credits. It stores one
+hash field per record at `$PL:{Class}:meta:{pk}` holding a predicted/actual pair.
+
+**Popoto has no transaction-ledger primitive**, and the count-based family's whole task is
+netting transactions. Nothing in this repo aggregates `+179 / -89.50` across parties.
+
+### spike-3: What *does* route, and under what conditions?
+
+| Family | Issue's claimed primitive | What is actually there | Verdict |
+|---|---|---|---|
+| Count-based / accounting | `PredictionLedgerMixin`, `ConfidenceField` ledger, `FrequencySketch` | prediction-error ledger (spike-2); `FrequencySketch` is a Count-Min *frequency* sketch, not a signed-amount accumulator | **no route exists** |
+| State machine | `MemoryLifecycle`, `EventStreamMixin` | `MemoryLifecycle` (`recipes/memory_lifecycle.py:347`) is an episodic/semantic **tier-promotion and auto-forget policy** — nothing to do with domain state. The real match is **`ValidityField`** (`fields/validity_field.py:422`), which supersedes a record on an identity and keeps the old one queryable in historical mode — exactly "current state under 0–5 updates" | **routes, but via a different primitive than the issue names** |
+| Tree / graph | `CoOccurrenceField`, `graph_traversal.traverse()` | genuinely wired subconsciously: `SubconsciousMemory._seed_associations()` (`recipes/subconscious_memory.py:824`) links co-mentioned entities as graph nodes on every extracted fact — **but it is a documented no-op unless `fact.entities` has ≥2 names**, and per spike-1 only `ClaudeExtractionProvider` ever populates `entities` | **routes only with paid extraction** |
+
+### What the spikes change
+
+1. **The accounting family has no subconscious arm to measure.** With the default provider,
+   F3 would be zero *by construction* — an artifact of provider choice, not a finding. The
+   critique was right that this is the difference between a measurement and a tautology.
+2. **The tree family's arm is informative only with `ANTHROPIC_API_KEY` set**, because the
+   heuristic provider emits `entities=[]` and `_seed_associations()` no-ops. A heuristic-only
+   tree run is also zero by construction.
+3. **The state-machine family is the one family with a free, informative arm**, via
+   `ValidityField` supersession — and even there the write path must produce a supersession
+   identity, which untyped text facts do not obviously carry.
+4. **Two API keys, not one.** `ANTHROPIC_API_KEY` (extraction, `claude-opus-4-8` — an
+   expensive tier, per-message during ingest) *and* `OPENAI_API_KEY` (judge). §Prerequisites
+   and §Risks are corrected accordingly.
+
+**This is the most important output of the plan so far, and it is a finding about Popoto,
+not about StructMemEval.** The typed-substrate thesis has a missing middle: the substrate
+exists (fields), the subconscious loop exists (inject/extract), and *there is no typed write
+path connecting them*. The benchmark's honest role is to establish that, not to route around
+it — see §Solution, "The zero-by-construction rule."
 
 ---
 
@@ -166,7 +255,7 @@ family entirely. The repo has moved since the issue was written. Logged as Q1.
 | 1 | Adapter vs reimplementation | **(a) vendor the task data, score through our own path** | (b) requires Qdrant + `mem-agent` + `EMem` + paid keys and couples us to a WIP repo. (a) costs one loader — the data shape is uniform across all four families. Consequence stated plainly: **(a) cannot produce competitor numbers**, so the issue's acceptance criterion "head-to-head" is not met in this phase. |
 | 2 | How is "long-running agentic work" operationalized? | **Scenario-level all-queries-correct under an un-augmented agent prompt** — a binary per *scenario*, explicitly labelled a **proxy** | StructMemEval scenarios have no goal state, no tools, and no termination condition. Building a real agent loop means inventing the task objective, which makes the benchmark ours rather than theirs and puts an unbounded agent-framework dependency in the critical path. The proxy is honest, cheap, and computable from data we already produce. The true trajectory version belongs to **PTR**. |
 | 3 | Instruction-parity protocol | **Make it a 2×2 factor matrix, and name the asymmetry as the measured variable** | See §Solution, "Arm matrix." Because competitors are descoped, the asymmetry is measured *within Popoto*, which removes the confound argument entirely: every cell is the same system, same corpus, same items. |
-| 4 | Which primitive routes each family, and does the write path populate it? | **Measured, never assumed** — extraction fidelity is its own deliverable and its own metric family | The accounting family's messages are template-generated (`"{who}: Paid €{amt} for {what} - split {with}"`), so a **gold transaction list is derivable by parsing the corpus**. That gives us a write-path ground truth *upstream does not have*, and is the single highest-value thing in this plan. |
+| 4 | Which primitive routes each family, and does the write path populate it? | **Answered by spike-1/2/3, and the answer is mostly "it does not."** Extraction fidelity stays a first-class deliverable, now with the corrected routing table and the zero-by-construction rule | The accounting family's messages are template-generated (`"{who}: Paid €{amt} for {what} - split {with}"`), so a **gold transaction list is derivable by parsing the corpus** — a write-path ground truth upstream does not have. But per spike-2 there is no ledger primitive to populate, and per spike-1 no provider emits a typed value at all. So F3's first job is to *quantify the missing middle*, not to grade a working path. |
 | 5 | Relationship to #456 | **A distinct StructMemEval track that feeds PTR** — not filed as PTR | PTR is defined as trajectory recall on task success / steps-to-completion for agentic tasks. This has no trajectories and no steps. It contributes the goal-completion *scoring vocabulary* PTR will reuse. |
 
 ### The comparison that is defensible
@@ -188,6 +277,32 @@ control:  snippet_baseline, no typed substrate, cell A conditions            [H1
   small B−A cannot be dismissed as "everything scored low, of course the gap was small."
   A floor check: if D ≈ A ≈ 0 the run is uninformative and must be reported as such, not as
   "gap closed."
+
+### Pre-registered statistical criteria
+
+These are fixed **now**, before any live run, so an ambiguous number cannot be litigated
+after the fact. The corpus sizes are small and lopsided (accounting ≈ 45 judged items with
+alternative references; state machine 14; tree ≈ 320), so a naive "within the confidence
+interval" test would let a wide CI swallow a real effect — the escape hatch the critique
+correctly identified.
+
+- **Test:** two-sided **exact McNemar** on the discordant pairs (`hint_only` vs
+  `native_only`), per family and pooled. Paired, because every cell runs the same item ids.
+- **Alpha:** 0.05.
+- **Minimum detectable effect (MDE), declared per family before the run:** computed from
+  that family's `n` at alpha 0.05 and power 0.80, and **printed in the report**. If a
+  family's MDE exceeds 15 accuracy points, that family is declared **underpowered** and
+  reports its point estimate with an explicit "cannot support or refute H2 at this n" line —
+  never a "gap closed" verdict.
+- **H2 is supported** only when the McNemar test fails to reject **and** the family is not
+  underpowered **and** the observed |B − A| is below the declared MDE. All three, or the
+  verdict is "inconclusive." A non-significant result from an underpowered family is
+  explicitly *not* evidence for H2.
+- **"Materially above" (the cell-D floor check) is defined numerically:** D − A ≥ 15
+  accuracy points **and** McNemar significant at alpha 0.05. If D does not clear both, the
+  run is reported as **uninformative** and no H2 verdict is issued at all.
+- Multiple families are tested, so pooled-plus-per-family reporting uses
+  **Holm–Bonferroni** across the family-level tests; unadjusted p-values are shown alongside.
 
 **The snippet control is a control, not a competitor.** It is this harness's analogue of
 SIQ's `QueryOnlyStubAdapter` — a dependency-free arm that should score near the floor *by
@@ -339,7 +454,8 @@ where possible — measuring what the write path stores does **not** require a j
 | Prerequisite | Status | Notes |
 |---|---|---|
 | StructMemEval corpus | **available** | Apache-2.0, anonymous HTTPS, pinned at `64d2c9b2` |
-| `OPENAI_API_KEY` | **needed for lane 2 only** | same dependency `--judged` already has; `is_judge_available()` already degrades gracefully |
+| `OPENAI_API_KEY` | **needed for lane 2 only** | judge. Same dependency `--judged` already has; `is_judge_available()` already degrades gracefully |
+| `ANTHROPIC_API_KEY` | **needed for lane 2, tree family only** | extraction. Per spike-1/3, `ClaudeExtractionProvider` (`EXTRACTION_MODEL = "claude-opus-4-8"`) is the only provider that populates `fact.entities`, without which `_seed_associations()` no-ops and the tree arm is zero by construction. Not needed for the state-machine family. **This dependency was missing from the issue and is the second key, not a variant of the first.** |
 | Qdrant / `mem-agent` / `EMem` | **not needed** | only required by upstream's own harness, which we are not running (§No-Gos D2) |
 | A free Redis DB | needed | `--db` is explicit and mandatory; `{0, 14, 15}` forbidden, and this plan adds **13** to the forbidden set (the examples smoke test owns it) |
 | Maintainer sign-off on judge spend | **needed for lane 2** | Q5 |
@@ -367,19 +483,50 @@ where possible — measuring what the write path stores does **not** require a j
    `SnippetBaselineAdapter` (plain top-k over raw turns, no typed substrate — the control).
    `ADAPTERS = {"native": ..., "instructed": ..., "snippet_baseline": ...}`.
 3. **Family → primitive routing**, declared in one table in `sme/routing.py` so the claim is
-   inspectable rather than buried: accounting → `PredictionLedgerMixin` / ledger aggregation;
-   state_machine → `MemoryLifecycle` + `EventStreamMixin` current-state; tree → `CoOccurrenceField`
-   + `recipes/graph_traversal.traverse()`. Recommendations is **not routed** in this phase
-   (Q2) and its items are loaded but skipped with `status="skipped-unrouted"`, counted, and
-   reported — never silently dropped.
-4. **`sme/extraction_audit.py`** — F3. Parses the accounting corpus's templated messages into
-   a gold transaction list, reads back what the native arm's typed store actually contains,
-   and emits correct / omitted / duplicated / hallucinated counts per case. Runs without a
-   judge and without an API key.
-5. **`sme/runner.py` + `sme/run_sme.py`** — orchestration and CLI.
-6. **`sme/compare.py`** — the paired join, the fingerprint refusal, McNemar-style discordant
-   cells, and the gap artifact.
-7. **`sme/report.py`** — JSON + Markdown writer with the family-segregated schema.
+   inspectable rather than buried. Corrected per spike-3 — this is **not** the mapping the
+   issue proposes:
+
+   | Family | Route | Requires | Informative without it? |
+   |---|---|---|---|
+   | state_machine | `ValidityField` supersession (current value on an identity, history retained) | nothing | **yes** — the one free, informative arm |
+   | tree | `CoOccurrenceField` seeded by `SubconsciousMemory._seed_associations()`, read by `recipes/graph_traversal.traverse()` | `ANTHROPIC_API_KEY` (only `ClaudeExtractionProvider` populates `fact.entities`) | **no** — heuristic provider emits `entities=[]`, so the graph stays empty |
+   | accounting | **none — no ledger primitive exists** (spike-2) | — | **no** — reported as a structural gap, not scored as a Popoto failure |
+   | recommendations | not routed this phase (Q2) | — | loaded, skipped with `status="skipped-unrouted"`, counted, reported — never silently dropped |
+
+4. **The zero-by-construction rule.** Any arm whose score is forced to a constant by a
+   missing capability rather than by a measured behavior is reported as
+   `status="unroutable"` with the reason, and is **excluded from every accuracy denominator
+   and from every H1/H2 test**. Concretely: an accounting arm with no ledger primitive, or a
+   tree arm run with the heuristic extractor, does not get to be a "0% score." The runner
+   refuses to emit an accuracy number for such a cell and emits the gap description instead.
+   A test plants an unroutable configuration and asserts the refusal. Without this rule the
+   benchmark would manufacture impressive-looking zeros that say nothing about Popoto's
+   behavior, which is the inverse of the vacuity trap this repo already guards against.
+5. **`sme/extraction_audit.py`** — F3. Parses the accounting corpus's templated messages into
+   a gold transaction list, then reads back what the native arm's store actually contains and
+   emits correct / omitted / duplicated / hallucinated counts per case. Runs without a judge
+   and without an API key. Per spike-1/2 its expected finding is that **no typed transaction
+   is recoverable at all** — so it reports, separately from the four counts, a
+   `structural_gap` block naming what was missing (no typed slot on `ExtractedFact`; no
+   ledger primitive). The four counts are computed against whatever *is* stored (text facts),
+   so "the amount appears in a stored sentence but nothing sums it" is distinguishable from
+   "the message was never stored."
+6. **`sme/runner.py` + `sme/run_sme.py`** — orchestration and CLI.
+7. **`sme/compare.py`** — the paired join, the fingerprint refusal, the exact-McNemar tests
+   and MDE/power lines from §Research, and the gap artifact.
+8. **`sme/report.py`** — JSON + Markdown writer with the family-segregated schema.
+
+### Ingest granularity (pinned, not left to the build)
+
+`SmeAdapter.ingest_session(session)` takes a session, but `extract_memories()` operates on
+one text blob per call, and F3's per-transaction accounting depends on which. **Pinned: one
+`extract_memories()` call per message**, with `turn_id` set to
+`f"{case_id}:{session_id}:{msg_index}"`. Rationale: the corpus's accounting messages are one
+transaction per message, so per-message extraction gives F3 a 1:1 gold-to-turn mapping and
+makes omission attributable to a specific message. Concatenating a session would make every
+omission unattributable and would additionally cross the heuristic provider's sentence
+splitter over unrelated transactions. Any deviation invalidates the F3 numbers and must be
+re-planned, not improvised.
 
 ### CLI
 
@@ -402,6 +549,18 @@ must be the one you opt into by name. `--judge live` with no `OPENAI_API_KEY` ex
 with a clear message rather than silently degrading — the opposite of `run_external.py`'s
 `--judged` skip-and-return-0, because here the judge *is* the metric rather than an extra
 stage on top of one that already ran.
+
+**Why `--judge-model` is configurable here when `judge.py` refuses to be.** `judge.py`'s
+docstring pins its model and states "there is no model-override flag" — because its numbers
+claim **Mem0/GAM leaderboard parity**, and a leaderboard comparison is only meaningful at the
+protocol's pinned model. This track makes no leaderboard claim: every comparison is
+intra-system and paired (§Research), so what matters is that *both sides of a pair used the
+same judge*, not that the judge matches someone else's protocol. `compare.py` enforces
+exactly that by refusing artifacts with mismatched judge identity. The invariant that
+justified pinning does not transfer; the invariant that replaces it is enforced mechanically.
+The flag's default is nonetheless `gpt-4o-mini` (matching `judge.py`, cheaper than upstream's
+`gpt-4o`), and any deviation from upstream's default is recorded in the artifact and stated
+in the report's limits paragraph.
 
 ### DB discipline (harness fact 1)
 
@@ -481,6 +640,9 @@ possible:
 | `test_status_counts_sum_to_total` | no silently dropped items |
 | `test_empty_selection_is_an_error` | `n=0` is a failure, not a 0.0 score |
 | `test_extraction_audit_on_synthetic_ledger` | known omission / duplication / hallucination are each detected |
+| `test_unroutable_cell_emits_no_accuracy` | an accounting cell, and a tree cell with the heuristic extractor, each yield `status="unroutable"` with a reason and no accuracy number, and are excluded from the denominator |
+| `test_mcnemar_and_power_on_fixed_table` | exact McNemar, MDE, underpowered flag and Holm–Bonferroni reproduce known values on a fixed synthetic contingency table |
+| `test_ingest_granularity_is_per_message` | `NativeAdapter.ingest_session` issues one `extract_memories()` call per message with the pinned `turn_id` shape |
 | `test_upstream_attribution_present` | `fixtures/UPSTREAM.md` exists and names the pinned SHA and the Apache-2.0 license |
 
 Narrow-scope run for this lane: `pytest tests/benchmarks/test_sme.py`. Note the standing
@@ -534,7 +696,20 @@ commit SHA, stamp it in every artifact, and make the fingerprint a refusal condi
 Verified live behavior, not hypothetical. **Mitigation:** mandatory `--db`, forbidden set,
 and the post-import read-back assertion; the asserted value is what gets recorded.
 
-### Risk 5 — Judge spend runs away
+### Risk 5 — Extraction spend, which is the larger number
+Per spike-1/3 the tree family needs `ClaudeExtractionProvider` at `claude-opus-4-8` — a
+top-tier model — called **once per message** (pinned granularity). The tree family is 10
+cases × 250 messages = **2,500 extraction calls per ingest**, repeated for every cell that
+ingests. This dwarfs the judge cost and was invisible in the issue's framing.
+**Mitigations:** (a) extraction results are cached by `(case_id, session_id, msg_index,
+provider, model)` and reused across cells, so ingest is paid **once**, not per cell — the
+arms differ in the *query* phase, not the write phase, for every cell sharing an adapter
+substrate; (b) a cost estimate is printed and confirmed before any live extraction; (c) the
+extraction model tier is already an open maintainer decision under #489, so this run should
+not settle it unilaterally — see Q5. Note the **recommendations family is loaded but not
+routed (D6), and therefore is never ingested**, so its 931 KB contributes nothing to spend.
+
+### Risk 6 — Judge spend runs away
 Rough order: 51 scenarios but question counts are lopsided (tree alone ≈ 320 questions), so
 the full small bench is ≈ 400–600 judged units per cell. Five cells ≈ 2–3k generation +
 judge call pairs. At `gpt-4o-mini` rates that is single-digit dollars; at `gpt-4o` (upstream's
@@ -544,16 +719,16 @@ to `gpt-4o-mini` and record the deviation from upstream's `gpt-4o` default in th
 and in the report's limits paragraph. LLM-based *extraction* is off by default — turning it
 on multiplies the ingest cost by the message count, which is the larger number.
 
-### Risk 6 — Concurrent SDLC lanes contend on Redis
+### Risk 7 — Concurrent SDLC lanes contend on Redis
 Standing repo hazard. **Mitigation:** explicit `--db` per lane, key sweep scoped to `Sme*`
 prefixes, and no flush of any kind.
 
-### Risk 7 — Someone tabulates F1 next to a LongMemEval recall number
+### Risk 8 — Someone tabulates F1 next to a LongMemEval recall number
 The exact thing doctrine forbids, and the most likely way this track produces a wrong claim.
 **Mitigation:** §Metric Families is enforced by test, the schema is family-nested with no
 flat summary, and the "never_compare_to" strings are carried into the rendered report.
 
-### Risk 8 — Publishing a headline from the smoke fixture
+### Risk 9 — Publishing a headline from the smoke fixture
 The committed fixture is a handful of cases; a number from it is not a result.
 **Mitigation:** artifacts record `fixture` and `n`, and the docs `Spec` for the headline page
 reads only the full-corpus artifact. A fixture-derived artifact is marked
@@ -600,7 +775,9 @@ Lane 1 (schedulable now, no key, no spend):
 - [ ] `sme/compare.py` raises `SmeComparabilityError` on a fingerprint mismatch **and** on a judge-identity mismatch, each covered by a test.
 - [ ] Every artifact records: upstream commit SHA, corpus fingerprint, **asserted** `redis_db`, judge model + prompt SHA-256, `popoto` + `redis-py` versions, `n` per family, and the full status breakdown summing to the item total.
 - [ ] The artifact JSON has **no flat mixed-family summary**; `f1_judged` / `f2_goal` / `f3_extraction` are separate blocks each carrying `unit` and `never_compare_to`.
-- [ ] F3 reports correct / omitted / duplicated / hallucinated counts for the accounting family against a corpus-derived gold transaction list, with the audit's own detection verified on a synthetic case.
+- [ ] F3 reports correct / omitted / duplicated / hallucinated counts for the accounting family against a corpus-derived gold transaction list, with the audit's own detection verified on a synthetic case, **plus** a `structural_gap` block naming the missing typed slot and the absent ledger primitive (§Spike Results).
+- [ ] The zero-by-construction rule is enforced: a cell configured unroutably (accounting with no ledger primitive; tree with the heuristic extractor) emits `status="unroutable"` with a reason and **no accuracy number**, and is excluded from every denominator. Covered by a test that plants such a configuration.
+- [ ] `compare.py` computes exact McNemar per family and pooled, prints the declared MDE and the underpowered flag per family, and applies Holm–Bonferroni across families — all covered by a test with a fixed synthetic contingency table.
 - [ ] `fixtures/UPSTREAM.md` records repo, commit SHA, Apache-2.0, and the paper citation.
 - [ ] `docs/scripts/gen_benchmark_pages.py` has `Spec` entries for the SME artifacts (no orphan warning) and `mkdocs build --strict` passes.
 - [ ] No file under `src/popoto/` is modified; `run_external.py` is unchanged.
@@ -608,11 +785,43 @@ Lane 1 (schedulable now, no key, no spend):
 Lane 2 (needs `OPENAI_API_KEY` + maintainer go-ahead):
 
 - [ ] All four cells plus the snippet control run on the full pinned small-bench corpus, with committed artifacts under `tests/benchmarks/results/sme/`.
-- [ ] A gap report states **B − A per family** with paired discordant counts, an explicit verdict on H1 and H2, and — if cell D is not materially above cell A — an "uninformative run" verdict instead of a gap claim.
+- [ ] A gap report states **B − A per family** with paired discordant counts, an explicit verdict on H1 and H2 against the pre-registered criteria, and — if cell D does not clear the numeric floor check (D − A ≥ 15 points **and** McNemar significant) — an "uninformative run" verdict instead of a gap claim.
+- [ ] Every family whose declared MDE exceeds 15 points is labelled **underpowered** in the report and issues no H2 verdict.
 - [ ] Limits are disclosed in the same breath as every number: Popoto-only, no competitor arms, judge model deviates from upstream's default, proxy goal-completion definition, pinned corpus SHA.
 - [ ] Headline propagation per #511 is either done or explicitly recorded as "no headline change" in the closing comment.
 
 ---
+
+## Update System
+
+**N/A — stated rather than omitted.** This track adds no migration, no schema version, and no
+stored format that an existing deployment would need to upgrade through. Nothing under
+`src/popoto/` changes (D8), so no released behavior moves. The only versioned thing it
+introduces is the **pinned upstream corpus SHA**, and its "upgrade path" is deliberate: a new
+SHA produces a new corpus fingerprint, which `compare.py` treats as a hard refusal rather
+than a migration (§Data Flow).
+
+## Agent Integration
+
+**N/A — stated rather than omitted.** No agent-facing surface changes: no new MCP tool, no
+new public recipe, no change to `SubconsciousMemory`'s call shape. The track *measures* the
+agent integration that already exists. If its findings justify a typed write path (the
+likely outcome per §Spike Results), that is a separate feature issue with its own plan —
+see Q8.
+
+## Team Orchestration
+
+| Role | Scope |
+|---|---|
+| builder-1 | Lane 1 tasks 1–3 (corpus, fixture + attribution, DB discipline) — self-contained, no adapter dependency |
+| builder-2 | Lane 1 tasks 4–6 (routing table, adapters, judge adapter, extraction audit) — depends on task 1's `SmeItem` |
+| builder-3 | Lane 1 tasks 7–9 (report, runner/CLI, compare + statistics) — depends on the artifact schema from task 7 |
+| test-engineer | Task 10, the full §Test Impact table, especially the vacuity guards (zero-by-construction refusal, empty-selection error, fingerprint refusal) |
+| documentarian | Task 11 (docs `Spec` entries, framing page) and the Lane 2 writeup |
+| validator | §Verification end to end, plus confirming `git diff --stat main` touches nothing under `src/popoto/` |
+
+Builders share one worktree with disjoint file sets (one module each), so commits do not
+interleave. Tasks 1–3 and 7 can start in parallel; 4–6 and 8–9 serialize behind them.
 
 ## Documentation
 
@@ -637,7 +846,7 @@ Lane 2 (needs `OPENAI_API_KEY` + maintainer go-ahead):
 1. `sme/corpus.py`: SHA-pinned download + fixture load + `SmeItem` + canonical ids + fingerprint. Tests: id stability, fingerprint sensitivity, multi-reference expansion, all-families load.
 2. Commit the curated fixture (2 cases per routed family, ≈ 60 KB) + `fixtures/UPSTREAM.md`.
 3. `sme/db.py`: `FORBIDDEN_DBS`, `validate_db()`, post-import read-back assertion, `SmeDbError`. Tests including the `POPOTO_BENCH_DB` repoint case.
-4. `sme/adapters.py` + `sme/routing.py`: Protocol, three adapters, the family→primitive routing table.
+4. `sme/adapters.py` + `sme/routing.py`: Protocol, three adapters, the corrected family→primitive routing table, and the zero-by-construction refusal. **Before writing the adapters, run the one live spike the source read could not settle:** call `SubconsciousMemory(...).extract_memories()` on one real accounting message and one real tree message with the heuristic provider, on an explicit scratch DB, and record what is actually stored. Source reading says `entities=[]` and untyped text; confirm it rather than build on it.
 5. `sme/judge_adapter.py`: reuse `judge.py`'s `JudgeProtocol`; vendored upstream prompt + its SHA; deterministic stub judge.
 6. `sme/extraction_audit.py` (F3) + its synthetic-case test.
 7. `sme/report.py`: family-segregated schema + Markdown writer with the status table first.
@@ -693,15 +902,36 @@ descoped, and I should stop rather than build lane 1.
 adapter into upstream's StructMemEval harness (Qdrant + mem-agent + EMem)" as a distinct
 issue so the dependency is tracked rather than lost in this plan's No-Gos.
 
-**Q5 — Judge model and spend.** Upstream defaults to `gpt-4o`; our `judge.py` pins
-`gpt-4o-mini`. I have planned for `gpt-4o-mini` (cheaper, consistent with our Tier 5 harness)
-and recording the deviation as a disclosed limit. Confirm, and confirm the go-ahead for
-roughly 2–3k generation+judge call pairs for the full five-cell run.
+**Q5 — Spend, on two keys not one.** Judge: upstream defaults to `gpt-4o`, our `judge.py`
+pins `gpt-4o-mini`; I have planned for `gpt-4o-mini` with the deviation disclosed, roughly
+2–3k generation+judge call pairs for the full five-cell run. **Extraction is the bigger
+line and was missing from the issue:** the tree family needs `ANTHROPIC_API_KEY` with
+`claude-opus-4-8` at one call per message — 10 cases × 250 messages = 2,500 top-tier calls
+per ingest, cached across cells (Risk 5). Confirm both keys are available and the spend is
+approved, and note this brushes against #489's still-open extraction-model-tier decision,
+which I do not think this run should settle unilaterally.
 
-**Q6 — Is the proxy goal-completion definition acceptable?** F2 is "all questions in a
+**Q6 — The issue's primitive mapping is wrong, and the gap it hides is the real finding.**
+Per spike-2, `PredictionLedgerMixin` is a prediction-*error* ledger, not an accounting
+ledger, and per spike-1 no extraction provider — including the paid Claude one — can emit a
+typed value at all (`ExtractedFact` has slots only for text, entities, importance,
+confidence). So there is **no subconscious write path into any typed structure**, and the
+count-based family has nothing to route to. I have planned to report that as a structural
+gap rather than score it as 0%. Confirm that is the wanted disposition. The alternative —
+hand-writing a benchmark-local structured extractor so the accounting arm has something to
+measure — would be measuring code written for the benchmark, not Popoto, and I recommend
+against it.
+
+**Q7 — Should a feature issue be filed for typed/structured extraction?** The gap above is
+arguably the highest-value thing this investigation found, and it is a *feature*, not a
+benchmark. It also touches #489 (extraction model-tier decision, still open). I would file
+"structured write path: typed slots on ExtractedFact + a transaction-ledger primitive" as a
+separate issue and note that #498 motivates it. Confirm before I file.
+
+**Q8 — Is the proxy goal-completion definition acceptable?** F2 is "all questions in a
 scenario judged correct," which is a scenario-level collapse of F1, not an independent
 signal. It is honest but it is not "did the agent finish a task." If a real task-completion
 signal is wanted, that is PTR and a different corpus.
 
-**Q7 — Forbidding DB 13.** This plan adds 13 to the forbidden set because the examples
+**Q9 — Forbidding DB 13.** This plan adds 13 to the forbidden set because the examples
 smoke test owns it. Confirm no other lane expects to use 13 for benchmarks.
