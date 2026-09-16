@@ -152,9 +152,11 @@ delegates to an extraction provider. There are three:
 and `FACTS_SCHEMA` at `claude.py:83-90`, which requires exactly `["text", "entities",
 "importance", "confidence"]`):
 
-> `ExtractedFact` has slots for `text`, `entities`, `importance`, `confidence`, plus
-> provenance offsets. **It has no slot for a typed value of any kind** — no number, no
-> relation, no role. Neither provider, including the paid Claude one, can emit
+> `ExtractedFact` has twelve fields: `text`, `entities`, `importance`, `confidence`,
+> `span_start`, `span_end`, `turn_id`, `candidate_id`, `generator_rule`, `verbatim`,
+> `resolution_status`, `assumption`. Every one of them is `str` / `float` / `list[str]`.
+> **None is a slot for a typed value of any kind** — no number, no relation, no role.
+> Neither provider, including the paid Claude one, can emit
 > "payer=Alice, amount=179, split_with=[Bob]".
 
 So the subconscious write path produces **untyped text facts with an optional entity list**,
@@ -214,7 +216,7 @@ it — see §Solution, "The zero-by-construction rule."
 | Tier 5 judge | `tests/benchmarks/judge.py` | **`JudgeProtocol`** (`chat(model, messages, temperature) -> str`), `is_judge_available()`, `build_openai_client()`, `estimate_cost()`, `judge_identity()` recording prompt SHA-256s |
 | SIQ | `tests/benchmarks/siq/` | the **arms** pattern: `SiqAdapter` Protocol + `ADAPTERS = {...}` registry + `--adapter` flag; `QueryOnlyStubAdapter` as a dependency-free control that scores ~0 *by construction*, proving the harness is not vacuous |
 | RLT | `tests/benchmarks/rlt/` | the **DB discipline** pattern: `run_rlt.py` requires `--db` with **no default**, `FORBIDDEN_DBS = {0, 14, 15}`, `validate_db()` raising `RltDbError` |
-| Docs generation | `docs/scripts/gen_benchmark_pages.py` | `Spec` objects map `*_latest.{json,md}` artifacts to generated pages; unspecced artifacts raise a loud orphan warning |
+| Docs generation | `docs/scripts/gen_benchmark_pages.py` | `Spec` objects map `*_latest.{json,md}` artifacts to generated pages; `_warn_orphan_artifacts()` prints (never raises) a stderr warning for an unspecced artifact, but only scans `results/external/` today, so it does not see `results/sme/` (§Architectural Impact, task 11) |
 
 ### The two verified harness facts this design must respect
 
@@ -361,7 +363,7 @@ upstream @ 64d2c9b (pinned)
         |  canonical item_id = f"{family}/{case_id}#q{qi}a{ai}"
         |  corpus_fingerprint = sha256(sorted(item_id + sha256(question+reference_text)))
         v
-  sme/runner.py  --arm {native,native_instructed,snippet_baseline} --hint {on,off}
+  sme/runner.py  --arm {native,instructed,snippet_baseline} --hint {on,off}
         |
         |  ingest phase : adapter.ingest_session(session)   [per case, isolated store]
         |  query phase  : adapter.answer(question, hint_text) -> str
@@ -416,9 +418,14 @@ averages.
   prompt needs a second prompt constant, it lives in `sme/`, and `judge_identity()`-style
   prompt SHA-256 recording is replicated for it so the upstream prompt text is auditable in
   the artifact.
-- **`docs/scripts/gen_benchmark_pages.py` gains `Spec` entries** for the SME artifacts.
-  Without them the generator emits an orphan-artifact warning; with them the results page
-  is generated at build time from the committed artifact, per #453.
+- **`docs/scripts/gen_benchmark_pages.py` gains `Spec` entries** for the SME artifacts, and
+  its `_warn_orphan_artifacts()` scan is extended (task 11) to also glob
+  `tests/benchmarks/results/sme/*_latest*.md` — today it only scans `results/external/`, so
+  an SME artifact without a `Spec` currently produces **no** warning at all, silently rather
+  than loudly. With the `Spec` entries in place, the results page is generated at build time
+  from the committed artifact, per #453. The scan, even after the extension, only ever
+  `print`s to stderr and never raises, so it cannot be what makes `mkdocs build --strict`
+  fail (see the test-based check in §Success Criteria and §Verification instead).
 - **Third-party data enters the repo.** Vendored fixtures are Apache-2.0 upstream material
   and require attribution: a `tests/benchmarks/sme/fixtures/UPSTREAM.md` recording the repo,
   commit SHA, license, and the paper citation, and a matching entry in `NOTICE` if the repo
@@ -680,6 +687,7 @@ possible:
 | `test_item_ids_canonical_and_stable` | ids are deterministic across two loads and across `--sample` modes |
 | `test_fingerprint_changes_on_corpus_mutation` | mutating one reference answer changes the fingerprint |
 | `test_compare_refuses_mismatched_fingerprint` | `SmeComparabilityError` raised; symmetric difference reported |
+| `test_compare_refuses_mismatched_judge_identity` | `SmeComparabilityError` raised when two artifacts' judge model or prompt SHA-256 differ (Risk 2's second refusal condition) |
 | `test_multi_reference_expansion` | an accounting case with 3 reference answers yields 3 items with distinct `a{ai}` suffixes |
 | `test_all_families_load_from_fixture` | one loader handles all shipped family shapes |
 | `test_forbidden_dbs` | 0, 13, 14, 15 rejected; a valid db accepted |
@@ -693,6 +701,7 @@ possible:
 | `test_mcnemar_and_power_on_fixed_table` | exact McNemar, MDE, underpowered flag and Holm–Bonferroni reproduce known values on a fixed synthetic contingency table |
 | `test_ingest_granularity_is_per_message` | `NativeAdapter.ingest_session` issues one `extract_memories()` call per message with the pinned `turn_id` shape |
 | `test_upstream_attribution_present` | `fixtures/UPSTREAM.md` exists and names the pinned SHA and the Apache-2.0 license |
+| `test_sme_artifacts_have_spec_entries` | every committed `tests/benchmarks/results/sme/*_latest*.md` stem has a matching `Spec` in `gen_benchmark_pages.py` (the falsifiable orphan-artifact check — see §Architectural Impact) |
 
 Narrow-scope run for this lane: `pytest tests/benchmarks/test_sme.py`. Note the standing
 repo gotcha — if any `Defaults` constant is added, it must be registered in
@@ -760,7 +769,9 @@ routed (D6), and therefore is never ingested**, so its 931 KB contributes nothin
 
 ### Risk 6 — Judge spend runs away
 Rough order: 51 scenarios but question counts are lopsided (tree alone ≈ 320 questions), so
-the full small bench is ≈ 400–600 judged units per cell. Five cells ≈ 2–3k generation +
+the full small bench is **≈ 379 judged units per cell** (accounting 15 × 1 × 3 refs = 45,
+state machine 14, tree 10 × 32 = 320; recommendations is loaded but never ingested per D6
+and contributes 0). Five cells ≈ 2–3k generation +
 judge call pairs. At `gpt-4o-mini` rates that is single-digit dollars; at `gpt-4o` (upstream's
 default judge) it is materially more. **Mitigation:** print a cost estimate and require
 confirmation before a live run, as `run_external.py` already does; default the judge model
@@ -828,7 +839,7 @@ Lane 1 (schedulable now, no key, no spend):
 - [ ] The zero-by-construction rule is enforced: a cell configured unroutably (accounting with no ledger primitive; tree with the heuristic extractor) emits `status="unroutable"` with a reason and **no accuracy number**, and is excluded from every denominator. Covered by a test that plants such a configuration.
 - [ ] `compare.py` computes exact McNemar per family and pooled, prints the declared MDE and the underpowered flag per family, and applies Holm–Bonferroni across families — all covered by a test with a fixed synthetic contingency table.
 - [ ] `fixtures/UPSTREAM.md` records repo, commit SHA, Apache-2.0, and the paper citation.
-- [ ] `docs/scripts/gen_benchmark_pages.py` has `Spec` entries for the SME artifacts (no orphan warning) and `mkdocs build --strict` passes.
+- [ ] `docs/scripts/gen_benchmark_pages.py` has `Spec` entries for the SME artifacts, its `_warn_orphan_artifacts()` scan is extended to cover `results/sme/`, and `test_sme_artifacts_have_spec_entries` (a new test asserting every committed `sme/*_latest*.md` stem has a matching `Spec`) passes — this is the falsifiable check; `mkdocs build --strict` passing is necessary but cannot by itself detect a missing `Spec`, since the scan only ever prints to stderr and `docs/plans/` is excluded from the site build.
 - [ ] No file under `src/popoto/` is modified; `run_external.py` is unchanged.
 
 Lane 2 (needs `OPENAI_API_KEY` + maintainer go-ahead):
@@ -856,7 +867,7 @@ than a migration (§Data Flow).
 new public recipe, no change to `SubconsciousMemory`'s call shape. The track *measures* the
 agent integration that already exists. If its findings justify a typed write path (the
 likely outcome per §Spike Results), that is a separate feature issue with its own plan —
-see Q8.
+see Q7.
 
 ## Team Orchestration
 
@@ -902,7 +913,7 @@ interleave. Tasks 1–3 and 7 can start in parallel; 4–6 and 8–9 serialize b
 8. `sme/runner.py` + `sme/run_sme.py`: CLI, orchestration, cost estimate, `--dry-run`.
 9. `sme/compare.py`: paired join, both refusal conditions, discordant cells, gap artifact.
 10. `tests/benchmarks/test_sme.py`: the full table in §Test Impact.
-11. `gen_benchmark_pages.py` `Spec` entries; `mkdocs build --strict`.
+11. `gen_benchmark_pages.py` `Spec` entries; extend `_warn_orphan_artifacts()`'s glob to also cover `tests/benchmarks/results/sme/`; add `test_sme_artifacts_have_spec_entries`; `mkdocs build --strict`.
 12. Narrow-scope test run + lint/format/mypy-ratchet; PR.
 
 **Lane 2** (gated on Q5)
@@ -920,7 +931,7 @@ interleave. Tasks 1–3 and 7 can start in parallel; 4–6 and 8–9 serialize b
 3. Same without `--dry-run`; inspect the artifact for every field in §Success Criteria.
 4. `POPOTO_BENCH_DB=9 python -m tests.benchmarks.sme.run_sme --db 3 ...` → must raise `SmeDbError`, not run.
 5. `ruff check src/` (unchanged), `black --check src/ tests/`, `scripts/mypy_ratchet.py`.
-6. `mkdocs build --strict` → no orphan-artifact warning.
+6. `pytest tests/benchmarks/test_sme.py -k test_sme_artifacts_have_spec_entries` → every committed `sme/*_latest*.md` has a matching `Spec` (the falsifiable check; `mkdocs build --strict` cannot detect a missing `Spec` on its own — see §Architectural Impact).
 7. Confirm `git diff --stat main` touches nothing under `src/popoto/`.
 
 ---
@@ -963,8 +974,11 @@ which I do not think this run should settle unilaterally.
 **Q6 — The issue's primitive mapping is wrong, and the gap it hides is the real finding.**
 Per spike-2, `PredictionLedgerMixin` is a prediction-*error* ledger, not an accounting
 ledger, and per spike-1 no extraction provider — including the paid Claude one — can emit a
-typed value at all (`ExtractedFact` has slots only for text, entities, importance,
-confidence). So there is **no subconscious write path into any typed structure**, and the
+typed value at all. `ExtractedFact` (`src/popoto/extraction/__init__.py:48`) has twelve
+fields — `text`, `entities`, `importance`, `confidence`, `span_start`, `span_end`,
+`turn_id`, `candidate_id`, `generator_rule`, `verbatim`, `resolution_status`, `assumption`
+— and every one of them is `str` / `float` / `list[str]`; none is a numeric, relational, or
+role slot. So there is **no subconscious write path into any typed structure**, and the
 count-based family has nothing to route to. I have planned to report that as a structural
 gap rather than score it as 0%. Confirm that is the wanted disposition. The alternative —
 hand-writing a benchmark-local structured extractor so the accounting arm has something to
