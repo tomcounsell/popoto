@@ -147,10 +147,13 @@ warning: key regeneration: 1284 key(s) minted; 903 reference value(s) remapped;
 
 A dangling reference is stored, not dropped: the rewritten-or-not string is saved
 as the field's value, so the relationship's reverse index
-(`$RelationshipF:<SourceModel>:<field>:<target_key>`) gains a member naming a key that does
-not exist in the destination. Reading the field yields `None` rather than raising,
-but a reverse lookup from the *other* side still counts it. Clean those up from the
-dangling counts in the warning before treating the destination as consistent.
+(`$RelationshipF:<SourceModel>:<field>:<target_key>`) gains a member naming a key
+that does not exist in the destination. Reading the field yields `None` rather than
+raising, but a reverse lookup from the *other* side still counts it. The warning's
+dangling count covers both causes — a target absent from the key map, and a target
+whose own record was rejected or errored on this run (the warning names that second
+count separately) — so it is the list to work from before treating the destination
+as consistent.
 
 To make your own field participate, override `remap_references` on it. The base
 implementation returns the value unchanged:

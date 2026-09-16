@@ -566,6 +566,11 @@ class RegenGated(popoto.WriteFilterMixin, popoto.Model):
         return self.importance or 0.0
 
 
+# Registered after the class body so the relationship can name its own model.
+RegenGated.peer = popoto.Relationship(model=RegenGated, null=True)
+RegenGated._meta.add_field("peer", RegenGated.peer)
+
+
 def test_key_map_drops_mints_whose_record_did_not_land():
     """A mint is not a write: a gate-rejected record must leave no pair.
 
@@ -629,3 +634,65 @@ def test_cli_regenerate_keys_runs_end_to_end(tmp_path, capsys):
     assert copy is not None and copy.label == "cli"
     # The self-reference followed the copy rather than pointing back home.
     assert _reference(copy, "peer") == new_key
+
+
+def test_spool_is_closed_when_pass_one_raises(monkeypatch):
+    """The temp file has an owner: a raise in pass 1 must not leak the handle.
+
+    ``get_new_auto_key_value()`` raises ``ImportError`` under the ``ulid`` and
+    ``ksuid`` strategies when the package is absent, which happens inside
+    ``_spool_and_mint`` -- before the caller's ``try/finally`` is entered.
+    """
+    from popoto.transfer import import_ as import_module
+
+    RegenNode.create(label="a")
+    text = _export_text(RegenNode)
+    opened = []
+
+    real_temporary_file = tempfile.TemporaryFile
+
+    def probe(*args, **kwargs):
+        handle = real_temporary_file(*args, **kwargs)
+        opened.append(handle)
+        return handle
+
+    def explode(*args, **kwargs):
+        raise ImportError("ulid package is required for this key strategy")
+
+    monkeypatch.setattr(import_module.tempfile, "TemporaryFile", probe)
+    monkeypatch.setattr(import_module, "_fill_spool", explode)
+
+    with pytest.raises(ImportError):
+        import_records(RegenNode, io.StringIO(text), preserve_keys=False)
+
+    assert len(opened) == 1
+    assert opened[0].closed
+
+
+def test_reference_to_a_rejected_sibling_is_counted_as_dangling():
+    """A remap is only real if the target's own record reached storage.
+
+    Pass 2 rewrites references against the full mint log, so a reference aimed
+    at a record the write gate then rejects looks remapped at the moment it is
+    rewritten. The warning must not report it that way: the destination holds
+    a reverse-index member naming a key nobody created.
+    """
+    low = RegenGated.create(subject="lo", importance=0.1)
+    high = RegenGated.create(subject="hi", importance=0.9)
+    high.peer = low
+    high.save()
+    text = _export_text(RegenGated)
+
+    previous = RegenGated.__dict__.get("_wf_min_threshold")
+    RegenGated._wf_min_threshold = 0.5
+    try:
+        report = import_records(RegenGated, io.StringIO(text), preserve_keys=False)
+    finally:
+        RegenGated._wf_min_threshold = previous
+
+    assert report.count("landed") == 1
+    assert report.count("rejected") == 1
+    warning = next(w for w in report.warnings if w.startswith("key regeneration:"))
+    assert "0 reference value(s) remapped" in warning
+    assert "1 reference value(s) left pointing at keys absent" in warning
+    assert "1 of the dangling reference value(s) point at one of those" in warning

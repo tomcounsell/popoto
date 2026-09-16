@@ -488,7 +488,7 @@ the same key, not a cross-process race).
 ## No-Gos (Out of Scope)
 
 - Extending `Field.export_state`/`import_state` to accept `key_map` (Risk 2 /
-  Rabbit Holes). Filed as follow-up, not built here.
+  Rabbit Holes). Not filed; deferred until a consumer asks, matching the PR body.
 - A `key_factory` callable letting non-auto-key models regenerate (Questions
   for the architect). Refusal only, this plan.
 - Any heuristic scan for application-level string pointers that "look like"

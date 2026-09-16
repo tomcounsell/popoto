@@ -500,7 +500,7 @@ def _remap_record(
     record: "dict[str, Any]",
     reference_fields: "dict[str, Any]",
     key_map: "dict[str, str]",
-) -> "tuple[int, int]":
+) -> "tuple[int, int, list[str]]":
     """Rewrite a record's reference values in place.
 
     Also stashes the rewritten string values under
@@ -516,13 +516,16 @@ def _remap_record(
     which is what the lazy-loading contract promises in the first place.
 
     Returns:
-        ``(remapped, unmapped)`` -- how many reference values this record
-        pointed at a regenerated key, and how many pointed at a key the map
-        does not cover (those keep their old value and dangle).
+        ``(remapped, unmapped, targets)`` -- how many reference values this
+        record pointed at a regenerated key, how many pointed at a key the map
+        does not cover (those keep their old value and dangle), and the
+        rewritten targets themselves so the caller can re-check them against
+        the mints that turn out not to have landed.
     """
     values = record.get("values") or {}
     remapped = 0
     unmapped = 0
+    targets: "list[str]" = []
     carried: "dict[str, str]" = {}
     for field_name, model_field in reference_fields.items():
         if field_name not in values:
@@ -535,13 +538,15 @@ def _remap_record(
         if isinstance(before, str) and before:
             if after != before:
                 remapped += 1
+                if isinstance(after, str):
+                    targets.append(after)
             else:
                 unmapped += 1
     record["values"] = values
     # Assigned unconditionally so a value of this name read off the file is
     # replaced rather than honored.
     record[REMAPPED_REFERENCES_KEY] = carried
-    return remapped, unmapped
+    return remapped, unmapped, targets
 
 
 def _import_regenerating(
@@ -570,6 +575,12 @@ def _import_regenerating(
 
     remapped_total = 0
     unmapped_total = 0
+    # (referencing record's new key, rewritten target key) for every value
+    # pass 2 rewrote, so a target whose own record later fails to write can be
+    # moved out of the remapped count and into the dangling one. One short
+    # pair per rewritten reference -- the same order of residency as the key
+    # map, which is already held.
+    rewritten: "list[tuple[str, str]]" = []
     batch: "list[dict[str, Any]]" = []
     try:
         spooled = zip(iter_lines(spool), line_numbers, strict=True)
@@ -587,9 +598,12 @@ def _import_regenerating(
                 continue
 
             new_value, new_key = minted[old_key]
-            remapped, unmapped = _remap_record(record, reference_fields, key_map)
+            remapped, unmapped, targets = _remap_record(
+                record, reference_fields, key_map
+            )
             remapped_total += remapped
             unmapped_total += unmapped
+            rewritten.extend((new_key, target) for target in targets)
             record["values"][auto_key_name] = new_value
             record["key"] = new_key
 
@@ -618,9 +632,20 @@ def _import_regenerating(
             )
     finally:
         spool.close()
-        # In the finally so a raise in pass 2 still leaves the partial
-        # counts on the report the caller is holding.
-        dropped = _prune_unlanded_mints(report, minted, key_map)
+        # In the finally so the prune and the summary happen on every exit
+        # path, rather than only when pass 2 runs to completion.
+        in_storage, dropped_keys = _prune_unlanded_mints(report, minted, key_map)
+        dropped = len(dropped_keys)
+        # A reference rewritten to a sibling that then failed to write is not
+        # remapped, it dangles. Counted after the fact because pass 2 cannot
+        # know which records will land.
+        stale = sum(
+            1
+            for owner, target in rewritten
+            if owner in in_storage and target in dropped_keys
+        )
+        remapped_total -= stale
+        unmapped_total += stale
         report.warnings.append(
             f"key regeneration: {len(minted)} key(s) minted; {remapped_total} "
             f"reference value(s) remapped; {unmapped_total} reference value(s) "
@@ -630,7 +655,13 @@ def _import_regenerating(
             f"rewritten."
             + (
                 f" {dropped} minted key(s) were dropped from the key map "
-                f"because their record did not land."
+                f"because their record did not land"
+                + (
+                    f"; {stale} of the dangling reference value(s) point at "
+                    f"one of those."
+                    if stale
+                    else "."
+                )
                 if dropped
                 else ""
             )
@@ -641,8 +672,8 @@ def _prune_unlanded_mints(
     report: ImportReport,
     minted: "dict[str, tuple[str, str]]",
     key_map: "dict[str, str]",
-) -> int:
-    """Drop mints whose record never reached storage, and count them.
+) -> "tuple[set[str], set[str]]":
+    """Drop mints whose record never reached storage.
 
     Pass 1 mints a key for every line that carries one, before anything is
     written, so the raw mint log over-reports: a record that conflicted, was
@@ -654,20 +685,26 @@ def _prune_unlanded_mints(
 
     A seeded entry is only removed when this run overwrote it with its own
     mint; an untouched seed is left alone.
+
+    Returns:
+        ``(in_storage, dropped_keys)`` -- the new keys that reached storage,
+        and the minted new keys that did not and were pruned. The caller uses
+        the second set to move references aimed at a dropped mint out of the
+        remapped count and into the dangling one.
     """
     in_storage = {
         outcome.key
         for outcome in report.outcomes
         if outcome.category in (LANDED, PARTIAL)
     }
-    dropped = 0
+    dropped_keys: "set[str]" = set()
     for old_key, (_new_value, new_key) in minted.items():
         if new_key in in_storage:
             continue
         if key_map.get(old_key) == new_key:
             del key_map[old_key]
-            dropped += 1
-    return dropped
+            dropped_keys.add(new_key)
+    return in_storage, dropped_keys
 
 
 def import_records(
@@ -738,7 +775,8 @@ def import_records(
         An :class:`ImportReport` accounting for every record line as landed,
         skipped, rejected, errored, or partial, with a reason per non-landed
         record. Under ``preserve_keys=False`` its ``key_map`` holds every
-        mapping this run minted, merged over the seed.
+        mapping this run actually wrote, merged over the seed -- mints whose
+        record did not land are pruned; see :class:`ImportReport`.
 
     Raises:
         ValueError: If a policy argument is not one of its allowed values, or
