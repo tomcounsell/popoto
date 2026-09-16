@@ -275,6 +275,16 @@ five existing keys are unchanged — the additive-extension guarantee is worth a
 explicit assertion, since a silently changed metadata contract breaks callers
 outside this repo.
 
+**Connection binding for any fixture that builds its own client.** Do not read
+`REDIS_URL` and trust it. An operator-injected `REDIS_URL=redis://localhost:6379/0`
+— the live agent store — was observed on a developer machine on 2026-09-16, and
+`tests/benchmarks/run_external._resolve_bench_db()` is a second binder
+(`POPOTO_BENCH_DB`, default 14) with different precedence. Every fixture here
+binds through `get_REDIS_DB()` and, if it stands up its own connection, asserts
+the resolved DB from the live `connection_pool` and refuses `0`, following
+`examples/tests/conftest.py`. See `docs/plans/sdlc-568.md` for the full
+statement of this hazard.
+
 ## Rabbit Holes
 
 - **Probabilistic VOI scoring.** Dropped by recon: false precision on sub-35B

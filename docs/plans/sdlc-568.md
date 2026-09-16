@@ -222,6 +222,36 @@ hard error, not a skip — a silently-skipped type is the exact hole a scanner
 like this rots through. Connection via `get_REDIS_DB()`, never a
 `POPOTO_REDIS_DB` import (CLAUDE.md).
 
+**The harness must assert its resolved DB from inside the process, and abort.**
+This is a first-class requirement, not an operational note, because the
+worst-case failure for this module is *planting secrets into a live agent
+store*. Reading `REDIS_URL` and trusting it does not survive this repo's actual
+situation, which was verified live on 2026-09-16 rather than inferred:
+
+- `REDIS_URL=redis://localhost:6379/0` — DB 0, the live agent store — is
+  **actively injected into the agent harness process** by the session runner.
+  It is not the documented "unset, so it falls back to DB 0" hazard: it is
+  present and bound, absent from every shell rc file and settings file, and
+  **no process can correct it from the inside**. `os.environ.setdefault` — the
+  shape `scripts/scratch_repro.py` uses — is a no-op against an already-set
+  variable, so the repo's own template does not protect against this; only its
+  post-import guard does.
+- There is a **second binder with different precedence**:
+  `tests/benchmarks/run_external._resolve_bench_db()` swaps the pool onto
+  `POPOTO_BENCH_DB` (default `BENCH_DB_DEFAULT = 14`), overriding whatever
+  `REDIS_URL` said. It is called only from that harness's `main()`, never at
+  import time, so it does not reach a pytest-collected module — but its
+  existence means "which DB am I on" has more than one answer depending on the
+  entry point, and the pytest plugin (DB 15) is a third.
+
+So the harness reads back its **own live connection** — `get_REDIS_DB()`'s
+`connection_pool.connection_kwargs["db"]` — and raises before planting anything
+if it is `0`, or if it is not the DB the run expects. It never infers the answer
+from `os.environ`. A refusal is loud and fails the run; it is never a skip, a
+warning, or a silent rebind. This mirrors the `examples/tests/conftest.py`
+precedent (assert the binding, refuse DB 0) and the `#584`
+`Db0FlushRefusedError` posture: refuse at the boundary rather than repoint.
+
 **The scanner needs a positive control or it is vacuous.** Model instances are
 msgpack-encoded; a raw byte search finds a UTF-8 string embedded in msgpack,
 but would return a false *negative* against any encoding the scanner cannot
@@ -332,6 +362,18 @@ self-check that every `memory_worthy` item is exactly one sentence under that
 same regex — asserted at manifest load, so authoring a bad item fails fast
 instead of quietly weakening the suite.
 
+**R6 — The harness plants secrets into a live agent store.** The worst failure
+this module can produce, and it is not hypothetical: an operator-injected
+`REDIS_URL=redis://localhost:6379/0` was observed live on this machine on
+2026-09-16, and a second binder (`POPOTO_BENCH_DB`, default 14) can take
+precedence over it. Mitigated by the in-process resolved-DB assertion in
+Technical Approach — read the live `connection_pool`, refuse DB 0, fail loudly
+— and by the fact that the planted `secret` items are *synthetic* (Luhn-valid
+but unissued card candidates, structurally-valid but non-functional JWTs), so a
+guard failure leaks fixtures rather than credentials. Both halves matter: the
+guard should hold, and it should not be the only thing standing between the
+harness and a real secret.
+
 ## No-Gos (Out of Scope)
 
 - [SEPARATE-SLUG] Fixing any firewall detector gap this harness discovers.
@@ -391,6 +433,16 @@ change one.
       `ZRANGE`/`XRANGE` — no Redis modules (Valkey doctrine).
 - [ ] The suite runs under the DB-15 isolation plugin, binds via
       `get_REDIS_DB()`, and passes on both the Redis and Valkey CI jobs.
+- [ ] **Before planting anything, the harness reads its resolved DB from the
+      live connection** (`get_REDIS_DB().connection_pool.connection_kwargs["db"]`)
+      and raises if it is `0` or is not the expected DB. It never infers the
+      answer from `os.environ` — an injected `REDIS_URL` and a second binder
+      (`POPOTO_BENCH_DB`, default 14) mean the environment is not authoritative.
+      Asserted by a test that monkeypatches the pool onto DB 0 and requires the
+      harness to refuse, loudly — never skip, warn, or silently rebind.
+- [ ] Planted `secret` items are synthetic by construction (unissued Luhn-valid
+      card candidates, non-functional JWTs), so a guard failure leaks fixtures
+      rather than credentials.
 - [ ] `scripts/ci-local.sh audit` runs the module; `--all` includes it.
 - [ ] `tests/benchmarks/README.md` states the known-patterns-only boundary.
 - [ ] No file under `src/` is modified; no `Defaults` constant is added.
@@ -405,36 +457,43 @@ one-sentence self-check at load. Include the `control` sentinel. Seeds cover
 every detector in `_REGEX_DETECTORS` plus the entropy scan, one item per
 detector minimum, named by `expected_detector`.
 
-### 2. Keyspace scanner — same module
+### 2. DB guard — same module, written **before** anything that writes
+`assert_bound_db(expected)`: read `get_REDIS_DB().connection_pool
+.connection_kwargs["db"]`, refuse `0`, refuse a mismatch, raise loudly. Called
+at the top of `run_audit()`. Its own test monkeypatches the pool onto DB 0 and
+requires the refusal. This task comes first because every later task plants
+data, and a guard added afterwards has already been bypassed once.
+
+### 3. Keyspace scanner — same module
 `scan_for_fragments(fragments) -> list[Hit]`, six types plus hard-error
 default, bounded scan cap, `get_REDIS_DB()` binding, redacted return shape.
 
-### 3. Deterministic driver — same module
+### 4. Deterministic driver — same module
 `AuditSubconsciousMemory(SubconsciousMemory)` overriding `_verdict_for`, and a
 `run_audit(manifest)` that drives `extract_memories()` over the synthesized
 turns with `AuditableExtractionConfig(journal=ProvenanceJournal)` and returns
 the decision-log rows, tombstone state, and scan hits.
 
-### 4. Assertions — `tests/benchmarks/test_seeded_audit.py`
+### 5. Assertions — `tests/benchmarks/test_seeded_audit.py`
 A, B, C as above, each as its own test, each comparing `item_id` sets.
 
-### 5. Anti-vacuity controls — same module
+### 6. Anti-vacuity controls — same module
 One per assertion, per the Failure Path table. These are not optional and are
 the first thing review should read.
 
-### 6. Output-safety `ast` test — same module
+### 7. Output-safety `ast` test — same module
 Assert no `assert` statement in either module reaches `.text`/`.fragments`.
 Check the checker against a violating fixture source.
 
-### 7. Wire the local gate — `scripts/ci-local.sh`
+### 8. Wire the local gate — `scripts/ci-local.sh`
 Add `audit` to the accepted-arg case, to `--all`, and a `gate_audit()` running
 `$PYTEST tests/benchmarks/test_seeded_audit.py`. Do **not** add it to the
 default five.
 
-### 8. README and docs
+### 9. README and docs
 Boundary statement; how to add a seed; the known-gap item list.
 
-### 9. Verification
+### 10. Verification
 Run the suite; run it with each control's monkeypatch inverted to confirm the
 controls fail when they should; run `pytest --tb=long` on a forced failure and
 confirm no secret in output.
