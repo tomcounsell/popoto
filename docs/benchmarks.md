@@ -132,6 +132,14 @@ python -m tests.benchmarks.run_external \
 | `--error-threshold FLOAT` | 0.10 | Exit 1 if retrieval error rate exceeds this fraction |
 | `--judged` | off | Run the end-to-end judged-answer stage (retrieve → generate → LLM-judge). Requires `OPENAI_API_KEY`; skips gracefully without one. `lexical`/`hybrid` only. See [Judged-Answer Accuracy](#judged-answer-accuracy-tier-5). |
 | `--judge-error-threshold FLOAT` | 0.25 | With `--judged`, exit 1 if the judge-error (API failure) rate exceeds this fraction. Independent of `--error-threshold`. |
+| `--supersession ARM` | `none` | Supersession producer arm (#692). `none` is byte-identical to the committed baseline — no `ValidityField`, no protocol call. `content-identity` declares a `ValidityField` and routes every write through a label-blind `identity_of()` / `save_and_supersede()` pair. Non-`none` arms write `{slug}_{date}[_mode]_sup-{arm}[_nogate][_judged].{json,md}`, so they never overwrite a baseline artifact. See [Validity gating (V0)](#validity-gating-v0-three-arm-longmemeval-s-study). |
+| `--no-validity-gating` | off | With `--supersession content-identity`, disable read-time gating (`Defaults.VALIDITY_GATING_ENABLED = False`) so superseded records are still written and closed but never excluded from retrieval. No effect with `--supersession none`. |
+
+**Bench database.** The harness runs on Redis DB 14 by default, overridable with
+the `POPOTO_BENCH_DB` environment variable (the benchmark counterpart to
+`POPOTO_TEST_DB`). `POPOTO_BENCH_DB=0` is rejected outright, mirroring the
+pytest plugin's refusal, so a misconfigured run cannot write to a production
+database. The resolved value is recorded in each artifact's `machine.bench_db`.
 
 ### Report Artifacts
 
@@ -169,7 +177,11 @@ Each JSON report includes:
 - `summary` — aggregate Recall@1/5/10, MRR, p50/p95 latency
 - `sampling` — `sample_mode` / `seed` / `limit` used for the run (so a report is reproducible from itself)
 - `by_question_type` — per-category Recall@1/5/10 + MRR + count breakdown
-- `machine` — Python version, OS, CPU count
+- `machine` — Python version, OS, CPU count, plus `redis_version` and `bench_db`.
+  **`redis_version` is redis-py's version, not the Redis server's** — the server
+  version is not captured. Both keys were added alongside the #586 study, so
+  artifacts dated before it carry only the first three and are not diffable on
+  these fields.
 - `notes` — retrieval mode description
 - `questions` — per-question detail (item_id, recall scores, status, errors, and `metadata.question_type`)
 - `judge` / `judged` — present only on `--judged` runs: the pinned judge identity (model, prompt SHA-256, protocol, temperature) and the judged-accuracy aggregate (see [Judged-Answer Accuracy](#judged-answer-accuracy-tier-5))
