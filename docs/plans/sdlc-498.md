@@ -457,7 +457,7 @@ where possible — measuring what the write path stores does **not** require a j
 | `OPENAI_API_KEY` | **needed for lane 2 only** | judge. Same dependency `--judged` already has; `is_judge_available()` already degrades gracefully |
 | `ANTHROPIC_API_KEY` | **needed for lane 2, tree family only** | extraction. Per spike-1/3, `ClaudeExtractionProvider` (`EXTRACTION_MODEL = "claude-opus-4-8"`) is the only provider that populates `fact.entities`, without which `_seed_associations()` no-ops and the tree arm is zero by construction. Not needed for the state-machine family. **This dependency was missing from the issue and is the second key, not a variant of the first.** |
 | Qdrant / `mem-agent` / `EMem` | **not needed** | only required by upstream's own harness, which we are not running (§No-Gos D2) |
-| A free Redis DB | needed | **this harness reserves DB 10.** `--db` is explicit and mandatory; `{0, 14, 15}` forbidden, and this plan adds **13** to the forbidden set (the examples smoke test owns it in CI). See §DB discipline |
+| A free Redis DB | needed | **this harness reserves DB 3.** `--db` is explicit and mandatory; `{0, 14, 15}` forbidden, and this plan adds **13** to the forbidden set (the examples smoke test owns it in CI). See §DB discipline |
 | Maintainer sign-off on judge spend | **needed for lane 2** | Q5 |
 
 ---
@@ -532,7 +532,7 @@ re-planned, not improvised.
 
 ```
 python -m tests.benchmarks.sme.run_sme \
-    --db 10 \                              # REQUIRED, no default; forbidden: 0, 13, 14, 15
+    --db 3 \                              # REQUIRED, no default; forbidden: 0, 13, 14, 15
     --arm {native,instructed,snippet_baseline} \
     --hint {on,off} \
     --family accounting,state_machine,tree \
@@ -564,25 +564,46 @@ in the report's limits paragraph.
 
 ### DB discipline (harness fact 1)
 
-**This harness reserves database 10.** The Redis database map, recorded here so the next
+**This harness reserves database 3.** The Redis database map, recorded here so the next
 author does not have to rediscover it:
 
 | DB | Owner | Kind of claim |
 |---:|---|---|
 | **0** | the live agent store on a developer machine | **never touch** — `FLUSHDB` is refused in popoto's own client |
-| 10 | **this harness (SME)** | new reservation |
-| 11, 12 | ad-hoc repro/scratch, by convention | transient, not a standing claim — several `docs/plans/` lanes name them for one-off scripts |
+| **3** | **this harness (SME)** | new reservation — advisory, see below |
+| 1, 2, 4, 11, 12 | ad-hoc repro/scratch | **conventional *and* liable to ad-hoc lane use.** Several `docs/plans/` lanes name them for one-off scripts and narrow-scope `POPOTO_TEST_DB` runs, and a parallel session assigns them to lanes at runtime; a committed doc is not the only way one gets taken |
 | **13** | `examples/tests/test_kitchen_smoke.py` | **standing CI reservation** — `.github/workflows/examples.yml:71` sets `REDIS_URL: redis://localhost:6379/13` on the job env |
 | **14** | `run_external.py` | `BENCH_DB_DEFAULT = 14`, the `POPOTO_BENCH_DB` default |
 | **15** | pytest plugin | `popoto_test_db = "15"` in `pyproject.toml` |
+| *any* | **`POPOTO_BENCH_DB`** | **the row that outranks every other row.** Operators point `run_external` at arbitrary databases — a full-corpus LoCoMo run held DB 10 for ~6 hours on 2026-09-16 via `POPOTO_BENCH_DB=10`, while nothing committed claimed 10 at all |
 
-10 is chosen because nothing in the repo claims it — 11 and 12 both appear as scratch DBs in
-committed plan docs, so a lane running an old repro script could collide there.
+**A reservation table records intent, not enforcement.** There is no registry, no lock, and no
+mechanism that stops a second process from binding the database this harness picked;
+`POPOTO_BENCH_DB` alone means any run can land anywhere. So the table above is a courtesy to
+the next author, and **the runtime assertion below is the only thing that actually protects a
+run.** Do not read a row here as a guarantee, and do not skip the read-back because the table
+says a database is free.
+
+3 is chosen as a low database with no standing claim: no workflow, no `pyproject.toml` key, no
+`run_external` default, and no live lane binds it. That is weaker than "unclaimed" — a past
+lane names `POPOTO_TEST_DB=3` in `docs/plans/history_shaped_state_roundtrip.md`, as some
+committed plan doc does for essentially every low database — which is precisely why the claim
+this plan makes is "assert it at runtime", not "3 is safe".
 
 ```python
 FORBIDDEN_DBS = frozenset({0, 13, 14, 15})   # 0 live store, 13 examples smoke (CI),
                                              # 14 run_external bench, 15 pytest plugin
 ```
+
+**Deliberately four, not more: the harness does not forbid its own neighbours.** 1, 2, 4, 11
+and 12 stay *allowed* as `--db` values. The four in the set are each a standing claim by a
+named, reproducible owner, so binding one is unambiguously a mistake and a static refusal is
+right. The scratch databases have no standing owner — their occupancy is a property of what is
+running right now, which a frozenset written today cannot know. Forbidding them would trade a
+real capability (an operator deliberately isolating a run on a free low database) for a check
+that still could not tell an occupied database from an empty one. Occupancy is the read-back
+assertion's job, not the allowlist's; the honest division is **static refusal for standing
+claims, runtime assertion for everything else.**
 
 `--db` required with **no default**, validated against the set, then — **after every import
 and after any repoint** — the runner reads the database number back off the live connection
@@ -798,7 +819,7 @@ reads only the full-corpus artifact. A fixture-derived artifact is marked
 
 Lane 1 (schedulable now, no key, no spend):
 
-- [ ] `python -m tests.benchmarks.sme.run_sme --fixture tests/benchmarks/sme/fixtures/sme_sample.json --db 10 --judge stub` exits 0, performs **zero network requests**, requires **no API key**, and writes a schema-valid artifact.
+- [ ] `python -m tests.benchmarks.sme.run_sme --fixture tests/benchmarks/sme/fixtures/sme_sample.json --db 3 --judge stub` exits 0, performs **zero network requests**, requires **no API key**, and writes a schema-valid artifact.
 - [ ] `pytest tests/benchmarks/test_sme.py` passes; every test in §Test Impact exists.
 - [ ] `sme/compare.py` raises `SmeComparabilityError` on a fingerprint mismatch **and** on a judge-identity mismatch, each covered by a test.
 - [ ] Every artifact records: upstream commit SHA, corpus fingerprint, **asserted** `redis_db`, judge model + prompt SHA-256, `popoto` + `redis-py` versions, `n` per family, and the full status breakdown summing to the item total.
@@ -895,9 +916,9 @@ interleave. Tasks 1–3 and 7 can start in parallel; 4–6 and 8–9 serialize b
 ## Verification
 
 1. `pytest tests/benchmarks/test_sme.py -q`
-2. `python -m tests.benchmarks.sme.run_sme --fixture tests/benchmarks/sme/fixtures/sme_sample.json --db 10 --judge stub --dry-run`
+2. `python -m tests.benchmarks.sme.run_sme --fixture tests/benchmarks/sme/fixtures/sme_sample.json --db 3 --judge stub --dry-run`
 3. Same without `--dry-run`; inspect the artifact for every field in §Success Criteria.
-4. `POPOTO_BENCH_DB=9 python -m tests.benchmarks.sme.run_sme --db 10 ...` → must raise `SmeDbError`, not run.
+4. `POPOTO_BENCH_DB=9 python -m tests.benchmarks.sme.run_sme --db 3 ...` → must raise `SmeDbError`, not run.
 5. `ruff check src/` (unchanged), `black --check src/ tests/`, `scripts/mypy_ratchet.py`.
 6. `mkdocs build --strict` → no orphan-artifact warning.
 7. Confirm `git diff --stat main` touches nothing under `src/popoto/`.
