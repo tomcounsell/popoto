@@ -132,6 +132,35 @@ So unless the full-corpus numbers move enough to change a qualitative claim
 elsewhere, the expected outcome is an explicit **"no headline change"** record,
 which the issue permits.
 
+## Environment of this run — and how it differs from the 2026-08-07 block
+
+Measured in the lane venv (`.worktrees/sdlc-569/.venv`), to be stated alongside
+the new numbers per the CLAUDE.md rule:
+
+| | This run (2026-09-16) | The 2026-08-07 block on the page |
+|---|---|---|
+| Python | 3.12.14 | 3.12.13 |
+| Platform | macOS-26.6.2-arm64, 10-core Apple silicon | macOS-26.5.2-arm64, 10-core Apple silicon |
+| Redis server | 8.10.1 | 8.6.2 |
+| redis-py | 8.1.0 | 8.1.0 |
+| numpy | 2.5.3 | 2.5.1 |
+| sentence-transformers | **6.0.1** | **5.7.0** |
+| Model | all-MiniLM-L6-v2 on CPU | all-MiniLM-L6-v2 on CPU |
+| Redis DB | 10 (`POPOTO_BENCH_DB=10`) | 14 (harness default) |
+
+**The sentence-transformers major bump 5.7.0 → 6.0.1 must be disclosed, not
+buried.** It means the full-1986 hybrid figures differ from the 250-question
+sample on *two* axes, coverage and embedding-library version, so any movement
+between them cannot be attributed to coverage alone. This is the same
+two-variables-moved caveat the page already applies to the
+`locomo_20260708_hybrid` comparison (`docs/benchmarks.md:396-399`), and it gets
+the same treatment: state both, attribute neither.
+
+The hybrid-vs-lexical comparison is less exposed — the lexical arm does not touch
+sentence-transformers at all — but its committed baseline (`locomo_20260807.json`)
+was still measured under the older Python/Redis/numpy, so the new table needs its
+own environment line rather than inheriting the 2026-08-07 block's.
+
 ## Non-goals (per the issue)
 
 - Graph arm at full scale.
