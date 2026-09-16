@@ -68,6 +68,60 @@ consensus, cross-vendor judge, verification-table runner, plan-checkbox
 updater, cross-repo `gh` targeting. Post under the operator's `gh` credential;
 one reviewer, one verdict.
 
+## The reviewer has READ access to the branch, and only read access (#642)
+
+**`/do-pr-review` must not `git add`, `git commit`, or `git push` in this
+repo — on any path, including the plan file.**
+
+It used to. The generic plan-checkbox updater in the global skill's
+`sub-skills/post-review.md` § 2.5 ticked `docs/plans/{slug}.md`'s Success
+Criteria and pushed a `docs(#N): sync plan checkboxes with review verdict`
+commit to the branch under review — authored under the operator's git identity,
+so nothing in `git log` distinguished it from a human commit. That commit moved
+the branch head past the SHA `sdlc-tool verdict finalize` had just pinned the
+verdict to, so every later `selfcheck` returned:
+
+```json
+{"ok": false, "verdict_present": true, "approved": true,
+ "trailer_matches_head": false, "marker_completed": false,
+ "reason": "REVIEW_TRAILER_MISSING"}
+```
+
+Both orderings were unsound, which is why the fix is not a reordering: commit
+then finalize records a head no reviewer inspected; finalize then commit records
+a head that is stale the moment it is written. Observed on #635 / PR #637, where
+`_verdicts.REVIEW.head_sha` was recorded as `0229bfcc` — the reviewer's own
+commit.
+
+Plan-checkbox syncing now happens in **`/do-docs`**, after the verdict is
+recorded. The reviewer publishes the intended state as a one-line
+`<!-- PLAN_CHECKBOX_SYNC {...} -->` marker in the review body; the docs cascade
+parses it, applies the ticks, and carries them in its own commit. All of that
+is soft: an unmatched criterion leaves its checkbox alone.
+
+**Never re-run `finalize` to refresh a stale trailer.** Minting APPROVED
+against an uninspected head is self-clearing a review gate. If `selfcheck`
+reports `head_drift: "code"`, a source file genuinely changed after approval
+and the remedy is another REVIEW pass.
+
+### What still moves the head after REVIEW, and why that is now fine
+
+`/do-docs` is a mandatory stage that commits *after* REVIEW by design, so the
+head always moves before `/do-merge` evaluates the gate. Since #642 the gate
+classifies that drift instead of comparing SHAs for equality
+(`tools/sdlc_review_drift.py` in the control-plane repo): a range that strictly
+descends from the reviewed commit and touches only documentation
+(`docs/`, top-level `*.md`, `.claude/commands/`) is fresh and reports
+`head_drift: "docs_only"`. Everything else — a changed file under `src/` or
+`tests/`, `mkdocs.yml`, a force-push, or any error resolving the comparison —
+still fails closed as `REVIEW_TRAILER_MISSING`.
+
+The consequence worth knowing before you plan a cascade: a `/do-docs` pass that
+fixes a **docstring inside a source file** produces code drift and will refuse
+the merge gate. That is correct — the file was not in the reviewed diff — but it
+means docstring corrections are better made during BUILD or PATCH, before the
+verdict is pinned, than during the post-review cascade.
+
 ## Verification commands that exist in this repo
 
 ```bash
