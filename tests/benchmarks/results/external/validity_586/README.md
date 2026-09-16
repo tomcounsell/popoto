@@ -19,7 +19,7 @@ in it (CLAUDE.md: *state the environment alongside any count*).
 |---|---|
 | Python | 3.12.14 |
 | redis-py | 8.1.0 |
-| Redis server | reported as `redis_version` in each artifact's `machine` block |
+| Redis server | **not captured.** Do not read `machine.redis_version` as the server version — `run_external.py:147-159` sets it from `redis.__version__`, the client, so it duplicates the redis-py row above |
 | Platform | macOS-26.6.2-arm64-arm-64bit, 10 cores (Apple silicon) |
 | Bench DB | 12 (`POPOTO_BENCH_DB=12`; DB 0 is rejected by the harness) |
 | Retrieval mode | `lexical` (BM25 only — **not** the hybrid mode the README headline quotes) |
@@ -30,9 +30,11 @@ in it (CLAUDE.md: *state the environment alongside any count*).
 
 Arms A and B ran on 2026-09-08 and arm C on 2026-09-16, on the same machine,
 same corpus, same commit-relevant harness code, and the same bench DB. The
-producer's one failure is byte-identical across B and C (see *Producer failure*
-below), which is the direct evidence that the eight-day gap did not perturb the
-stored corpus.
+producer's one failure reproduces identically across B and C (see *Producer
+failure* below), which is the main evidence that the eight-day gap did not
+perturb the stored corpus. It is not a claim of bit-identity: one item's
+interval bookkeeping does differ between the two runs, recorded in the same
+section.
 
 ## The three commands
 
@@ -131,10 +133,35 @@ Paired bootstrap over the 500 per-question deltas, 20,000 resamples, seed 0:
 | Recall@5 | −0.0040 | [−0.0100, +0.0000] | no |
 | MRR | −0.0052 | [−0.0111, −0.0005] | yes |
 
-The CI excludes zero for R@1 and MRR, but the reason matters more than the
-verdict: across all 500 questions **4 lost their rank-1 hit and 0 gained one**.
-The interval excludes zero because the direction is perfectly one-sided, not
-because the magnitude is large. Four questions out of 500 is the entire effect.
+The CI excludes zero for R@1 and MRR, but the two do so for different reasons
+and the difference matters more than the verdict.
+
+**Recall@1** is one-sided: across all 500 questions **4 lost their rank-1 hit
+and 0 gained one**, so its interval excludes zero on direction rather than
+magnitude. Recall@5 behaves the same way (0 gained, 2 lost).
+
+**MRR is not one-sided.** Nine questions moved, 3 up and 6 down:
+
+| Direction | Items |
+|---|---|
+| gained | `06878be2` +0.0091, `95228167` +0.1667, `6e984302` +0.0500 |
+| lost | `46a3abf7` −0.9000, `bc8a6e93` −0.7500, `8077ef71` −0.5000, `gpt4_2487a7cb` −0.5000, `6d550036` −0.1071, `6b7dfb22` −0.0758 |
+
+Its interval excludes zero because the losses are large relative to the gains,
+not because nothing moved upward.
+
+**Recall@10's +0.0000 is a wash, not stasis**: `06878be2` gained a hit
+(0.0 → 1.0) and `6b7dfb22` lost one. This is the counterexample to the
+intuition that a subtractive gate can only lose recall — removing a record
+promotes lower-ranked records across a fixed cutoff *k*, and here that promoted
+one question's gold session into the top 10. Per-item B→C directionality:
+
+| Metric | improved | worsened |
+|---|---|---|
+| Recall@1 | 0 | 4 |
+| Recall@5 | 0 | 2 |
+| Recall@10 | 1 | 1 |
+| MRR | 3 | 6 |
 
 ## Producer failure (1 of 246,738 units)
 
@@ -159,8 +186,30 @@ asserted:
 - That item scores 1.0 on every metric in all three arms — the dropped record
   was not the one the retriever needed.
 - Zero of the 500 items differ on any metric between arms A and B.
-- Arm C reproduced the failure identically (same count, same item), so B and C
-  are computed over identical stored corpora and the drop cancels in C−B.
+- Arm C reproduced the failure identically (same count, same item), so the drop
+  cancels in C−B.
+
+### The arms are not bit-identical in interval state
+
+Stated because the design leans on B and C behaving the same way, and the
+artifacts show one place where they do not:
+
+| | arm B | arm C |
+|---|---|---|
+| `n_supersessions` | 3698 | **3699** |
+| `n_excluded_keys_total` | 3697 | **3699** |
+
+Localized to a single item, `603deb26`: 7 supersessions in B against 8 in C,
+with 6 vs 8 excluded keys, while `n_saved_records` is 472 in both. The record
+set matches; the interval bookkeeping does not. `603deb26` is not among the
+nine items whose metrics moved, so the measured impact on every number in this
+directory is nil — but the producer is evidently not perfectly deterministic
+across the two runs, and a reader should not take "same corpus" to mean more
+than the arms actually demonstrate.
+
+(Note that arm B's `n_excluded_keys_total` is 3697, not 0: excluded *keys* are
+computed in both arms, and only the *hits* subtraction is behind the gating
+flag. See `scenarios/external_base.py:879-886`.)
 
 ## What this does not establish
 

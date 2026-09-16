@@ -880,8 +880,16 @@ confounded pair is A→B, whose delta is zero on every metric anyway.
 arms A and B) reproduced the failure exactly: same count (1), same item
 (`18bc8abd`), same `records=246737` against arm A's `246738`, same
 `measurement_failures == 0`. The cancellation argument above is therefore
-measured rather than assumed — both B and C lost the same one record, so C − B
-is computed over identical stored corpora.
+measured rather than assumed — both B and C lost the same one record, so the
+drop cancels in C − B.
+
+That is a claim about the *record set*, not about bit-identical state. Review
+of PR #720 found one place the two runs diverge: arm B records 3698
+supersessions and 3697 excluded keys against arm C's 3699 and 3699, localized
+to item `603deb26` (7 vs 8 supersessions, 6 vs 8 excluded keys) with
+`n_saved_records` 472 in both. `603deb26` is not among the nine items whose
+metrics moved, so no published number changes, but the producer is not
+perfectly deterministic across runs and the artifact README now says so.
 
 **Follow-up (not this issue).** `supersession_axis.py` should either skip an
 out-of-order supersession or clamp the close-at, rather than letting the unit be

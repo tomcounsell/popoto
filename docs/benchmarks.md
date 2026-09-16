@@ -590,16 +590,26 @@ extra per-save Lua command, and the producer's write ordering cost nothing
 measurable.
 
 **The gate is live.** Arm C excluded 3699 keys and — the condition an earlier
-attempt failed — **177 excluded hits**, against arm B's 0. The three gating
-layers really do subtract on a real corpus at 246,738 records; the machinery is
-not structurally nil. That is this study's primary positive finding.
+attempt failed — **177 excluded hits**, against arm B's **0 hits**. (Arm B
+computes excluded *keys* too, 3697 of them; it simply subtracts nothing with
+them, which is what "gate off" means.) The three gating layers really do
+subtract on a real corpus at 246,738 records; the machinery is not structurally
+nil. That is this study's primary positive finding.
 
-**The retrieval effect is a small, strictly one-directional cost.** Across all
-500 questions, **4 lost their rank-1 hit and 0 gained one**. A paired bootstrap
-(20,000 resamples, seed 0) puts Recall@1 at −0.0080, 95% CI [−0.0160, −0.0020]
-and MRR at −0.0052, CI [−0.0111, −0.0005]; Recall@5's CI includes zero. The
-intervals exclude zero because the direction is perfectly one-sided, **not**
-because the magnitude is large — four questions out of 500 is the whole effect.
+**The retrieval effect is small, and one-directional at the top of the
+ranking.** Across all 500 questions, **4 lost their rank-1 hit and 0 gained
+one**; Recall@5 is likewise 0 gained / 2 lost. A paired bootstrap (20,000
+resamples, seed 0) puts Recall@1 at −0.0080, 95% CI [−0.0160, −0.0020] and MRR
+at −0.0052, CI [−0.0111, −0.0005]; Recall@5's CI includes zero.
+
+The two intervals exclude zero for different reasons, and the difference is
+worth stating rather than collapsing. Recall@1's does because the direction is
+perfectly one-sided over four questions out of 500. **MRR's does not**: nine
+questions moved on MRR, 3 up and 6 down, and the interval excludes zero because
+the losses are large (the four biggest are −0.90, −0.75, −0.50, −0.50) relative
+to the gains (+0.167, +0.050, +0.009), not because nothing moved upward. Recall@10 is the
+clearest case: its published +0.0000 is not "nothing happened" but two
+offsetting flips, one question gaining a hit and one losing it.
 
 Per category, with flip counts beside the deltas (the two categories #586 named
 are the first two rows):
@@ -621,11 +631,15 @@ impose falls on temporal-reasoning and multi-session. Published regardless of
 sign, per the issue's fourth criterion.
 
 That is a finding about *subtractive* gating under a content-identity
-heuristic, and the honest reading is that a gate which removes records can only
-ever lose recall — recall counts what was retrieved, and subtraction never adds
-a hit. The case for validity gating is answer correctness (not retrieving a
-*stale* fact), which is a judged-accuracy question this study does not and
-cannot answer.
+heuristic. It is tempting to explain it a priori — a gate that removes records
+can only lose recall, since recall counts what was retrieved — but that
+argument is wrong, and this study's own artifacts disprove it: removing a
+record promotes lower-ranked records across a fixed cutoff *k*, so gating **can**
+add a hit, and here it did once (item `06878be2` gains Recall@10). What the
+measurement supports is narrower and empirical: on this corpus the promotions
+were rare and smaller than the losses, so the net was a small cost. The case
+for validity gating is answer correctness (not retrieving a *stale* fact),
+which is a judged-accuracy question this study does not and cannot answer.
 
 **What it does not establish:** not "V0 validity gating changes LongMemEval-S
 by X" — V0 ships no producer, so every number is a property of the pair (this
@@ -646,8 +660,17 @@ artifact ran in a different environment with an unrecorded redis-py version.
     Impact, computed from the committed per-question blocks: exactly one item
     (`18bc8abd`) holds 435 records instead of 436, it scores 1.0 on every
     metric in all three arms, and **zero** of the 500 items differ on any
-    metric between A and B. Arm C reproduced the failure identically, so B and
-    C are computed over identical stored corpora and the drop cancels in C−B.
+    metric between A and B. Arm C reproduced the failure identically — same
+    item, same count — so the drop cancels in C−B.
+
+    The arms are not bit-identical in stored interval state, though, and the
+    difference is disclosed rather than smoothed over: arm B records 3698
+    supersessions to arm C's 3699, localized to item `603deb26` (7 vs 8, with
+    6 vs 8 excluded keys) while `n_saved_records` is 472 in both. The record
+    set matches; the interval bookkeeping does not. `603deb26` is not among the
+    nine items whose metrics moved, so the measured impact is nil — but the
+    producer is evidently not perfectly deterministic across the two runs, and
+    the study's design does lean on B and C behaving identically.
 
 ### Judged-Answer Accuracy (Tier 5)
 

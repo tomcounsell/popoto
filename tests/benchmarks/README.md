@@ -296,12 +296,19 @@ macOS-26.6.2-arm64 10-core, full 500/500 LongMemEval-S, **lexical** retrieval.
   The "non-zero A→B is a finding about the harness" clause above did not fire;
   B→C is readable as the gate alone.
 - **The gate is live**, which was the open question: arm C reports 3699
-  excluded keys and **177 excluded hits** against arm B's 0.
-- **B→C is a small, strictly one-directional cost**: 4 of 500 questions lost
-  their rank-1 hit, 0 gained one. Paired bootstrap (20k resamples, seed 0):
-  R@1 −0.0080, CI [−0.0160, −0.0020]; MRR −0.0052, CI [−0.0111, −0.0005]; R@5's
-  CI includes zero. The intervals exclude zero because the direction is
-  one-sided, not because the effect is large.
+  excluded keys and **177 excluded hits** against arm B's **0 hits**. Arm B
+  computes excluded keys as well (3697); "gate off" means nothing is subtracted
+  with them, not that none are found.
+- **B→C is a small cost, one-directional at the top of the ranking**: 4 of 500
+  questions lost their rank-1 hit and 0 gained one (R@5: 0 gained, 2 lost).
+  Paired bootstrap (20k resamples, seed 0): R@1 −0.0080, CI [−0.0160, −0.0020];
+  MRR −0.0052, CI [−0.0111, −0.0005]; R@5's CI includes zero. R@1's interval
+  excludes zero because the direction is one-sided over four questions, not
+  because the effect is large. **MRR's does not**: nine questions moved there,
+  3 up and 6 down, and its interval excludes zero on magnitude. R@10's
+  published +0.0000 is likewise two offsetting flips, not stasis — gating
+  removed a record and thereby *promoted* one question's hit across the cutoff.
+  A gate that subtracts records can add a hit; do not assume otherwise.
 - **`knowledge-update` (n=78) moved by exactly zero** on every metric, 0
   questions changing rank — so the caveat above about category-level
   conclusions resolves in the cleanest possible way: there is no delta to
