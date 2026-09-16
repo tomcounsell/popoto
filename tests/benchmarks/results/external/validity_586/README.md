@@ -178,6 +178,34 @@ asserted:
 - **Not** a generalization beyond content-identity supersession. A semantic or
   LLM-derived producer would close a different, probably larger, set.
 
+## Provenance note: these arms predate #701
+
+All three arms were run on a branch that forked from `main` **before**
+[#701](https://github.com/tomcounsell/popoto/issues/701) landed (PR #705,
+merged 2026-09-09). Under that older code every per-item benchmark model class
+shared one Redis key namespace for its field keys — including `$ValidityF:` —
+because `_meta.db_class_key` was captured at class-creation time, before the
+post-hoc `__name__` rename reached it. `#701` replaced that with
+`type(name, bases, ns)` so each item owns its namespace from creation.
+
+This does **not** invalidate the comparison, for two reasons:
+
+1. **All three arms ran under the same code**, so whatever the namespacing
+   does, it does identically to A, B, and C. The deltas are internally
+   consistent, and the deltas are what this study reports.
+2. **Cross-item contamination was already contained** under the old code:
+   `ExternalScenario.teardown()` deletes the shared keys after every item.
+   That containment is exactly why #701 describes its own change as turning
+   teardown into "cheap targeted cleanup rather than the sole thing preventing
+   cross-item contamination".
+
+What it does mean: a re-run on current `main` is not guaranteed to reproduce
+these figures byte-for-byte, and anyone re-running should expect to re-measure
+rather than diff against this directory. The branch carrying these artifacts
+merges `main` (and therefore #701) *after* the runs, so the committed code and
+the committed numbers come from different commits — stated here rather than
+left for a reader to discover from `git log`.
+
 ## Schema note
 
 The `machine` block in these artifacts carries `redis_version` and `bench_db`
