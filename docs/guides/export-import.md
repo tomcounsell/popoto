@@ -153,7 +153,9 @@ raising, but a reverse lookup from the *other* side still counts it. The warning
 dangling count covers both causes — a target absent from the key map, and a target
 whose own record was rejected or errored on this run (the warning names that second
 count separately) — so it is the list to work from before treating the destination
-as consistent.
+as consistent. Both reference counts are scoped to the records that actually
+reached storage: a reference on a record the write gate rejected is in no
+destination at all, so it is counted neither way.
 
 To make your own field participate, override `remap_references` on it. The base
 implementation returns the value unchanged:

@@ -696,3 +696,33 @@ def test_reference_to_a_rejected_sibling_is_counted_as_dangling():
     assert "0 reference value(s) remapped" in warning
     assert "1 reference value(s) left pointing at keys absent" in warning
     assert "1 of the dangling reference value(s) point at one of those" in warning
+
+
+def test_references_on_a_rejected_record_are_not_counted_at_all():
+    """The mirror image: the *referencing* record is the one that fails.
+
+    Its reference exists nowhere in the destination, so counting it as
+    remapped would tell the operator about a rewrite that no stored record
+    carries. Both counts cover the records that reached storage only.
+    """
+    high = RegenGated.create(subject="hi", importance=0.9)
+    low = RegenGated.create(subject="lo", importance=0.1)
+    low.peer = high
+    low.save()
+    text = _export_text(RegenGated)
+
+    previous = RegenGated.__dict__.get("_wf_min_threshold")
+    RegenGated._wf_min_threshold = 0.5
+    try:
+        report = import_records(RegenGated, io.StringIO(text), preserve_keys=False)
+    finally:
+        RegenGated._wf_min_threshold = previous
+
+    assert report.count("landed") == 1
+    assert report.count("rejected") == 1
+    warning = next(w for w in report.warnings if w.startswith("key regeneration:"))
+    assert "0 reference value(s) remapped" in warning
+    assert "0 reference value(s) left pointing at keys absent" in warning
+    # The rejected record's mint is still dropped, but nothing dangles.
+    assert "1 minted key(s) were dropped from the key map" in warning
+    assert "point at one of those" not in warning

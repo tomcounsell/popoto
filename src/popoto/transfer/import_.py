@@ -573,14 +573,14 @@ def _import_regenerating(
         model_class, lines, auto_key_name, key_map
     )
 
-    remapped_total = 0
-    unmapped_total = 0
-    # (referencing record's new key, rewritten target key) for every value
-    # pass 2 rewrote, so a target whose own record later fails to write can be
-    # moved out of the remapped count and into the dangling one. One short
-    # pair per rewritten reference -- the same order of residency as the key
-    # map, which is already held.
-    rewritten: "list[tuple[str, str]]" = []
+    # (referencing record's new key, remapped, unmapped, rewritten targets)
+    # per record. The counts are tallied at the end rather than as they are
+    # produced, because pass 2 cannot know which records will survive the
+    # write gate, a conflict, or a save error -- and a reference on a record
+    # that never landed is in no destination at all. One short tuple per
+    # record: the same order of residency as the key map, which is already
+    # held.
+    accounting: "list[tuple[str, int, int, list[str]]]" = []
     batch: "list[dict[str, Any]]" = []
     try:
         spooled = zip(iter_lines(spool), line_numbers, strict=True)
@@ -601,9 +601,7 @@ def _import_regenerating(
             remapped, unmapped, targets = _remap_record(
                 record, reference_fields, key_map
             )
-            remapped_total += remapped
-            unmapped_total += unmapped
-            rewritten.extend((new_key, target) for target in targets)
+            accounting.append((new_key, remapped, unmapped, targets))
             record["values"][auto_key_name] = new_value
             record["key"] = new_key
 
@@ -636,21 +634,25 @@ def _import_regenerating(
         # path, rather than only when pass 2 runs to completion.
         in_storage, dropped_keys = _prune_unlanded_mints(report, minted, key_map)
         dropped = len(dropped_keys)
-        # A reference rewritten to a sibling that then failed to write is not
-        # remapped, it dangles. Counted after the fact because pass 2 cannot
-        # know which records will land.
-        stale = sum(
-            1
-            for owner, target in rewritten
-            if owner in in_storage and target in dropped_keys
-        )
-        remapped_total -= stale
-        unmapped_total += stale
+        # Only records that reached storage have references in the
+        # destination at all. Of those, a reference rewritten to a sibling
+        # that then failed to write is not remapped -- it dangles.
+        remapped_total = 0
+        unmapped_total = 0
+        stale = 0
+        for owner, remapped, unmapped, targets in accounting:
+            if owner not in in_storage:
+                continue
+            owner_stale = sum(1 for target in targets if target in dropped_keys)
+            stale += owner_stale
+            remapped_total += remapped - owner_stale
+            unmapped_total += unmapped + owner_stale
         report.warnings.append(
             f"key regeneration: {len(minted)} key(s) minted; {remapped_total} "
             f"reference value(s) remapped; {unmapped_total} reference value(s) "
             f"left pointing at keys absent from the key map (those references "
-            f"dangle). Only fields that declare a reference are remapped -- an "
+            f"dangle). Both counts cover the records that reached storage. "
+            f"Only fields that declare a reference are remapped -- an "
             f"application-level pointer stored in a plain Field is never "
             f"rewritten."
             + (
