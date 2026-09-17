@@ -3553,6 +3553,31 @@ gates membership.</p>
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="n">new</span><span class="p">)</span>  <span class="c1"># -&gt; [old, new], oldest first</span>
 </code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Declaring the field is not enough — exclusion needs a producer</p>
+<p>Every <code>SupersessionProtocol</code> call in the example above is load-bearing,
+including the <em>first</em> one that returns <code>None</code>. A plain <code>.save()</code> only ever
+<strong>opens</strong> an interval (<code>valid_from = save time</code>, or a declared future
+epoch — see below) and never registers the record as the incumbent for
+any identity. So a model that declares <code>validity = ValidityField()</code> and
+writes records with <code>.save()</code> alone, with no declared future <code>valid_from</code>,
+gets two fully populated interval ZSETs and an exclusion set that is
+<strong>permanently empty with respect to the closed-interval (<code>invalid_at</code>)
+check</strong> — no error, no warning, and Redis state that looks like gating is
+working. The one thing a plain <code>.save()</code> <em>can</em> exclude is itself: a save
+that declares a future <code>valid_from</code> is excluded until that moment arrives,
+via the interval-not-yet-started check. Worse, skipping the first
+<code>supersede()</code> is not a small omission: without it the <em>second</em> claim finds
+no incumbent, closes nothing, and returns <code>None</code> too.</p>
+<p>Closing an interval requires one of: <code>SupersessionProtocol.supersede()</code> /
+<code>save_and_supersede()</code>, <code>SupersessionProtocol.invalidate()</code> /
+<code>save_and_invalidate()</code>, <code>ProvenanceJournal</code>, or
+<code>ObservationProtocol.on_context_used()</code> with the <code>"contradicted"</code> outcome
+and <code>instance._superseded_by</code> set (see
+<a href="../observation-protocol/#effects-matrix">Observation Protocol</a>). All
+four are explicit application calls. Whether this should stay imperative
+is <a href="https://github.com/tomcounsell/popoto/issues/693">issue #693</a>.</p>
+</div>
 <h2 id="keyspace">Keyspace<a class="headerlink" href="#keyspace" title="Permanent link">&para;</a></h2>
 <p><code>ValidityField</code> owns six Redis keys per model/field, all under the
 <code>$ValidityF:{Model}:{field}</code> prefix. No bytes are written into the model's own

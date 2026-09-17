@@ -3682,8 +3682,10 @@ interactions, and authority level determines how long directives persist.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Aggressive decay — only very recent records</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">hot</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">decay_rate</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
 </code></pre></div>
-<p>On a model that also declares a <a href="../validity-and-supersession/"><code>ValidityField</code></a>, a
-keyword-only <code>as_of</code> reconstructs ranking at a past moment instead of now:</p>
+<p>On a model that also declares a <a href="../validity-and-supersession/"><code>ValidityField</code></a>
+and whose records have interval state that changes over time (closed by a
+supersession producer, or a declared future <code>valid_from</code>), a keyword-only
+<code>as_of</code> reconstructs ranking at a past moment instead of now:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">past</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
 </code></pre></div>
 <p><code>as_of</code> is ignored on models without a <code>ValidityField</code>. See

@@ -3548,6 +3548,14 @@ method on it (<code>touch</code>, <code>confirm_access</code>, <code>strengthen_
 <td>—</td>
 <td>auto-resolve</td>
 </tr>
+<tr>
+<td>ValidityField</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>close + chain (opt-in, see below)</td>
+</tr>
 </tbody>
 </table>
 <p>Supporting notes:</p>
@@ -3557,6 +3565,15 @@ method on it (<code>touch</code>, <code>confirm_access</code>, <code>strengthen_
 <li><strong>CyclicDecayField</strong>: <code>acted</code> strengthens cycles and resolves pressure; <code>dismissed</code> and <code>contradicted</code> weaken cycles (<code>contradicted</code> more aggressively). These adjustments are durable — an ordinary <code>save()</code> preserves the learned amplitude rather than resetting it to the model's declared default, so repeated outcomes accumulate. See <a href="../cyclic-decay-field/#learned-amplitudes-persist-across-saves">Learned amplitudes persist across saves</a>. One ordering caveat: if you pass a shared <code>pipeline</code> to both <code>apply_outcome()</code> and <code>save()</code>, queue the <code>save()</code> first, or the amplitude adjustment is discarded when the pipeline executes.</li>
 <li><strong>ConfidenceField</strong>: <code>acted</code> corroborates; <code>contradicted</code> contradicts.</li>
 <li><strong>PredictionLedgerMixin</strong>: <code>acted</code>, <code>used</code>, <code>dismissed</code>, and <code>contradicted</code> auto-resolve pending predictions with appropriate error values (<code>used</code> maps to moderate error <code>Defaults.PL_AUTO_RESOLVE_USED</code>).</li>
+<li>
+<p><strong>ValidityField</strong> (issue #580): a bare <code>contradicted</code> outcome is a no-op for this field — <code>on_context_used</code> has no slot in <code>outcome_map</code> for a second, correcting instance. To close the contradicted record's interval and chain it to its correction, tag the contradicted instance with the private <code>_superseded_by</code> attribute <em>before</em> reporting it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">stale</span><span class="o">.</span><span class="n">_superseded_by</span> <span class="o">=</span> <span class="n">corrected</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">ObservationProtocol</span><span class="o">.</span><span class="n">on_context_used</span><span class="p">(</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="p">[</span><span class="n">stale</span><span class="p">],</span> <span class="p">{</span><span class="n">stale</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="s2">"contradicted"</span><span class="p">}</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">)</span>
+</code></pre></div>
+<p>This routes through <code>_apply_supersession</code>, which delegates to <code>SupersessionProtocol.invalidate</code> — the same closure-and-chain primitive used by <a href="../validity-and-supersession/">ValidityField and SupersessionProtocol</a>. It is a strict no-op unless the model declares a <code>ValidityField</code> <em>and</em> <code>_superseded_by</code> is set; on every other model, or without the attribute, <code>contradicted</code> behaves exactly as the rest of this table describes.</p>
+</li>
 </ul>
 <h2 id="outcomes-now-reach-forgetting">Outcomes Now Reach Forgetting<a class="headerlink" href="#outcomes-now-reach-forgetting" title="Permanent link">&para;</a></h2>
 <p>Reporting an outcome used to affect ranking and cycle amplitudes but never the <em>rate</em> at which a
@@ -3587,13 +3604,13 @@ reported on scores byte-identically to pre-modulation Popoto.</p>
 <li><strong>Lifecycle</strong>: pending -&gt; acted | used | dismissed | deferred | contradicted | expired</li>
 <li><strong>TTL</strong>: 3600s (1 hour). Unresolved proposals are treated as deferred.</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.observation</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecallProposal</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Get pending proposals</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">pending</span> <span class="o">=</span> <span class="n">RecallProposal</span><span class="o">.</span><span class="n">get_pending</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">)</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># Expire stale proposals</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">expired</span> <span class="o">=</span> <span class="n">RecallProposal</span><span class="o">.</span><span class="n">expire_stale</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="mi">3600</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.observation</span><span class="w"> </span><span class="kn">import</span> <span class="n">RecallProposal</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># Get pending proposals</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">pending</span> <span class="o">=</span> <span class="n">RecallProposal</span><span class="o">.</span><span class="n">get_pending</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">partition</span><span class="o">=</span><span class="s2">"default"</span><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># Expire stale proposals</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">expired</span> <span class="o">=</span> <span class="n">RecallProposal</span><span class="o">.</span><span class="n">expire_stale</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="mi">3600</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>

@@ -3213,8 +3213,10 @@ Override `decay_rate` per query for different retrieval contexts:
 hot = Memory.query.filter(agent_id="agent-1").top_by_decay(5, decay_rate=1.0)
 ```
 
-On a model that also declares a [`ValidityField`](validity-and-supersession.md), a
-keyword-only `as_of` reconstructs ranking at a past moment instead of now:
+On a model that also declares a [`ValidityField`](validity-and-supersession.md)
+and whose records have interval state that changes over time (closed by a
+supersession producer, or a declared future `valid_from`), a keyword-only
+`as_of` reconstructs ranking at a past moment instead of now:
 
 ```python
 past = Memory.query.filter(agent_id="agent-1").top_by_decay(5, as_of=two_weeks_ago)
@@ -4740,6 +4742,7 @@ Each row lists what the field/mixin does for each outcome. `—` means no effect
 | DecayingSortedField | touch           | —               | —            | —        | —                   |
 | AccessTracker       | confirm         | confirm         | discard      | discard  | discard             |
 | PredictionLedger    | auto-resolve    | moderate err    | auto-resolve | —        | auto-resolve        |
+| ValidityField       | —               | —               | —            | —        | close + chain (opt-in, see below) |
 
 Supporting notes:
 
@@ -4748,6 +4751,16 @@ Supporting notes:
 - **CyclicDecayField**: `acted` strengthens cycles and resolves pressure; `dismissed` and `contradicted` weaken cycles (`contradicted` more aggressively). These adjustments are durable — an ordinary `save()` preserves the learned amplitude rather than resetting it to the model's declared default, so repeated outcomes accumulate. See [Learned amplitudes persist across saves](cyclic-decay-field.md#learned-amplitudes-persist-across-saves). One ordering caveat: if you pass a shared `pipeline` to both `apply_outcome()` and `save()`, queue the `save()` first, or the amplitude adjustment is discarded when the pipeline executes.
 - **ConfidenceField**: `acted` corroborates; `contradicted` contradicts.
 - **PredictionLedgerMixin**: `acted`, `used`, `dismissed`, and `contradicted` auto-resolve pending predictions with appropriate error values (`used` maps to moderate error `Defaults.PL_AUTO_RESOLVE_USED`).
+- **ValidityField** (issue #580): a bare `contradicted` outcome is a no-op for this field — `on_context_used` has no slot in `outcome_map` for a second, correcting instance. To close the contradicted record's interval and chain it to its correction, tag the contradicted instance with the private `_superseded_by` attribute *before* reporting it:
+
+    ```python
+    stale._superseded_by = corrected
+    ObservationProtocol.on_context_used(
+        [stale], {stale.db_key.redis_key: "contradicted"}
+    )
+    ```
+
+    This routes through `_apply_supersession`, which delegates to `SupersessionProtocol.invalidate` — the same closure-and-chain primitive used by [ValidityField and SupersessionProtocol](validity-and-supersession.md). It is a strict no-op unless the model declares a `ValidityField` *and* `_superseded_by` is set; on every other model, or without the attribute, `contradicted` behaves exactly as the rest of this table describes.
 
 ## Outcomes Now Reach Forgetting
 
@@ -4860,6 +4873,32 @@ Fact.query.filter(validity__as_of=two_weeks_ago)  # -> [old]
 
 SupersessionProtocol.chain(new)  # -> [old, new], oldest first
 ```
+
+!!! warning "Declaring the field is not enough — exclusion needs a producer"
+
+    Every `SupersessionProtocol` call in the example above is load-bearing,
+    including the *first* one that returns `None`. A plain `.save()` only ever
+    **opens** an interval (`valid_from = save time`, or a declared future
+    epoch — see below) and never registers the record as the incumbent for
+    any identity. So a model that declares `validity = ValidityField()` and
+    writes records with `.save()` alone, with no declared future `valid_from`,
+    gets two fully populated interval ZSETs and an exclusion set that is
+    **permanently empty with respect to the closed-interval (`invalid_at`)
+    check** — no error, no warning, and Redis state that looks like gating is
+    working. The one thing a plain `.save()` *can* exclude is itself: a save
+    that declares a future `valid_from` is excluded until that moment arrives,
+    via the interval-not-yet-started check. Worse, skipping the first
+    `supersede()` is not a small omission: without it the *second* claim finds
+    no incumbent, closes nothing, and returns `None` too.
+
+    Closing an interval requires one of: `SupersessionProtocol.supersede()` /
+    `save_and_supersede()`, `SupersessionProtocol.invalidate()` /
+    `save_and_invalidate()`, `ProvenanceJournal`, or
+    `ObservationProtocol.on_context_used()` with the `"contradicted"` outcome
+    and `instance._superseded_by` set (see
+    [Observation Protocol](observation-protocol.md#effects-matrix)). All
+    four are explicit application calls. Whether this should stay imperative
+    is [issue #693](https://github.com/tomcounsell/popoto/issues/693).
 
 ## Keyspace
 
@@ -17231,6 +17270,20 @@ covers a given moment, rather than filtering on a stored value.
 Fact.query.filter(validity__current=True)
 Fact.query.filter(validity__as_of=two_weeks_ago)
 ```
+
+These lookups report interval state; they do not create it. A record saved with
+a plain `.save()` and no declared `valid_from` has an open interval
+(`invalid_at = +inf`) that has already started, so it satisfies `current=True`
+until a producer closes it. (A `.save()` that *does* declare a future
+`valid_from` is excluded from `current=True` until that moment arrives; see
+[Validity and Supersession](features/validity-and-supersession.md) for the
+`valid_from > as_of` branch that makes this work.) `current=True` starts excluding an
+open-ended record only once a supersession producer —
+`SupersessionProtocol.supersede()` / `save_and_supersede()`, `invalidate()` /
+`save_and_invalidate()`, `ProvenanceJournal`, or a `_superseded_by`-tagged
+`ObservationProtocol` `"contradicted"` outcome — has closed one. Declaring the
+field alone never closes anything; see
+[ValidityField and SupersessionProtocol](features/validity-and-supersession.md).
 
 Using either lookup consumes a filter slot, so it disables sorted-range `limit`
 pushdown on that query — the default retrieval path (`composite_score()`,

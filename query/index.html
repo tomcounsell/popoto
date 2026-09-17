@@ -5791,6 +5791,19 @@ covers a given moment, rather than filtering on a stored value.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-71-1" name="__codelineno-71-1" href="#__codelineno-71-1"></a><span class="n">Fact</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity__current</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-71-2" name="__codelineno-71-2" href="#__codelineno-71-2"></a><span class="n">Fact</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity__as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
 </code></pre></div>
+<p>These lookups report interval state; they do not create it. A record saved with
+a plain <code>.save()</code> and no declared <code>valid_from</code> has an open interval
+(<code>invalid_at = +inf</code>) that has already started, so it satisfies <code>current=True</code>
+until a producer closes it. (A <code>.save()</code> that <em>does</em> declare a future
+<code>valid_from</code> is excluded from <code>current=True</code> until that moment arrives; see
+<a href="../features/validity-and-supersession/">Validity and Supersession</a> for the
+<code>valid_from &gt; as_of</code> branch that makes this work.) <code>current=True</code> starts excluding an
+open-ended record only once a supersession producer —
+<code>SupersessionProtocol.supersede()</code> / <code>save_and_supersede()</code>, <code>invalidate()</code> /
+<code>save_and_invalidate()</code>, <code>ProvenanceJournal</code>, or a <code>_superseded_by</code>-tagged
+<code>ObservationProtocol</code> <code>"contradicted"</code> outcome — has closed one. Declaring the
+field alone never closes anything; see
+<a href="../features/validity-and-supersession/">ValidityField and SupersessionProtocol</a>.</p>
 <p>Using either lookup consumes a filter slot, so it disables sorted-range <code>limit</code>
 pushdown on that query — the default retrieval path (<code>composite_score()</code>,
 <code>top_by_decay()</code>, <code>ContextAssembler.assemble()</code>) instead accepts a keyword-only
