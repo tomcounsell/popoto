@@ -58,6 +58,9 @@ Example:
     old = Fact(fact_id="plan-1").save()   # interval opens at now, closes at +inf
     new = Fact(fact_id="plan-2").save()
 
+    # The explicit close below is NOT optional (issue #693). Saving alone only
+    # ever OPENS intervals, so a save-only model's exclusion set stays empty,
+    # unless a save declares a future `valid_from`.
     # Close `old` and chain it to `new` in one atomic EVAL:
     ValidityField.execute_supersede(
         Fact, "validity", new_member=new.db_key.redis_key,
@@ -431,6 +434,45 @@ class ValidityField(Field):
     The stored field value is the record's valid-from epoch (a ``float``); the
     interval state itself lives in the six derived Redis keys documented in the
     module docstring, maintained by :data:`SUPERSEDE_LUA`.
+
+    Declaring the field is NOT enough to exclude anything (issue #693)
+    -----------------------------------------------------------------
+    A plain ``.save()`` routes through :meth:`on_save` in mode ``'open'``: it
+    writes ``valid_from = save time`` (or a caller-declared epoch, see below)
+    and ``invalid_at = +inf``, and nothing else. ``+inf`` never satisfies the
+    ``invalid_at <= as_of`` test in :meth:`resolve_excluded_keys`, so **with
+    respect to that branch, a save that does not declare a future
+    ``valid_from`` gets a fully populated pair of interval ZSETs and an
+    exclusion set that stays permanently empty.** That is only half of
+    ``resolve_excluded_keys``, though: its other, independent branch excludes
+    on ``valid_from > as_of``, and :meth:`on_save` uses ``field_value`` as the
+    valid-from epoch whenever it is numeric. So a plain ``.save()`` that
+    declares a future ``valid_from`` *is* excluded, until that moment arrives
+    — the one thing a save without a producer can exclude. A save also never
+    registers a record as the incumbent for any identity — the
+    ``{prefix}:open:{digest}`` pointer is written by :data:`SUPERSEDE_LUA`
+    itself, so a later
+    ``SupersessionProtocol.supersede(successor, identity_key=...)`` finds no
+    incumbent, closes nothing, and returns ``None``.
+
+    Closing an interval requires an explicit producer. Today there are four:
+
+    - :meth:`SupersessionProtocol.supersede` /
+      :meth:`~popoto.fields.supersession.SupersessionProtocol.save_and_supersede`
+      — use one of these for *every* identity-bearing write, including the
+      first claim about an identity, or the second claim will close nothing.
+    - :meth:`~popoto.fields.supersession.SupersessionProtocol.invalidate` /
+      :meth:`~popoto.fields.supersession.SupersessionProtocol.save_and_invalidate`
+      — the identity-free counterpart of the pair above.
+    - ``ProvenanceJournal``.
+    - ``ObservationProtocol.on_context_used`` with the ``"contradicted"``
+      outcome *and* ``instance._superseded_by`` set — see
+      ``_apply_supersession``. This is still an explicit application call, not
+      an inference.
+
+    The empty-set-versus-``None`` distinction is real but invisible to an
+    adopter: gating did run, and excluded nothing. Whether this should stay
+    imperative is the open question on issue #693.
 
     Why this is NOT a ``SortedFieldMixin`` (plan D2)
     ------------------------------------------------
