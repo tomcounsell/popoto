@@ -89,7 +89,7 @@ syncing currently happens in neither place. This is tracked as follow-up work
 on #725 (split out so the tracker survives #642's closure at merge); see
 `docs/plans/sdlc-642.md` Tasks A1–A4 (unchecked).
 
-It used to run unconditionally, with no way to opt out. The generic plan-checkbox updater in the global skill's
+That still happens today: nothing in this repo gates the commit off, so the generic plan-checkbox updater in the global skill's
 `sub-skills/post-review.md` § 2.5 ticked `docs/plans/{slug}.md`'s Success
 Criteria and pushed a `docs(#N): sync plan checkboxes with review verdict`
 commit to the branch under review — authored under the operator's git identity,
