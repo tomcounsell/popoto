@@ -2968,6 +2968,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-reviewer-has-read-access-to-the-branch-and-only-read-access-642" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The reviewer has READ access to the branch, and only read access (#642)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The reviewer has READ access to the branch, and only read access (#642)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-still-moves-the-head-after-review-and-what-changes-once-642s-control-plane-half-lands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What still moves the head after REVIEW, and what changes once #642's control-plane half lands
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#verification-commands-that-exist-in-this-repo" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3088,16 +3116,89 @@ stays <code>in_progress</code> so the router re-runs review after <code>/do-patc
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--issue-number<span class="w"> </span><span class="s2">"</span><span class="nv">$ISSUE_NUMBER</span><span class="s2">"</span><span class="w"> </span>--run-id<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN_ID</span><span class="s2">"</span>
 </code></pre></div>
 <p>Not declared here (use the generic defaults): bot review identity, multi-judge
-consensus, cross-vendor judge, verification-table runner, plan-checkbox
-updater, cross-repo <code>gh</code> targeting. Post under the operator's <code>gh</code> credential;
-one reviewer, one verdict.</p>
+consensus, cross-vendor judge, verification-table runner, cross-repo <code>gh</code>
+targeting. Post under the operator's <code>gh</code> credential; one reviewer, one
+verdict.</p>
+<p>Plan-checkbox updater: <strong>declared — disabled</strong>, not a generic default. See
+"The reviewer has READ access to the branch, and only read access" below.</p>
+<h2 id="the-reviewer-has-read-access-to-the-branch-and-only-read-access-642">The reviewer has READ access to the branch, and only read access (#642)<a class="headerlink" href="#the-reviewer-has-read-access-to-the-branch-and-only-read-access-642" title="Permanent link">&para;</a></h2>
+<p><strong><code>/do-pr-review</code> must not <code>git add</code>, <code>git commit</code>, or <code>git push</code> in this
+repo — on any path, including the plan file.</strong></p>
+<p><strong>Status as of 2026-09-16: this is the declared contract, not yet the enforced
+behavior.</strong> The mechanism that would make it automatic lives outside this
+repository and has not landed: <code>~/.claude/skills/do-pr-review/sub-skills/post-review.md</code>
+§ 2.5 still runs <code>git commit -m "docs(#N): sync plan checkboxes with review
+verdict"</code> unconditionally (line 221, its "commit-then-post-review ordering —
+non-negotiable" rationale intact), and <code>~/.claude/skills/do-docs/SKILL.md</code> has
+no step that reads a <code>PLAN_CHECKBOX_SYNC</code> marker. Until both land, an operator
+running <code>/do-pr-review</code> in this repo must manually skip the generic
+checkbox-commit step, and plan checkboxes must be ticked by hand — checkbox
+syncing currently happens in neither place. This is tracked as follow-up work
+on #725 (split out so the tracker survives #642's closure at merge); see
+<code>docs/plans/sdlc-642.md</code> Tasks A1–A4 (unchecked).</p>
+<p>That still happens today: nothing in this repo gates the commit off, so the generic plan-checkbox updater in the global skill's
+<code>sub-skills/post-review.md</code> § 2.5 ticked <code>docs/plans/{slug}.md</code>'s Success
+Criteria and pushed a <code>docs(#N): sync plan checkboxes with review verdict</code>
+commit to the branch under review — authored under the operator's git identity,
+so nothing in <code>git log</code> distinguished it from a human commit. That commit moved
+the branch head past the SHA <code>sdlc-tool verdict finalize</code> had just pinned the
+verdict to, so every later <code>selfcheck</code> returned:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">{</span><span class="nt">"ok"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"verdict_present"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"approved"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w"> </span><span class="nt">"trailer_matches_head"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"marker_completed"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w"> </span><span class="nt">"reason"</span><span class="p">:</span><span class="w"> </span><span class="s2">"REVIEW_TRAILER_MISSING"</span><span class="p">}</span>
+</code></pre></div>
+<p>Both orderings were unsound, which is why the fix is not a reordering: commit
+then finalize records a head no reviewer inspected; finalize then commit records
+a head that is stale the moment it is written. Observed on #635 / PR #637, where
+<code>_verdicts.REVIEW.head_sha</code> was recorded as <code>0229bfcc</code> — the reviewer's own
+commit.</p>
+<p>The design is for plan-checkbox syncing to move to <strong><code>/do-docs</code></strong>, after the
+verdict is recorded: the reviewer would publish the intended state as a
+one-line <code>&lt;!-- PLAN_CHECKBOX_SYNC {...} --&gt;</code> marker in the review body, and
+the docs cascade would parse it, apply the ticks, and carry them in its own
+commit, with an unmatched criterion left alone. <strong>That <code>/do-docs</code> step does
+not exist yet</strong> — see the status note above — so treat this paragraph as the
+target design, not current behavior.</p>
+<p><strong>Never re-run <code>finalize</code> to refresh a stale trailer.</strong> Minting APPROVED
+against an uninspected head is self-clearing a review gate. <strong>Once the
+classifier lands</strong>, if <code>selfcheck</code> reports <code>head_drift: "code"</code>, a source
+file genuinely changed after approval and the remedy is another REVIEW pass.
+Today, <code>selfcheck</code> emits no <code>head_drift</code> key at all — verified against the
+live output of <code>sdlc-tool verdict selfcheck</code> — so this condition is
+unreachable until the classifier below ships.</p>
+<h3 id="what-still-moves-the-head-after-review-and-what-changes-once-642s-control-plane-half-lands">What still moves the head after REVIEW, and what changes once #642's control-plane half lands<a class="headerlink" href="#what-still-moves-the-head-after-review-and-what-changes-once-642s-control-plane-half-lands" title="Permanent link">&para;</a></h3>
+<p><code>/do-docs</code> is a mandatory stage that commits <em>after</em> REVIEW by design, so the
+head always moves before <code>/do-merge</code> evaluates the gate.</p>
+<p><strong>The classifier below is not live.</strong> <code>tools/sdlc_review_drift.py</code> exists only
+on the unmerged <code>session/sdlc-642</code> branch of the control-plane repo
+(<code>~/src/ai</code>, commit <code>3e0d4b737</code>); <code>~/src/ai</code>'s <code>main</code> has no such file. Until
+that branch merges, <code>/do-merge</code>'s freshness check still compares SHAs for
+strict equality, so <em>any</em> post-review commit — including a docs-only
+<code>/do-docs</code> cascade — fails closed as <code>REVIEW_TRAILER_MISSING</code> and needs a
+fresh REVIEW pass.</p>
+<p>Once <code>tools/sdlc_review_drift.py</code> lands in the control-plane repo (unmerged as
+of 2026-09-16), the gate will classify that drift instead of comparing SHAs
+for equality: a range that strictly descends from the reviewed commit and
+touches only documentation (<code>docs/</code>, top-level <code>*.md</code>, <code>.claude/commands/</code>)
+will be fresh and report <code>head_drift: "docs_only"</code>. Everything else — a
+changed file under <code>src/</code> or <code>tests/</code>, <code>mkdocs.yml</code>, a force-push, or any
+error resolving the comparison — will still fail closed as
+<code>REVIEW_TRAILER_MISSING</code>. That docs-only path set is one notch more
+permissive than <code>guard-main-push.yml</code>'s human-ratified set and is proposed,
+not yet architect-ratified — see the open questions in
+<code>docs/plans/sdlc-642.md</code>.</p>
+<p>The consequence worth knowing before you plan a cascade: a <code>/do-docs</code> pass that
+fixes a <strong>docstring inside a source file</strong> produces code drift and will refuse
+the merge gate. That is correct — the file was not in the reviewed diff — but it
+means docstring corrections are better made during BUILD or PATCH, before the
+verdict is pinned, than during the post-review cascade.</p>
 <h2 id="verification-commands-that-exist-in-this-repo">Verification commands that exist in this repo<a class="headerlink" href="#verification-commands-that-exist-in-this-repo" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pytest<span class="w">                    </span><span class="c1"># full suite; needs Redis/Valkey on localhost:6379</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>pytest<span class="w"> </span>-k<span class="w"> </span><span class="s2">"test_name"</span><span class="w">     </span><span class="c1"># single test</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>scripts/mypy_ratchet.py<span class="w">   </span><span class="c1"># type check as a ratchet vs scripts/mypy_baseline.json — gated by lint.yml</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>black<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w">         </span><span class="c1"># format</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w">     </span><span class="c1"># docs gate (mirrors deploy-docs.yml)</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>scripts/ci-local.sh<span class="w">       </span><span class="c1"># lint + types + tests + stress + docs; --all adds build/lock/guard</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>pytest<span class="w">                    </span><span class="c1"># full suite; needs Redis/Valkey on localhost:6379</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>pytest<span class="w"> </span>-k<span class="w"> </span><span class="s2">"test_name"</span><span class="w">     </span><span class="c1"># single test</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>scripts/mypy_ratchet.py<span class="w">   </span><span class="c1"># type check as a ratchet vs scripts/mypy_baseline.json — gated by lint.yml</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>black<span class="w"> </span>src/<span class="w"> </span>tests/<span class="w">         </span><span class="c1"># format</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w">     </span><span class="c1"># docs gate (mirrors deploy-docs.yml)</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>scripts/ci-local.sh<span class="w">       </span><span class="c1"># lint + types + tests + stress + docs; --all adds build/lock/guard</span>
 </code></pre></div>
 <p><code>scripts/ci-local.sh --all</code> runs the gates mirroring every workflow
 (<code>tests stress docs build lock guard</code>). <code>--fast</code> is tests only. Lint is
