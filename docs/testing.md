@@ -136,6 +136,26 @@ In this repository `.github/workflows/tests.yml` runs `pytest -m conformance`
 as the `pytest (Postgres)` job against a `postgres:16` service, with the Redis
 service alongside it for the reason above.
 
+**`str` at the backend boundary, and how a model-level test file runs on both
+legs.** The protocol types every key, member, index name and class-set argument
+`str`, while the query layer still carries the raw `bytes` Redis replies between
+`Query.keys()`, `filter_for_keys_set()` and the field mixins (a filter composed
+across families intersects those sets directly). Redis never noticed a `bytes`
+key reaching a backend call, because a UTF-8 `str` and the same `bytes` are one
+wire token; Postgres rejects it (`operator does not exist: text = bytea`). The
+rule is therefore: decode at the call with `popoto.backends.as_key_str` /
+`as_key_strs`, never inside a backend, and test the unit of work for presence
+(`uow is not None`), never truthiness, since a Postgres unit of work is falsy
+while empty. `tests/test_backend_str_boundary.py` installs a backend that
+refuses anything else and drives every routed entry point through it. A test
+file that uses models rather than the backend directly opts into both legs with
+a module-level `pytestmark = pytest.mark.conformance` plus an autouse fixture
+that requests `backend` (the plugin only parametrises tests whose fixture
+closure contains it), and marks the tests that read Redis keys through the raw
+client, spy on the Redis client, or exercise a family still stubbed on
+Postgres with `redis_only(reason=...)`; `tests/test_indexed_fields.py` and
+`tests/test_key_fields.py` are the pattern.
+
 ## Manual Test Helpers
 
 The `popoto.testing` module provides helpers for non-pytest test runners or manual use:

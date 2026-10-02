@@ -76,6 +76,21 @@ from src.popoto.recipes.context_assembler import ContextAssembler
 from src.popoto.redis_db import get_REDIS_DB, run_lua
 from src.popoto.transfer import export_records, import_records
 
+# #631 WS1f: this module runs on every configured storage backend. The
+# ``conformance`` mark opts in; the autouse fixture puts ``backend`` in every
+# test's fixture closure, which is what the plugin parametrises over
+# ``POPOTO_CONFORMANCE_BACKENDS`` (see docs/testing.md). Tests that inspect
+# Redis keys or spy on the Redis client carry ``redis_only`` and skip on the
+# other legs; nothing is deleted or weakened for the second backend.
+pytestmark = pytest.mark.conformance
+
+
+@pytest.fixture(autouse=True)
+def _backend_leg(backend):
+    """Bind the parametrised backend for every test in this module."""
+    yield
+
+
 # --- Test Models ---
 
 
@@ -334,6 +349,9 @@ def _cycle_amplitudes(instance, field_name="relevance"):
 
 
 class TestIntervalCorrectness:
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_save_opens_an_interval(self):
         before = time.time()
         fact = _save(ValidFact, name="a")
@@ -353,6 +371,9 @@ class TestIntervalCorrectness:
         fact.save()
         assert _interval(ValidFact, "validity", fact) == first
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_supersede_closes_the_incumbent_interval(self):
         identity = SupersessionProtocol.identity_key("user_42", "plan")
         old = _save(ValidFact, name="free")
@@ -371,6 +392,9 @@ class TestIntervalCorrectness:
         assert new_close == float("inf")
         assert new_from >= old_from
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_backdated_supersede_splits_valid_time_from_transaction_time(self):
         """``at=`` moves valid time; ingest time is always real now."""
         identity = SupersessionProtocol.identity_key("user_42", "plan")
@@ -448,6 +472,9 @@ class TestOpenSentinel:
         assert closed_verdict.decode() == "closed"
         assert huge.decode() == "inf"
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_open_sentinel_constant_matches_stored_score(self):
         fact = _save(ValidFact, name="a")
         _, invalid_at, _ = _interval(ValidFact, "validity", fact)
@@ -484,6 +511,9 @@ class TestQueryAPI:
         self._two_step()
         assert ValidFact.query.filter(validity__as_of=time.time() - 86400) == []
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_current_false_is_the_literal_complement(self):
         """Pinned semantics: ``current=False`` == "does not cover now".
 
@@ -582,6 +612,9 @@ class TestSupersessionChains:
         assert SupersessionProtocol.supersedes(v2).name == "v1"
         assert SupersessionProtocol.supersedes(v1) is None
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_superseded_records_are_closed_never_deleted(self):
         v1, v2 = self._chain_of("v1", "v2")
         member = v1.db_key.redis_key
@@ -663,6 +696,9 @@ class _CallCounter:
 
 
 class TestAtomicity:
+    @pytest.mark.redis_only(
+        reason="spies on the Redis client / redis-py Pipeline (call counters, fault injection)"
+    )
     def test_supersede_issues_exactly_one_mutating_call(self, monkeypatch):
         identity = SupersessionProtocol.identity_key("user_42", "plan")
         old = _save(ValidFact, name="free")
@@ -683,6 +719,9 @@ class TestAtomicity:
         }
         assert others == {}, f"supersede() made non-EVAL mutating calls: {others}"
 
+    @pytest.mark.redis_only(
+        reason="spies on the Redis client / redis-py Pipeline (call counters, fault injection)"
+    )
     def test_invalidate_issues_exactly_one_mutating_call(self, monkeypatch):
         old = _save(ValidFact, name="old")
         new = _save(ValidFact, name="new")
@@ -697,6 +736,9 @@ class TestAtomicity:
             if k not in ("eval", "evalsha") and v
         } == {}
 
+    @pytest.mark.redis_only(
+        reason="spies on the Redis client / redis-py Pipeline (call counters, fault injection)"
+    )
     def test_fault_after_eval_leaves_no_torn_state(self, monkeypatch):
         """Inject a failure the instant the EVAL returns.
 
@@ -1116,6 +1158,9 @@ class TestGateDisabledParity:
         )
         assert old_shape == new_shape
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_gate_keys_present_but_no_as_of_is_still_disabled(self):
         """All three of KEYS[3]/KEYS[4]/ARGV[7] are required to engage."""
         for i in range(5):
@@ -1171,6 +1216,9 @@ class TestGateDisabledParity:
         assert len(gated) == len(baseline) - 2
         assert b"ValidFact:v0" not in gated
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_kill_switch_restores_ungated_retrieval(self):
         old = _save(ValidFact, name="old")
         _save(ValidFact, name="new")
@@ -1216,6 +1264,9 @@ class TestGateDisabledParity:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+)
 class TestCompositeValidityMask:
     def _superseded_with_a_strong_confidence_arm(self):
         """Close ``old`` while leaving it strongly scored by the certainty arm."""
@@ -1323,6 +1374,9 @@ class TestUnmanagedRecords:
         assert _names(ValidFact.query.filter(name="legacy")) == ["legacy"]
         assert _names(ValidFact.query.all()) == ["legacy", "managed"]
 
+    @pytest.mark.redis_only(
+        reason="plants the unmanaged record through the raw Redis client; the ranking paths are family H (decayed_rank, a WS3d stub on Postgres)"
+    )
     def test_unmanaged_record_survives_top_by_decay(self):
         self._unmanaged_plus_managed()
         assert _names(ValidFact.query.top_by_decay("relevance", n=10)) == [
@@ -1330,6 +1384,9 @@ class TestUnmanagedRecords:
             "managed",
         ]
 
+    @pytest.mark.redis_only(
+        reason="plants the unmanaged record through the raw Redis client; the ranking paths are family H (decayed_rank, a WS3d stub on Postgres)"
+    )
     def test_unmanaged_record_survives_composite_score(self):
         self._unmanaged_plus_managed()
         assert _names(
@@ -1338,6 +1395,9 @@ class TestUnmanagedRecords:
             )
         ) == ["legacy", "managed"]
 
+    @pytest.mark.redis_only(
+        reason="plants the unmanaged record through the raw Redis client; the ranking paths are family H (decayed_rank, a WS3d stub on Postgres)"
+    )
     def test_unmanaged_record_survives_the_assembler(self):
         _save(
             ValidMemory, agent_id="a1", content="managed"
@@ -1355,6 +1415,9 @@ class TestUnmanagedRecords:
         contents = {r.content for r in result.records}
         assert "legacy" in contents
 
+    @pytest.mark.redis_only(
+        reason="plants the unmanaged record through the raw Redis client; the ranking paths are family H (decayed_rank, a WS3d stub on Postgres)"
+    )
     def test_unmanaged_record_is_absent_from_a_deliberate_current_filter(self):
         """Consistent with the other half: ``__current`` is a *positive* claim.
 
@@ -1385,6 +1448,9 @@ class TestAssemblerValidity:
         assert self._assembler()._validity_field_name == "validity"
         assert self._assembler(PlainMemory)._validity_field_name is None
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_invalidated_record_is_absent_from_assemble(self):
         old = _save(ValidMemory, agent_id="a1", content="stale")
         _save(ValidMemory, agent_id="a1", content="fresh")
@@ -1409,6 +1475,9 @@ class TestAssemblerValidity:
         assert "stale" not in after
         assert "fresh" in after
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_assemble_as_of_reconstructs_the_historical_view(self):
         old = _save(ValidMemory, agent_id="a1", content="stale")
         time.sleep(0.02)
@@ -1428,6 +1497,9 @@ class TestAssemblerValidity:
         # `fresh` had not been written yet at t_between.
         assert "fresh" not in contents
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_kill_switch_restores_ungated_assembly(self):
         old = _save(ValidMemory, agent_id="a1", content="stale")
         _save(ValidMemory, agent_id="a1", content="fresh")
@@ -1467,6 +1539,9 @@ class TestAssemblerValidity:
         ]
         assert baseline.metadata["pull_count"] == with_as_of.metadata["pull_count"]
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_heavily_superseded_partition_still_fills_max_items(self):
         """Plan Risk 3: gating must not shrink assembly below ``max_items``."""
         valid = [
@@ -1519,6 +1594,9 @@ class TestFailurePaths:
         ) != SupersessionProtocol.identity_key("a", "bc")
         assert len(SupersessionProtocol.identity_key("a", "b")) == 16
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_supersede_with_no_incumbent_opens_and_writes_no_chain_link(self):
         identity = SupersessionProtocol.identity_key("user_42", "plan")
         first = _save(ValidFact, name="first")
@@ -1533,12 +1611,18 @@ class TestFailurePaths:
         pointer = ValidityField.get_open_pointer_key(ValidFact, "validity", identity)
         assert get_REDIS_DB().get(pointer).decode() == first.db_key.redis_key
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_invalidate_before_valid_from_raises(self):
         record = _save(ValidFact, name="a")
         valid_from, _, _ = _interval(ValidFact, "validity", record)
         with pytest.raises(ValueError, match="valid_from"):
             SupersessionProtocol.invalidate(record, at=valid_from - 60)
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_invalidate_before_valid_from_leaves_the_record_open(self):
         record = _save(ValidFact, name="a")
         valid_from, _, _ = _interval(ValidFact, "validity", record)
@@ -1575,6 +1659,9 @@ class TestFailurePaths:
         pointer = ValidityField.get_open_pointer_key(ValidFact, "validity", identity)
         assert get_REDIS_DB().get(pointer) is None
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_invalidate_with_an_unsaved_successor_raises(self):
         """#588: the incumbent must still be untouched, but the caller is told."""
         old = _save(ValidFact, name="old")
@@ -1588,6 +1675,9 @@ class TestFailurePaths:
         assert SupersessionProtocol.supersede(plain, identity_key=identity) is None
         assert SupersessionProtocol.invalidate(plain) is None
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_assemble_as_of_on_a_model_without_a_validity_field_passes_through(self):
         _save(PlainMemory, agent_id="a1", content="only")
         assembler = ContextAssembler(
@@ -1617,6 +1707,9 @@ class TestFailurePaths:
         closed = SupersessionProtocol.supersede(new, identity_key=("User_42", " plan "))
         assert closed == old.db_key.redis_key
 
+    @pytest.mark.redis_only(
+        reason="record TTL (Meta.ttl) is unsupported on Postgres by design"
+    )
     def test_ttl_model_warns_once(self, caplog):
         validity_module._TTL_WARNED.clear()
         with caplog.at_level("WARNING", logger="POPOTO.ValidityField"):
@@ -1736,6 +1829,9 @@ class TestMembershipGuardInLua:
 
     # -- 1. The issue's reproduction, verbatim ---------------------------
 
+    @pytest.mark.redis_only(
+        reason="passes a real redis-py Pipeline as the unit of work"
+    )
     def test_same_pipeline_successor_closes_the_incumbent(self):
         """The exact four-line shape from the issue, which used to do nothing."""
         e1 = _save(ValidFact, name="e1")
@@ -1754,6 +1850,9 @@ class TestMembershipGuardInLua:
 
     # -- 2/3. Pipeline / immediate parity --------------------------------
 
+    @pytest.mark.redis_only(
+        reason="passes a real redis-py Pipeline as the unit of work"
+    )
     def test_pipeline_and_immediate_modes_produce_identical_state(self):
         """One parity assertion, not two independent ones.
 
@@ -1786,6 +1885,9 @@ class TestMembershipGuardInLua:
             s for _, s in immediate["invalid_at"]
         ]
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_absent_successor_fails_the_same_way_in_both_modes(self):
         """Immediate mode raises directly; pipeline mode raises at execute()."""
         old = _save(ValidFact, name="old")
@@ -1844,6 +1946,9 @@ class TestMembershipGuardInLua:
                 old_member="ValidFact:hard-deleted",
             )
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_absent_pointer_resolved_incumbent_is_read_as_no_incumbent(self):
         """A restored/dangling pointer must not brick the identity (Risk 3).
 
@@ -1906,6 +2011,9 @@ class TestMembershipGuardInLua:
 
     # -- 9. Mode 'open' is never guarded (Risk 1) ------------------------
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_mode_open_is_never_membership_guarded(self):
         """Gating mode 'open' would fail every save on some write paths.
 
@@ -1933,6 +2041,9 @@ class TestMembershipGuardInLua:
 
     # -- 10. ARGV[8] nil-safety (Risk 4) ---------------------------------
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_seven_argv_caller_behaves_like_an_unasserted_call(self):
         """``ARGV[8] or ''`` degrades to "not asserted", i.e. today's behavior."""
         record = _save(ValidFact, name="a")
@@ -1964,6 +2075,9 @@ class TestMembershipGuardInLua:
 
     # -- 11/12/13/14. Valid-time has one writer --------------------------
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_asserted_valid_from_disagreement_raises(self):
         record = _save(ValidFact, name="a")
         keys = ValidityField.get_all_keys(ValidFact, "validity")
@@ -1978,6 +2092,9 @@ class TestMembershipGuardInLua:
                 assert_valid_from=True,
             )
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_asserted_valid_from_agreement_does_not_raise(self):
         """Equality is exact — both sides come from one repr/tonumber round trip.
 
@@ -2029,6 +2146,9 @@ class TestMembershipGuardInLua:
         reloaded = ValidFact.query.get(name="a")
         assert reloaded.validity in (None, effective)
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_unasserted_valid_from_disagreement_is_still_an_nx_no_op(self):
         """Q2's answer, unchanged: without an assertion, NX wins silently.
 
@@ -2078,6 +2198,9 @@ class TestMembershipGuardInLua:
 
     # -- 16/18. The combined entry point (D6) ----------------------------
 
+    @pytest.mark.redis_only(
+        reason="spies on the Redis client / redis-py Pipeline (call counters, fault injection)"
+    )
     def test_save_and_supersede_is_one_multi_exec(self, monkeypatch):
         identity = SupersessionProtocol.identity_key("user_42", "plan")
         old = _save(ValidFact, name="free")
@@ -2104,6 +2227,9 @@ class TestMembershipGuardInLua:
         outside = {k: v for k, v in counter.counts.items() if v}
         assert outside == {}, f"mutating calls outside the pipeline: {outside}"
 
+    @pytest.mark.redis_only(
+        reason="passes a real redis-py Pipeline as the unit of work"
+    )
     def test_save_and_supersede_on_a_caller_pipeline_reports_honest_unknown(self):
         identity = SupersessionProtocol.identity_key("user_42", "plan")
         old = _save(ValidFact, name="free")
@@ -2139,6 +2265,9 @@ class TestMembershipGuardInLua:
                 PlainFact(name="p"), identity_key=identity
             )
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_save_and_invalidate_end_to_end(self):
         old = _save(ValidFact, name="old")
         new = ValidFact(name="new")
@@ -2151,6 +2280,9 @@ class TestMembershipGuardInLua:
         assert rev == old.db_key.redis_key
         assert _names(ValidFact.query.filter(validity__current=True)) == ["new"]
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_a_declined_save_raises_and_queues_no_close(self, monkeypatch):
         """#606: a firewall-blocked successor raises before the close is queued.
 
@@ -2187,6 +2319,9 @@ class TestMembershipGuardInLua:
 
     # -- 17. The eager indexed-field phase (BLOCKER 1) -------------------
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_a_rejected_declared_resave_writes_nothing_on_an_indexed_model(self):
         """D5 half 1: the pre-scan has to run before the EAGER indexed phase.
 
@@ -2260,6 +2395,9 @@ class TestMembershipGuardInLua:
 
     # -- 20. Pre-existing divergence, and the operator's exit ------------
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_a_record_that_already_diverges_has_a_documented_exit(self):
         """C1: divergence already stored must not brick the record.
 
@@ -2295,6 +2433,9 @@ class TestMembershipGuardInLua:
             IndexedValidFact, "validity", member_key=member
         ) == float(record.validity)
 
+    @pytest.mark.redis_only(
+        reason="reads or plants validity state through the raw Redis client (get_REDIS_DB zscore/zadd/exists/eval and the _interval/_zscore/_keyspace_snapshot/_chain_links helpers)"
+    )
     def test_the_second_remediation_makes_the_declared_value_authoritative(self):
         """C1 remediation 2: a plain ZADD (no NX) overwrites the refused score."""
         record = IndexedValidFact(name="r", label="a", validity=time.time())
@@ -2318,6 +2459,9 @@ class TestMembershipGuardInLua:
         )
 
 
+@pytest.mark.redis_only(
+    reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+)
 class TestContradictedSupersessionWiring:
     """``_apply_contradicted`` -> ``_apply_supersession`` (plan Failure Paths).
 
@@ -2501,6 +2645,9 @@ class TestCyclicDecayGatingGap:
     the failure.
     """
 
+    @pytest.mark.redis_only(
+        reason="CyclicDecayField is a plan non-goal (Redis-only through native())"
+    )
     def test_direct_top_by_decay_on_a_cyclic_field_returns_the_superseded_record(
         self,
     ):
@@ -2517,6 +2664,9 @@ class TestCyclicDecayGatingGap:
             "old",
         ]
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_the_plain_decay_field_contrast_is_gated(self):
         """CONTROL: the same call on a plain ``DecayingSortedField`` IS gated.
 
@@ -2529,6 +2679,9 @@ class TestCyclicDecayGatingGap:
         SupersessionProtocol.invalidate(old, superseded_by=new)
         assert _names(ValidFact.query.top_by_decay("relevance", n=10)) == ["new"]
 
+    @pytest.mark.redis_only(
+        reason="CyclicDecayField is a plan non-goal (Redis-only through native())"
+    )
     def test_the_assembler_path_on_a_cyclic_field_is_still_gated(self):
         """Layer 3 covers what the cyclic script does not — the live path."""
         old = _save(ObservedMemory, agent_id="a1", content="stale")
@@ -2797,6 +2950,9 @@ def _p50(fn):
 @pytest.mark.slow
 @pytest.mark.benchmark
 class TestValidityBenchmark:
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_p50_gated_retrieval_overhead_at_20k(self):
         """Gated vs ungated p50 for a 20k-record ``top_by_decay``.
 
@@ -2855,6 +3011,9 @@ class TestValidityBenchmark:
         assert p50 < 25.0
 
 
+@pytest.mark.redis_only(
+    reason="transfer export/import is a plan non-goal (Redis-only through native())"
+)
 class TestTransferRoundTrip:
     """Export -> import must not resurrect superseded records (#580 / #582).
 

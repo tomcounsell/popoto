@@ -33,6 +33,21 @@ from src.popoto.fields.validity_field import ValidityField
 from src.popoto.models.query import QueryException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# #631 WS1f: this module runs on every configured storage backend. The
+# ``conformance`` mark opts in; the autouse fixture puts ``backend`` in every
+# test's fixture closure, which is what the plugin parametrises over
+# ``POPOTO_CONFORMANCE_BACKENDS`` (see docs/testing.md). Tests that inspect
+# Redis keys or spy on the Redis client carry ``redis_only`` and skip on the
+# other legs; nothing is deleted or weakened for the second backend.
+pytestmark = pytest.mark.conformance
+
+
+@pytest.fixture(autouse=True)
+def _backend_leg(backend):
+    """Bind the parametrised backend for every test in this module."""
+    yield
+
+
 # --- Test Models ---
 
 
@@ -205,6 +220,9 @@ class TestTopByDecay:
         DecayWithBase.delete_all()
         PartitionedDecay.delete_all()
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_basic_ranking(self):
         """More recently saved items rank higher with equal base scores."""
         # Create items with staggered saves
@@ -225,11 +243,17 @@ class TestTopByDecay:
         assert results[0].name == "new"
         assert results[1].name == "old"
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_empty_set_returns_empty(self):
         """top_by_decay on empty set returns []."""
         results = DecayItem.query.top_by_decay("relevance", n=10)
         assert results == []
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_n_limits_results(self):
         """n parameter limits result count."""
         for i in range(5):
@@ -244,6 +268,9 @@ class TestTopByDecay:
         results = DecayItem.query.top_by_decay("relevance", n=0)
         assert results == []
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_decay_rate_override(self):
         """Override decay_rate at query time."""
         # Create two items at different times
@@ -276,6 +303,9 @@ class TestTopByDecay:
         with pytest.raises(QueryException):
             DecayItem.query.top_by_decay("nonexistent", n=10)
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_with_base_score_field(self):
         """base_score_field multiplies decay curve."""
         # Create items with different weights
@@ -297,6 +327,9 @@ class TestTopByDecay:
         assert len(results) == 2
         assert results[0].name == "heavy"
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_partitioned_query(self):
         """top_by_decay respects partition_by."""
         PartitionedDecay.create(name="a1", category="A")
@@ -358,6 +391,9 @@ class TestTouch:
         with pytest.raises(TypeError):
             item.touch("relevance")
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_touch_affects_ranking(self):
         """touch() makes item rank higher in top_by_decay."""
         item_a = DecayItem.create(name="touch_a")
@@ -384,6 +420,9 @@ class TestTouch:
 # --- Decay formula verification ---
 
 
+@pytest.mark.redis_only(
+    reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+)
 class TestDecayFormula:
     """Verify decay computation against hand-computed values."""
 
@@ -653,12 +692,18 @@ class TestDecayTieOrdering:
         assert len(scores) == len(self.NAMES)
         assert len(set(scores)) == 1
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_tie_order_key_ascending_insertion_independent(self):
         """Tied members return key-ascending regardless of insertion order."""
         expected = self._plant_tied()
         results = DecayItem.query.top_by_decay("relevance", n=10)
         assert [r.db_key.redis_key for r in results] == expected
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_repeated_calls_identical(self):
         """The same query returns the identical ordered list every run."""
         self._plant_tied()
@@ -673,6 +718,9 @@ class TestDecayTieOrdering:
             ]
             assert again == first
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_deterministic_truncation_at_n(self):
         """With 5 tied members and n=3, exactly the 3 lowest keys return."""
         expected = self._plant_tied()
@@ -766,6 +814,9 @@ class TestDecayTieOrderingWithConfidence:
         assert len(scores) == len(self.NAMES)
         assert len(set(scores)) == 1
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_untouched_tie_order_is_still_key_ascending(self):
         """#448's contract holds unchanged when modulation is on but inert."""
         records = self._plant_tied()
@@ -773,6 +824,9 @@ class TestDecayTieOrderingWithConfidence:
         results = DecayConfItem.query.top_by_decay("relevance", n=10)
         assert [r.db_key.redis_key for r in results] == expected
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_differing_confidence_members_stop_tying(self):
         """Distinct evidence must produce distinct scores -- no tie left."""
         records = self._plant_tied()
@@ -785,6 +839,9 @@ class TestDecayTieOrderingWithConfidence:
         results = DecayConfItem.query.top_by_decay("relevance", n=10)
         assert [r.name for r in results] == list(reversed(self.NAMES))
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_equal_confidence_members_still_tie_and_break_by_key(self):
         """Same evidence => same score => #448 key-ascending decides."""
         records = self._plant_tied()
@@ -797,6 +854,9 @@ class TestDecayTieOrderingWithConfidence:
         results = DecayConfItem.query.top_by_decay("relevance", n=10)
         assert [r.db_key.redis_key for r in results] == expected
 
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_deterministic_truncation_at_n_with_modulation(self):
         """Truncation stays deterministic across the n boundary."""
         records = self._plant_tied()
@@ -832,6 +892,9 @@ class DecayValidityItem(popoto.Model):
     validity = ValidityField()
 
 
+@pytest.mark.redis_only(
+    reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+)
 class TestValidityGating:
     """top_by_decay with the decay-Lua validity gate on and off (#580, D5).
 
