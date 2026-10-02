@@ -63,6 +63,7 @@ from src.popoto.fields import supersession as supersession_module
 from src.popoto.fields import validity_field as validity_module
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.constants import Defaults
+from src.popoto.backends.redis import RedisBackend
 from src.popoto.fields.cyclic_decay_field import CyclicDecayField
 from src.popoto.fields.decaying_sorted_field import (
     DECAY_SCORE_LUA,
@@ -912,20 +913,22 @@ class TestDecayEvalCallSites:
         parameters — a corruption that fails quietly, which is why this is a
         test and not a grep.
 
-        The inventory has shrunk twice, each time because a caller stopped
-        building the KEYS array itself. #648 retired
+        The inventory has shrunk three times, each time because a caller
+        stopped building the KEYS array itself. #648 retired
         ``context_assembler._decayed_partition_scores``; #662 retired
         ``QueryBuilder.top_by_decay`` and
-        ``QueryBuilder._materialize_decay_field``. All three now dispatch to
+        ``QueryBuilder._materialize_decay_field``, which now dispatch to
         ``DecayingSortedField.rank_decayed`` (or the ``CyclicDecayField``
-        override), so that method is where the eval they are responsible for
-        lives. The assertions below are unchanged; only the inventory of
-        *where* the evals live follows the code. Keeping the old entries would
-        require keeping the duplication those issues removed.
+        override); #631 WS1d then moved the eval out of ``rank_decayed`` into
+        the storage backend, so ``RedisBackend.decayed_rank`` is where the
+        one eval lives and ``rank_decayed`` builds no KEYS array at all. The
+        assertions below are unchanged; only the inventory of *where* the
+        eval lives follows the code. Keeping the old entries would require
+        keeping the duplication those issues removed.
         """
         sites = {
-            "decaying_sorted_field.DecayingSortedField.rank_decayed": (
-                inspect.getsource(DecayingSortedField.rank_decayed)
+            "backends.redis.RedisBackend.decayed_rank": (
+                inspect.getsource(RedisBackend.decayed_rank)
             ),
         }
         for name, source in sites.items():
@@ -936,6 +939,16 @@ class TestDecayEvalCallSites:
                 f"{numkeys[0]!r}, expected '4' — the validity KEYS[3]/KEYS[4] "
                 "would be shunted into ARGV"
             )
+
+        # The field method dispatches to the backend and must not grow an
+        # eval of its own back (#631 WS1d) -- the same claim #662 pins on
+        # ``top_by_decay`` below.
+        field_source = inspect.getsource(DecayingSortedField.rank_decayed)
+        assert _decay_eval_numkeys(field_source) == []
+        assert not re.search(r"\brun_lua\(", field_source), (
+            "DecayingSortedField.rank_decayed must not evaluate DECAY_SCORE_LUA "
+            "itself (#631 WS1d) — dispatch through get_backend().decayed_rank"
+        )
 
     def test_helper_detects_a_stale_numkeys(self):
         """The guard's own guard: prove the matcher can see a bad site."""
