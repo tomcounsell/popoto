@@ -214,7 +214,12 @@ def test_check_schema_name_refuses_names_the_harness_did_not_generate(name):
 @pytest.mark.parametrize("action", ["create", "truncate_all", "drop"])
 def test_popoto_test_prod_is_refused_before_any_connection(action):
     """No server needed: the guard fires before ``connect()``, so a bogus
-    host is never dialled and ``_conn`` stays ``None``."""
+    host is never dialled and ``_conn`` stays ``None``.
+
+    The methods import ``psycopg.sql`` before the guard, so the module has to
+    be importable even though no connection is made; skip where it is absent.
+    """
+    pytest.importorskip("psycopg")
     rogue = PostgresTestSchema(
         name="popoto_test_prod", url="postgresql://no-such-host.invalid/db"
     )
@@ -349,7 +354,34 @@ def test_downstream_default_is_redis_only(tmp_path):
 
 
 def test_opted_in_without_postgres_url_skips_with_a_visible_reason(tmp_path):
+    # The URL-unset reason only exists once psycopg imports; without it the
+    # leg skips earlier, for the reason the sibling test below pins.
+    pytest.importorskip("psycopg")
     out = _run_probe(tmp_path, {"POPOTO_CONFORMANCE_BACKENDS": "redis,postgres"})
     assert "test_probe[redis] PASSED" in out, out
     assert "test_probe[postgres] SKIPPED" in out, out
     assert "POSTGRES_URL is unset" in out, out
+
+
+def test_opted_in_without_psycopg_skips_with_a_visible_reason(tmp_path):
+    """Shadow ``psycopg`` with a stub that raises ``ImportError`` so the probe
+    sees "not installed" whatever the host venv has. A ``PYTHONPATH`` entry
+    precedes site-packages on ``sys.path``, so the stub wins without touching
+    the interpreter's own startup."""
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "psycopg.py").write_text(
+        "raise ImportError('psycopg hidden by the conformance harness test')\n"
+    )
+    out = _run_probe(
+        tmp_path,
+        {
+            "POPOTO_CONFORMANCE_BACKENDS": "redis,postgres",
+            "POSTGRES_URL": "postgresql://localhost:5432/postgres",
+            "PYTHONPATH": str(shim),
+        },
+    )
+    assert "test_probe[redis] PASSED" in out, out
+    assert "test_probe[postgres] SKIPPED" in out, out
+    assert "psycopg is not installed" in out, out
+    assert "1 passed, 1 skipped" in out, out
