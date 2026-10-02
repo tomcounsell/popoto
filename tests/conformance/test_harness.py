@@ -310,7 +310,28 @@ _PROBE = textwrap.dedent("""
     """)
 
 
-def _run_probe(tmp_path: Path, env_overrides: dict[str, str | None]) -> str:
+_UNMARKED_PROBE = textwrap.dedent("""
+    import popoto
+    from popoto import backends
+    from popoto.backends.redis import RedisBackend
+
+    class CollectedAtImport(popoto.Model):
+        name = popoto.KeyField()
+
+    # Module scope on purpose: this is the shape that fails at *collection*
+    # when get_backend() selects Postgres from the environment. Checked here
+    # too, because the plugin's autouse FLUSHDB runs before test_probe.
+    CollectedAtImport.create(name="probe")
+    assert CollectedAtImport.exists(name="probe")
+
+    def test_probe():
+        assert isinstance(backends.get_backend(), RedisBackend)
+    """)
+
+
+def _run_probe(
+    tmp_path: Path, env_overrides: dict[str, str | None], probe_source: str = _PROBE
+) -> str:
     db = redis_db.get_REDIS_DB().connection_pool.connection_kwargs.get("db")
     assert db not in (None, 0), f"refusing to run a subprocess against db={db!r}"
     env = dict(os.environ)
@@ -324,7 +345,7 @@ def _run_probe(tmp_path: Path, env_overrides: dict[str, str | None]) -> str:
         else:
             env[name] = value
     probe = tmp_path / "test_probe_conformance.py"
-    probe.write_text(_PROBE)
+    probe.write_text(probe_source)
     result = subprocess.run(
         [
             sys.executable,
@@ -385,3 +406,26 @@ def test_opted_in_without_psycopg_skips_with_a_visible_reason(tmp_path):
     assert "test_probe[postgres] SKIPPED" in out, out
     assert "psycopg is not installed" in out, out
     assert "1 passed, 1 skipped" in out, out
+
+
+def test_unmarked_tests_stay_on_redis_when_postgres_is_configured(tmp_path):
+    """The promise in the plugin's section header, made real once the model
+    layer routes through ``get_backend()`` (#631 WS1a): with ``POSTGRES_URL``
+    set *and* ``psycopg`` importable -- the Postgres job's environment --
+    an unmarked test, and a module-scope ``Model.create()`` at collection,
+    still run on Redis. ``psycopg`` is shadowed with an importable stub so
+    this holds whatever the host venv has; without the session pin the stub
+    backend is selected and collection fails on ``PostgresBackend.begin``."""
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "psycopg.py").write_text("# importable stand-in for the real driver\n")
+    out = _run_probe(
+        tmp_path,
+        {
+            "POSTGRES_URL": "postgresql://localhost:5432/postgres",
+            "PYTHONPATH": str(shim),
+        },
+        probe_source=_UNMARKED_PROBE,
+    )
+    assert "test_probe PASSED" in out, out
+    assert "1 passed" in out, out
