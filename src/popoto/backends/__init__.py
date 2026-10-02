@@ -66,9 +66,9 @@ class UnitOfWork(Protocol):
 
 
 class Backend(Protocol):
-    """The 45 storage operations behind the agent-memory field layer.
+    """The 46 storage operations behind the agent-memory field layer.
 
-    Grouped as the plan enumerates them: A unit of work (2), B records (10),
+    Grouped as the plan enumerates them: A unit of work (2), B records (11),
     C atomic increment (1), D side maps (4), E set indexes (7), F sorted
     indexes (7), G atomic swaps (4), H decay and confidence (2), I validity (5),
     J orphan purge and maintenance (3). Each docstring names the Lua script or
@@ -81,6 +81,9 @@ class Backend(Protocol):
     added :meth:`set_expiry` (B), made :meth:`save_record`'s ``class_set``
     optional, and gave :meth:`map_scan` a ``count`` hint, so WS1a's partial
     save keeps the pre-seam wire order (PR #735 review, B1/B2, tech-debt 1).
+    ``feature/backend-seam-protocol-3`` added :meth:`load_fields_many` (B) so
+    WS1b can route ``Query.get_many_objects``'s ``values=`` projection without
+    turning one pipelined ``HMGET`` batch into one round trip per key.
     """
 
     # -- A. Unit of work ---------------------------------------------------
@@ -169,6 +172,24 @@ class Backend(Protocol):
 
         One name issues ``HGET``, more issue ``HMGET`` -- a wire-parity
         requirement the original carries, not an optimization.
+        """
+        ...
+
+    def load_fields_many(
+        self, keys: Sequence[str], names: Sequence[str]
+    ) -> list[list[bytes | None]]:
+        """Replaces pipelined ``HMGET`` over a batch of keys
+        (``Query.get_many_objects`` under ``values=``, the projection path).
+
+        One inner list per key, in order, each holding ``names``' values in
+        order with ``None`` for a field the record lacks -- a missing record
+        is a list of ``None``, as ``HMGET`` replies. One round trip for the
+        batch where a loop of :meth:`load_fields` would be one per key, which
+        is why this is a protocol method and not a convenience. Always
+        ``HMGET``, even for one name: the projection path issued ``HMGET``
+        at every width and ``tests/test_query_hydration_count.py`` counts
+        those pipelined calls, so :meth:`load_fields`'s one-name ``HGET``
+        special case does not apply here. ``protocol-3`` addition.
         """
         ...
 

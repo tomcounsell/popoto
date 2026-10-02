@@ -521,6 +521,26 @@ class PostgresBackend:
         got = {bytes(field): bytes(value) for field, value in rows}
         return [got.get(name) for name in wanted]
 
+    def load_fields_many(
+        self, keys: Sequence[str], names: Sequence[str]
+    ) -> list[list[bytes | None]]:
+        # protocol-3: one SELECT for the batch; a missing record is a row of
+        # None per name, as a pipelined HMGET replies.
+        if not names:
+            raise ValueError("load_fields_many() requires at least one field name")
+        if not keys:
+            return []
+        wanted = [_field_bytes(name) for name in names]
+        rows = self._query(
+            "SELECT key, field, value FROM popoto_record "
+            "WHERE key = ANY(%s) AND field = ANY(%s)",
+            (list(dict.fromkeys(keys)), wanted),
+        )
+        found: dict[str, dict[bytes, bytes]] = {}
+        for key, field, value in rows:
+            found.setdefault(key, {})[bytes(field)] = bytes(value)
+        return [[found.get(key, {}).get(name) for name in wanted] for key in keys]
+
     def record_exists(self, key: str) -> bool:
         rows = self._query(
             "SELECT EXISTS (SELECT 1 FROM popoto_record WHERE key = %s)", (key,)

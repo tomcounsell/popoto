@@ -85,6 +85,23 @@ class TestRecords:
         assert backend.load_records(keys) == direct
         assert backend.load_records([]) == []
 
+    def test_load_fields_many_matches_a_pipelined_hmget(self, backend, client):
+        # protocol-3: the projection batch, one HMGET per key in one round trip.
+        keys = [f"{PREFIX}:Record:{i}" for i in range(3)]
+        client.hset(keys[0], mapping={b"a": b"1", b"c": b"3"})
+        client.hset(keys[2], mapping={b"a": b"x"})
+        pipe = client.pipeline()
+        for key in keys:
+            pipe.hmget(key, ["a", "zz", "c"])
+        direct = [list(reply) for reply in pipe.execute()]
+        assert backend.load_fields_many(keys, ["a", "zz", "c"]) == direct
+        assert direct[1] == [None, None, None], "a missing record is all-None"
+        # One name is still HMGET here, unlike load_fields' HGET special case.
+        assert backend.load_fields_many(keys[:1], ["a"]) == [[b"1"]]
+        assert backend.load_fields_many([], ["a"]) == []
+        with pytest.raises(ValueError):
+            backend.load_fields_many(keys, [])
+
     def test_records_exist_matches_a_pipelined_exists(self, backend, client):
         # protocol-1: the batched form of record_exists, one round trip.
         keys = [f"{PREFIX}:Record:{i}" for i in range(3)]

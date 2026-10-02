@@ -145,6 +145,25 @@ class TestSaveAndLoad:
         with pytest.raises(ValueError):
             backend.load_fields(key(1), [])
 
+    def test_load_fields_many_keeps_order_with_none_for_missing(self, backend):
+        # protocol-3: the batched projection read, both legs.
+        backend.save_record(key(1), {b"a": b"1", b"c": b"3"}, class_set=CLASS_SET)
+        backend.save_record(key(2), {b"a": b"x"}, class_set=CLASS_SET)
+        got = backend.load_fields_many(
+            [key(2), key("missing"), key(1), key(2)], ["a", "zz", "c"]
+        )
+        assert got == [
+            [b"x", None, None],
+            [None, None, None],
+            [b"1", None, b"3"],
+            [b"x", None, None],
+        ]
+        assert got[0] is not got[3], "one list per position, as HMGET replies"
+        assert backend.load_fields_many([key(1)], ["c"]) == [[b"3"]]
+        assert backend.load_fields_many([], ["a"]) == []
+        with pytest.raises(ValueError):
+            backend.load_fields_many([key(1)], [])
+
     def test_record_exists_and_class_set_bookkeeping(self, backend):
         assert not backend.record_exists(key(1))
         assert backend.list_keys(CLASS_SET) == set()
