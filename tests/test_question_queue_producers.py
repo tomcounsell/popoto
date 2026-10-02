@@ -25,7 +25,14 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import pytest
 
 from src import popoto
-from src.popoto.extraction.resolution_log import ResolutionRecord
+
+# Imported as ``popoto.`` (not ``src.popoto.``): ``src.popoto.extraction``
+# collapses onto the canonical package, so importing the submodule through the
+# ``src`` path loads a *second* ``resolution_log`` and rebinds the package's
+# ``resolution_log`` attribute to it, which breaks monkeypatching of
+# ``popoto.extraction.resolution_log`` in tests/test_reference_resolution.py
+# when both files run in one session.
+from popoto.extraction.resolution_log import ResolutionRecord
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.recipes import question_queue as qq
 from src.popoto.recipes.context_assembler import ContextAssembler
@@ -122,7 +129,7 @@ def _gate_refusal(agent=AGENT, topic="deploy target"):
     )
     gate = result.metadata["gate"]
     assert gate["gated"] is True and result.metadata["pull_count"] == 0
-    assert gate["refused_keys"][0] == record.db_key.redis_key
+    assert record.db_key.redis_key in gate["refused_keys"]
     return record, result.metadata
 
 
@@ -390,23 +397,36 @@ def test_end_to_end_gate_refusal_moves_confidence():
     record_answer: exactly one delivery within K turns, and the refused
     fact's confidence moves."""
     record, metadata = _gate_refusal()
+    key = record.db_key.redis_key
     before = ConfidenceField.get_confidence(record, "confidence")
 
-    assert qq.propose_from_gate(AGENT, metadata, 1, "deploy target") is not None
-    # A second refusal on a different fact competes for the same budget.
-    _, metadata2 = _gate_refusal(topic="deploy region")
-    assert qq.propose_from_gate(AGENT, metadata2, 1, "deploy region") is not None
+    gate_cand = qq.propose_from_gate(AGENT, metadata, 1, "deploy target")
+    assert gate_cand is not None and gate_cand.target_keys == [key]
+    # A competing candidate from another producer contends for the same
+    # per-agent budget, so "exactly one delivery within K turns" is a real
+    # constraint rather than a consequence of there being one candidate.
+    assert qq.propose_from_resolution(_resolution_record(), turn=1) == 1
+    # Bump the gate candidate's impact so it is the one delivered first.
+    assert qq.note_use(AGENT, [key], turn=2) == 1
 
-    deliveries = [q for t in range(1, 1 + K) if (q := qq.next_question(AGENT, turn=t))]
+    deliveries = [q for t in range(2, 2 + K) if (q := qq.next_question(AGENT, turn=t))]
     assert len(deliveries) == 1
-
     q = deliveries[0]
-    result = qq.record_answer(q, "yes", turn=2)
+    assert q.candidate_id == gate_cand.candidate_id
+
+    result = qq.record_answer(q, "yes", turn=3)
     assert result.applied and result.reason == "applied"
-    target = QQGateMemory.query.get(redis_key=q.target_keys[0])
-    assert ConfidenceField.get_confidence(target, "confidence") > before
-    if q.target_keys[0] == record.db_key.redis_key:
-        assert ConfidenceField.get_confidence(record, "confidence") > before
+    after = ConfidenceField.get_confidence(
+        QQGateMemory.query.get(redis_key=key), "confidence"
+    )
+    assert after > before
+    # The competing question waits for the budget to refill (re-observed by
+    # its producer so it is still "recently used" at that turn).
+    refill = 2 + K
+    assert qq.next_question(AGENT, turn=refill - 1) is None
+    assert qq.propose_from_resolution(_resolution_record(), turn=refill) == 1
+    competing = qq.next_question(AGENT, turn=refill)
+    assert competing is not None and competing.kind == "referent"
 
 
 def test_end_to_end_disjunction_records_answer_and_leaves_sides_untouched():
