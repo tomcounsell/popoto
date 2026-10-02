@@ -99,13 +99,6 @@ logger = logging.getLogger("POPOTO.model_base")
 # ``backends._BACKEND`` cache on every call, so ``set_backend()`` is observed
 # here the same way ``get_REDIS_DB()`` observes a rebind (CLAUDE.md, #655).
 
-# ``PURGE_ORPHAN_LUA`` moved to ``popoto.backends.redis`` (#631 WS0).
-# It is re-imported here under its existing name so every current
-# reader -- this module's own ``run_lua`` sites and the tests that
-# import it from here -- keeps finding it. The script text itself is
-# byte-identical.
-from ..backends.redis import PURGE_ORPHAN_LUA  # noqa: E402,F401
-
 global RELATED_MODEL_LOAD_SEQUENCE
 RELATED_MODEL_LOAD_SEQUENCE = set()
 
@@ -3542,21 +3535,22 @@ class Model(metaclass=ModelBase):
         from .encoding import decode_popoto_model_hashmap
 
         model_name = cls._meta.model_name
+        backend = get_backend()
 
         # Step 1: Delete all secondary index keys
 
         # Delete class set
-        get_REDIS_DB().delete(cls._meta.db_class_set_key.redis_key)
+        backend.drop_index(cls._meta.db_class_set_key.redis_key, "set")
 
         # Delete sorted field indexes
         for field_name in cls._meta.sorted_field_names:
             field = cls._meta.fields[field_name]
             # Build the base sorted set key pattern
             base_key = field.get_special_use_field_db_key(cls, field_name)
-            # Use SCAN to find all keys matching this pattern (handles partitioned fields)
+            # Scan for every index under this pattern (handles partitioned fields)
             pattern = base_key.redis_key + "*"
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                get_REDIS_DB().delete(key)
+            for key in backend.scan_index_names(pattern):
+                backend.drop_index(key, "sorted")
 
         # Delete key field index sets
         for field_name in cls._meta.key_field_names:
@@ -3566,34 +3560,30 @@ class Model(metaclass=ModelBase):
                 continue
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + ":*"
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                get_REDIS_DB().delete(key)
+            for key in backend.scan_index_names(pattern):
+                backend.drop_index(key, "set")
 
         # Delete geo field indexes
         for field_name in cls._meta.geo_field_names:
             field = cls._meta.fields[field_name]
             geo_key = GeoField.get_geo_db_key(cls, field_name)
-            get_REDIS_DB().delete(geo_key.redis_key)
+            # native(): GeoField index (a geo-encoded sorted set), out of the
+            # #631 slice.
+            backend.native().delete(geo_key.redis_key)
 
         # Delete composite indexes
         for field_names, is_unique in cls._meta.indexes:
             index_key = cls._meta.get_index_key(tuple(field_names))
-            get_REDIS_DB().delete(index_key)
+            backend.drop_index(index_key, "map")
 
-        # Step 2: SCAN all instance keys and rebuild indexes
+        # Step 2: scan all instance keys and rebuild indexes
         instance_pattern = cls._meta.db_class_key.redis_key + ":*"
         count = 0
         diverged_keys = []
-        pipeline = get_REDIS_DB().pipeline()
+        pipeline = backend.begin()
         batch_count = 0
 
-        for redis_key in get_REDIS_DB().scan_iter(match=instance_pattern, count=1000):
-            # Decode the key to a string
-            if isinstance(redis_key, bytes):
-                redis_key_str = redis_key.decode("utf-8")
-            else:
-                redis_key_str = redis_key
-
+        for redis_key_str in backend.scan_record_keys(instance_pattern):
             # Filter out non-instance keys (e.g., keys with special prefixes
             # that happen to match the pattern). Instance keys should have
             # exactly the right number of segments.
@@ -3601,8 +3591,8 @@ class Model(metaclass=ModelBase):
             if len(key_parts) != cls._meta.db_key_length:
                 continue
 
-            # Load the raw hash from Redis
-            redis_hash = get_REDIS_DB().hgetall(redis_key)
+            # Load the raw hash
+            redis_hash = backend.load_record(redis_key_str)
             if not redis_hash:
                 continue
 
@@ -3626,8 +3616,14 @@ class Model(metaclass=ModelBase):
                 diverged_keys.append(redis_key_str)
                 continue
 
-            # Re-add to class set
-            pipeline.sadd(cls._meta.db_class_set_key.redis_key, redis_key_str)
+            # Re-add to class set. The hash is already in place, so this is
+            # save_record with nothing to write: on Redis exactly one SADD.
+            backend.save_record(
+                redis_key_str,
+                {},
+                class_set=cls._meta.db_class_set_key.redis_key,
+                uow=pipeline,
+            )
 
             # Run on_save for each field to rebuild indexes
             for field_name, field in cls._meta.fields.items():
@@ -3644,19 +3640,24 @@ class Model(metaclass=ModelBase):
                 index_key = cls._meta.get_index_key(field_names_t)
                 index_hash = cls._meta.compute_index_hash(instance, field_names_t)
                 if index_hash:
-                    pipeline.hset(index_key, index_hash, redis_key_str)
+                    backend.map_set(
+                        index_key,
+                        index_hash,
+                        redis_key_str.encode(ENCODING),
+                        uow=pipeline,
+                    )
 
             count += 1
             batch_count += 1
 
             if batch_count >= batch_size:
-                pipeline.execute()
-                pipeline = get_REDIS_DB().pipeline()
+                pipeline.commit()
+                pipeline = backend.begin()
                 batch_count = 0
 
-        # Execute any remaining commands in the pipeline
+        # Commit any remaining queued commands
         if batch_count > 0:
-            pipeline.execute()
+            pipeline.commit()
 
         if diverged_keys:
             logger.warning(
@@ -3763,29 +3764,27 @@ class Model(metaclass=ModelBase):
         absent_orphans: list = []
         partial_write_orphans: list = []
         eligible_for_partial = auto_key_field_name is not None
+        backend = get_backend()
 
         for i in range(0, len(members), batch_size):
             batch = members[i : i + batch_size]
-            pipe = get_REDIS_DB().pipeline()
-            for key in batch:
-                pipe.exists(key)
-                if eligible_for_partial:
-                    # Interleaved with EXISTS so one round-trip handles both.
-                    pipe.hget(key, auto_key_field_name)
-            results = pipe.execute()
 
             if eligible_for_partial:
-                # 2:1 result-pairing: results[2*i] == EXISTS for batch[i],
-                # results[2*i + 1] == HGET for batch[i].
-                for j, key in enumerate(batch):
-                    exists = results[2 * j]
-                    hget_value = results[2 * j + 1]
-                    if not exists:
+                # One round trip answers both questions: a hash that exists
+                # loads non-empty, and the auto-key field is read off the
+                # loaded record (#631 WS1a: this was an interleaved
+                # EXISTS + HGET pipeline; load_records is the batched record
+                # read the protocol offers, with the same per-batch cost).
+                auto_key_bytes = str(auto_key_field_name).encode(ENCODING)
+                for key, record in zip(batch, backend.load_records(batch)):
+                    if record is None:
                         absent_orphans.append(key)
-                    elif hget_value is None or hget_value == b"" or hget_value == "":
+                        continue
+                    hget_value = record.get(auto_key_bytes)
+                    if hget_value is None or hget_value == b"" or hget_value == "":
                         partial_write_orphans.append(key)
             else:
-                for key, exists in zip(batch, results):
+                for key, exists in zip(batch, backend.records_exist(batch)):
                     if not exists:
                         absent_orphans.append(key)
 
@@ -3846,50 +3845,28 @@ class Model(metaclass=ModelBase):
                 User.rebuild_indexes()
         """
 
+        backend = get_backend()
+
         def _count_orphans(keys_to_check: list) -> int:
-            """Pipeline EXISTS in batches, return count of non-existent keys."""
+            """Batched EXISTS, return count of non-existent keys."""
             orphan_count = 0
             for i in range(0, len(keys_to_check), batch_size):
                 batch = keys_to_check[i : i + batch_size]
-                pipe = get_REDIS_DB().pipeline()
-                for key in batch:
-                    pipe.exists(key)
-                results = pipe.execute()
+                results = backend.records_exist(batch)
                 orphan_count += sum(1 for exists in results if not exists)
             return orphan_count
 
         def _scan_set_members(set_key: str) -> list:
-            """SSCAN all members of a Redis set."""
-            members = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().sscan(set_key, cursor, count=1000)
-                members.extend(batch)
-                if cursor == 0:
-                    break
-            return members
+            """All members of a set index (SSCAN on Redis)."""
+            return list(backend.scan_index_members(set_key, "set"))
 
         def _scan_sorted_set_members(zset_key: str) -> list:
-            """ZSCAN all members of a Redis sorted set."""
-            members = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().zscan(zset_key, cursor, count=1000)
-                members.extend(member for member, _score in batch)
-                if cursor == 0:
-                    break
-            return members
+            """All members of a sorted index (ZSCAN on Redis)."""
+            return list(backend.scan_index_members(zset_key, "sorted"))
 
         def _scan_hash_values(hash_key: str) -> list:
-            """HSCAN all values of a Redis hash."""
-            values = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().hscan(hash_key, cursor, count=1000)
-                values.extend(batch.values())
-                if cursor == 0:
-                    break
-            return values
+            """All values of a side map (HSCAN on Redis)."""
+            return list(backend.map_scan(hash_key).values())
 
         result = {
             "class_set": 0,
@@ -3922,9 +3899,7 @@ class Model(metaclass=ModelBase):
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + ":*"
             field_orphans = 0
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                if isinstance(key, bytes):
-                    key = key.decode("utf-8")
+            for key in backend.scan_index_names(pattern):
                 members = _scan_set_members(key)
                 if members:
                     field_orphans += _count_orphans(members)
@@ -3936,15 +3911,14 @@ class Model(metaclass=ModelBase):
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + "*"
             field_orphans = 0
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                if isinstance(key, bytes):
-                    key = key.decode("utf-8")
+            for key in backend.scan_index_names(pattern):
                 members = _scan_sorted_set_members(key)
                 if members:
                     field_orphans += _count_orphans(members)
             result["sorted_fields"][field_name] = field_orphans
 
-        # 4. Check geo fields
+        # 4. Check geo fields (GeoField is out of the #631 slice; its index is
+        #    a sorted set on Redis, so the member scan is the sorted one).
         for field_name in cls._meta.geo_field_names:
             geo_key = GeoField.get_geo_db_key(cls, field_name)
             members = _scan_sorted_set_members(geo_key.redis_key)
@@ -4003,11 +3977,15 @@ class Model(metaclass=ModelBase):
         if not keys:
             return 0
         meta = cls._meta  # type: ignore[attr-defined]
-        pipe = get_REDIS_DB().pipeline()
+        backend = get_backend()
+        pipe = backend.begin()
         class_set_key = meta.db_class_set_key.redis_key
         for key in keys:
-            index_keys: list[str] = [class_set_key]
-            kinds: list[str] = ["s"]
+            # (index, kind) refs in the order the script receives them:
+            # class set first, then key-field pointer sets, then sorted sets.
+            refs: "list[tuple[str, Literal['sorted', 'set']]]" = [
+                (class_set_key, "set")
+            ]
             try:
                 parts = DB_key.from_redis_key(key)
             except Exception:
@@ -4025,13 +4003,15 @@ class Model(metaclass=ModelBase):
                 field = meta.fields[field_name]
                 if getattr(field, "auto", False) or field_name not in values:
                     continue
-                index_keys.append(
-                    DB_key(
-                        field.get_special_use_field_db_key(cls, field_name),
-                        values[field_name],
-                    ).redis_key
+                refs.append(
+                    (
+                        DB_key(
+                            field.get_special_use_field_db_key(cls, field_name),
+                            values[field_name],
+                        ).redis_key,
+                        "set",
+                    )
                 )
-                kinds.append("s")
             for field_name in meta.sorted_field_names:
                 field = meta.fields[field_name]
                 partition = tuple(getattr(field, "partition_by", ()) or ())
@@ -4040,18 +4020,12 @@ class Model(metaclass=ModelBase):
                 zset_key = field.get_sortedset_db_key(cls, field_name)
                 for name in partition:
                     zset_key.append(values[name])
-                index_keys.append(zset_key.redis_key)
-                kinds.append("z")
-            run_lua(
-                pipe,
-                PURGE_ORPHAN_LUA,
-                1 + len(index_keys),
-                key,
-                *index_keys,
-                *kinds,
-            )
+                refs.append((zset_key.redis_key, "sorted"))
+            # One PURGE_ORPHAN_LUA call per orphan, all on one unit of work
+            # (#631 WS0 deviation 4 gave purge_orphan its uow= for this).
+            backend.purge_orphan(key, refs, uow=pipe)
         try:
-            pipe.execute()
+            pipe.commit()
         except Exception as exc:
             logger.warning("orphan purge for %s failed: %s", cls.__name__, exc)
         return len(keys)
@@ -4104,52 +4078,29 @@ class Model(metaclass=ModelBase):
                 print(f"Removed {removed} orphaned index entries")
         """
 
+        backend = get_backend()
+
         def _collect_orphans(keys_to_check: list) -> list:
-            """Pipeline EXISTS in batches, return list of non-existent keys."""
+            """Batched EXISTS, return list of non-existent keys."""
             orphans = []
             for i in range(0, len(keys_to_check), batch_size):
                 batch = keys_to_check[i : i + batch_size]
-                pipe = get_REDIS_DB().pipeline()
-                for key in batch:
-                    pipe.exists(key)
-                results = pipe.execute()
-                for key, exists in zip(batch, results):
+                for key, exists in zip(batch, backend.records_exist(batch)):
                     if not exists:
                         orphans.append(key)
             return orphans
 
         def _scan_set_members(set_key: str) -> list:
-            """SSCAN all members of a Redis set."""
-            members = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().sscan(set_key, cursor, count=1000)
-                members.extend(batch)
-                if cursor == 0:
-                    break
-            return members
+            """All members of a set index (SSCAN on Redis)."""
+            return list(backend.scan_index_members(set_key, "set"))
 
         def _scan_sorted_set_members(zset_key: str) -> list:
-            """ZSCAN all members of a Redis sorted set."""
-            members = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().zscan(zset_key, cursor, count=1000)
-                members.extend(member for member, _score in batch)
-                if cursor == 0:
-                    break
-            return members
+            """All members of a sorted index (ZSCAN on Redis)."""
+            return list(backend.scan_index_members(zset_key, "sorted"))
 
         def _scan_hash_entries(hash_key: str) -> list:
-            """HSCAN all key-value pairs of a Redis hash."""
-            entries = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().hscan(hash_key, cursor, count=1000)
-                entries.extend(batch.items())
-                if cursor == 0:
-                    break
-            return entries
+            """All (member, value) pairs of a side map (HSCAN on Redis)."""
+            return list(backend.map_scan(hash_key).items())
 
         removed = 0
 
@@ -4163,17 +4114,17 @@ class Model(metaclass=ModelBase):
                 members, batch_size, auto_key_field_name
             )
             if absent or partial_writes:
-                pipe = get_REDIS_DB().pipeline()
-                # Absent orphans: SREM the stale class-set membership
-                # (hash is already gone — nothing to DEL).
+                pipe = backend.begin()
+                # Both kinds drop the stale class-set membership; for an
+                # absent orphan the record DEL inside delete_record is a
+                # no-op (the hash is already gone), for a partial-write
+                # orphan it removes the corrupt, unrecoverable hash so no
+                # memory is left behind.
                 for orphan in absent:
-                    pipe.srem(class_set_key, orphan)
-                # Partial-write orphans: SREM AND DEL — the corrupt hash
-                # is unrecoverable and must not linger in Redis.
+                    backend.delete_record(orphan, class_set=class_set_key, uow=pipe)
                 for orphan in partial_writes:
-                    pipe.srem(class_set_key, orphan)
-                    pipe.delete(orphan)
-                pipe.execute()
+                    backend.delete_record(orphan, class_set=class_set_key, uow=pipe)
+                pipe.commit()
                 removed += len(absent) + len(partial_writes)
 
         # 2. Clean key field sets
@@ -4184,17 +4135,15 @@ class Model(metaclass=ModelBase):
                 continue
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + ":*"
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                if isinstance(key, bytes):
-                    key = key.decode("utf-8")
+            for key in backend.scan_index_names(pattern):
                 members = _scan_set_members(key)
                 if members:
                     orphans = _collect_orphans(members)
                     if orphans:
-                        pipe = get_REDIS_DB().pipeline()
+                        pipe = backend.begin()
                         for orphan in orphans:
-                            pipe.srem(key, orphan)
-                        pipe.execute()
+                            backend.index_remove(key, orphan, uow=pipe)
+                        pipe.commit()
                         removed += len(orphans)
 
         # 3. Clean sorted field sets
@@ -4202,30 +4151,29 @@ class Model(metaclass=ModelBase):
             field = cls._meta.fields[field_name]
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + "*"
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                if isinstance(key, bytes):
-                    key = key.decode("utf-8")
+            for key in backend.scan_index_names(pattern):
                 members = _scan_sorted_set_members(key)
                 if members:
                     orphans = _collect_orphans(members)
                     if orphans:
-                        pipe = get_REDIS_DB().pipeline()
+                        pipe = backend.begin()
                         for orphan in orphans:
-                            pipe.zrem(key, orphan)
-                        pipe.execute()
+                            backend.sorted_remove(key, orphan, uow=pipe)
+                        pipe.commit()
                         removed += len(orphans)
 
-        # 4. Clean geo fields
+        # 4. Clean geo fields (GeoField is out of the #631 slice; its index is
+        #    a sorted set on Redis, so the sorted scan/remove apply).
         for field_name in cls._meta.geo_field_names:
             geo_key = GeoField.get_geo_db_key(cls, field_name)
             members = _scan_sorted_set_members(geo_key.redis_key)
             if members:
                 orphans = _collect_orphans(members)
                 if orphans:
-                    pipe = get_REDIS_DB().pipeline()
+                    pipe = backend.begin()
                     for orphan in orphans:
-                        pipe.zrem(geo_key.redis_key, orphan)
-                    pipe.execute()
+                        backend.sorted_remove(geo_key.redis_key, orphan, uow=pipe)
+                    pipe.commit()
                     removed += len(orphans)
 
         # 5. Clean composite indexes
@@ -4238,11 +4186,11 @@ class Model(metaclass=ModelBase):
                 orphans = _collect_orphans(values_to_check)
                 if orphans:
                     orphan_set = set(orphans)
-                    pipe = get_REDIS_DB().pipeline()
+                    pipe = backend.begin()
                     for hash_field, value in entries:
                         if value in orphan_set:
-                            pipe.hdel(index_key, hash_field)
-                    pipe.execute()
+                            backend.map_delete(index_key, hash_field, uow=pipe)
+                    pipe.commit()
                     removed += len(orphan_set)
 
         return removed
