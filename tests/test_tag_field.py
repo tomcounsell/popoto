@@ -98,14 +98,21 @@ class TestTagFieldCRUD:
     def test_delete_removes_from_all_tag_sets(self):
         m = TaggedMemory.create(tags=["a", "b", "c"])
         assert len(TaggedMemory.query.filter(tags__contains="b")) == 1
+        m.delete()
+        for tag in ("a", "b", "c"):
+            assert len(TaggedMemory.query.filter(tags__contains=tag)) == 0
+
+    @pytest.mark.redis_only
+    def test_delete_drops_the_pointer_side_key(self):
+        # Redis key layout (#631): the ``$TagPtr:`` side key is how the Redis
+        # backend remembers membership; Postgres has no pointer to drop.
+        m = TaggedMemory.create(tags=["a", "b", "c"])
         # Pointer side key must exist BEFORE delete(), otherwise the
         # post-delete "doesn't exist" assertion below is vacuously true —
         # it would pass whether or not delete() actually cleaned anything up.
         ptr = TagFieldMixin._tag_pointer_side_key(m.db_key.redis_key, "tags")
         assert POPOTO_REDIS_DB.exists(ptr) == 1, "pointer side key was never created"
         m.delete()
-        for tag in ("a", "b", "c"):
-            assert len(TaggedMemory.query.filter(tags__contains=tag)) == 0
         # Pointer side key is cleaned up.
         assert POPOTO_REDIS_DB.exists(ptr) == 0
 
@@ -255,6 +262,7 @@ class TestTagFieldNormalization:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only  # Redis key types and layout (#631): no meaning elsewhere
 class TestTagFieldValkeySafety:
     def setup_method(self):
         TaggedMemory.delete_all()
