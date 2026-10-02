@@ -25,6 +25,10 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 from src import popoto
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Every test reads the ``$SortF:`` ZSETs back through the raw client to check
+# the stored score, which is a Redis-layout assertion (#631 WS1b).
+pytestmark = pytest.mark.redis_only
+
 OFFSET_ZONE = "Asia/Bangkok"  # +07:00, no DST
 OFFSET_SECONDS = 7 * 3600
 

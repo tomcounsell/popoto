@@ -26,6 +26,12 @@ from src.popoto.fields.constants import Defaults
 from src.popoto.redis_db import POPOTO_REDIS_DB
 import src.popoto.redis_db as redis_db_module
 
+# The autouse fixture below clears the model's keys through the raw client,
+# the orphan tests DEL record hashes behind the index to manufacture stale
+# members, and the range-call recorder patches redis-py's ``zrangebyscore``:
+# every test here depends on the Redis key layout (#631 WS1b).
+pytestmark = pytest.mark.redis_only
+
 
 class PushdownDoc(popoto.Model):
     room_id = popoto.KeyField(type=str)

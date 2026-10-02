@@ -56,18 +56,44 @@ See Also
 
 from decimal import Decimal
 from datetime import date, datetime, time
-from typing import TYPE_CHECKING
-import redis.client
+from typing import TYPE_CHECKING, Any, Iterable
 import logging
+from ..backends import get_backend
 from ..models.db_key import DB_key
 from ..exceptions import ModelException
 from ..models.query import QueryException
-from ..redis_db import get_REDIS_DB, scan_keys
+from ..redis_db import ENCODING
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.KeyFieldMixin")
+
+# ``pipeline=`` is duck-typed (#631 architect decision 1): the field layer
+# only asks ``is not None`` and hands it to the backend as ``uow=``. It is
+# annotated ``Any`` rather than ``UnitOfWork | None`` because ``Field.on_save``
+# still annotates ``redis.client.Pipeline``, and mypy rejects a narrower type
+# as an incompatible multiple-inheritance definition in ``shortcuts.py`` and
+# ``decaying_sorted_field.py``, which this slice does not own (same as WS1c's
+# ``indexed_field_mixin.py``).
+
+
+def _members_as_bytes(members: Iterable[str]) -> set[bytes]:
+    """Re-encode the backend's decoded ``str`` members to ``bytes``.
+
+    The backend decodes every set-index and scan reply to ``str`` (#732
+    deviation 11), but ``Query.filter_for_keys_set`` intersects this field's
+    result with what every other field returns, and those are the raw
+    ``bytes`` replies until each family is routed. A ``str`` set intersected
+    with a ``bytes`` set is empty, so a query composing a KeyField filter with
+    another field's filter would silently match nothing. Keeping the pre-seam
+    ``bytes`` shape at this boundary makes the result independent of which
+    WS1 family merges first (the same helper, by the same name, lives in
+    ``indexed_field_mixin`` for WS1c); flipping the whole field layer to
+    ``str`` is one later PR across the mixins and ``Query.keys``.
+    """
+    return {m.encode(ENCODING) for m in members}
+
 
 # Key fields must be serializable to strings for Redis key construction.
 # Complex types like dict, list, and set are excluded because they don't
@@ -84,10 +110,15 @@ VALID_KEYFIELD_TYPES = [
 ]
 
 
-def _scan_hash_keys(pattern: str) -> list:  # type: ignore[type-arg]
+def _scan_hash_keys(pattern: str) -> list[str]:
     """
     Scan for keys matching ``pattern`` and filter out anything that is not
     a Redis hash before it can reach a downstream HGETALL.
+
+    Since the backend seam (#631) this delegates to
+    ``get_backend().scan_record_keys``; the TYPE classification below is now
+    the Redis backend's body, and the reasoning is kept here because this is
+    where the callers (AutoKeyField and the pattern lookups) live.
 
     AutoKeyField (and the pattern-based `__startswith`/`__endswith`/
     `__isnull` lookups on ordinary KeyFields) resolve by globbing the
@@ -128,16 +159,7 @@ def _scan_hash_keys(pattern: str) -> list:  # type: ignore[type-arg]
     rather than paying for transactional guarantees this read-only check
     doesn't need.
     """
-    keys = scan_keys(pattern)
-    if not keys:
-        return keys
-    pipeline = get_REDIS_DB().pipeline(transaction=False)
-    for key in keys:
-        pipeline.type(key)
-    key_types = pipeline.execute()
-    return [
-        key for key, key_type in zip(keys, key_types) if key_type in (b"hash", "hash")
-    ]
+    return get_backend().scan_record_keys(pattern)
 
 
 class KeyFieldMixin:
@@ -253,7 +275,7 @@ class KeyFieldMixin:
         model_instance: "Model",
         field_name: str,
         field_value,
-        pipeline: redis.client.Pipeline = None,
+        pipeline: Any = None,
         **kwargs,
     ):
         """
@@ -305,22 +327,18 @@ class KeyFieldMixin:
                 old_value,
             )
             member_key = model_instance.db_key.redis_key
-            if pipeline:
-                pipeline.srem(old_set_key.redis_key, member_key)
-            else:
-                get_REDIS_DB().srem(old_set_key.redis_key, member_key)
+            get_backend().index_remove(old_set_key.redis_key, member_key, uow=pipeline)
 
         unique_set_key = DB_key(
             cls.get_special_use_field_db_key(model_instance, field_name), field_value
         )
-        if pipeline:
-            return pipeline.sadd(
-                unique_set_key.redis_key, model_instance.db_key.redis_key
-            )
-        else:
-            return get_REDIS_DB().sadd(
-                unique_set_key.redis_key, model_instance.db_key.redis_key
-            )
+        reply = get_backend().index_add(
+            unique_set_key.redis_key, model_instance.db_key.redis_key, uow=pipeline
+        )
+        # Architect decision 1 (#631): a unit of work is any non-None handle,
+        # and the caller gets its own handle back, as the chained
+        # ``pipeline.sadd(...)`` returned it before the seam.
+        return pipeline if pipeline is not None else reply
 
     @classmethod
     def on_delete(
@@ -328,7 +346,7 @@ class KeyFieldMixin:
         model_instance: "Model",
         field_name: str,
         field_value,
-        pipeline: redis.client.Pipeline = None,
+        pipeline: Any = None,
         **kwargs,
     ):
         """
@@ -369,10 +387,10 @@ class KeyFieldMixin:
         )
         # Use saved_redis_key if provided, otherwise fall back to current db_key
         member_key = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
-        if pipeline:
-            return pipeline.srem(unique_set_key.redis_key, member_key)
-        else:
-            return get_REDIS_DB().srem(unique_set_key.redis_key, member_key)
+        reply = get_backend().index_remove(
+            unique_set_key.redis_key, member_key, uow=pipeline
+        )
+        return pipeline if pipeline is not None else reply
 
     def get_filter_query_params(self, field_name: str) -> set:
         """
@@ -471,7 +489,9 @@ class KeyFieldMixin:
             QueryException: If __isnull receives a non-boolean value.
         """
 
-        keys_lists_to_intersect = list()
+        # Every entry is the backend's str reply re-encoded to the pre-seam
+        # bytes shape by ``_members_as_bytes``; see its docstring for why.
+        keys_lists_to_intersect: list[set[bytes]] = []
         (
             db_key_length,
             field_key_position,
@@ -493,41 +513,49 @@ class KeyFieldMixin:
 
         for query_param, query_value in query_params.items():
             if query_param.endswith("__in"):
-                # Use SUNION for efficient server-side set union (single command vs N SMEMBERS)
+                # One server-side set union (SUNION on Redis) rather than N
+                # member reads; an empty value list is an empty match.
                 set_keys = [
                     DB_key(redis_set_key_prefix, query_value_elem).redis_key
                     for query_value_elem in query_value
                 ]
-                if set_keys:
-                    keys_lists_to_intersect.append(get_REDIS_DB().sunion(set_keys))
-                else:
-                    keys_lists_to_intersect.append(set())
+                keys_lists_to_intersect.append(
+                    _members_as_bytes(get_backend().index_union(set_keys))
+                )
 
             else:
                 if query_param == f"{field_name}":
                     if model._meta.fields[field_name].auto:
                         # Auto fields use pattern scan since they don't maintain index sets
                         keys_lists_to_intersect.append(
-                            _scan_hash_keys(get_key_pattern(query_value))
+                            _members_as_bytes(
+                                _scan_hash_keys(get_key_pattern(query_value))
+                            )
                         )
                     else:
                         keys_lists_to_intersect.append(
-                            get_REDIS_DB().smembers(
-                                DB_key(redis_set_key_prefix, query_value).redis_key
+                            _members_as_bytes(
+                                get_backend().index_members(
+                                    DB_key(redis_set_key_prefix, query_value).redis_key
+                                )
                             )
                         )
 
                 elif query_param.endswith("__isnull"):
                     if query_value is True:
                         keys_lists_to_intersect.append(
-                            get_REDIS_DB().smembers(
-                                DB_key(redis_set_key_prefix, None).redis_key
+                            _members_as_bytes(
+                                get_backend().index_members(
+                                    DB_key(redis_set_key_prefix, None).redis_key
+                                )
                             )
                         )
                     elif query_value is False:
                         # Use SCAN instead of KEYS to avoid blocking Redis
                         keys_lists_to_intersect.append(
-                            _scan_hash_keys(get_key_pattern("[^None]"))
+                            _members_as_bytes(
+                                _scan_hash_keys(get_key_pattern("[^None]"))
+                            )
                         )
                     else:
                         raise QueryException(
@@ -537,15 +565,19 @@ class KeyFieldMixin:
                 elif query_param.endswith("__startswith"):
                     # Use SCAN instead of KEYS to avoid blocking Redis
                     keys_lists_to_intersect.append(
-                        _scan_hash_keys(
-                            get_key_pattern(f"{DB_key.clean(query_value)}*")
+                        _members_as_bytes(
+                            _scan_hash_keys(
+                                get_key_pattern(f"{DB_key.clean(query_value)}*")
+                            )
                         )
                     )
                 elif query_param.endswith("__endswith"):
                     # Use SCAN instead of KEYS to avoid blocking Redis
                     keys_lists_to_intersect.append(
-                        _scan_hash_keys(
-                            get_key_pattern(f"*{DB_key.clean(query_value)}")
+                        _members_as_bytes(
+                            _scan_hash_keys(
+                                get_key_pattern(f"*{DB_key.clean(query_value)}")
+                            )
                         )
                     )
         logger.debug(keys_lists_to_intersect)

@@ -184,6 +184,7 @@ class TestPartitionResolution:
         with pytest.raises(QueryException):
             getattr(field, method)(probe, "relevance")
 
+    @pytest.mark.redis_only
     def test_reads_use_the_same_key_as_the_builder(self, monkeypatch):
         """The key handed to ZCARD is the builder's ``.redis_key`` string.
 
