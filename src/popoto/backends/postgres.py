@@ -4,8 +4,9 @@ WS3a implements family B (records), C (atomic increment) and J's
 ``purge_orphan``, plus the unit of work they need. WS3b implements D (side
 maps), E (set indexes), F (sorted indexes) and the rest of J
 (``scan_index_members``, ``drop_index``). WS3c implements G (the atomic
-index and tag swaps). Every other method still raises
-:class:`NotImplementedError` naming itself; WS3d-e fill them in family by
+index and tag swaps). WS3e implements I (validity intervals and
+supersession). Every other method still raises
+:class:`NotImplementedError` naming itself; WS3d fills them in family by
 family behind the WS2 conformance harness.
 
 ``psycopg`` is deliberately **not** imported at module scope: selection in
@@ -161,6 +162,59 @@ review, B1). The one operation that names two keys, a rename through
 ``obsolete_key``, locks both ascending by lock id so two instances renaming in
 opposite directions take them in the same order.
 
+Validity and supersession
+-------------------------
+On Redis a ``ValidityField`` is three ZSETs (``valid_from``, ``invalid_at``,
+``ingested_at``; score ``+inf`` means "still open"), two HASHes (the chain
+links) and one STRING per identity digest (the open pointer), all named from
+the ``$ValidityF:<Model>`` prefix by ``_validity_keys`` (WS0 deviation 10,
+imported from the Redis backend so the derivation is byte-equal by
+construction). Here the intervals are rows of ``popoto_sorted`` under those
+same three names and the links rows of ``popoto_map`` under the two chain
+names -- **not** a dedicated interval table, because the field layer reads
+them through the generic families: ``filter(validity__current=False)`` is
+``sorted_members`` on the ``invalid_at`` / ``valid_from`` names and
+``SupersessionProtocol.chain`` is ``map_get`` on the chain names (WS1e), so an
+interval kept anywhere else would be invisible to both. The open pointers are
+the one new table, ``popoto_open_ptr(prefix, digest, member)`` with an index
+on ``(prefix, member)`` for :meth:`drop_validity`'s "every pointer naming this
+member" delete (deviation 3). ``+inf`` is ``'infinity'::float8``, which
+compares as the Lua's ``math.huge`` does: ``<= as_of`` is false for every
+finite ``as_of`` and true for ``as_of = inf``.
+
+:meth:`supersede` is one call of the PL/pgSQL function ``popoto_supersede``
+(``SCHEMA_DDL``), ``SUPERSEDE_LUA`` phase for phase: resolve the incumbent
+from the pointer, the ``#588`` membership guards, the idempotency and
+close-before-start checks, the asserted-``valid_from`` check, then the close,
+the two links, the NX open and the repoint. Each ``error_reply`` token is a
+``RAISE EXCEPTION USING ERRCODE = 'P0631'`` whose ``MESSAGE`` is the same
+token line, and the backend hands that line to ``validity_field``'s
+``map_lua_error`` -- the same function the Redis backend calls -- so the
+typed exception and its text are identical on both backends. Inside the
+function the Redis single thread is one ``pg_advisory_xact_lock`` on the
+model/field prefix, taken first, so every supersede on one ``ValidityField``
+runs after the previous one commits and the order among them is total;
+then the per-key locks on the pointer key, the successor and the asserted
+incumbent (same key space and order as the record locks), which serialise
+a supersede against the record writers on the same member; then ``SELECT
+... FOR UPDATE`` on the incumbent's ``invalid_at`` row. The prefix lock is
+not optional: an incumbent resolved from the pointer inside the function
+is outside the per-key set, and two such writers whose chains cross
+(``d1 -> X`` superseded by ``Y`` while ``d2 -> Y`` is superseded by ``X``)
+deadlocked on each other's uncommitted close (#750 review B1). What the
+prefix lock does not buy is an order across *operations*: a unit of work
+that queued ``save_record(K)`` ahead of a supersede holds ``K``'s lock
+while it waits for the prefix, and a concurrent supersede holding the
+prefix and naming ``K`` explicitly waits for ``K`` -- the cross-operation
+deadlock the record family already documents as detected, not prevented
+(``DeadlockDetected`` on one side, nothing persisted on it). On the
+``uow=`` path the function runs inside the unit of work's transaction, which
+is what makes the same-transaction successor of #588 visible to the guard
+for free; it also means the *typed* exception is raised from ``commit()``
+here, where the Redis pipeline surfaces a raw ``ResponseError`` for the
+caller to remap. ``now`` is the caller's clock (deviation 2): the backend
+fills every defaulted instant from it and never from ``clock_timestamp()``.
+
 The atomic-increment envelope
 -----------------------------
 ``ATOMIC_INCREMENT_LUA`` reads the field, ``cmsgpack.unpack``s it, adds the
@@ -191,6 +245,7 @@ import msgpack
 from ..exceptions import ModelException
 from ..redis_db import ENCODING
 from . import UnitOfWork
+from .redis import _validity_keys
 
 __all__ = ["PostgresBackend", "PostgresUnitOfWork", "SCHEMA_DDL"]
 
@@ -258,7 +313,205 @@ SCHEMA_DDL: tuple[str, ...] = (
         PRIMARY KEY (key, field, idx)
     )
     """,
+    # -- WS3e: validity and supersession (family I) ---------------------------
+    # The validity intervals themselves live in ``popoto_sorted`` under the
+    # three index names ``_validity_keys`` derives (``valid_from``,
+    # ``invalid_at``, ``ingested_at``) and the chain links in ``popoto_map``
+    # under the two chain names, exactly as they are three ZSETs and two
+    # HASHes on Redis; see "Validity" in the module docstring for why a
+    # dedicated interval table would break the field layer. The one new table
+    # is the open-identity pointer (Redis: one STRING key per digest), and the
+    # supersede itself is a PL/pgSQL function so its validation phase and
+    # mutation phase are one statement inside the caller's transaction.
+    """
+    CREATE TABLE IF NOT EXISTS popoto_open_ptr (
+        prefix text NOT NULL,
+        digest text NOT NULL,
+        member text NOT NULL,
+        PRIMARY KEY (prefix, digest)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS popoto_open_ptr_prefix_member
+        ON popoto_open_ptr (prefix, member)
+    """,
+    # ``SUPERSEDE_LUA`` (backends/redis.py) step by step. Every ``error_reply``
+    # token becomes ``RAISE EXCEPTION USING ERRCODE = 'P0631'`` -- a custom
+    # SQLSTATE in the PL/pgSQL class ``P0`` -- carrying the same token line as
+    # ``MESSAGE`` (the two numbers of the valid-from conflict travel in
+    # ``DETAIL`` so Python can render them with Lua's ``%.14g``), and
+    # :meth:`PostgresBackend.supersede` hands that line to the field layer's
+    # ``map_lua_error``, so ``_LUA_ERROR_MAP`` is the single source of the
+    # token -> typed-exception mapping for both backends. Phase rule: no write
+    # above the ``MUTATION PHASE`` comment, mirroring the Lua; here the
+    # transaction would roll a torn write back anyway, but the ordering keeps
+    # the two bodies reviewable side by side.
+    """
+    CREATE OR REPLACE FUNCTION popoto_supersede(
+        vf_key      text,
+        ia_key      text,
+        ig_key      text,
+        ptr_prefix  text,
+        ptr_digest  text,
+        fwd_key     text,
+        rev_key     text,
+        new_member  text,
+        mode        text,
+        old_member  text,
+        valid_from  double precision,
+        ingested_at double precision,
+        close_at    double precision,
+        vf_assert   boolean,
+        lock_keys   text[]
+    ) RETURNS text LANGUAGE plpgsql AS $popoto$
+    DECLARE
+        newm         text    := coalesce(new_member, '');
+        oldm         text    := coalesce(old_member, '');
+        -- old_member was supplied by the caller: an assertion, not a hint.
+        asserted_old boolean := coalesce(old_member, '') <> '';
+        will_close   boolean := false;
+        closed       text    := '';
+        pointed      text;
+        old_ia       double precision;
+        old_vf       double precision;
+        stored_vf    double precision;
+        new_ia       double precision;
+    BEGIN
+        -- The Redis single thread, per model/field: every supersede on this
+        -- prefix queues here, before it reads anything. The per-key locks
+        -- below cannot cover an incumbent resolved from the pointer *inside*
+        -- the function, and two such writers whose chains cross (d1 -> X
+        -- superseded by Y, d2 -> Y superseded by X) held disjoint key sets,
+        -- both entered, and deadlocked on each other's uncommitted close
+        -- (#750 review B1). One lock per prefix, taken first, makes the
+        -- order among supersedes total.
+        PERFORM pg_advisory_xact_lock(hashtext(ptr_prefix));
+        -- Then the keys, in one global order (the record writers' idiom and
+        -- key space), which is what serialises a supersede against a
+        -- save_record / delete_record / drop_validity of the same member.
+        PERFORM pg_advisory_xact_lock(h)
+          FROM (SELECT DISTINCT hashtext(k) AS h
+                  FROM unnest(lock_keys) AS t(k)
+                 ORDER BY h) AS locks;
+
+        -- VALIDATION PHASE -- reads and RAISE only.
+
+        IF mode <> 'open' THEN
+            IF oldm = '' AND ptr_digest <> '' THEN
+                SELECT p.member INTO pointed FROM popoto_open_ptr AS p
+                 WHERE p.prefix = ptr_prefix AND p.digest = ptr_digest;
+                IF pointed IS NOT NULL THEN
+                    oldm := pointed;
+                END IF;
+            END IF;
+
+            -- A caller-named successor must exist at the instant of the
+            -- write (#588): inside the unit of work's transaction the
+            -- successor's own save_record is already visible here.
+            IF newm <> '' AND NOT EXISTS (
+                SELECT 1 FROM popoto_record AS r WHERE r.key = newm
+            ) THEN
+                RAISE EXCEPTION USING ERRCODE = 'P0631',
+                    MESSAGE = 'POPOTO_VALIDITY_MEMBER_ABSENT successor ' || newm;
+            END IF;
+
+            IF oldm <> '' AND NOT EXISTS (
+                SELECT 1 FROM popoto_record AS r WHERE r.key = oldm
+            ) THEN
+                IF asserted_old THEN
+                    RAISE EXCEPTION USING ERRCODE = 'P0631',
+                        MESSAGE = 'POPOTO_VALIDITY_MEMBER_ABSENT incumbent ' || oldm;
+                END IF;
+                -- Resolved from the pointer: a hint, so a pointer left naming
+                -- a hard-deleted record reads as "no incumbent".
+                oldm := '';
+            END IF;
+
+            IF oldm <> '' AND oldm <> newm THEN
+                -- FOR UPDATE: a second closer of the same incumbent waits
+                -- here and then re-reads the committed close, so it is the
+                -- idempotent no-op it would have been on Redis.
+                SELECT s.score INTO old_ia FROM popoto_sorted AS s
+                 WHERE s.idx = ia_key AND s.member = oldm FOR UPDATE;
+                IF old_ia = 'infinity'::double precision THEN
+                    SELECT s.score INTO old_vf FROM popoto_sorted AS s
+                     WHERE s.idx = vf_key AND s.member = oldm;
+                    IF old_vf IS NOT NULL AND close_at < old_vf THEN
+                        RAISE EXCEPTION USING ERRCODE = 'P0631',
+                            MESSAGE = 'POPOTO_VALIDITY_CLOSE_BEFORE_START';
+                    END IF;
+                    will_close := true;
+                END IF;
+            END IF;
+        END IF;
+
+        IF newm <> '' AND vf_assert THEN
+            -- Valid-time has one writer: a disagreeing assertion is refused
+            -- rather than lost to the NX insert below.
+            SELECT s.score INTO stored_vf FROM popoto_sorted AS s
+             WHERE s.idx = vf_key AND s.member = newm;
+            IF stored_vf IS NOT NULL AND stored_vf <> valid_from THEN
+                RAISE EXCEPTION USING ERRCODE = 'P0631',
+                    MESSAGE = 'POPOTO_VALIDITY_VALID_FROM_CONFLICT',
+                    DETAIL = stored_vf::text || ' ' || valid_from::text;
+            END IF;
+        END IF;
+
+        -- MUTATION PHASE -- every check above has passed.
+
+        IF will_close THEN
+            INSERT INTO popoto_sorted (idx, member, score)
+                 VALUES (ia_key, oldm, close_at)
+            ON CONFLICT (idx, member) DO UPDATE SET score = EXCLUDED.score;
+            closed := oldm;
+            IF newm <> '' THEN
+                IF fwd_key <> '' THEN
+                    INSERT INTO popoto_map (idx, member, value)
+                         VALUES (fwd_key, oldm, convert_to(newm, 'UTF8'))
+                    ON CONFLICT (idx, member) DO UPDATE SET value = EXCLUDED.value;
+                END IF;
+                IF rev_key <> '' THEN
+                    INSERT INTO popoto_map (idx, member, value)
+                         VALUES (rev_key, newm, convert_to(oldm, 'UTF8'))
+                    ON CONFLICT (idx, member) DO UPDATE SET value = EXCLUDED.value;
+                END IF;
+            END IF;
+        END IF;
+
+        IF newm <> '' THEN
+            SELECT s.score INTO new_ia FROM popoto_sorted AS s
+             WHERE s.idx = ia_key AND s.member = newm;
+            IF new_ia IS NULL OR new_ia = 'infinity'::double precision THEN
+                -- NX: a re-save never shifts an interval, and an already
+                -- closed record is never resurrected (the guard above).
+                INSERT INTO popoto_sorted (idx, member, score)
+                     VALUES (vf_key, newm, valid_from)
+                ON CONFLICT (idx, member) DO NOTHING;
+                INSERT INTO popoto_sorted (idx, member, score)
+                     VALUES (ig_key, newm, ingested_at)
+                ON CONFLICT (idx, member) DO NOTHING;
+                INSERT INTO popoto_sorted (idx, member, score)
+                     VALUES (ia_key, newm, 'infinity'::double precision)
+                ON CONFLICT (idx, member) DO NOTHING;
+                IF ptr_digest <> '' THEN
+                    INSERT INTO popoto_open_ptr (prefix, digest, member)
+                         VALUES (ptr_prefix, ptr_digest, newm)
+                    ON CONFLICT (prefix, digest) DO UPDATE SET member = EXCLUDED.member;
+                END IF;
+            END IF;
+        END IF;
+
+        RETURN closed;
+    END
+    $popoto$
+    """,
 )
+
+#: The SQLSTATE ``popoto_supersede`` raises its ``POPOTO_VALIDITY_*`` replies
+#: under: class ``P0`` (PL/pgSQL error) with a custom subcode, so the catch in
+#: :meth:`PostgresBackend.supersede` is exact and any other error -- a bug in
+#: the function, a lost connection -- propagates untouched.
+SUPERSEDE_ERRCODE = "P0631"
 
 #: The index tables, by the ``kind`` the protocol names them with.
 _INDEX_TABLES: dict[str, str] = {
@@ -516,6 +769,30 @@ def _scrub_legacy_pointer(cur: Any, record_key: str, legacy_field: bytes) -> Non
     )
 
 
+class _ScriptReply(Exception):
+    """A ``POPOTO_VALIDITY_*`` reply raised by ``popoto_supersede``, shaped as
+    the Redis backend sees it: ``str()`` is the token line and nothing else.
+    Handed to the field layer's ``map_lua_error`` (its ``_LUA_ERROR_MAP`` is
+    the one token -> exception table for both backends)."""
+
+
+def _supersede_reply(error: Any) -> str:
+    """The Lua-identical token line for a ``SUPERSEDE_ERRCODE`` error.
+
+    ``MESSAGE`` carries the token (and, for the member-absent reply, the role
+    and key); the valid-from conflict's two numbers travel in ``DETAIL`` as
+    Postgres ``float8`` text and are rendered here with Lua's ``%.14g``, since
+    ``tostring(1759500000.123456)`` is ``1759500000.1235`` in the script and
+    Postgres would print every digit.
+    """
+    primary = str(error.diag.message_primary or "")
+    detail = error.diag.message_detail
+    if detail:
+        numbers = " ".join(_lua_tostring(float(part)) for part in detail.split())
+        return f"{primary} {numbers}"
+    return primary
+
+
 # -- Lua parity helpers for increment_field ------------------------------------
 
 
@@ -622,6 +899,19 @@ class PostgresUnitOfWork:
     def __len__(self) -> int:
         return len(self._ops)
 
+    @property
+    def command_stack(self) -> list[Op]:
+        """The queue, under the name redis-py gives a pipeline's.
+
+        ``SupersessionProtocol._save_and_close`` reads
+        ``len(pipe.command_stack)`` for ``close_index`` -- the position of the
+        queued supersede, whose reply it takes from ``commit()``'s result list
+        -- and ``_validate_caller_pipeline`` requires the attribute. One entry
+        per queued operation here is one entry per ``commit()`` result, so the
+        position is exact.
+        """
+        return self._ops
+
     def commit(self) -> list[Any]:
         ops, self._ops = self._ops, []
         if not ops:
@@ -647,7 +937,7 @@ class PostgresUnitOfWork:
 class PostgresBackend:
     """The Postgres :class:`~popoto.backends.Backend`; see the module
     docstring for the schema, the connection policy, the increment envelope,
-    the sorted-set semantics and the atomic swaps. Families H and I
+    the sorted-set semantics, the atomic swaps and the validity family. Family H
     still raise :class:`NotImplementedError`."""
 
     def __init__(self, url: str) -> None:
@@ -1463,12 +1753,73 @@ class PostgresBackend:
         pointer_digest: str | None,
         uow: UnitOfWork | None = None,
     ) -> str | None:
-        raise _todo("supersede")
+        keys = _validity_keys(model_prefix, field)
+        prefix = f"{model_prefix}:{field}"
+        digest = pointer_digest or ""
+        pointer_key = f"{prefix}:open:{digest}" if digest else ""
+        # Deviation 2: ``now`` is the caller's clock and the default for every
+        # instant the script would fill from ARGV[2]; never clock_timestamp().
+        clock = float(now)
+        start = _check_score(clock if valid_from is None else valid_from)
+        ingest = _check_score(clock if ingested_at is None else ingested_at)
+        close = _check_score(clock if close_at is None else close_at)
+        # After the function's prefix lock: serialise with every record writer
+        # naming this identity's pointer, this
+        # successor or this (asserted) incumbent; an incumbent resolved from
+        # the pointer inside the function is covered by the pointer lock and
+        # by the ``FOR UPDATE`` on its interval row.
+        lock_keys = [k for k in (pointer_key, new_member or "", old_member or "") if k]
+        params = (
+            keys["valid_from"],
+            keys["invalid_at"],
+            keys["ingested_at"],
+            prefix,
+            digest,
+            keys["chain_fwd"],
+            keys["chain_rev"],
+            new_member or "",
+            mode,
+            old_member or "",
+            start,
+            ingest,
+            close,
+            bool(assert_valid_from),
+            lock_keys,
+        )
+
+        def op(cur: Any) -> Any:
+            try:
+                row = cur.execute(
+                    "SELECT popoto_supersede("
+                    "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+                    "%s::text[])",
+                    params,
+                ).fetchone()
+            except Exception as e:
+                if getattr(e, "sqlstate", None) != SUPERSEDE_ERRCODE:
+                    raise
+                # Function-local for the same reason as the Redis backend's:
+                # the field module imports ``backends.redis`` at module scope
+                # for the script text, so a module-scope import here would be
+                # a cycle. One mapper, one table, both backends.
+                from ..fields.validity_field import map_lua_error
+
+                raise map_lua_error(_ScriptReply(_supersede_reply(e))) from e
+            closed = row[0] or ""
+            return closed or None
+
+        return self._run(op, uow)
 
     def interval_of(
         self, valid_idx: str, invalid_idx: str, member: str
     ) -> tuple[float | None, float | None]:
-        raise _todo("interval_of")
+        rows = self._query(
+            "SELECT idx, score FROM popoto_sorted "
+            "WHERE member = %s AND idx = ANY(%s)",
+            (member, [valid_idx, invalid_idx]),
+        )
+        scores = {idx: float(score) for idx, score in rows}
+        return (scores.get(valid_idx), scores.get(invalid_idx))
 
     def interval_members(
         self,
@@ -1478,7 +1829,26 @@ class PostgresBackend:
         *,
         select: Literal["valid", "excluded"],
     ) -> set[str]:
-        raise _todo("interval_members")
+        t = float(as_of)
+        if select == "valid":
+            # valid_from <= t AND invalid_at > t: the intersection.
+            rows = self._query(
+                "SELECT member FROM popoto_sorted WHERE idx = %s AND score <= %s "
+                "INTERSECT "
+                "SELECT member FROM popoto_sorted WHERE idx = %s AND score > %s",
+                (valid_idx, t, invalid_idx, t),
+            )
+        else:
+            # invalid_at <= t (already closed; the +inf open sentinel never
+            # matches a finite t) OR valid_from > t (not yet started): the
+            # union. A member in neither index is in neither set -- absent
+            # means *included* for every retrieval gate.
+            rows = self._query(
+                "SELECT member FROM popoto_sorted "
+                "WHERE (idx = %s AND score <= %s) OR (idx = %s AND score > %s)",
+                (invalid_idx, t, valid_idx, t),
+            )
+        return {member for (member,) in rows}
 
     def drop_validity(
         self,
@@ -1488,10 +1858,41 @@ class PostgresBackend:
         *,
         uow: UnitOfWork | None = None,
     ) -> Any:
-        raise _todo("drop_validity")
+        keys = _validity_keys(model_prefix, field)
+        prefix = f"{model_prefix}:{field}"
+        interval_idxs = [keys["valid_from"], keys["invalid_at"], keys["ingested_at"]]
+        chain_idxs = [keys["chain_fwd"], keys["chain_rev"]]
+
+        def op(cur: Any) -> Any:
+            # The member's own lock: a supersede naming it waits, so the three
+            # deletes below cannot interleave with its NX re-open.
+            _lock_record_keys(cur, [member])
+            cur.execute(
+                "DELETE FROM popoto_sorted WHERE member = %s AND idx = ANY(%s)",
+                (member, interval_idxs),
+            )
+            cur.execute(
+                "DELETE FROM popoto_map WHERE member = %s AND idx = ANY(%s)",
+                (member, chain_idxs),
+            )
+            # Deviation 3: every pointer naming the member, found by value --
+            # the Redis backend's ``{prefix}:open:*`` scan as one DELETE.
+            cur.execute(
+                "DELETE FROM popoto_open_ptr WHERE prefix = %s AND member = %s",
+                (prefix, member),
+            )
+            # The Redis reply is the last pointer DEL's (1) or 0 when there
+            # was none to delete.
+            return 1 if cur.rowcount > 0 else 0
+
+        return self._run(op, uow)
 
     def open_pointer(self, model_prefix: str, field: str, digest: str) -> str | None:
-        raise _todo("open_pointer")
+        rows = self._query(
+            "SELECT member FROM popoto_open_ptr WHERE prefix = %s AND digest = %s",
+            (f"{model_prefix}:{field}", digest),
+        )
+        return str(rows[0][0]) if rows else None
 
     # -- J. Orphan purge and maintenance ------------------------------------
 
