@@ -97,9 +97,9 @@ def pytest_configure(config):
     in this hook rather than in a fixture.
     """
     _collapse_src_popoto()
-    _configure_test_db(config)
+    test_db = _configure_test_db(config)
     _register_conformance_markers(config)
-    _pin_session_backend_to_redis()
+    _pin_session_backend_to_redis(test_db)
 
 
 def _collapse_src_popoto():
@@ -177,6 +177,10 @@ def _configure_test_db(config):
     Failures are non-fatal: an unreachable Redis must not break collection.
     The ``_popoto_test_db`` fixture re-asserts the swap, so a miss here is
     recovered before the first test body runs.
+
+    Returns the resolved test DB, or ``None`` when the session is not opted
+    in, so ``pytest_configure`` can gate the other opt-in step (the backend
+    pin) on the same decision without resolving it twice.
     """
     try:
         test_db = _resolve_test_db(config)
@@ -206,7 +210,7 @@ def _configure_test_db(config):
             config._popoto_tripwire = (pool, wrapper)
         except Exception as e:  # never break a downstream collection
             logger.debug("popoto pytest plugin: isolation warning not armed (%s)", e)
-        return
+        return None
 
     try:
         original_kwargs = dict(
@@ -222,6 +226,7 @@ def _configure_test_db(config):
             test_db,
             e,
         )
+    return test_db
 
 
 def _make_tripwire(pool: Any, original: Callable[..., Any]) -> Callable[..., Any]:
@@ -543,7 +548,9 @@ def _popoto_db0_tripwire(request):
 # ``backend`` without the marker gets the Redis backend, unparametrised.
 #
 # That last promise is kept by :func:`_pin_session_backend_to_redis`, run from
-# ``pytest_configure``. ``popoto.backends.get_backend()`` selects lazily from
+# ``pytest_configure`` whenever the session opted in with ``popoto_test_db`` /
+# ``POPOTO_TEST_DB`` (a session that did not is left on the runtime selection
+# below). ``popoto.backends.get_backend()`` selects lazily from
 # the environment -- ``POSTGRES_URL`` set and ``psycopg`` importable binds the
 # Postgres backend -- and once the model layer routes through it (#631 WS1a),
 # that selection would otherwise reach every unmarked test and every
@@ -879,7 +886,7 @@ def backend(request: Any) -> Any:
         set_backend(previous)
 
 
-def _pin_session_backend_to_redis() -> None:
+def _pin_session_backend_to_redis(test_db: int | None) -> None:
     """Bind the Redis backend as the session default, before collection.
 
     ``get_backend()`` would otherwise select from the environment on its first
@@ -890,7 +897,17 @@ def _pin_session_backend_to_redis() -> None:
     stores no client, so pinning an instance this early captures nothing: the
     plugin's own ``_swap_db()`` and any later ``set_REDIS_DB_settings()`` are
     still observed on every call.
+
+    Gated on the same opt-in as the DB swap: ``test_db`` is what
+    :func:`_configure_test_db` resolved, and ``None`` means the session never
+    set ``popoto_test_db`` / ``POPOTO_TEST_DB``. The plugin loads in every
+    downstream pytest session through its ``pytest11`` entry point, and a
+    project that never opted in must see exactly the selection ``import
+    popoto`` gives it at runtime -- the pin is a test-process rule, not a
+    change to production selection.
     """
+    if test_db is None:
+        return
     from popoto.backends import set_backend
     from popoto.backends.redis import RedisBackend
 
