@@ -76,7 +76,7 @@ from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
 from ..backends import get_backend
-from ..redis_db import ENCODING, get_REDIS_DB, run_lua
+from ..redis_db import ENCODING, run_lua
 from ..exceptions import (
     CorruptFieldError,
     ModelException,
@@ -2133,7 +2133,11 @@ class Model(metaclass=ModelBase):
         # from (recipes/memory_lifecycle.py) sends lowercase "idletime", and
         # #649's contract is a byte-identical command sequence. Upper-casing
         # it here shows up as a real diff in that PR's parity capture.
-        reply = get_REDIS_DB().object("idletime", key)
+        #
+        # native(): OBJECT IDLETIME is a Redis/Valkey object-header read with
+        # no storage-neutral meaning; it serves recipes/memory_lifecycle.py's
+        # idleness policy, out of the #631 slice.
+        reply = get_backend().native().object("idletime", key)
         return None if reply is None else float(reply)
 
     @classmethod
@@ -2590,12 +2594,12 @@ class Model(metaclass=ModelBase):
         }
         packed = msgpack.packb(pressure_data)
 
-        if isinstance(pipeline, redis.client.Pipeline):
+        if pipeline is not None:
             pipeline.hset(pressure_hash_key, member_key, packed)
             return pipeline
-        else:
-            get_REDIS_DB().hset(pressure_hash_key, member_key, packed)
-            return now
+        # native(): CyclicDecayField pressure companion hash, out of the #631 slice.
+        get_backend().native().hset(pressure_hash_key, member_key, packed)
+        return now
 
     def strengthen_cycle(self, field_name, factor=1.2, pipeline=None):
         """Multiply cycle amplitudes by factor (>1.0 strengthens).
@@ -2704,21 +2708,10 @@ class Model(metaclass=ModelBase):
         max_amplitude = 100.0
         min_threshold = 0.01
 
-        if isinstance(pipeline, redis.client.Pipeline):
-            run_lua(
-                pipeline,
-                CYCLES_ADJUST_LUA,
-                1,
-                cycles_hash_key,
-                member_key,
-                str(factor),
-                str(max_amplitude),
-                str(min_threshold),
-            )
-            return pipeline
-
+        # native(): CyclicDecayField's CYCLES_ADJUST_LUA, out of the #631
+        # slice; on a unit of work the script is queued on it instead.
         packed = run_lua(
-            get_REDIS_DB(),
+            pipeline if pipeline is not None else get_backend().native(),
             CYCLES_ADJUST_LUA,
             1,
             cycles_hash_key,
@@ -2727,6 +2720,8 @@ class Model(metaclass=ModelBase):
             str(max_amplitude),
             str(min_threshold),
         )
+        if pipeline is not None:
+            return pipeline
         if packed is None:
             # No cycles stored — nothing to adjust (critique B2: the script
             # returns Lua nil for this case, never a bare table/number, so
@@ -4315,16 +4310,22 @@ class Model(metaclass=ModelBase):
 
             encoded_mapping[field_name_bytes] = encoded_value
 
+        # native(): raw_update is the documented hook-free migration bypass --
+        # it writes hash fields without registering the key in the class set,
+        # which save_record always does -- and migrations are out of the #631
+        # slice (plan non-goals: ``migrations.py``).
+        client = get_backend().native()
+
         # Pipeline HSET commands in batches
         count = 0
-        pipeline = get_REDIS_DB().pipeline()
+        pipeline = client.pipeline()
         for i, redis_key in enumerate(redis_keys, start=1):
             pipeline.hset(redis_key, mapping=encoded_mapping)
             count += 1
 
             if i % batch_size == 0:
                 pipeline.execute()
-                pipeline = get_REDIS_DB().pipeline()
+                pipeline = client.pipeline()
 
         # Execute any remaining commands in the pipeline
         if count % batch_size != 0:
