@@ -550,7 +550,9 @@ class TestSortedIndexes:
 # -- F. Property test ----------------------------------------------------------------
 
 PROPERTY_MEMBERS = ["a", "A", "b", "B", "aa", "a:1", "a-1", "_", "0", "z", "é", "m:2"]
-PROPERTY_SCORES = [-INF, -3.0, -0.5, 0.0, 1e-9, 0.5, 1.0, 1.5, 2.0, 2.0, 7.25, 1e6, INF]
+#: Few distinct scores over twelve members, so ties -- where the member byte
+#: order decides -- are the common case rather than the exception.
+PROPERTY_SCORES = [-INF, -0.5, 0.0, 1.0, 1.0, 2.0, 2.0, 2.0, 7.25, INF]
 PROPERTY_DELTAS = [-2.0, -0.5, 0.25, 1.0, 3.0]
 
 
