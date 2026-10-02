@@ -33,19 +33,20 @@ Example:
 import logging
 from typing import Any, Optional
 
+from ..backends import get_backend
 from ..exceptions import ModelException
-from ..redis_db import get_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
 from .sorted_field_mixin import SortedFieldMixin
 
 logger = logging.getLogger("POPOTO.DecayingSortedField")
 
-# ``DECAY_SCORE_LUA`` moved to ``popoto.backends.redis`` (#631 WS0).
-# It is re-imported here under its existing name so every current
-# reader -- this module's own ``run_lua`` sites and the tests that
-# import it from here -- keeps finding it. The script text itself is
-# byte-identical.
+# ``DECAY_SCORE_LUA`` moved to ``popoto.backends.redis`` (#631 WS0) and the
+# ``EVAL`` of it moved into ``RedisBackend.decayed_rank`` (#631 WS1d); this
+# module no longer evaluates the script itself. The constant is still
+# re-exported here under its existing name because the tests that import it
+# from here (``test_lua_decay_scoring.py``, ``test_confidence_modulated_decay.py``)
+# keep finding it that way. The script text itself is byte-identical.
 from ..backends.redis import DECAY_SCORE_LUA  # noqa: E402,F401
 
 
@@ -140,13 +141,21 @@ class DecayingSortedField(SortedFieldMixin, Field):
         nothing about the validity gate. The rule the script comments ask
         readers to respect is enforced by the class boundary instead.
 
+        Since #631 WS1d the ``EVAL`` itself lives in the storage backend
+        (``Backend.decayed_rank``; on Redis ``RedisBackend.decayed_rank`` is
+        this method's former body, KEYS array and numkeys included). What this
+        method still owns is the *policy*: which companion triples feed the
+        script, the effective rate and base-score field, and the call-time
+        read of the pre-trim budget.
+
         Args:
             zset_key: The (already partition-resolved) sorted set to rank.
             now: Current epoch seconds, passed as ``ARGV[1]``.
             n: Max members to return. ``None`` means *every* member, which
-                costs one extra ``ZCARD`` -- issued here, before the ``EVAL``,
-                so the wire order is ``ZCARD`` then ``EVAL``. An empty set
-                short-circuits to ``[]`` with **no** ``EVAL`` issued at all.
+                costs one extra ``ZCARD`` -- issued by the backend, before the
+                ``EVAL``, so the wire order is ``ZCARD`` then ``EVAL``. An
+                empty set short-circuits to ``[]`` with **no** ``EVAL`` issued
+                at all.
             confidence: ``(hash_key, s, c0)`` from
                 :func:`confidence_modulation_args`. Defaults to
                 :data:`MODULATION_DISABLED`.
@@ -159,8 +168,10 @@ class DecayingSortedField(SortedFieldMixin, Field):
 
         Returns:
             The script's raw flat reply, ``[member, score, member, score, ...]``,
-            **undecoded**. Callers already differ in how they decode and
-            normalizing it here would change what their parsing loops receive.
+            **undecoded** (architect decision 4, kept by WS1d). Callers already
+            differ in how they decode, the ``CyclicDecayField`` override
+            returns the same flat shape, and normalizing it here would change
+            what their parsing loops receive.
         """
         conf_hash_key, conf_s, conf_c0 = (
             MODULATION_DISABLED if confidence is None else confidence
@@ -168,39 +179,47 @@ class DecayingSortedField(SortedFieldMixin, Field):
         gate_invalid_key, gate_valid_key, gate_as_of = (
             VALIDITY_GATE_DISABLED if validity is None else validity
         )
-        if n is None:
-            n = int(get_REDIS_DB().zcard(zset_key))
-            if not n:
-                return []
         effective_rate = self.decay_rate if decay_rate is None else decay_rate
         if base_score_field is None:
             base_score_field = self.base_score_field or ""
 
-        return run_lua(
-            get_REDIS_DB(),
-            DECAY_SCORE_LUA,
-            # numkeys: zset + confidence (KEYS[2]) + invalid_at (KEYS[3]) +
-            # valid_from (KEYS[4]). Passing the validity keys without bumping
-            # this would shunt them into ARGV and silently corrupt
-            # base_score_field / the confidence params.
-            4,
+        # Protocol deviation 8 (#732): the backend renders the confidence
+        # triple with ``str()``. The strings this layer already carries --
+        # ``("", "0", "0.5")`` on every off path, ``str(strength)`` /
+        # ``str(initial_confidence)`` from ``confidence_modulation_args`` --
+        # are the identity under ``str()``, so passing them through keeps the
+        # EVAL argv byte-identical to the pre-seam call. Converting to float
+        # first would render ``0.0`` where today's wire carries ``0``: harmless
+        # to the script's ``tonumber(...) or 0``, but a change for nothing.
+        # ``Any`` is the honest annotation for that pass-through.
+        conf_triple: Any = (conf_hash_key, conf_s, conf_c0)
+
+        # The validity triple travels typed. ``as_of`` arrives as ``repr(t)``
+        # from ``validity_gate_args``; ``repr(float(repr(t))) == repr(t)``, so
+        # the backend's rendering reproduces the same bytes. The all-empty
+        # triple is the gate-off signal and maps to ``None``, which the backend
+        # renders as the same three empty strings the script already treats as
+        # "gate disabled".
+        validity_triple: Optional[tuple[str, str, float]] = (
+            None
+            if (gate_invalid_key, gate_valid_key, gate_as_of) == VALIDITY_GATE_DISABLED
+            else (gate_invalid_key, gate_valid_key, float(gate_as_of))
+        )
+
+        return get_backend().decayed_rank(
             zset_key,
-            conf_hash_key,
-            gate_invalid_key,
-            gate_valid_key,
-            str(now),
-            str(effective_rate),
-            str(n),
-            base_score_field,
-            conf_s,
-            conf_c0,
-            gate_as_of,  # ARGV[7]
+            now=now,
+            decay_rate=effective_rate,
+            limit=n,
+            base_score_field=base_score_field,
+            confidence=conf_triple,
+            validity=validity_triple,
             # ARGV[8] (#585): pre-trim budget. Read from Defaults HERE, at call
             # time, never captured at import -- same rule as every other switch
             # on this path, so an adopter who cannot edit model code can still
             # turn it off at deploy time. <= 0 restores the pre-#585 per-member
             # ZSCORE path byte-for-byte.
-            str(Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO),
+            pretrim_max_ratio=Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO,
         )
 
 

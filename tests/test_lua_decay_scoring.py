@@ -33,9 +33,17 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 import msgpack
+import pytest
 
 from src.popoto.fields.decaying_sorted_field import DECAY_SCORE_LUA
 from src.popoto.redis_db import POPOTO_REDIS_DB
+
+# Lua-level throughout: every test evaluates DECAY_SCORE_LUA against raw keys
+# through the Redis client, so the whole file is Redis-only (#631 WS1d, per
+# the plan's "Redis-specific assertions" table). The mark is the skip shape
+# the conformance harness honours; it is inert until the file takes the
+# ``backend`` fixture, and it is here so the inventory is on the file itself.
+pytestmark = pytest.mark.redis_only
 
 ZSET_KEY = "_test:decay:timestamps"
 CONF_KEY = "_test:decay:confidence"
