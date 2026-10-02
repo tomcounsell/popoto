@@ -39,12 +39,26 @@ Example:
 
 import logging
 from asyncio import to_thread
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterable,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import redis
 
 if TYPE_CHECKING:
-    from redis.client import Pipeline
+    # The ``pipeline=`` kwarg on save/delete/atomic_increment is the storage
+    # unit of work (#631, architect decision 1): on Redis it *is* the
+    # ``GuardedPipeline`` the caller opened, so the public annotation text
+    # ``"Pipeline"`` is unchanged while the checker sees the protocol the
+    # backend takes as ``uow=``. Type-only; nothing is imported at runtime.
+    from ..backends import UnitOfWork as Pipeline
 
 from .encoding import (
     encode_popoto_model_obj,
@@ -61,7 +75,8 @@ from ..fields.key_field_mixin import KeyFieldMixin
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
-from ..redis_db import get_REDIS_DB, run_lua
+from ..backends import get_backend
+from ..redis_db import ENCODING, run_lua
 from ..exceptions import (
     CorruptFieldError,
     ModelException,
@@ -72,12 +87,17 @@ from ..exceptions import (
 
 logger = logging.getLogger("POPOTO.model_base")
 
-# ``PURGE_ORPHAN_LUA`` moved to ``popoto.backends.redis`` (#631 WS0).
-# It is re-imported here under its existing name so every current
-# reader -- this module's own ``run_lua`` sites and the tests that
-# import it from here -- keeps finding it. The script text itself is
-# byte-identical.
-from ..backends.redis import PURGE_ORPHAN_LUA  # noqa: E402,F401
+# Storage access (#631 WS1a). Record CRUD, the atomic increment, the orphan
+# purge, composite ``Meta.indexes`` and the maintenance scans go through
+# ``get_backend()``; the only Redis-bound code left in this module serves
+# out-of-scope features and reaches the client through ``get_backend().native()``
+# with a one-line comment naming the feature at each site (the escape hatch
+# in docs/plans/sdlc-631.md). ``run_lua`` stays imported for exactly one of
+# those sites, ``CYCLES_ADJUST_LUA`` in ``_adjust_cycle_amplitudes``.
+#
+# ``get_backend`` is a function import, not a snapshot: it reads the
+# ``backends._BACKEND`` cache on every call, so ``set_backend()`` is observed
+# here the same way ``get_REDIS_DB()`` observes a rebind (CLAUDE.md, #655).
 
 global RELATED_MODEL_LOAD_SEQUENCE
 RELATED_MODEL_LOAD_SEQUENCE = set()
@@ -1137,8 +1157,8 @@ class Model(metaclass=ModelBase):
             if index_hash is None:
                 continue
 
-            # Check if hash exists in Redis HASH
-            existing_key = get_REDIS_DB().hget(index_key, index_hash)
+            # Check if hash exists in the composite-index side map
+            existing_key = get_backend().map_get(index_key, index_hash)
             if existing_key:
                 existing_key_str = (
                     existing_key.decode()
@@ -1162,8 +1182,11 @@ class Model(metaclass=ModelBase):
                 else:
                     raise ModelException(error_message)
 
-        # Check unique field constraints (individual fields with unique=True)
-        # Uses SCARD + SISMEMBER instead of SMEMBERS for ~20x faster lookups
+        # Check unique field constraints (individual fields with unique=True).
+        # The per-value set holds at most one member while the constraint
+        # holds, so one ``index_members`` read answers both "how many" and
+        # "is it me" (#631 WS1a: this was SCARD + SISMEMBER, two round trips
+        # on a set whose size is the thing being checked).
         for field_name, field in self._meta.fields.items():
             if not getattr(field, "unique", False):
                 continue
@@ -1173,12 +1196,11 @@ class Model(metaclass=ModelBase):
             unique_set_key = DB_key(
                 field.get_special_use_field_db_key(self, field_name), field_value
             )
-            set_size = get_REDIS_DB().scard(unique_set_key.redis_key)
+            unique_members = get_backend().index_members(unique_set_key.redis_key)
+            set_size = len(unique_members)
             if set_size == 0:
                 continue
-            own_key = self.db_key.redis_key
-            own_key_bytes = own_key.encode() if isinstance(own_key, str) else own_key
-            is_self = get_REDIS_DB().sismember(unique_set_key.redis_key, own_key_bytes)
+            is_self = self.db_key.redis_key in unique_members
             if set_size > 1 or (set_size == 1 and not is_self):
                 error_message = (
                     f"Unique constraint violated: {field_name}={field_value} "
@@ -1482,13 +1504,40 @@ class Model(metaclass=ModelBase):
                 for k, v in full_mapping.items()
                 if k in update_field_names_bytes and k not in indexed_field_names_bytes
             }
+            # Only a genuinely changed key is an obsolete one for the backend.
+            _obsolete_for_backend = (
+                obsolete_key
+                if obsolete_key and obsolete_key != new_db_key.redis_key
+                else None
+            )
 
-            if isinstance(pipeline, redis.client.Pipeline):
-                if hset_mapping:
-                    pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
-                # else: EVAL-only path — indexed field EVALs write the hash fields
-                # If db_key changed, clean up the obsolete key
-                if obsolete_key and obsolete_key != new_db_key.redis_key:
+            # Pre-seam parity on the partial path (#735 review B1/B2), both
+            # arms: the class set is registered only on key migration -- a
+            # never-fully-saved hash has no KeyField and must stay invisible
+            # to query.all() -- and the TTL is queued after the field hooks,
+            # on a hash the INDEX_SWAP EVAL has already created. Hence
+            # class_set=None off the migration path and set_expiry() last.
+            _partial_class_set = (
+                self._meta.db_class_set_key.redis_key if _obsolete_for_backend else None
+            )
+            _expire_at_ts = (
+                self._expire_at.timestamp() if self._expire_at is not None else None
+            )
+
+            if pipeline is not None:
+                # Record write first so the caller's results[0] stays the HSET
+                # reply; EVAL-only when hset_mapping is empty (indexed field
+                # EVALs write the hash fields). save_record also queues the
+                # obsolete key's SREM/DEL (#631 WS1a).
+                get_backend().save_record(
+                    new_db_key.redis_key,
+                    hset_mapping,
+                    class_set=_partial_class_set,
+                    obsolete_key=_obsolete_for_backend,
+                    uow=pipeline,
+                )
+                # If db_key changed, clean up the obsolete key's index entries
+                if _obsolete_for_backend:
                     # Remove old index entries using saved field values
                     for field_name, field in self._meta.fields.items():
                         field_value = self._saved_field_values.get(
@@ -1502,13 +1551,6 @@ class Model(metaclass=ModelBase):
                             saved_redis_key=obsolete_key,
                             **kwargs,
                         )
-                    # Delete old hash and update class set
-                    pipeline.delete(obsolete_key)
-                    pipeline.srem(self._meta.db_class_set_key.redis_key, obsolete_key)
-                    pipeline.sadd(
-                        self._meta.db_class_set_key.redis_key,
-                        new_db_key.redis_key,
-                    )
                 # Run on_save for listed fields (adds new index entries)
                 for field_name in update_fields:
                     field = self._meta.fields[field_name]
@@ -1520,13 +1562,13 @@ class Model(metaclass=ModelBase):
                         pipeline=pipeline,
                         **kwargs,
                     )
-                # Handle TTL/expire_at
-                if self._ttl is not None:
-                    pipeline = pipeline.expire(new_db_key.redis_key, self._ttl)
-                elif self._expire_at is not None:
-                    pipeline = pipeline.expireat(
-                        new_db_key.redis_key, int(self._expire_at.timestamp())
-                    )
+                # Handle TTL/expire_at -- after the hooks (B2, see above)
+                get_backend().set_expiry(
+                    new_db_key.redis_key,
+                    ttl=self._ttl,
+                    expire_at=_expire_at_ts,
+                    uow=pipeline,
+                )
                 self._redis_key = new_db_key.redis_key
                 # Merge into saved_field_values (preserve existing, update listed)
                 for field_name in update_fields:
@@ -1562,13 +1604,20 @@ class Model(metaclass=ModelBase):
                         **kwargs,
                     )
 
-                # Use internal pipeline for atomic execution
-                internal_pipeline = get_REDIS_DB().pipeline()
-                if hset_mapping:
-                    internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
-                # else: EVAL-only path — indexed field EVALs write the hash fields
-                # If db_key changed, clean up the obsolete key
-                if obsolete_key and obsolete_key != new_db_key.redis_key:
+                # Use an internal unit of work for atomic execution
+                internal_pipeline = get_backend().begin()
+                # Record write first (HSET when hset_mapping is non-empty,
+                # else EVAL-only: the indexed field EVALs above wrote the hash
+                # fields), plus the obsolete key's SREM/DEL.
+                get_backend().save_record(
+                    new_db_key.redis_key,
+                    hset_mapping,
+                    class_set=_partial_class_set,
+                    obsolete_key=_obsolete_for_backend,
+                    uow=internal_pipeline,
+                )
+                # If db_key changed, clean up the obsolete key's index entries
+                if _obsolete_for_backend:
                     # Remove old index entries using saved field values
                     for field_name, field in self._meta.fields.items():
                         field_value = self._saved_field_values.get(
@@ -1582,15 +1631,6 @@ class Model(metaclass=ModelBase):
                             saved_redis_key=obsolete_key,
                             **kwargs,
                         )
-                    # Delete old hash and update class set
-                    internal_pipeline.delete(obsolete_key)
-                    internal_pipeline.srem(
-                        self._meta.db_class_set_key.redis_key, obsolete_key
-                    )
-                    internal_pipeline.sadd(
-                        self._meta.db_class_set_key.redis_key,
-                        new_db_key.redis_key,
-                    )
                 # Run on_save for listed fields (adds new index entries)
                 for field_name in update_fields:
                     if field_name in _eager_indexed_update_fields:
@@ -1604,17 +1644,18 @@ class Model(metaclass=ModelBase):
                         pipeline=internal_pipeline,
                         **kwargs,
                     )
-                # Handle TTL/expire_at
-                if self._ttl is not None:
-                    internal_pipeline.expire(new_db_key.redis_key, self._ttl)
-                elif self._expire_at is not None:
-                    internal_pipeline.expireat(
-                        new_db_key.redis_key, int(self._expire_at.timestamp())
-                    )
-                results = internal_pipeline.execute()
+                # Handle TTL/expire_at -- after the hooks (B2, see above)
+                get_backend().set_expiry(
+                    new_db_key.redis_key,
+                    ttl=self._ttl,
+                    expire_at=_expire_at_ts,
+                    uow=internal_pipeline,
+                )
+                results = internal_pipeline.commit()
                 # When hset_mapping is non-empty, results[0] is the HSET count.
                 # When EVAL-only (all fields are indexed), hset_mapping is empty so
-                # results[0] is the first queued pipeline op result (expire/sadd), still an int.
+                # results[0] is the first queued op result (a hook's write, or
+                # the EXPIRE), still an int -- or 0 when nothing was queued.
                 db_response = results[0] if results else 0
                 self._is_persisted = True
                 self._redis_key = new_db_key.redis_key
@@ -1664,25 +1705,33 @@ class Model(metaclass=ModelBase):
         hset_mapping = {
             k: v for k, v in hset_mapping.items() if k not in _indexed_field_names_bytes
         }
-
-        if isinstance(pipeline, redis.client.Pipeline):
-            if hset_mapping:
-                pipeline = pipeline.hset(
-                    new_db_key.redis_key, mapping=hset_mapping
-                )  # 1
-            if self._ttl is not None:
-                pipeline = pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
-            elif self._expire_at is not None:
-                pipeline = pipeline.expireat(
-                    new_db_key.redis_key, int(self._expire_at.timestamp())
-                )  # 2
-            pipeline = pipeline.sadd(
-                self._meta.db_class_set_key.redis_key, new_db_key.redis_key
-            )  # 3
+        # Only a genuinely changed key is an obsolete one for the backend.
+        _obsolete_for_backend = (
+            self.obsolete_redis_key
             if (
                 self.obsolete_redis_key
                 and self.obsolete_redis_key != new_db_key.redis_key
-            ):  # 4
+            )
+            else None
+        )
+        _expire_at_ts = (
+            self._expire_at.timestamp() if self._expire_at is not None else None
+        )
+
+        if pipeline is not None:
+            # 1-4b: hash (HSET, or EVAL-only when every field is indexed),
+            # TTL, class set, and the obsolete key's SREM + DEL, queued on the
+            # caller's unit of work by the backend (#631 WS1a).
+            get_backend().save_record(
+                new_db_key.redis_key,
+                hset_mapping,
+                class_set=self._meta.db_class_set_key.redis_key,
+                obsolete_key=_obsolete_for_backend,
+                ttl=self._ttl,
+                expire_at=_expire_at_ts,
+                uow=pipeline,
+            )
+            if _obsolete_for_backend:  # 4
                 for field_name, field in self._meta.fields.items():
                     # Use saved field values for cleanup to ensure correct Redis keys are removed
                     field_value = self._saved_field_values.get(
@@ -1696,11 +1745,6 @@ class Model(metaclass=ModelBase):
                         saved_redis_key=self.obsolete_redis_key,
                         **kwargs,
                     )
-                pipeline = pipeline.srem(
-                    self._meta.db_class_set_key.redis_key,
-                    self.obsolete_redis_key,
-                )  # 4a - remove old key from class set
-                pipeline.delete(self.obsolete_redis_key)  # 4b
                 self.obsolete_redis_key = None
             for field_name, field in self._meta.fields.items():  # 5
                 pipeline = field.on_save(  # 5
@@ -1713,20 +1757,7 @@ class Model(metaclass=ModelBase):
                     **kwargs,
                 )
             # Manage indexes  # 6
-            for field_names, is_unique in self._meta.indexes:
-                field_names_tuple = tuple(field_names)
-                index_key = self._meta.get_index_key(field_names_tuple)
-                # Remove old index entry if indexed fields changed
-                if self._saved_field_values:
-                    old_hash = self._meta.compute_index_hash_from_values(
-                        field_names_tuple, self._saved_field_values
-                    )
-                    if old_hash:
-                        pipeline = pipeline.hdel(index_key, old_hash)
-                # Add new index entry
-                new_hash = self._meta.compute_index_hash(self, field_names_tuple)
-                if new_hash:
-                    pipeline = pipeline.hset(index_key, new_hash, new_db_key.redis_key)
+            self._queue_composite_index_writes(new_db_key.redis_key, pipeline)
             self._redis_key = new_db_key.redis_key  # 7
             # Store field values for proper cleanup on delete  # 8
             self._saved_field_values = {
@@ -1770,25 +1801,22 @@ class Model(metaclass=ModelBase):
                     **kwargs,
                 )
 
-            # Use internal pipeline for atomic execution of everything else
-            internal_pipeline = get_REDIS_DB().pipeline()
+            # Use an internal unit of work for atomic execution of everything else
+            internal_pipeline = get_backend().begin()
 
-            if hset_mapping:
-                internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
-            if self._ttl is not None:
-                internal_pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
-            elif self._expire_at is not None:
-                internal_pipeline.expireat(
-                    new_db_key.redis_key, int(self._expire_at.timestamp())
-                )  # 2
-            internal_pipeline.sadd(
-                self._meta.db_class_set_key.redis_key, new_db_key.redis_key
-            )  # 3
+            # 1-4b: hash (HSET, or EVAL-only when every field is indexed),
+            # TTL, class set, and the obsolete key's SREM + DEL (#631 WS1a).
+            get_backend().save_record(
+                new_db_key.redis_key,
+                hset_mapping,
+                class_set=self._meta.db_class_set_key.redis_key,
+                obsolete_key=_obsolete_for_backend,
+                ttl=self._ttl,
+                expire_at=_expire_at_ts,
+                uow=internal_pipeline,
+            )
 
-            if (
-                self.obsolete_redis_key
-                and self.obsolete_redis_key != new_db_key.redis_key
-            ):  # 4
+            if _obsolete_for_backend:  # 4
                 for field_name, field in self._meta.fields.items():
                     # Use saved field values for cleanup to ensure correct Redis keys are removed
                     field_value = self._saved_field_values.get(
@@ -1802,11 +1830,6 @@ class Model(metaclass=ModelBase):
                         saved_redis_key=self.obsolete_redis_key,
                         **kwargs,
                     )
-                internal_pipeline.srem(
-                    self._meta.db_class_set_key.redis_key,
-                    self.obsolete_redis_key,
-                )  # 4a - remove old key from class set
-                internal_pipeline.delete(self.obsolete_redis_key)  # 4b
                 self.obsolete_redis_key = None
 
             for field_name, field in self._meta.fields.items():  # 5
@@ -1823,27 +1846,14 @@ class Model(metaclass=ModelBase):
                 )
 
             # Manage indexes  # 6
-            for field_names, is_unique in self._meta.indexes:
-                field_names_tuple = tuple(field_names)
-                index_key = self._meta.get_index_key(field_names_tuple)
-                # Remove old index entry if indexed fields changed
-                if self._saved_field_values:
-                    old_hash = self._meta.compute_index_hash_from_values(
-                        field_names_tuple, self._saved_field_values
-                    )
-                    if old_hash:
-                        internal_pipeline.hdel(index_key, old_hash)
-                # Add new index entry
-                new_hash = self._meta.compute_index_hash(self, field_names_tuple)
-                if new_hash:
-                    internal_pipeline.hset(index_key, new_hash, new_db_key.redis_key)
+            self._queue_composite_index_writes(new_db_key.redis_key, internal_pipeline)
 
-            # pipeline.execute() is synchronous in redis-py: it blocks until
-            # all responses are received, guaranteeing write visibility after return
-            results = internal_pipeline.execute()
+            # commit() is execute() on Redis: synchronous, it blocks until all
+            # responses are received, guaranteeing write visibility after return
+            results = internal_pipeline.commit()
             # When hset_mapping is non-empty, results[0] is the HSET count.
             # When EVAL-only (all fields are indexed), hset_mapping is empty so
-            # results[0] is the first queued pipeline op result (expire/sadd), still an int.
+            # results[0] is the first queued op result (expire/sadd), still an int.
             db_response = results[0] if results else 0  # HSET result (backward compat)
 
             self._is_persisted = True
@@ -1861,6 +1871,32 @@ class Model(metaclass=ModelBase):
                 _op = "create" if _is_create else "update"
                 self._xadd_mutation(_op)
             return db_response
+
+    def _queue_composite_index_writes(self, redis_key: str, uow: Any) -> None:
+        """Queue this save's composite ``Meta.indexes`` writes on ``uow``.
+
+        For each declared index: drop the entry computed from the previously
+        saved values when they are known, then add the entry for the current
+        values. Both go through the side-map family (``map_delete`` /
+        ``map_set``), which is ``HDEL`` / ``HSET`` on the index hash on Redis.
+        """
+        index_spec: Any
+        for index_spec in self._meta.indexes:
+            field_names_tuple: Tuple[Any, ...] = tuple(index_spec[0])
+            index_key = self._meta.get_index_key(field_names_tuple)
+            # Remove old index entry if indexed fields changed
+            if self._saved_field_values:
+                old_hash = self._meta.compute_index_hash_from_values(
+                    field_names_tuple, self._saved_field_values
+                )
+                if old_hash:
+                    get_backend().map_delete(index_key, old_hash, uow=uow)
+            # Add new index entry
+            new_hash = self._meta.compute_index_hash(self, field_names_tuple)
+            if new_hash:
+                get_backend().map_set(
+                    index_key, new_hash, redis_key.encode(ENCODING), uow=uow
+                )
 
     @classmethod
     def create(
@@ -2048,7 +2084,7 @@ class Model(metaclass=ModelBase):
             else:
                 resolved: DB_key = db_key if db_key else cls(**kwargs).db_key
                 key = resolved.redis_key
-        return bool(get_REDIS_DB().exists(key))
+        return get_backend().record_exists(key)
 
     @classmethod
     def idle_seconds(
@@ -2113,7 +2149,11 @@ class Model(metaclass=ModelBase):
         # from (recipes/memory_lifecycle.py) sends lowercase "idletime", and
         # #649's contract is a byte-identical command sequence. Upper-casing
         # it here shows up as a real diff in that PR's parity capture.
-        reply = get_REDIS_DB().object("idletime", key)
+        #
+        # native(): OBJECT IDLETIME is a Redis/Valkey object-header read with
+        # no storage-neutral meaning; it serves recipes/memory_lifecycle.py's
+        # idleness policy, out of the #631 slice.
+        reply = get_backend().native().object("idletime", key)
         return None if reply is None else float(reply)
 
     @classmethod
@@ -2147,15 +2187,9 @@ class Model(metaclass=ModelBase):
         """
         if not names:
             raise ValueError("load_fields() requires at least one field name")
-        # Command choice is a parity requirement, not an optimization: the
-        # recipe call site this replaces issues HGET for a single field.
-        # Always emitting HMGET here -- even for one name -- would change the
-        # wire trace and break the byte-identical-behavior contract this PR
-        # is gated on. Do not "simplify" this to always-HMGET.
-        if len(names) == 1:
-            raw_values: Iterable[Any] = [get_REDIS_DB().hget(redis_key, names[0])]
-        else:
-            raw_values = get_REDIS_DB().hmget(redis_key, list(names))
+        # Command choice is a parity requirement the backend carries: one name
+        # issues HGET, more issue HMGET (see RedisBackend.load_fields).
+        raw_values: Iterable[Any] = get_backend().load_fields(redis_key, list(names))
         result: Dict[str, Any] = {}
         for name, raw_value in zip(names, raw_values):
             if raw_value is None:
@@ -2186,7 +2220,7 @@ class Model(metaclass=ModelBase):
             ``dict[bytes, bytes]`` as returned by ``HGETALL``. Empty dict
             when the key does not exist.
         """
-        return get_REDIS_DB().hgetall(redis_key)
+        return get_backend().load_record(redis_key) or {}
 
     def delete(
         self,
@@ -2249,8 +2283,12 @@ class Model(metaclass=ModelBase):
             # legacy in-hash pointer, silently falling back to a possibly
             # stale _saved_field_values snapshot and risking an orphaned
             # index member pointing at an already-deleted hash.
-            existed = bool(get_REDIS_DB().exists(delete_redis_key))
-            result_pipeline = get_REDIS_DB().pipeline()
+            #
+            # The EXISTS stays here, ahead of the hooks, rather than being
+            # read off delete_record's reply (#631 WS0 deviation 9): on a unit
+            # of work that reply does not exist until commit().
+            existed = get_backend().record_exists(delete_redis_key)
+            result_pipeline = get_backend().begin()
 
         for field_name, field in self._meta.fields.items():  # 3
             # Use saved field values if available, otherwise fall back to current values
@@ -2267,10 +2305,12 @@ class Model(metaclass=ModelBase):
                 **kwargs,
             )
 
-        result_pipeline = result_pipeline.delete(delete_redis_key)  # 1
-        result_pipeline = result_pipeline.srem(
-            self._meta.db_class_set_key.redis_key, delete_redis_key
-        )  # 2
+        # 1 + 2: DEL the hash and SREM it from the class set, queued.
+        get_backend().delete_record(
+            delete_redis_key,
+            class_set=self._meta.db_class_set_key.redis_key,
+            uow=result_pipeline,
+        )
         pipeline = result_pipeline
 
         # Clean up indexes  # 4
@@ -2285,7 +2325,7 @@ class Model(metaclass=ModelBase):
                 field_names_tuple, cleanup_values
             )
             if index_hash:
-                pipeline = pipeline.hdel(index_key, index_hash)
+                get_backend().map_delete(index_key, index_hash, uow=pipeline)
 
         # Clean up AccessTrackerMixin keys if applicable
         from ..fields.access_tracker import AccessTrackerMixin
@@ -2309,7 +2349,7 @@ class Model(metaclass=ModelBase):
         self._saved_field_values = dict()  # 6
 
         if existed is not None:
-            pipeline.execute()
+            pipeline.commit()
             return existed
         else:
             return pipeline
@@ -2363,8 +2403,6 @@ class Model(metaclass=ModelBase):
         """
         from decimal import Decimal as _Decimal
 
-        from ..redis_db import ENCODING
-
         # Validate field exists
         if field_name not in self._meta.fields:
             raise AttributeError(
@@ -2394,56 +2432,23 @@ class Model(metaclass=ModelBase):
                 f"'{field_name}' is type {field.type.__name__}"
             )
 
-        field_name_bytes = field_name.encode(ENCODING)
+        # The read-decode-add-encode-write script (``ATOMIC_INCREMENT_LUA``)
+        # lives in the backend since #631 WS1a; the Decimal tagged-dict
+        # envelope is its business, the field type is named by ``kind``.
+        kind: Literal["int", "float", "decimal"]
+        if field.type is int:
+            kind = "int"
+        elif field.type is _Decimal:
+            kind = "decimal"
+        else:
+            kind = "float"
+        score_delta = float(delta) if isinstance(delta, _Decimal) else delta
 
-        # Lua script that atomically reads, decodes msgpack, increments,
-        # re-encodes, and writes back. Uses cmsgpack which is built into
-        # Redis since version 2.6.
-        #
-        # KEYS[1] = redis hash key
-        # ARGV[1] = field name (bytes)
-        # ARGV[2] = delta value (string representation)
-        # ARGV[3] = 1 if field is Decimal type (uses tagged dict encoding), 0 otherwise
-        #
-        # Returns the new numeric value as a string.
-        lua_script = """
-        local current_packed = redis.call('HGET', KEYS[1], ARGV[1])
-        local current_val = 0
-        local is_decimal = tonumber(ARGV[3])
-
-        if current_packed then
-            local decoded = cmsgpack.unpack(current_packed)
-            if is_decimal == 1 and type(decoded) == 'table' and decoded['as_encodable'] then
-                current_val = tonumber(decoded['as_encodable'])
-            elseif type(decoded) == 'number' then
-                current_val = decoded
-            end
-        end
-
-        local delta = tonumber(ARGV[2])
-        local new_val = current_val + delta
-
-        if is_decimal == 1 then
-            local encoded = cmsgpack.pack({['__Decimal__'] = true, ['as_encodable'] = tostring(new_val)})
-            redis.call('HSET', KEYS[1], ARGV[1], encoded)
-        else
-            local encoded = cmsgpack.pack(new_val)
-            redis.call('HSET', KEYS[1], ARGV[1], encoded)
-        end
-
-        return tostring(new_val)
-        """
-
-        is_decimal = 1 if field.type is _Decimal else 0
-        delta_str = str(float(delta) if isinstance(delta, _Decimal) else delta)
-
-        if isinstance(pipeline, redis.client.Pipeline):
-            # When using a pipeline, register the script and call it
-            script = get_REDIS_DB().register_script(lua_script)
-            pipeline = script(
-                keys=[redis_key],
-                args=[field_name_bytes, delta_str, is_decimal],
-                client=pipeline,
+        if pipeline is not None:
+            # Queued on the caller's unit of work: the script is registered
+            # and EVALSHA'd, and nothing is returned until the caller commits.
+            get_backend().increment_field(
+                redis_key, field_name, delta, kind=kind, uow=pipeline
             )
 
             # Update in-memory values optimistically
@@ -2465,35 +2470,16 @@ class Model(metaclass=ModelBase):
                 sortedset_db_key = field_cls.get_partitioned_sortedset_db_key(
                     self, field_name
                 )
-                score_delta = float(delta) if isinstance(delta, _Decimal) else delta
-                pipeline = pipeline.zincrby(
-                    sortedset_db_key.redis_key, score_delta, redis_key
+                get_backend().sorted_increment(
+                    sortedset_db_key.redis_key, redis_key, score_delta, uow=pipeline
                 )
 
             return pipeline
         else:
-            # Execute the Lua script directly
-            result_str = run_lua(
-                get_REDIS_DB(),
-                lua_script,
-                1,
-                redis_key,
-                field_name_bytes,
-                delta_str,
-                is_decimal,
+            # Execute now; the backend parses the reply into the field type.
+            new_val = get_backend().increment_field(
+                redis_key, field_name, delta, kind=kind
             )
-
-            # Parse result and convert to field type
-            if isinstance(result_str, bytes):
-                result_str = result_str.decode(ENCODING)
-
-            if field.type is int:
-                # Lua may return "15.0" for integer arithmetic; parse via float then int
-                new_val = int(float(result_str))
-            elif field.type is _Decimal:
-                new_val = _Decimal(result_str)
-            else:
-                new_val = float(result_str)
 
             # Update in-memory instance
             setattr(self, field_name, new_val)
@@ -2506,9 +2492,8 @@ class Model(metaclass=ModelBase):
                 sortedset_db_key = field_cls.get_partitioned_sortedset_db_key(
                     self, field_name
                 )
-                score_delta = float(delta) if isinstance(delta, _Decimal) else delta
-                get_REDIS_DB().zincrby(
-                    sortedset_db_key.redis_key, score_delta, redis_key
+                get_backend().sorted_increment(
+                    sortedset_db_key.redis_key, redis_key, score_delta
                 )
 
             return new_val
@@ -2559,18 +2544,13 @@ class Model(metaclass=ModelBase):
             self, field_name
         )
 
-        if isinstance(pipeline, redis.client.Pipeline):
-            pipeline.zadd(sortedset_db_key.redis_key, {redis_key: now})
-            setattr(self, field_name, now)
-            if self._saved_field_values is not None:
-                self._saved_field_values[field_name] = now
-            return pipeline
-        else:
-            get_REDIS_DB().zadd(sortedset_db_key.redis_key, {redis_key: now})
-            setattr(self, field_name, now)
-            if self._saved_field_values is not None:
-                self._saved_field_values[field_name] = now
-            return now
+        get_backend().sorted_add(
+            sortedset_db_key.redis_key, redis_key, now, uow=pipeline
+        )
+        setattr(self, field_name, now)
+        if self._saved_field_values is not None:
+            self._saved_field_values[field_name] = now
+        return pipeline if pipeline is not None else now
 
     def resolve_pressure(self, field_name, pipeline=None):
         """Reset homeostatic pressure for a CyclicDecayField member.
@@ -2630,12 +2610,12 @@ class Model(metaclass=ModelBase):
         }
         packed = msgpack.packb(pressure_data)
 
-        if isinstance(pipeline, redis.client.Pipeline):
+        if pipeline is not None:
             pipeline.hset(pressure_hash_key, member_key, packed)
             return pipeline
-        else:
-            get_REDIS_DB().hset(pressure_hash_key, member_key, packed)
-            return now
+        # native(): CyclicDecayField pressure companion hash, out of the #631 slice.
+        get_backend().native().hset(pressure_hash_key, member_key, packed)
+        return now
 
     def strengthen_cycle(self, field_name, factor=1.2, pipeline=None):
         """Multiply cycle amplitudes by factor (>1.0 strengthens).
@@ -2744,21 +2724,10 @@ class Model(metaclass=ModelBase):
         max_amplitude = 100.0
         min_threshold = 0.01
 
-        if isinstance(pipeline, redis.client.Pipeline):
-            run_lua(
-                pipeline,
-                CYCLES_ADJUST_LUA,
-                1,
-                cycles_hash_key,
-                member_key,
-                str(factor),
-                str(max_amplitude),
-                str(min_threshold),
-            )
-            return pipeline
-
+        # native(): CyclicDecayField's CYCLES_ADJUST_LUA, out of the #631
+        # slice; on a unit of work the script is queued on it instead.
         packed = run_lua(
-            get_REDIS_DB(),
+            pipeline if pipeline is not None else get_backend().native(),
             CYCLES_ADJUST_LUA,
             1,
             cycles_hash_key,
@@ -2767,6 +2736,8 @@ class Model(metaclass=ModelBase):
             str(max_amplitude),
             str(min_threshold),
         )
+        if pipeline is not None:
+            return pipeline
         if packed is None:
             # No cycles stored — nothing to adjust (critique B2: the script
             # returns Lua nil for this case, never a bare table/number, so
@@ -3132,7 +3103,7 @@ class Model(metaclass=ModelBase):
             return []
 
         created = []
-        pipeline = get_REDIS_DB().pipeline()
+        pipeline = get_backend().begin()
         count = 0
 
         for instance in instances:
@@ -3141,12 +3112,12 @@ class Model(metaclass=ModelBase):
             count += 1
 
             if count >= batch_size:
-                pipeline.execute()
-                pipeline = get_REDIS_DB().pipeline()
+                pipeline.commit()
+                pipeline = get_backend().begin()
                 count = 0
 
         if count > 0:
-            pipeline.execute()
+            pipeline.commit()
 
         return created
 
@@ -3283,7 +3254,7 @@ class Model(metaclass=ModelBase):
         if not instances:
             return 0
 
-        pipeline = get_REDIS_DB().pipeline()
+        pipeline = get_backend().begin()
         count = 0
         updated_count = 0
 
@@ -3297,12 +3268,12 @@ class Model(metaclass=ModelBase):
             count += 1
 
             if count >= batch_size:
-                pipeline.execute()
-                pipeline = get_REDIS_DB().pipeline()
+                pipeline.commit()
+                pipeline = get_backend().begin()
                 count = 0
 
         if count > 0:
-            pipeline.execute()
+            pipeline.commit()
 
         return updated_count
 
@@ -3345,7 +3316,7 @@ class Model(metaclass=ModelBase):
         if not instances:
             return 0
 
-        pipeline = get_REDIS_DB().pipeline()
+        pipeline = get_backend().begin()
         count = 0
         deleted_count = 0
 
@@ -3355,12 +3326,12 @@ class Model(metaclass=ModelBase):
             count += 1
 
             if count >= batch_size:
-                pipeline.execute()
-                pipeline = get_REDIS_DB().pipeline()
+                pipeline.commit()
+                pipeline = get_backend().begin()
                 count = 0
 
         if count > 0:
-            pipeline.execute()
+            pipeline.commit()
 
         return deleted_count
 
@@ -3575,21 +3546,22 @@ class Model(metaclass=ModelBase):
         from .encoding import decode_popoto_model_hashmap
 
         model_name = cls._meta.model_name
+        backend = get_backend()
 
         # Step 1: Delete all secondary index keys
 
         # Delete class set
-        get_REDIS_DB().delete(cls._meta.db_class_set_key.redis_key)
+        backend.drop_index(cls._meta.db_class_set_key.redis_key, "set")
 
         # Delete sorted field indexes
         for field_name in cls._meta.sorted_field_names:
             field = cls._meta.fields[field_name]
             # Build the base sorted set key pattern
             base_key = field.get_special_use_field_db_key(cls, field_name)
-            # Use SCAN to find all keys matching this pattern (handles partitioned fields)
+            # Scan for every index under this pattern (handles partitioned fields)
             pattern = base_key.redis_key + "*"
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                get_REDIS_DB().delete(key)
+            for key in backend.scan_index_names(pattern):
+                backend.drop_index(key, "sorted")
 
         # Delete key field index sets
         for field_name in cls._meta.key_field_names:
@@ -3599,34 +3571,30 @@ class Model(metaclass=ModelBase):
                 continue
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + ":*"
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                get_REDIS_DB().delete(key)
+            for key in backend.scan_index_names(pattern):
+                backend.drop_index(key, "set")
 
         # Delete geo field indexes
         for field_name in cls._meta.geo_field_names:
             field = cls._meta.fields[field_name]
             geo_key = GeoField.get_geo_db_key(cls, field_name)
-            get_REDIS_DB().delete(geo_key.redis_key)
+            # native(): GeoField index (a geo-encoded sorted set), out of the
+            # #631 slice.
+            backend.native().delete(geo_key.redis_key)
 
         # Delete composite indexes
         for field_names, is_unique in cls._meta.indexes:
             index_key = cls._meta.get_index_key(tuple(field_names))
-            get_REDIS_DB().delete(index_key)
+            backend.drop_index(index_key, "map")
 
-        # Step 2: SCAN all instance keys and rebuild indexes
+        # Step 2: scan all instance keys and rebuild indexes
         instance_pattern = cls._meta.db_class_key.redis_key + ":*"
         count = 0
         diverged_keys = []
-        pipeline = get_REDIS_DB().pipeline()
+        pipeline = backend.begin()
         batch_count = 0
 
-        for redis_key in get_REDIS_DB().scan_iter(match=instance_pattern, count=1000):
-            # Decode the key to a string
-            if isinstance(redis_key, bytes):
-                redis_key_str = redis_key.decode("utf-8")
-            else:
-                redis_key_str = redis_key
-
+        for redis_key_str in backend.scan_record_keys(instance_pattern):
             # Filter out non-instance keys (e.g., keys with special prefixes
             # that happen to match the pattern). Instance keys should have
             # exactly the right number of segments.
@@ -3634,8 +3602,8 @@ class Model(metaclass=ModelBase):
             if len(key_parts) != cls._meta.db_key_length:
                 continue
 
-            # Load the raw hash from Redis
-            redis_hash = get_REDIS_DB().hgetall(redis_key)
+            # Load the raw hash
+            redis_hash = backend.load_record(redis_key_str)
             if not redis_hash:
                 continue
 
@@ -3659,8 +3627,14 @@ class Model(metaclass=ModelBase):
                 diverged_keys.append(redis_key_str)
                 continue
 
-            # Re-add to class set
-            pipeline.sadd(cls._meta.db_class_set_key.redis_key, redis_key_str)
+            # Re-add to class set. The hash is already in place, so this is
+            # save_record with nothing to write: on Redis exactly one SADD.
+            backend.save_record(
+                redis_key_str,
+                {},
+                class_set=cls._meta.db_class_set_key.redis_key,
+                uow=pipeline,
+            )
 
             # Run on_save for each field to rebuild indexes
             for field_name, field in cls._meta.fields.items():
@@ -3677,19 +3651,24 @@ class Model(metaclass=ModelBase):
                 index_key = cls._meta.get_index_key(field_names_t)
                 index_hash = cls._meta.compute_index_hash(instance, field_names_t)
                 if index_hash:
-                    pipeline.hset(index_key, index_hash, redis_key_str)
+                    backend.map_set(
+                        index_key,
+                        index_hash,
+                        redis_key_str.encode(ENCODING),
+                        uow=pipeline,
+                    )
 
             count += 1
             batch_count += 1
 
             if batch_count >= batch_size:
-                pipeline.execute()
-                pipeline = get_REDIS_DB().pipeline()
+                pipeline.commit()
+                pipeline = backend.begin()
                 batch_count = 0
 
-        # Execute any remaining commands in the pipeline
+        # Commit any remaining queued commands
         if batch_count > 0:
-            pipeline.execute()
+            pipeline.commit()
 
         if diverged_keys:
             logger.warning(
@@ -3796,29 +3775,27 @@ class Model(metaclass=ModelBase):
         absent_orphans: list = []
         partial_write_orphans: list = []
         eligible_for_partial = auto_key_field_name is not None
+        backend = get_backend()
 
         for i in range(0, len(members), batch_size):
             batch = members[i : i + batch_size]
-            pipe = get_REDIS_DB().pipeline()
-            for key in batch:
-                pipe.exists(key)
-                if eligible_for_partial:
-                    # Interleaved with EXISTS so one round-trip handles both.
-                    pipe.hget(key, auto_key_field_name)
-            results = pipe.execute()
 
             if eligible_for_partial:
-                # 2:1 result-pairing: results[2*i] == EXISTS for batch[i],
-                # results[2*i + 1] == HGET for batch[i].
-                for j, key in enumerate(batch):
-                    exists = results[2 * j]
-                    hget_value = results[2 * j + 1]
-                    if not exists:
+                # One round trip answers both questions: a hash that exists
+                # loads non-empty, and the auto-key field is read off the
+                # loaded record (#631 WS1a: this was an interleaved
+                # EXISTS + HGET pipeline; load_records is the batched record
+                # read the protocol offers, with the same per-batch cost).
+                auto_key_bytes = str(auto_key_field_name).encode(ENCODING)
+                for key, record in zip(batch, backend.load_records(batch)):
+                    if record is None:
                         absent_orphans.append(key)
-                    elif hget_value is None or hget_value == b"" or hget_value == "":
+                        continue
+                    hget_value = record.get(auto_key_bytes)
+                    if hget_value is None or hget_value == b"" or hget_value == "":
                         partial_write_orphans.append(key)
             else:
-                for key, exists in zip(batch, results):
+                for key, exists in zip(batch, backend.records_exist(batch)):
                     if not exists:
                         absent_orphans.append(key)
 
@@ -3879,50 +3856,28 @@ class Model(metaclass=ModelBase):
                 User.rebuild_indexes()
         """
 
+        backend = get_backend()
+
         def _count_orphans(keys_to_check: list) -> int:
-            """Pipeline EXISTS in batches, return count of non-existent keys."""
+            """Batched EXISTS, return count of non-existent keys."""
             orphan_count = 0
             for i in range(0, len(keys_to_check), batch_size):
                 batch = keys_to_check[i : i + batch_size]
-                pipe = get_REDIS_DB().pipeline()
-                for key in batch:
-                    pipe.exists(key)
-                results = pipe.execute()
+                results = backend.records_exist(batch)
                 orphan_count += sum(1 for exists in results if not exists)
             return orphan_count
 
         def _scan_set_members(set_key: str) -> list:
-            """SSCAN all members of a Redis set."""
-            members = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().sscan(set_key, cursor, count=1000)
-                members.extend(batch)
-                if cursor == 0:
-                    break
-            return members
+            """All members of a set index (SSCAN on Redis)."""
+            return list(backend.scan_index_members(set_key, "set"))
 
         def _scan_sorted_set_members(zset_key: str) -> list:
-            """ZSCAN all members of a Redis sorted set."""
-            members = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().zscan(zset_key, cursor, count=1000)
-                members.extend(member for member, _score in batch)
-                if cursor == 0:
-                    break
-            return members
+            """All members of a sorted index (ZSCAN on Redis)."""
+            return list(backend.scan_index_members(zset_key, "sorted"))
 
         def _scan_hash_values(hash_key: str) -> list:
-            """HSCAN all values of a Redis hash."""
-            values = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().hscan(hash_key, cursor, count=1000)
-                values.extend(batch.values())
-                if cursor == 0:
-                    break
-            return values
+            """All values of a side map (HSCAN COUNT 1000 on Redis)."""
+            return list(backend.map_scan(hash_key, count=1000).values())
 
         result = {
             "class_set": 0,
@@ -3955,9 +3910,7 @@ class Model(metaclass=ModelBase):
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + ":*"
             field_orphans = 0
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                if isinstance(key, bytes):
-                    key = key.decode("utf-8")
+            for key in backend.scan_index_names(pattern):
                 members = _scan_set_members(key)
                 if members:
                     field_orphans += _count_orphans(members)
@@ -3969,15 +3922,14 @@ class Model(metaclass=ModelBase):
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + "*"
             field_orphans = 0
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                if isinstance(key, bytes):
-                    key = key.decode("utf-8")
+            for key in backend.scan_index_names(pattern):
                 members = _scan_sorted_set_members(key)
                 if members:
                     field_orphans += _count_orphans(members)
             result["sorted_fields"][field_name] = field_orphans
 
-        # 4. Check geo fields
+        # 4. Check geo fields (GeoField is out of the #631 slice; its index is
+        #    a sorted set on Redis, so the member scan is the sorted one).
         for field_name in cls._meta.geo_field_names:
             geo_key = GeoField.get_geo_db_key(cls, field_name)
             members = _scan_sorted_set_members(geo_key.redis_key)
@@ -4036,11 +3988,15 @@ class Model(metaclass=ModelBase):
         if not keys:
             return 0
         meta = cls._meta  # type: ignore[attr-defined]
-        pipe = get_REDIS_DB().pipeline()
+        backend = get_backend()
+        pipe = backend.begin()
         class_set_key = meta.db_class_set_key.redis_key
         for key in keys:
-            index_keys: list[str] = [class_set_key]
-            kinds: list[str] = ["s"]
+            # (index, kind) refs in the order the script receives them:
+            # class set first, then key-field pointer sets, then sorted sets.
+            refs: "list[tuple[str, Literal['sorted', 'set']]]" = [
+                (class_set_key, "set")
+            ]
             try:
                 parts = DB_key.from_redis_key(key)
             except Exception:
@@ -4058,13 +4014,15 @@ class Model(metaclass=ModelBase):
                 field = meta.fields[field_name]
                 if getattr(field, "auto", False) or field_name not in values:
                     continue
-                index_keys.append(
-                    DB_key(
-                        field.get_special_use_field_db_key(cls, field_name),
-                        values[field_name],
-                    ).redis_key
+                refs.append(
+                    (
+                        DB_key(
+                            field.get_special_use_field_db_key(cls, field_name),
+                            values[field_name],
+                        ).redis_key,
+                        "set",
+                    )
                 )
-                kinds.append("s")
             for field_name in meta.sorted_field_names:
                 field = meta.fields[field_name]
                 partition = tuple(getattr(field, "partition_by", ()) or ())
@@ -4073,18 +4031,12 @@ class Model(metaclass=ModelBase):
                 zset_key = field.get_sortedset_db_key(cls, field_name)
                 for name in partition:
                     zset_key.append(values[name])
-                index_keys.append(zset_key.redis_key)
-                kinds.append("z")
-            run_lua(
-                pipe,
-                PURGE_ORPHAN_LUA,
-                1 + len(index_keys),
-                key,
-                *index_keys,
-                *kinds,
-            )
+                refs.append((zset_key.redis_key, "sorted"))
+            # One PURGE_ORPHAN_LUA call per orphan, all on one unit of work
+            # (#631 WS0 deviation 4 gave purge_orphan its uow= for this).
+            backend.purge_orphan(key, refs, uow=pipe)
         try:
-            pipe.execute()
+            pipe.commit()
         except Exception as exc:
             logger.warning("orphan purge for %s failed: %s", cls.__name__, exc)
         return len(keys)
@@ -4137,52 +4089,29 @@ class Model(metaclass=ModelBase):
                 print(f"Removed {removed} orphaned index entries")
         """
 
+        backend = get_backend()
+
         def _collect_orphans(keys_to_check: list) -> list:
-            """Pipeline EXISTS in batches, return list of non-existent keys."""
+            """Batched EXISTS, return list of non-existent keys."""
             orphans = []
             for i in range(0, len(keys_to_check), batch_size):
                 batch = keys_to_check[i : i + batch_size]
-                pipe = get_REDIS_DB().pipeline()
-                for key in batch:
-                    pipe.exists(key)
-                results = pipe.execute()
-                for key, exists in zip(batch, results):
+                for key, exists in zip(batch, backend.records_exist(batch)):
                     if not exists:
                         orphans.append(key)
             return orphans
 
         def _scan_set_members(set_key: str) -> list:
-            """SSCAN all members of a Redis set."""
-            members = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().sscan(set_key, cursor, count=1000)
-                members.extend(batch)
-                if cursor == 0:
-                    break
-            return members
+            """All members of a set index (SSCAN on Redis)."""
+            return list(backend.scan_index_members(set_key, "set"))
 
         def _scan_sorted_set_members(zset_key: str) -> list:
-            """ZSCAN all members of a Redis sorted set."""
-            members = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().zscan(zset_key, cursor, count=1000)
-                members.extend(member for member, _score in batch)
-                if cursor == 0:
-                    break
-            return members
+            """All members of a sorted index (ZSCAN on Redis)."""
+            return list(backend.scan_index_members(zset_key, "sorted"))
 
         def _scan_hash_entries(hash_key: str) -> list:
-            """HSCAN all key-value pairs of a Redis hash."""
-            entries = []
-            cursor = 0
-            while True:
-                cursor, batch = get_REDIS_DB().hscan(hash_key, cursor, count=1000)
-                entries.extend(batch.items())
-                if cursor == 0:
-                    break
-            return entries
+            """All (member, value) pairs of a side map (HSCAN COUNT 1000 on Redis)."""
+            return list(backend.map_scan(hash_key, count=1000).items())
 
         removed = 0
 
@@ -4196,17 +4125,17 @@ class Model(metaclass=ModelBase):
                 members, batch_size, auto_key_field_name
             )
             if absent or partial_writes:
-                pipe = get_REDIS_DB().pipeline()
-                # Absent orphans: SREM the stale class-set membership
-                # (hash is already gone — nothing to DEL).
+                pipe = backend.begin()
+                # Both kinds drop the stale class-set membership; for an
+                # absent orphan the record DEL inside delete_record is a
+                # no-op (the hash is already gone), for a partial-write
+                # orphan it removes the corrupt, unrecoverable hash so no
+                # memory is left behind.
                 for orphan in absent:
-                    pipe.srem(class_set_key, orphan)
-                # Partial-write orphans: SREM AND DEL — the corrupt hash
-                # is unrecoverable and must not linger in Redis.
+                    backend.delete_record(orphan, class_set=class_set_key, uow=pipe)
                 for orphan in partial_writes:
-                    pipe.srem(class_set_key, orphan)
-                    pipe.delete(orphan)
-                pipe.execute()
+                    backend.delete_record(orphan, class_set=class_set_key, uow=pipe)
+                pipe.commit()
                 removed += len(absent) + len(partial_writes)
 
         # 2. Clean key field sets
@@ -4217,17 +4146,15 @@ class Model(metaclass=ModelBase):
                 continue
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + ":*"
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                if isinstance(key, bytes):
-                    key = key.decode("utf-8")
+            for key in backend.scan_index_names(pattern):
                 members = _scan_set_members(key)
                 if members:
                     orphans = _collect_orphans(members)
                     if orphans:
-                        pipe = get_REDIS_DB().pipeline()
+                        pipe = backend.begin()
                         for orphan in orphans:
-                            pipe.srem(key, orphan)
-                        pipe.execute()
+                            backend.index_remove(key, orphan, uow=pipe)
+                        pipe.commit()
                         removed += len(orphans)
 
         # 3. Clean sorted field sets
@@ -4235,30 +4162,29 @@ class Model(metaclass=ModelBase):
             field = cls._meta.fields[field_name]
             base_key = field.get_special_use_field_db_key(cls, field_name)
             pattern = base_key.redis_key + "*"
-            for key in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-                if isinstance(key, bytes):
-                    key = key.decode("utf-8")
+            for key in backend.scan_index_names(pattern):
                 members = _scan_sorted_set_members(key)
                 if members:
                     orphans = _collect_orphans(members)
                     if orphans:
-                        pipe = get_REDIS_DB().pipeline()
+                        pipe = backend.begin()
                         for orphan in orphans:
-                            pipe.zrem(key, orphan)
-                        pipe.execute()
+                            backend.sorted_remove(key, orphan, uow=pipe)
+                        pipe.commit()
                         removed += len(orphans)
 
-        # 4. Clean geo fields
+        # 4. Clean geo fields (GeoField is out of the #631 slice; its index is
+        #    a sorted set on Redis, so the sorted scan/remove apply).
         for field_name in cls._meta.geo_field_names:
             geo_key = GeoField.get_geo_db_key(cls, field_name)
             members = _scan_sorted_set_members(geo_key.redis_key)
             if members:
                 orphans = _collect_orphans(members)
                 if orphans:
-                    pipe = get_REDIS_DB().pipeline()
+                    pipe = backend.begin()
                     for orphan in orphans:
-                        pipe.zrem(geo_key.redis_key, orphan)
-                    pipe.execute()
+                        backend.sorted_remove(geo_key.redis_key, orphan, uow=pipe)
+                    pipe.commit()
                     removed += len(orphans)
 
         # 5. Clean composite indexes
@@ -4271,11 +4197,11 @@ class Model(metaclass=ModelBase):
                 orphans = _collect_orphans(values_to_check)
                 if orphans:
                     orphan_set = set(orphans)
-                    pipe = get_REDIS_DB().pipeline()
+                    pipe = backend.begin()
                     for hash_field, value in entries:
                         if value in orphan_set:
-                            pipe.hdel(index_key, hash_field)
-                    pipe.execute()
+                            backend.map_delete(index_key, hash_field, uow=pipe)
+                    pipe.commit()
                     removed += len(orphan_set)
 
         return removed
@@ -4400,16 +4326,23 @@ class Model(metaclass=ModelBase):
 
             encoded_mapping[field_name_bytes] = encoded_value
 
+        # native(): raw_update is the documented hook-free migration bypass
+        # (batched HSETs, no class-set registration); migrations are out of
+        # the #631 slice (plan non-goals: ``migrations.py``). protocol-2's
+        # save_record(class_set=None) could now express it -- moving it off
+        # native() is a ledger change for a later PR, not this one.
+        client = get_backend().native()
+
         # Pipeline HSET commands in batches
         count = 0
-        pipeline = get_REDIS_DB().pipeline()
+        pipeline = client.pipeline()
         for i, redis_key in enumerate(redis_keys, start=1):
             pipeline.hset(redis_key, mapping=encoded_mapping)
             count += 1
 
             if i % batch_size == 0:
                 pipeline.execute()
-                pipeline = get_REDIS_DB().pipeline()
+                pipeline = client.pipeline()
 
         # Execute any remaining commands in the pipeline
         if count % batch_size != 0:
