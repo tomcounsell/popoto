@@ -99,6 +99,7 @@ def pytest_configure(config):
     _collapse_src_popoto()
     _configure_test_db(config)
     _register_conformance_markers(config)
+    _pin_session_backend_to_redis()
 
 
 def _collapse_src_popoto():
@@ -541,6 +542,17 @@ def _popoto_db0_tripwire(request):
 # tests never see Postgres even when it is configured; a test that requests
 # ``backend`` without the marker gets the Redis backend, unparametrised.
 #
+# That last promise is kept by :func:`_pin_session_backend_to_redis`, run from
+# ``pytest_configure``. ``popoto.backends.get_backend()`` selects lazily from
+# the environment -- ``POSTGRES_URL`` set and ``psycopg`` importable binds the
+# Postgres backend -- and once the model layer routes through it (#631 WS1a),
+# that selection would otherwise reach every unmarked test and every
+# module-scope ``Model.save()`` at *collection*, before any fixture runs. The
+# Postgres job exports ``POSTGRES_URL`` for the conformance legs, so without
+# the pin its whole-tree collection fails on the WS0 stub. In a pytest session
+# the only route to Postgres is the ``backend`` fixture's Postgres leg, which
+# binds explicitly and restores the session default on teardown.
+#
 # The Postgres leg isolates on one schema per session, ``popoto_test_<uuid>``,
 # created at first use and ``DROP SCHEMA ... CASCADE``d at session end, with
 # every table in it truncated before each test (the FLUSHDB mirror). Two
@@ -834,10 +846,15 @@ def backend(request: Any) -> Any:
     Parametrised by :func:`pytest_generate_tests` for ``conformance`` tests;
     unparametrised (Redis) otherwise. Each leg calls ``set_backend(impl)`` so
     ``popoto.get_backend()`` inside the code under test resolves to the same
-    object, and ``set_backend(None)`` on teardown so the next test re-selects.
+    object, and on teardown restores whatever was bound before the leg -- the
+    session's Redis pin from :func:`_pin_session_backend_to_redis`, so the
+    next unmarked test is back on Redis rather than re-selecting from a
+    ``POSTGRES_URL`` environment.
     """
+    from popoto import backends
     from popoto.backends import set_backend
 
+    previous = backends._BACKEND
     name = getattr(request, "param", "redis")
     if name == "redis":
         from popoto.backends.redis import RedisBackend
@@ -859,7 +876,25 @@ def backend(request: Any) -> Any:
     try:
         yield impl
     finally:
-        set_backend(None)
+        set_backend(previous)
+
+
+def _pin_session_backend_to_redis() -> None:
+    """Bind the Redis backend as the session default, before collection.
+
+    ``get_backend()`` would otherwise select from the environment on its first
+    call, and in the Postgres job that call happens inside a module-scope
+    ``Model.save()`` during collection, with ``POSTGRES_URL`` set, against the
+    stub. Binding here keeps the "unmarked tests never see Postgres" promise
+    once the model layer routes through the backend (#631 WS1a). ``RedisBackend``
+    stores no client, so pinning an instance this early captures nothing: the
+    plugin's own ``_swap_db()`` and any later ``set_REDIS_DB_settings()`` are
+    still observed on every call.
+    """
+    from popoto.backends import set_backend
+    from popoto.backends.redis import RedisBackend
+
+    set_backend(RedisBackend())
 
 
 @pytest.fixture
