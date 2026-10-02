@@ -6,13 +6,23 @@ Every test runs on every configured backend with the *same* assertions:
 ``CAPPED_BAYESIAN_UPDATE_LUA``, moved verbatim in WS0), so whatever it
 returns and stores -- the flat ``[member, score, ...]`` reply down to the
 ``%.14g`` rendering of each score, and the msgpack payload the confidence
-update writes down to the byte -- is what ``PostgresBackend`` must return and
-store. Two references hold the Redis leg itself to account: :func:`lua_score`
-and :func:`lua_update` are the two scripts' arithmetic in Python, same
-operation order, same libm ``pow``, and every score is checked against them
-within :data:`REL_TOL`; the packed payload is checked against the Postgres
-backend's own packer, so the Redis leg proves the packer reproduces cmsgpack
-and the Postgres leg proves the backend uses it.
+update writes down to each value's encoding -- is what ``PostgresBackend``
+must return and store. Two references hold the Redis leg itself to account:
+:func:`lua_score` and :func:`lua_update` are the two scripts' arithmetic in
+Python, same operation order, same libm ``pow``, and every score is checked
+against them within :data:`REL_TOL`; the stored payload is checked against
+an independent packer (:func:`packed`), so the Redis leg proves the packer
+reproduces cmsgpack and the Postgres leg proves the backend uses it.
+
+The payload's *key order* is not part of that contract (:func:`assert_stored`).
+``cmsgpack.pack`` emits the four keys in the Lua table-hash iteration order
+of the server's bundled Lua / cmsgpack build, and Redis 7/8 and Valkey 8
+differ (:data:`KEY_ORDERS`). Both legs are held to the decoded map and to
+cmsgpack's per-value int / float32 / float64 encoding; the Postgres leg is
+also held byte-for-byte to the Redis order it pins; and the Redis leg is
+held byte-for-byte to the recorded fixture of *its own server's* order,
+gated on ``INFO server``, so a Redis job pins Redis's bytes and the Valkey
+job pins Valkey's.
 
 Floating point: the Lua computes in doubles and Postgres in ``double
 precision``, and both call the platform's ``pow``. On one machine the two
@@ -182,11 +192,18 @@ def reply(state: tuple[float, int, int, int]) -> tuple[float, int, int, int]:
     )
 
 
-#: The order ``cmsgpack.pack`` emits the script's four keys in, measured on
-#: Redis (Lua 5.1's hash order). Written out here independently of the
-#: backend's own ``_CONFIDENCE_KEY_ORDER`` so the Postgres leg cannot agree
-#: with a mutated packer (#661); the Redis leg holds both to the Lua's bytes.
-LUA_KEY_ORDER = ("corroborations", "confidence", "contradictions", "evidence_count")
+#: The order ``cmsgpack.pack`` emits the script's four keys in, per server:
+#: the Lua table-hash iteration order of that server's bundled Lua / cmsgpack
+#: build. Redis 7 (CI) and 8.10.2 (local) agree; Valkey 8 (CI's
+#: ``valkey/valkey:8-alpine``, run 37056036864) does not. Written out here
+#: independently of the backend's own ``_CONFIDENCE_KEY_ORDER`` so the
+#: Postgres leg cannot agree with a mutated packer (#661).
+REDIS_KEY_ORDER = ("corroborations", "confidence", "contradictions", "evidence_count")
+VALKEY_KEY_ORDER = ("corroborations", "evidence_count", "confidence", "contradictions")
+KEY_ORDERS: dict[str, tuple[str, ...]] = {
+    "redis": REDIS_KEY_ORDER,
+    "valkey": VALKEY_KEY_ORDER,
+}
 
 
 def cmsgpack_number(value: float) -> bytes:
@@ -200,8 +217,12 @@ def cmsgpack_number(value: float) -> bytes:
     return struct.pack(">Bd", 0xCB, value)
 
 
-def packed(state: tuple[float, int, int, int]) -> bytes:
-    """What ``cmsgpack.pack(updated)`` stores for ``state``."""
+def packed(
+    state: tuple[float, int, int, int], order: tuple[str, ...] = REDIS_KEY_ORDER
+) -> bytes:
+    """What ``cmsgpack.pack(updated)`` stores for ``state`` on a server that
+    emits the keys in ``order`` (Redis 7/8's by default: the order the
+    Postgres backend pins)."""
     confidence, evidence, corroborations, contradictions = state
     values = {
         "confidence": confidence,
@@ -210,23 +231,75 @@ def packed(state: tuple[float, int, int, int]) -> bytes:
         "contradictions": contradictions,
     }
     out = bytearray([0x84])
-    for name in LUA_KEY_ORDER:
+    for name in order:
         out += msgpack.packb(name) + cmsgpack_number(values[name])
     return bytes(out)
 
 
-#: ``HGET`` after one 0.9 signal from the 0.5 seed, recorded from Redis
-#: (``redis-cli`` on the local build, 2026-10-03): the anchor both the
-#: packer above and the backend's are held to.
-LUA_BYTES_AFTER_FIRST_UPDATE = bytes.fromhex(
-    "84ae636f72726f626f726174696f6e7301aa636f6e666964656e6365cb3fe6666666666666"
-    "ae636f6e74726164696374696f6e7300ae65766964656e63655f636f756e7401"
-)
+#: ``HGET`` after one 0.9 signal from the 0.5 seed, per server. The Redis
+#: bytes were recorded from ``redis-cli`` on the local 8.10.2 build
+#: (2026-10-03; the #661 anchor both packers are held to) and are what
+#: ``redis:7-alpine`` in CI stores too. The Valkey bytes are the same four
+#: entries in Valkey 8's order, written out by hand from the ``pytest
+#: (Valkey)`` failure of run 37056036864 -- not produced by :func:`packed`,
+#: so the parametrised check below is of the packer, not of itself -- and
+#: pinned against a live Valkey by ``test_the_server_stores_its_own_key_order``
+#: whenever the Redis leg's server is one.
+RECORDED_BYTES_AFTER_FIRST_UPDATE: dict[str, bytes] = {
+    "redis": bytes.fromhex(
+        "84"
+        "ae636f72726f626f726174696f6e7301"  # corroborations: 1
+        "aa636f6e666964656e6365cb3fe6666666666666"  # confidence: 0.7 (float64)
+        "ae636f6e74726164696374696f6e7300"  # contradictions: 0
+        "ae65766964656e63655f636f756e7401"  # evidence_count: 1
+    ),
+    "valkey": bytes.fromhex(
+        "84"
+        "ae636f72726f626f726174696f6e7301"  # corroborations: 1
+        "ae65766964656e63655f636f756e7401"  # evidence_count: 1
+        "aa636f6e666964656e6365cb3fe6666666666666"  # confidence: 0.7 (float64)
+        "ae636f6e74726164696374696f6e7300"  # contradictions: 0
+    ),
+}
 
 
-def test_the_packers_agree_with_the_recorded_lua_bytes():
+def value_encodings(raw: bytes) -> dict[str, bytes]:
+    """The payload's entries as ``{key: the value's own msgpack bytes}``:
+    what cmsgpack encoded each number as (``01`` for an integral ``1.0``,
+    ``ca..`` for a lossless float32, ``cb..`` otherwise), independent of the
+    order the keys were emitted in."""
+    unpacker = msgpack.Unpacker(raw=False)
+    unpacker.feed(raw)
+    count = unpacker.read_map_header()
+    out: dict[str, bytes] = {}
+    for _ in range(count):
+        key = unpacker.unpack()
+        start = unpacker.tell()
+        unpacker.skip()
+        out[key] = raw[start : unpacker.tell()]
+    assert unpacker.tell() == len(raw), "one map, nothing trailing"
+    return out
+
+
+def server_name(backend: Any) -> str | None:
+    """``"redis"`` or ``"valkey"`` on the Redis leg, from ``INFO server`` --
+    Valkey reports ``valkey_version`` and (since 8) ``server_name`` -- and
+    ``None`` on any other leg."""
+    if not isinstance(backend, RedisBackend):
+        return None
+    info = backend.native().info("server")
+    if "valkey_version" in info or str(info.get("server_name", "")).lower() == "valkey":
+        return "valkey"
+    return "redis"
+
+
+@pytest.mark.parametrize("server", sorted(KEY_ORDERS))
+def test_the_packers_agree_with_the_recorded_lua_bytes(server):
     state = lua_update((INITIAL, 0, 0, 0), 0.9)
-    assert packed(state) == LUA_BYTES_AFTER_FIRST_UPDATE
+    assert (
+        packed(state, KEY_ORDERS[server]) == RECORDED_BYTES_AFTER_FIRST_UPDATE[server]
+    )
+    # The backend pins the Redis order, whichever server is the oracle.
     assert (
         _pack_confidence(
             {
@@ -236,8 +309,42 @@ def test_the_packers_agree_with_the_recorded_lua_bytes():
                 "contradictions": state[3],
             }
         )
-        == LUA_BYTES_AFTER_FIRST_UPDATE
+        == RECORDED_BYTES_AFTER_FIRST_UPDATE["redis"]
     )
+
+
+def test_the_two_recorded_orders_are_one_map():
+    redis_bytes, valkey_bytes = (
+        RECORDED_BYTES_AFTER_FIRST_UPDATE["redis"],
+        RECORDED_BYTES_AFTER_FIRST_UPDATE["valkey"],
+    )
+    assert redis_bytes != valkey_bytes
+    assert msgpack.unpackb(redis_bytes) == msgpack.unpackb(valkey_bytes)
+    assert value_encodings(redis_bytes) == value_encodings(valkey_bytes)
+    assert tuple(value_encodings(redis_bytes)) == REDIS_KEY_ORDER
+    assert tuple(value_encodings(valkey_bytes)) == VALKEY_KEY_ORDER
+
+
+def assert_stored(
+    backend: Any, suffix: Any, state: tuple[float, int, int, int]
+) -> None:
+    """The stored-payload contract on every leg: the bytes decode to the
+    script's map -- same keys, same values, same Python type per value (an
+    integral confidence is an ``int``, never a ``float``) -- and each value
+    is encoded as cmsgpack encodes it (int / float32 / float64). Key order
+    is the server's own and is not asserted here; the Postgres leg, which
+    pins Redis's, is additionally held to it byte for byte."""
+    raw = backend.map_get(CONF, member(suffix))
+    want = packed(state)
+    assert raw is not None
+    got_map, want_map = msgpack.unpackb(raw), msgpack.unpackb(want)
+    assert got_map == want_map
+    assert {k: type(v) for k, v in got_map.items()} == {
+        k: type(v) for k, v in want_map.items()
+    }
+    assert value_encodings(raw) == value_encodings(want)
+    if isinstance(backend, PostgresBackend):
+        assert raw == want, "the Postgres backend pins Redis 7/8 key order"
 
 
 def stored(backend: Any, suffix: Any) -> dict[str, Any] | None:
@@ -921,7 +1028,7 @@ class TestConfidenceUpdate:
             assert result == reply(state)
             assert isinstance(result[0], float)
             assert all(isinstance(n, int) for n in result[1:])
-            assert backend.map_get(CONF, member("m")) == packed(state)
+            assert_stored(backend, "m", state)
 
     def test_the_seed_the_field_layer_writes_is_read(self, backend):
         save(backend, "m")
@@ -1047,9 +1154,36 @@ class TestConfidenceUpdate:
         # confidence that lands on exactly 1.0 or 0.0 is stored as 1 / 0.
         save(backend, "m")
         self.update(backend, "m", 1.0, initial=1.0)
-        assert backend.map_get(CONF, member("m")) == packed((1.0, 1, 1, 0))
+        assert_stored(backend, "m", (1.0, 1, 1, 0))
         assert msgpack.unpackb(backend.map_get(CONF, member("m")))["confidence"] == 1
         assert backend.map_get(CONF, member("m")).find(b"\xca") == -1
+
+    @pytest.mark.parametrize("server", sorted(KEY_ORDERS))
+    def test_the_server_stores_its_own_key_order(self, backend, server):
+        """Byte-identity with the recorded fixture, gated on the server the
+        Redis leg is talking to (``INFO server``): the Redis order on Redis
+        7/8, the Valkey order on Valkey 8. The other parametrisation skips,
+        so CI's Redis jobs pin Redis's bytes and its Valkey job pins
+        Valkey's, and a third order would fail here with the server named
+        rather than slip through the order-free :func:`assert_stored`. The
+        Postgres leg skips: its pin on Redis's order is :func:`assert_stored`'s
+        byte check, exercised by every test that calls it."""
+        actual = server_name(backend)
+        if actual is None:
+            pytest.skip("Redis-leg assertion: the Postgres leg pins Redis's order")
+        if actual != server:
+            pytest.skip(f"the server is {actual}, not {server}")
+        order = KEY_ORDERS[server]
+        save(backend, "m")
+        state = lua_update((INITIAL, 0, 0, 0), 0.9)
+        self.update(backend, "m", 0.9)
+        raw = backend.map_get(CONF, member("m"))
+        assert raw == RECORDED_BYTES_AFTER_FIRST_UPDATE[server]
+        assert tuple(value_encodings(raw)) == order
+        for signal in [0.1, 1.0, 0.0, 0.5]:
+            state = lua_update(state, signal)
+            self.update(backend, "m", signal)
+            assert backend.map_get(CONF, member("m")) == packed(state, order)
 
     def test_queued_on_a_unit_of_work(self, backend):
         save(backend, "m")
@@ -1062,7 +1196,7 @@ class TestConfidenceUpdate:
         results = uow.commit()
         assert len(results) == 2 and all(results)
         state = lua_update(lua_update(lua_update((INITIAL, 0, 0, 0), 0.9), 0.1), 0.1)
-        assert backend.map_get(CONF, member("m")) == packed(state)
+        assert_stored(backend, "m", state)
         assert uow.commit() == []
 
     def test_a_unit_of_work_left_without_commit_applies_nothing(self, backend):
@@ -1148,7 +1282,7 @@ class TestConfidenceUpdate:
         state = (INITIAL, 0, 0, 0)
         for _ in range(2 * rounds):
             state = lua_update(state, 0.9)
-        assert backend.map_get(CONF, member("m")) == packed(state)
+        assert_stored(backend, "m", state)
 
     def test_two_connections_cannot_both_create_the_row(
         self, backend, backend_is_redis, monkeypatch
@@ -1194,8 +1328,8 @@ class TestConfidenceUpdate:
         other.close()
         assert not errors, errors
         assert stored(backend, "m")["evidence_count"] == 2
-        assert backend.map_get(CONF, member("m")) == packed(
-            lua_update(lua_update((INITIAL, 0, 0, 0), 0.9), 0.9)
+        assert_stored(
+            backend, "m", lua_update(lua_update((INITIAL, 0, 0, 0), 0.9), 0.9)
         )
 
 

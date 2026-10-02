@@ -327,12 +327,14 @@ and writes nothing -- WS0 deviation 7, the field layer raises), ``SELECT ...
 FOR UPDATE`` on the companion row, the script's reads of the payload with
 its ``or`` chains and Lua's string-to-number coercion
 (:func:`_confidence_state`), the capped running mean and the clamp, and the
-upsert of the packed payload. The payload is byte-identical to the Lua's:
-a fixmap of the four keys in the order ``cmsgpack.pack`` emits them for
-this table (:data:`_CONFIDENCE_KEY_ORDER`, Lua's hash order, measured) with
+upsert of the packed payload. The payload decodes to the Lua's map, with
 each number packed by cmsgpack's integer / float32 / float64 rule
 (:func:`_cmsgpack_pack_number`), so a ``0.5`` is a float32, a ``1.0`` an
-integer and a ``0.7`` a float64 on both backends. The reply is the script's
+integer and a ``0.7`` a float64 on both backends. The *key order* is the
+one Redis 7/8 emit (:data:`_CONFIDENCE_KEY_ORDER`); Valkey 8's bundled Lua
+iterates the same table in a different order, so byte-identity holds
+against Redis only and the asserted contract is decoded equality (see the
+note on :data:`_CONFIDENCE_KEY_ORDER`). The reply is the script's
 ``tostring`` of each value, parsed as the Redis backend parses it: the
 confidence rounded through ``%.14g``, the counters as ``int``. On a unit of
 work the ``commit()`` entry is that typed tuple (Redis: the raw four-string
@@ -652,7 +654,12 @@ SCHEMA_DDL: tuple[str, ...] = (
         len int := length(b);
         t   int;
         n   bigint := 0;
-        q   int;
+        -- bigint, not int: a str 32 / array 32 / map 32 header *claims* a
+        -- 32-bit length, so ``p + 5 + 0xffffffff`` must be representable to
+        -- reach the ``q > len`` check below and return NULL ("Missing
+        -- bytes", the script's default) instead of raising
+        -- ``integer out of range`` out of the whole ranking.
+        q   bigint;
     BEGIN
         IF p >= len THEN RETURN NULL; END IF;
         t := get_byte(b, p);
@@ -685,12 +692,13 @@ SCHEMA_DDL: tuple[str, ...] = (
             END CASE;
         END IF;
         IF q IS NULL OR q > len THEN RETURN NULL; END IF;
+        -- From here q <= len, so the casts back to int are exact.
         WHILE n > 0 LOOP
-            q := popoto_mp_skip(b, q);
+            q := popoto_mp_skip(b, q::int);
             IF q IS NULL THEN RETURN NULL; END IF;
             n := n - 1;
         END LOOP;
-        RETURN q;
+        RETURN q::int;
     END
     $popoto$
     """,
@@ -1387,13 +1395,22 @@ def _lua_arith(value: Any) -> float:
 
 
 #: The order ``cmsgpack.pack`` emits the four keys of the ``updated`` table
-#: in ``CAPPED_BAYESIAN_UPDATE_LUA`` -- Lua 5.1's ``lua_next`` order over a
-#: four-entry table of these strings, which is a property of Lua's own string
-#: hash (deterministic, unseeded in 5.1), not of the Redis build. Measured
-#: on the local Redis, and the Redis leg of
-#: ``tests/conformance/test_decay.py`` re-checks the stored bytes against it
-#: on every run. Packing in this order is what makes the stored payload
-#: byte-identical across backends.
+#: in ``CAPPED_BAYESIAN_UPDATE_LUA`` **on Redis 7 and 8**. It is the Lua
+#: table-hash iteration order (``lua_next``) of the server's bundled Lua /
+#: cmsgpack build, and it is *not* the same on every server this library
+#: supports: Redis 7 (CI) and 8.10.2 (local) emit
+#: ``corroborations, confidence, contradictions, evidence_count``; Valkey 8
+#: emits ``corroborations, evidence_count, confidence, contradictions``
+#: (measured in ``tests.yml``'s ``pytest (Valkey)`` job, run 37056036864).
+#: The stored map is the same four keys and values either way, and every
+#: reader decodes it by key, so the *contract* across backends is decoded
+#: equality plus cmsgpack's per-value number encoding; the Postgres backend
+#: pins Redis's order as its own, documented in
+#: ``docs/features/postgres-backend.md`` ("Known deviations"), rather than
+#: emulating whichever server happens to be the oracle. The Redis leg of
+#: ``tests/conformance/test_decay.py`` holds the stored bytes to this order
+#: only when the server reports itself as Redis, and to the Valkey order
+#: only when it reports itself as Valkey.
 _CONFIDENCE_KEY_ORDER: tuple[str, ...] = (
     "corroborations",
     "confidence",
@@ -1403,9 +1420,9 @@ _CONFIDENCE_KEY_ORDER: tuple[str, ...] = (
 
 
 def _pack_confidence(values: Mapping[str, float]) -> bytes:
-    """``cmsgpack.pack(updated)``: a fixmap of the four keys in Lua's hash
-    order, each number packed by cmsgpack's integer / float32 / float64
-    rule (:func:`_cmsgpack_pack_number`)."""
+    """``cmsgpack.pack(updated)`` as Redis 7/8 emit it: a fixmap of the four
+    keys in :data:`_CONFIDENCE_KEY_ORDER`, each number packed by cmsgpack's
+    integer / float32 / float64 rule (:func:`_cmsgpack_pack_number`)."""
     out = bytearray([0x80 | len(_CONFIDENCE_KEY_ORDER)])
     for name in _CONFIDENCE_KEY_ORDER:
         out += msgpack.packb(name)

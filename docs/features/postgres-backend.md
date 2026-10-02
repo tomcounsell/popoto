@@ -369,15 +369,22 @@ bit-equality asserted. The tie-break is the script's: score descending, then
 the member *bytes* ascending (`COLLATE "C"`; Lua 5.1's `<` on strings is
 `strcoll`, which Redis runs in the C locale).
 
-**The confidence payload is byte-identical.** `cmsgpack.pack` of the
-script's four-key table emits the keys in Lua's hash order --
-`corroborations`, `confidence`, `contradictions`, `evidence_count`, measured
--- with each number packed by cmsgpack's integer / float32 / float64 rule, so
-a confidence of `0.5` is a float32, `1.0` an integer and `0.7` a float64 on
-both backends. The Redis leg of the conformance suite checks the Lua's stored
-bytes against the Postgres backend's packer on every run, and the Postgres
-leg checks the backend stores them. The reply rounds the confidence through
-`%.14g` as the script's `tostring` does; the stored value is the raw double.
+**The confidence payload decodes identically; its key order is Redis's.**
+`cmsgpack.pack` of the script's four-key table packs each number by
+cmsgpack's integer / float32 / float64 rule, so a confidence of `0.5` is a
+float32, `1.0` an integer and `0.7` a float64 on both backends, and the
+Postgres backend reproduces that rule. The *order* of the four keys is the
+Lua table-hash iteration order of the server's bundled Lua / cmsgpack build,
+and the two servers this library supports do not agree: Redis 7 and 8 emit
+`corroborations, confidence, contradictions, evidence_count`; Valkey 8 emits
+`corroborations, evidence_count, confidence, contradictions` (measured in
+CI's `pytest (Valkey)` job). The backend pins Redis's order (see "Known
+deviations"). The conformance suite holds both legs to the *decoded* map and
+to the per-value encoding; it holds the Redis leg's bytes to Redis's order
+only when the server reports itself as Redis, to Valkey's only when it
+reports itself as Valkey, and the Postgres leg's bytes to the pinned Redis
+order always. The reply rounds the confidence through `%.14g` as the
+script's `tostring` does; the stored value is the raw double.
 Two instances updating one member concurrently serialise on the member's
 advisory lock and the row lock (`TestConfidenceUpdate::test_two_connections_both_apply`
 on both legs): every update lands and, the running mean being order-invariant
@@ -479,13 +486,41 @@ here; both are truthy exactly when something was closed, which is what
 `SupersedeResult.close_index` and `ProvenanceJournal._write` read.
 
 
-**A `-inf` last-seen timestamp raises on the decay ranking.** `ZADD` accepts
-`-inf` as a score, and the Lua then computes `pow(inf, -rate) == 0` and scores
-the member `0`; Postgres's `power()` reports that as `value out of range:
-underflow` and the statement fails. Timestamps come from `time.time()`, so no
-in-tree writer produces one. A `+inf` timestamp (a member "last seen" in the
-infinite future) floors its elapsed time at a hundredth of a day on both
-backends.
+**The confidence payload's key order is Redis's, not the oracle's.**
+`cmsgpack.pack` emits the four keys of the confidence map in the Lua
+table-hash iteration order of the server's bundled Lua / cmsgpack build, and
+Redis 7/8 and Valkey 8 differ (`corroborations, confidence, contradictions,
+evidence_count` against `corroborations, evidence_count, confidence,
+contradictions`; both measured). The Postgres backend always writes Redis's
+order. The map decodes to the same keys, values and value encodings on every
+server, and every reader decodes it by key, so nothing user-visible differs;
+only a byte comparison of the stored payload against a Valkey-written one
+does. Documented rather than emulated per server: the backend has no server
+to ask.
+
+**A decay score that `pow` cannot represent raises on the ranking.** The
+Lua's `math.pow` returns `inf` on overflow and `0` on underflow and the
+script ranks the member with it; PostgreSQL's `power()` raises `value out of
+range: overflow` / `underflow` for a *finite* operand that leaves the double
+range, and the whole statement fails. Measured on PostgreSQL 18.6 and Redis
+8.10.2: a member at the `0.01`-day elapsed floor with `decay_rate=155` or
+more replies `inf` on Redis and raises on Postgres (`154` renders `1e+308`
+on both); a member 100 days old with `decay_rate=200`, or one whose
+last-seen timestamp is a finite `-1e300` at `decay_rate=2`, replies `0` on
+Redis and raises `underflow` on Postgres; and a confidence `strength` of
+`2000` against a confidence of `0` overflows `2 ** (s * 2 * (c0 - c))` the
+same way. Rates this large are outside any use the field layer documents
+(`Defaults.DECAY_RATE` is `0.1`; the docstring examples use `0.3` and
+`0.5`), so the backend does not emulate `inf`/`0`. Two neighbouring cases
+do **not** diverge, checked on the same servers rather than assumed from the
+rule above: a `-inf` last-seen timestamp scores `0` on both legs
+(`power('infinity', -rate)` is `0` without an error, since PostgreSQL's
+underflow check excludes infinite arguments), and `0x` hex in a `Decimal`
+envelope's `as_encodable` (or in `s` / `c0`) parses to the same number on
+both, because `::float8` goes through `strtod` just as Lua's `tonumber`
+does -- `"0x10"` is `16` on both. A `+inf` timestamp (a member "last seen"
+in the infinite future) floors its elapsed time at a hundredth of a day on
+both backends.
 
 **A `commit()` entry for a queued `confidence_update`** is the script's raw
 four-string reply on Redis and the typed `(confidence, evidence_count,
