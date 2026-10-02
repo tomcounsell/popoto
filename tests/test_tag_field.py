@@ -304,11 +304,6 @@ class TestTagFieldValkeySafety:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason="family H: ContextAssembler ranks through decayed_rank, a WS3d stub "
-    "on Postgres (the assembler swallows the NotImplementedError and returns "
-    "nothing)"
-)
 class TestTagFieldAssembler:
     def setup_method(self):
         AssemblerMemory.delete_all()
@@ -335,6 +330,9 @@ class TestTagFieldAssembler:
     def test_auto_detects_tag_field(self):
         assert self.assembler._tag_field_name == "tags"
 
+    @pytest.mark.redis_only(
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
+    )
     def test_tags_scope_retrieval(self):
         result = self.assembler.assemble(
             query_cues={"content": "deploy"}, tags=["agent:valor"]
@@ -343,6 +341,9 @@ class TestTagFieldAssembler:
         assert self.valor.key in keys
         assert self.other.key not in keys
 
+    @pytest.mark.redis_only(
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
+    )
     def test_none_tags_is_unscoped_and_identical(self):
         a = self.assembler.assemble(query_cues={"content": "deploy"})
         b = self.assembler.assemble(query_cues={"content": "deploy"}, tags=None)
@@ -350,6 +351,9 @@ class TestTagFieldAssembler:
         # Unscoped sees every agent + the untagged record.
         assert len(self._keys(a)) == 3
 
+    @pytest.mark.redis_only(
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
+    )
     def test_tag_match_any(self):
         result = self.assembler.assemble(
             query_cues={"content": "deploy"},
@@ -360,6 +364,9 @@ class TestTagFieldAssembler:
         assert self.valor.key in keys and self.other.key in keys
         assert self.shared.key not in keys
 
+    @pytest.mark.redis_only(
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
+    )
     def test_default_tag_match_is_any(self):
         # Default (no tag_match) is OR/"any": multiple tags surface a memory
         # in EITHER scope (maintainer decision 2026-08-05, #492).
@@ -381,6 +388,9 @@ class TestTagFieldAssembler:
         )
         assert self._keys(result) == set()
 
+    @pytest.mark.redis_only(
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
+    )
     def test_kill_switch_disables_scoping(self):
         original = Defaults.TAG_SCOPING_ENABLED
         Defaults.TAG_SCOPING_ENABLED = False
@@ -393,6 +403,9 @@ class TestTagFieldAssembler:
         finally:
             Defaults.TAG_SCOPING_ENABLED = original
 
+    @pytest.mark.redis_only(
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
+    )
     def test_tags_ignored_when_model_has_no_tagfield(self):
         class NoTagMemory(Model):
             key = AutoKeyField()

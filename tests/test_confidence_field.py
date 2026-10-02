@@ -201,9 +201,6 @@ class TestConfidenceFieldLifecycle:
         data = ConfidenceField.get_confidence_data(item, "certainty")
         assert data["confidence"] == 0.8
 
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_on_save_does_not_overwrite(self):
         """Re-saving does not overwrite existing confidence data."""
         item = ConfidenceItem.create(name="test1")
@@ -234,9 +231,6 @@ class TestConfidenceFieldLifecycle:
 # --- update_confidence Tests ---
 
 
-@pytest.mark.redis_only(
-    reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-)
 class TestUpdateConfidence:
     def test_corroboration_increases_confidence(self):
         """Signal > 0.5 increases confidence from 0.5 initial."""
@@ -323,9 +317,6 @@ class TestUpdateConfidence:
 # --- Capped-Evidence Update Rule (issue #407) ---
 
 
-@pytest.mark.redis_only(
-    reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-)
 class TestCappedBayesianUpdate:
     """Tests for the capped-evidence update rule.
 
@@ -390,6 +381,9 @@ class TestCappedBayesianUpdate:
         oracle = (0.5 + sum(signals)) / (len(signals) + 1)
         assert abs(conf - oracle) < 1e-12
 
+    @pytest.mark.redis_only(
+        reason="plants/reads state through the raw Redis client (_seed_confidence_data seeds the companion hash)"
+    )
     def test_cap_forgetting_crosses_half_on_15th_contradiction(self):
         """At the cap, contradictions decay confidence geometrically.
 
@@ -422,6 +416,9 @@ class TestCappedBayesianUpdate:
         assert abs(conf - expected) < 1e-12
         assert conf < 0.5
 
+    @pytest.mark.redis_only(
+        reason="plants/reads state through the raw Redis client (_seed_confidence_data seeds the companion hash)"
+    )
     def test_custom_evidence_cap_changes_forgetting_rate(self):
         """A smaller evidence_cap forgets faster once at the cap.
 
@@ -450,6 +447,10 @@ class TestCappedBayesianUpdate:
         assert abs(capped_conf - (0.9 - 0.8 / 6)) < 1e-12
         assert capped_conf < default_conf  # smaller cap forgets faster
 
+    @pytest.mark.redis_only(
+        reason="10 threads share the one Postgres backend connection, which "
+        "psycopg serialises and the update does not release (hangs)"
+    )
     def test_concurrent_updates_within_window_match_oracle(self):
         """Concurrent updates within the window land on the running mean.
 
@@ -557,9 +558,6 @@ class TestGetConfidence:
         conf = ConfidenceField.get_confidence(item, "certainty")
         assert conf == 0.5
 
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_get_confidence_after_update(self):
         """get_confidence reflects updates.
 
@@ -570,9 +568,6 @@ class TestGetConfidence:
         conf = ConfidenceField.get_confidence(item, "certainty")
         assert abs(conf - 0.7) < 1e-12
 
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_get_confidence_data_structure(self):
         """get_confidence_data returns complete metadata dict."""
         item = ConfidenceItem.create(name="get3")
@@ -607,9 +602,6 @@ class TestAttributeAccess:
         item = ConfidenceItem(name="attr3")
         assert item.certainty == 0.5
 
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_attribute_returns_updated_value_after_update(self):
         """instance.certainty reflects updated confidence after update_confidence.
 
@@ -636,9 +628,6 @@ class TestAttributeAccess:
 
 
 class TestConfidenceFieldErrors:
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_update_unsaved_model_raises_type_error(self):
         """update_confidence on unsaved model raises TypeError."""
         item = ConfidenceItem(name="unsaved1")
@@ -680,9 +669,6 @@ class TestConfidenceFieldErrors:
 
 
 class TestEntrainment:
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_acted_corroborates_confidence(self):
         """ObservationProtocol 'acted' outcome increases confidence."""
         item = ConfidenceWithCyclic.create(name="ent1", content="test")
@@ -694,9 +680,6 @@ class TestEntrainment:
         new_conf = ConfidenceField.get_confidence(item, "certainty")
         assert new_conf > initial_conf
 
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_contradicted_decreases_confidence(self):
         """ObservationProtocol 'contradicted' outcome decreases confidence."""
         item = ConfidenceWithCyclic.create(name="ent2", content="test")
@@ -744,7 +727,7 @@ class TestEntrainment:
         return pressure_hash_key, member_key
 
     @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+        reason="plants/reads state through the raw Redis client (_seed_confidence_data seeds the companion hash)"
     )
     def test_auto_discharge_on_low_confidence(self):
         """Confidence clearly below threshold - epsilon auto-discharges pressure."""
@@ -786,9 +769,6 @@ class TestEntrainment:
         # last_resolved should be within the last minute (was 30 days ago)
         assert time.time() - pdata["last_resolved"] < 60
 
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_no_auto_discharge_within_epsilon_of_threshold(self):
         """The float predecessor of 0.1 does NOT trigger auto-discharge.
 
@@ -828,9 +808,6 @@ class TestEntrainment:
         pdata = msgpack.unpackb(raw, raw=False)
         assert abs(pdata["last_resolved"] - thirty_days_ago) < 1.0
 
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_entrainment_without_cyclic_field_is_safe(self):
         """Entrainment on model without CyclicDecayField is a no-op for cycles."""
         item = ConfidenceItem.create(name="ent6")
