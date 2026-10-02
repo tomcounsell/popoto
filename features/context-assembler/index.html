@@ -1301,6 +1301,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../question-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Question Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../auditable-extraction/" class="md-nav__link">
         
   
@@ -4201,7 +4229,8 @@ it:</p>
 <a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
 <a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deployment"</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span>
 <a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">"gate"</span><span class="p">])</span>
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="c1"># {"applied": True, "gate_score": 0.42, "threshold": 0.5, "mode": "refuse", "gated": True}</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="c1"># {"applied": True, "gate_score": 0.42, "threshold": 0.5, "mode": "refuse",</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="c1">#  "gated": True, "refused_keys": ["Memory:deploy-target", "Memory:deploy-host"]}</span>
 </code></pre></div>
 <p>The gate reads the rank-0 pull-path candidate's <code>ConfidenceField</code> value (via
 <code>get_confidence()</code>, always in <code>[0, 1]</code>), so it is mode-agnostic across
@@ -4210,6 +4239,18 @@ records when gated (push path untouched); <code>"flag"</code> retains records an
 annotates the decision. Enabling the gate on a model without a
 <code>ConfidenceField</code>, or with an invalid <code>confidence_gate_mode</code>, raises
 <code>QueryException</code> at construction.</p>
+<p>A refusal is no longer a dead end. Whenever the gate is applied and gates a
+query, in either mode, the metadata gains one additive key,
+<code>gate["refused_keys"]</code>: the Redis keys of all the pull-path candidates, in rank
+order. Only the rank-0 key is the one actually judged below threshold; the rest
+are listed because they were withheld with it (<code>"refuse"</code>) or injected under
+the same flag (<code>"flag"</code>). It is present <strong>only</strong> on the applied-and-gated
+branch, so consumers must tolerate its absence (the other branches carry only
+<code>applied</code>, <code>gate_score</code>, <code>threshold</code>, <code>mode</code> and <code>gated</code>). A host can pass the metadata to
+<code>question_queue.propose_from_gate()</code>, which turns a <code>"refuse"</code>-mode refusal
+into a clarifying question about the rank-0 key (it ignores <code>"flag"</code> mode,
+where nothing was withheld); the answer then feeds back as defeasible confidence evidence. The
+assembler itself never proposes a question. See <a href="../question-queue/">Question Queue</a>.</p>
 <p>See <a href="#confidence-gate">Confidence Gate</a>
 for the full <code>metadata["gate"]</code> shape, the fault-tolerant <code>get_confidence()</code>
 failure path, and the no-default policy on <code>EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD</code>.</p>
@@ -4218,6 +4259,7 @@ failure path, and the no-default policy on <code>EXPERIMENTAL_CONFIDENCE_GATE_TH
 <li><a href="../metacognitive-layer/">Metacognitive Layer</a> — retrieval quality scoring, FOK, and adaptive weight tuning</li>
 <li><a href="../belief-sheet-view/">Belief-Sheet View</a> — read-path claim resolver wrapping <code>assemble()</code> with a fail-closed reader gate (<code>record_gate</code> seam)</li>
 <li><a href="../confidence-field/">ConfidenceField</a> — the field the confidence gate reads via <code>get_confidence()</code></li>
+<li><a href="../question-queue/">Question Queue</a> — repair path for gate refusals: a rationed clarifying question whose answer feeds confidence</li>
 <li><a href="../policy-cache/">PolicyCache</a> — learned action selection (uses ContextAssembler for retrieval)</li>
 <li><a href="../validity-and-supersession/">ValidityField and SupersessionProtocol</a> — <code>assemble(as_of=t)</code> for point-in-time reconstruction, and how superseded records are excluded from default retrieval</li>
 <li><a href="../hybrid-retrieval/">Hybrid Retrieval</a> — BM25Field, EmbeddingField, and RRF fusion primitives</li>

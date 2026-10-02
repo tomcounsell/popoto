@@ -12,13 +12,13 @@
         <meta name="author" content="Tom Counsell">
       
       
-        <link rel="canonical" href="https://popoto.io/features/content-and-embedding-fields/">
+        <link rel="canonical" href="https://popoto.io/features/question-queue/">
       
       
-        <link rel="prev" href="../../pubsub/">
+        <link rel="prev" href="../reconciliation/">
       
       
-        <link rel="next" href="../../guides/export-import/">
+        <link rel="next" href="../auditable-extraction/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Content & Embeddings - Popoto Documentation</title>
+        <title>Question Queue - Popoto Documentation</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#content-and-embedding-fields" class="md-skip">
+        <a href="#question-queue" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Content & Embeddings
+              Question Queue
             
           </span>
         </div>
@@ -286,10 +286,12 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
+      <li class="md-tabs__item md-tabs__item--active">
         <a href="../agent-memory/" class="md-tabs__link">
           
   
@@ -336,8 +338,6 @@
   
   
   
-    
-  
   
     
     
@@ -345,12 +345,10 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
+      <li class="md-tabs__item">
         <a href="../../configuration/" class="md-tabs__link">
           
   
@@ -878,26 +876,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
             
   
   
@@ -915,7 +918,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -958,26 +961,31 @@
                 
   
   
+    
   
   
+  
     
     
     
     
       
       
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" >
         
           
-          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="">
             
   
   
@@ -995,7 +1003,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1290,10 +1298,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../question-queue/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Question Queue
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1309,6 +1344,219 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-it-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why it exists
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#statuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Statuses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#options-carry-their-own-effects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options carry their own effects
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The budget
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relevance-timing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relevance timing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expiry-and-dedup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expiry and dedup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#producers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Producers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#answer-recognition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Answer recognition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#answers-are-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Answers are evidence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fail-closed-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fail-closed behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kill switch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tuning-constants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tuning constants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1643,17 +1891,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
         
           
-          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="">
             
   
   
@@ -1843,17 +2094,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
         
           
-          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="">
             
   
   
@@ -2300,31 +2554,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   
@@ -2342,7 +2591,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2366,20 +2615,17 @@
       
       
         
-          
-          
-        
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" >
         
           
-          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="0">
             
   
   
@@ -2532,31 +2778,26 @@
                 
   
   
-    
   
   
-  
     
     
     
     
       
       
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" >
         
           
-          
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" checked>
-        
-          
-          <label class="md-nav__link" for="__nav_6_2" id="__nav_6_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
             
   
   
@@ -2574,7 +2815,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2785,37 +3026,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Content & Embeddings
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../content-and-embedding-fields/" class="md-nav__link">
         
   
   
@@ -2831,281 +3045,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Overview
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#contentfield" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ContentField
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="ContentField">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How It Works
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#storage-layout" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Storage Layout
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-content-stores" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom Content Stores
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#embeddingfield" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        EmbeddingField
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="EmbeddingField">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#how-it-works_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How It Works
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#storage-layout_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Storage Layout
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#embedding-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Embedding Providers
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Embedding Providers">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#voyageprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        VoyageProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#openaiprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OpenAIProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#ollamaprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OllamaProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom Providers
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#semantic_search" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        semantic_search()
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="semantic_search()">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#similarity-only-search" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Similarity-Only Search
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#combined-with-memory-signals" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Combined with Memory Signals
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#full-example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Full Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cache-management" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Cache Management
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#installation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Installation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Environment Variables
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See Also
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -3291,10 +3230,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#why-it-exists" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Overview
+        Why it exists
       
     </span>
   </a>
@@ -3302,22 +3241,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#contentfield" class="md-nav__link">
+  <a href="#data-model" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ContentField
+        Data model
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="ContentField">
+    <nav class="md-nav" aria-label="Data model">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
+  <a href="#statuses" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How It Works
+        Statuses
       
     </span>
   </a>
@@ -3325,21 +3264,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#storage-layout" class="md-nav__link">
+  <a href="#options-carry-their-own-effects" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Storage Layout
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-content-stores" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom Content Stores
+        Options carry their own effects
       
     </span>
   </a>
@@ -3352,160 +3280,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#embeddingfield" class="md-nav__link">
+  <a href="#the-gate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        EmbeddingField
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="EmbeddingField">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#how-it-works_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How It Works
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#storage-layout_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Storage Layout
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#embedding-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Embedding Providers
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Embedding Providers">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#voyageprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        VoyageProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#openaiprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OpenAIProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#ollamaprovider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OllamaProvider
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom Providers
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#semantic_search" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        semantic_search()
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="semantic_search()">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#similarity-only-search" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Similarity-Only Search
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#combined-with-memory-signals" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Combined with Memory Signals
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#full-example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Full Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cache-management" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Cache Management
+        The gate
       
     </span>
   </a>
@@ -3513,10 +3291,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#installation" class="md-nav__link">
+  <a href="#the-budget" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Installation
+        The budget
       
     </span>
   </a>
@@ -3524,10 +3302,109 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#relevance-timing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Environment Variables
+        Relevance timing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expiry-and-dedup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expiry and dedup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#producers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Producers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#answer-recognition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Answer recognition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#answers-are-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Answers are evidence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fail-closed-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fail-closed behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kill switch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tuning-constants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tuning constants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
       
     </span>
   </a>
@@ -3565,312 +3442,285 @@
   
 
 
-<h1 id="content-and-embedding-fields">Content and Embedding Fields<a class="headerlink" href="#content-and-embedding-fields" title="Permanent link">&para;</a></h1>
-<p>ContentField and EmbeddingField extend Popoto's storage model beyond Redis hashes,
-routing large content and vector embeddings to the filesystem while keeping Redis
-lean and fast.</p>
-<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<h1 id="question-queue">Question Queue<a class="headerlink" href="#question-queue" title="Permanent link">&para;</a></h1>
+<p>A rationed channel for clarifying questions. When the memory layer knows it is uncertain, it writes a <code>QuestionCandidate</code> instead of asking directly, and the host application asks the queue, once per turn, whether anything is worth asking. Shipped as M7 (<a href="https://github.com/tomcounsell/popoto/issues/566">#566</a>).</p>
+<p><strong>The contract ends at "the next question to ask, if any."</strong> The queue never writes to a transport and never addresses a person. Phrasing a question and attaching it to a reply is the host's job.</p>
+<h2 id="why-it-exists">Why it exists<a class="headerlink" href="#why-it-exists" title="Permanent link">&para;</a></h2>
+<p>Three subsystems can detect uncertainty and, until now, could only refuse or abstain:</p>
+<ul>
+<li><a href="../reconciliation/">Reconciliation</a> stores a tie as a <code>disjoin</code> pair.</li>
+<li>The <a href="../context-assembler/#confidence-gate">confidence gate</a> drops a low-confidence pull-path answer.</li>
+<li><a href="../reference-resolution/">Reference Resolution</a> marks a reference <code>evidence_gap</code>.</li>
+</ul>
+<p>Each now has a repair path: propose a question, let the queue ration it, and feed the answer back as evidence. One shared budget covers all three, so no subsystem can start its own unrationed way of nagging the person.</p>
+<h2 id="data-model">Data model<a class="headerlink" href="#data-model" title="Permanent link">&para;</a></h2>
+<p><code>popoto.recipes.question_queue.QuestionCandidate</code> is a regular <code>Model</code>, keyed by <code>candidate_id</code> and indexed on <code>agent_id</code>.</p>
 <table>
 <thead>
 <tr>
 <th>Field</th>
-<th>Stores in Redis</th>
-<th>Stores on Filesystem</th>
-<th>Purpose</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>ContentField</td>
-<td><code>$CF:{hash}:{path}</code> reference</td>
-<td>Raw content bytes</td>
-<td>Large text, documents, binary data</td>
+<td><code>question_text</code></td>
+<td>The question, phrased by the producer</td>
 </tr>
 <tr>
-<td>EmbeddingField</td>
-<td>Dimension count (integer)</td>
-<td><code>.npy</code> vector file</td>
-<td>Vector embeddings for similarity search</td>
+<td><code>kind</code></td>
+<td>One of <code>disjunction</code>, <code>confirmation</code>, <code>referent</code></td>
+</tr>
+<tr>
+<td><code>ambiguity_signal</code></td>
+<td>One of <code>disjunction</code>, <code>gate_refusal</code>, <code>evidence_gap</code></td>
+</tr>
+<tr>
+<td><code>target_keys</code></td>
+<td>Redis keys of the facts the answer would resolve</td>
+</tr>
+<tr>
+<td><code>options</code></td>
+<td><code>[{"label": str, "acted": [keys], "contradicted": [keys]}]</code></td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>pending</code>, <code>delivered</code>, <code>answered</code>, <code>cooled</code>, <code>expired</code></td>
+</tr>
+<tr>
+<td><code>ask_count</code>, <code>delivered_turn</code></td>
+<td>Delivery history, written by the delivery script</td>
+</tr>
+<tr>
+<td><code>created_turn</code>, <code>expires_turn</code>, <code>last_seen_turn</code></td>
+<td>Turn bookkeeping (host-supplied turns)</td>
+</tr>
+<tr>
+<td><code>cooldown_until</code></td>
+<td>Not deliverable before this turn</td>
+</tr>
+<tr>
+<td><code>answer_option</code></td>
+<td>0-based index of the chosen option; the free-text reply is never stored</td>
+</tr>
+<tr>
+<td><code>cue_tokens</code></td>
+<td>Lowercased word tokens (3+ characters, stopwords removed) from the question and option labels</td>
 </tr>
 </tbody>
 </table>
-<p>Both fields are transparent to the caller -- you read and write normal Python values,
-and the storage indirection happens automatically on save/load.</p>
-<h2 id="contentfield">ContentField<a class="headerlink" href="#contentfield" title="Permanent link">&para;</a></h2>
-<h3 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h3>
+<p><code>kind</code> and <code>ambiguity_signal</code> are closed enums (<code>KINDS</code>, <code>AMBIGUITY_SIGNALS</code>). An unknown value raises <code>ValueError</code>. There is no "judge abstention" signal: a plain Reconciliation abstention writes nothing, and ties and probe splits both land as the same <code>disjoined</code> payload, so the queue cannot tell them apart.</p>
+<h3 id="statuses">Statuses<a class="headerlink" href="#statuses" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pending -&gt; delivered -&gt; answered
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>              |
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>              +-&gt; cooled   (reply was a deflection or unrecognized, or no reply at all)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>pending -&gt; expired         (not delivered within QUESTION_EXPIRY_TURNS)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>cooled  -&gt; delivered       (re-ask once cooldown_until has passed)
+</code></pre></div>
+<p>A <code>delivered</code> candidate that gets no reply within <code>QUESTION_COOLDOWN_TURNS</code> of its delivery is treated like a non-answer and moves to <code>cooled</code>. Expired and answered candidates are retained, not deleted, until <code>prune()</code> removes them.</p>
+<h3 id="options-carry-their-own-effects">Options carry their own effects<a class="headerlink" href="#options-carry-their-own-effects" title="Permanent link">&para;</a></h3>
+<p>Marking every unchosen option <code>contradicted</code> is only right when options are mutually exclusive, so each option lists its own effects. Answering applies exactly the chosen option's lists.</p>
+<table>
+<thead>
+<tr>
+<th>Producer</th>
+<th>Options</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Disjunction</td>
+<td>A = <code>acted:[a], contradicted:[b]</code>; B is the mirror</td>
+</tr>
+<tr>
+<td>Gate refusal</td>
+<td>"yes" = <code>acted:[k]</code>; "no" = <code>contradicted:[k]</code>, where <code>k</code> is the top refused key</td>
+</tr>
+<tr>
+<td>Evidence gap</td>
+<td>One option per candidate referent, with empty lists (recorded only)</td>
+</tr>
+</tbody>
+</table>
+<p>A key listed as both <code>acted</code> and <code>contradicted</code> in one option is a producer bug, and <code>propose()</code> raises <code>ValueError</code>.</p>
+<h2 id="the-gate">The gate<a class="headerlink" href="#the-gate" title="Permanent link">&para;</a></h2>
+<p><code>passes_voi_gate(candidate, turn)</code> is a deterministic boolean with two factors, both read from stored metadata:</p>
 <ol>
-<li><strong>On save</strong>: Content is written to the filesystem first (atomic temp-file + rename),
-   then a compact reference string (<code>$CF:{sha256}:{path}</code>) is stored in Redis.</li>
-<li><strong>On access</strong>: The descriptor detects the <code>$CF:</code> prefix and lazily loads content
-   from the filesystem, caching it on the instance.</li>
-<li><strong>On delete</strong>: No-op. Content files are append-only (content-addressable storage
-   means identical content shares files). Use <code>garbage_collect()</code> to clean up.</li>
+<li><code>ambiguity_signal</code> is in <code>AMBIGUITY_SIGNALS</code>.</li>
+<li>The candidate was recently used: <code>turn - last_seen_turn &lt;= QUESTION_RECENT_USE_TURNS</code>.</li>
 </ol>
-<h3 id="storage-layout">Storage Layout<a class="headerlink" href="#storage-layout" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>~/.popoto/content/
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  Document/
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    &lt;sha256_hash&gt;       # Content file (raw bytes)
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    &lt;sha256_hash&gt;.v1    # Previous version (auto-archived on overwrite)
-</code></pre></div>
-<p>The base directory defaults to <code>~/.popoto/content/</code> and can be changed via:
-- <code>POPOTO_CONTENT_PATH</code> environment variable
-- <code>popoto.configure(content_path="/data/content")</code>
-- Per-field: <code>ContentField(store=FilesystemStore(base_path="/data/content"))</code></p>
-<h3 id="custom-content-stores">Custom Content Stores<a class="headerlink" href="#custom-content-stores" title="Permanent link">&para;</a></h3>
-<p>Implement <code>AbstractContentStore</code> to use a different backend (S3, GCS, etc.):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.stores</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractContentStore</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">S3Store</span><span class="p">(</span><span class="n">AbstractContentStore</span><span class="p">):</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">content</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">model_class_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>        <span class="c1"># Upload to S3, return a $CF: reference string</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>        <span class="o">...</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>        <span class="c1"># Download from S3 using the reference</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>        <span class="o">...</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>        <span class="c1"># Remove from S3</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>        <span class="o">...</span>
-</code></pre></div>
-<p>Register it globally or per-field:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">content_store</span><span class="o">=</span><span class="n">S3Store</span><span class="p">(</span><span class="n">bucket</span><span class="o">=</span><span class="s2">"my-bucket"</span><span class="p">))</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># or</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">body</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="n">S3Store</span><span class="p">(</span><span class="n">bucket</span><span class="o">=</span><span class="s2">"my-bucket"</span><span class="p">))</span>
-</code></pre></div>
-<h2 id="embeddingfield">EmbeddingField<a class="headerlink" href="#embeddingfield" title="Permanent link">&para;</a></h2>
-<h3 id="how-it-works_1">How It Works<a class="headerlink" href="#how-it-works_1" title="Permanent link">&para;</a></h3>
-<ol>
-<li><strong>On save</strong>: Reads the source field value, calls the embedding provider to generate
-   a vector, saves it as a <code>.npy</code> file, and stores the dimension count in Redis.</li>
-<li><strong>On query</strong>: <code>load_embeddings()</code> reads all <code>.npy</code> files for a model class into a
-   pre-normalized numpy matrix. This matrix is cached in memory for fast cosine similarity.</li>
-<li><strong>On delete</strong>: The <code>.npy</code> file is removed and the cache is invalidated.</li>
-</ol>
-<h3 id="storage-layout_1">Storage Layout<a class="headerlink" href="#storage-layout_1" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>~/.popoto/content/.embeddings/
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  Memory/
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    &lt;hex_encoded_redis_key&gt;.npy    # numpy float32 vector
-</code></pre></div>
-<h3 id="embedding-providers">Embedding Providers<a class="headerlink" href="#embedding-providers" title="Permanent link">&para;</a></h3>
-<p>Providers are pluggable. Configure a default via <code>popoto.configure()</code> or pass one
-directly to <code>EmbeddingField(provider=...)</code>.</p>
-<h4 id="voyageprovider">VoyageProvider<a class="headerlink" href="#voyageprovider" title="Permanent link">&para;</a></h4>
-<p>Voyage AI embeddings, optimized for retrieval tasks with asymmetric query/document
-embedding.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">VoyageProvider</span><span class="p">(</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">,</span>           <span class="c1"># or VOYAGE_API_KEY env var</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"voyage-3-lite"</span><span class="p">,</span>        <span class="c1"># default</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">dimensions</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span>               <span class="c1"># default</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">max_batch_size</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span>           <span class="c1"># default</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="p">)</span>
-</code></pre></div>
-<p>Install: <code>pip install popoto[voyage]</code></p>
-<h4 id="openaiprovider">OpenAIProvider<a class="headerlink" href="#openaiprovider" title="Permanent link">&para;</a></h4>
-<p>OpenAI text embeddings.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAIProvider</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OpenAIProvider</span><span class="p">(</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">,</span>                  <span class="c1"># or OPENAI_API_KEY env var</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"text-embedding-3-small"</span><span class="p">,</span>      <span class="c1"># default</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">dimensions</span><span class="o">=</span><span class="mi">1536</span><span class="p">,</span>                      <span class="c1"># default</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">max_batch_size</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>                  <span class="c1"># default</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">)</span>
-</code></pre></div>
-<p>Install: <code>pip install popoto[openai]</code></p>
-<h4 id="ollamaprovider">OllamaProvider<a class="headerlink" href="#ollamaprovider" title="Permanent link">&para;</a></h4>
-<p>Local embeddings via a running <a href="https://ollama.com">Ollama</a> server. No API
-key, no per-token cost, no network dependency on a paid provider.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.ollama</span><span class="w"> </span><span class="kn">import</span> <span class="n">OllamaProvider</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OllamaProvider</span><span class="p">(</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">base_url</span><span class="o">=</span><span class="s2">"http://localhost:11434"</span><span class="p">,</span>   <span class="c1"># default</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"nomic-embed-text"</span><span class="p">,</span>            <span class="c1"># default (768-dim)</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">dim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                            <span class="c1"># auto-detect from first response</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="p">)</span>
-</code></pre></div>
-<p><strong>Setup:</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Install Ollama from https://ollama.com</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>ollama<span class="w"> </span>pull<span class="w"> </span>nomic-embed-text<span class="w">    </span><span class="c1"># or mxbai-embed-large (1024-dim), all-minilm (384-dim)</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>ollama<span class="w"> </span>serve<span class="w">                    </span><span class="c1"># run the local server</span>
-</code></pre></div>
-<p><strong>Behaviour:</strong></p>
+<p><code>last_seen_turn</code> is set when the candidate is proposed. It is bumped when a producer re-observes the same ambiguity, or when the host calls <code>note_use(agent_id, keys, turn)</code> with the keys it just injected. There is no probabilistic score, so every delivered question traces back to the evidence that let it through.</p>
+<h2 id="the-budget">The budget<a class="headerlink" href="#the-budget" title="Permanent link">&para;</a></h2>
+<p>At most one delivery per <code>QUESTION_BUDGET_TURNS</code> (K) turns, per agent. A Lua script grants the token <strong>and</strong> claims a candidate in one step:</p>
 <ul>
-<li>Uses the batch-capable <code>/api/embed</code> endpoint (Ollama v0.2.0+).</li>
-<li>Vector dimensions are auto-detected from the first <code>embed()</code> response
-  and cached. Pass <code>dim=&lt;n&gt;</code> to the constructor to declare them up front.</li>
-<li><code>max_batch_size</code> defaults to 32 (conservative for local inference on
-  modest hardware). Subclass to raise it.</li>
-<li>No external dependencies -- uses stdlib <code>urllib.request</code>.</li>
-<li>Error messages include actionable hints: connection refused points at
-  <code>ollama serve</code>; missing models point at <code>ollama pull &lt;model&gt;</code>.</li>
+<li>It grants only when there is no prior ask or <code>turn &gt;= last_ask_turn + K</code>.</li>
+<li>A regressed turn (<code>turn &lt; last_ask_turn</code>) never grants, and <code>last_ask_turn</code> is never rewound.</li>
+<li><code>last_ask_turn</code> is written only when a candidate is actually claimed, so budget is never spent when nothing is delivered.</li>
+<li>The bucket key carries a wall-clock TTL backstop (<code>QUESTION_BUCKET_TTL_SECONDS</code>, 7 days). A host whose turn counter reset after a restart is locked out for at most that long, never forever.</li>
 </ul>
-<p>Install: <code>pip install popoto</code> (stdlib-only; no extras needed).</p>
-<h4 id="custom-providers">Custom Providers<a class="headerlink" href="#custom-providers" title="Permanent link">&para;</a></h4>
-<p>Implement <code>AbstractEmbeddingProvider</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractEmbeddingProvider</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyProvider</span><span class="p">(</span><span class="n">AbstractEmbeddingProvider</span><span class="p">):</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">texts</span><span class="p">,</span> <span class="n">input_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>        <span class="c1"># Return list of float vectors, one per text</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>        <span class="o">...</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="nd">@property</span>
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dimensions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>        <span class="k">return</span> <span class="mi">768</span>
-<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
-<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="nd">@property</span>
-<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">max_batch_size</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>        <span class="k">return</span> <span class="mi">100</span>
-</code></pre></div>
-<h2 id="semantic_search">semantic_search()<a class="headerlink" href="#semantic_search" title="Permanent link">&para;</a></h2>
-<p>The query method <code>semantic_search()</code> ties ContentField and EmbeddingField together
-into a retrieval pipeline.</p>
-<h3 id="similarity-only-search">Similarity-Only Search<a class="headerlink" href="#similarity-only-search" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="s2">"revenue trends"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
-</code></pre></div>
-<p>Under the hood:
-1. Query text is embedded via the provider (with <code>input_type="query"</code>)
-2. Cosine similarity is computed against the cached embedding matrix
-3. Top-K results are hydrated from Redis and returned</p>
-<h3 id="combined-with-memory-signals">Combined with Memory Signals<a class="headerlink" href="#combined-with-memory-signals" title="Permanent link">&para;</a></h3>
-<p>When <code>indexes</code> is provided, similarity scores are injected into <code>composite_score()</code>
-as an additional weighted signal:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="s2">"revenue trends"</span><span class="p">,</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">,</span> <span class="s2">"confidence"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p">)</span>
-</code></pre></div>
-<p>This produces a unified ranking that blends semantic relevance with recency (decay),
-confidence, and other sorted field signals.</p>
-<h3 id="full-example">Full Example<a class="headerlink" href="#full-example" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.content_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ContentField</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.embedding_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">EmbeddingField</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.decaying_sorted_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">DecayingSortedField</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="c1"># Configure once at startup</span>
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">),</span>
-<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">"/data/agent-memory"</span><span class="p">,</span>
-<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="p">)</span>
-<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>
-<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">popoto</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    <span class="n">topic</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
-<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">()</span>
-<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">()</span>
-<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>
-<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>
-<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="c1"># Create memories</span>
-<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">"q4-revenue"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Q4 revenue exceeded projections by 12%..."</span><span class="p">)</span>
-<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">"q3-revenue"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Q3 revenue was flat compared to Q2..."</span><span class="p">)</span>
-<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">topic</span><span class="o">=</span><span class="s2">"hiring-plan"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"Engineering headcount target is 50 by EOY..."</span><span class="p">)</span>
-<a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>
-<a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a><span class="c1"># Semantic search with memory signals</span>
-<a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
-<a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a>    <span class="s2">"revenue performance"</span><span class="p">,</span>
-<a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">"relevance"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span> <span class="s2">"certainty"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
-<a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
-<a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a><span class="p">)</span>
-<a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a>
-<a id="__codelineno-11-33" name="__codelineno-11-33" href="#__codelineno-11-33"></a><span class="k">for</span> <span class="n">memory</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
-<a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">topic</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">memory</span><span class="o">.</span><span class="n">content</span><span class="p">[:</span><span class="mi">80</span><span class="p">]</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
-</code></pre></div>
-<h2 id="cache-management">Cache Management<a class="headerlink" href="#cache-management" title="Permanent link">&para;</a></h2>
-<p>EmbeddingField maintains a process-level cache of pre-normalized numpy matrices.
-The cache is automatically invalidated when embeddings are saved or deleted within
-the same process.</p>
-<p>For multi-process deployments, call <code>invalidate_cache()</code> to force a reload from disk:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.embedding_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">invalidate_cache</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># Invalidate cache for a specific model</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">invalidate_cache</span><span class="p">(</span><span class="s2">"Memory"</span><span class="p">)</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="c1"># Invalidate all cached embeddings</span>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="n">invalidate_cache</span><span class="p">()</span>
-</code></pre></div>
-<h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
+<p>The counter lives in Redis, not in process memory, so a restart does not refill the budget.</p>
+<h2 id="relevance-timing">Relevance timing<a class="headerlink" href="#relevance-timing" title="Permanent link">&para;</a></h2>
+<p>Pass <code>query_cues</code> (a string or an iterable of tokens) to <code>next_question()</code>. A candidate is deliverable only if at least one cue token overlaps its <code>cue_tokens</code>, so a question about meeting times is not asked in the middle of a database migration. <code>query_cues=None</code> turns timing off.</p>
+<h2 id="expiry-and-dedup">Expiry and dedup<a class="headerlink" href="#expiry-and-dedup" title="Permanent link">&para;</a></h2>
+<p>A pending candidate not delivered within <code>QUESTION_EXPIRY_TURNS</code> (N) becomes <code>expired</code> silently. Nothing is surfaced to the person.</p>
+<p>A producer may also register a staleness check with <code>register_staleness_check()</code>. <code>next_question()</code> runs <code>expire_stale()</code> before delivering, and the disjunction producer registers one so that a retracted <code>disjoin</code> annotation never gets asked about.</p>
+<p>Dedup rules, with no embeddings: an incoming proposal duplicates an existing candidate that is open (<code>pending</code>, <code>delivered</code>, <code>cooled</code>) or <code>answered</code> within <code>QUESTION_RETENTION_TURNS</code> when <code>kind</code> matches and the <code>target_keys</code> sets intersect, or when the normalized question text matches exactly. A duplicate is not re-created. An open duplicate is touched (<code>last_seen_turn</code> bumped) and returned. The dedup check and create run under a short per-agent lock, and a proposal that cannot take the lock is dropped.</p>
+<p><strong>Known limitation.</strong> The <code>answered</code> branch of that rule uses the same key intersection as the open branch, so for <code>QUESTION_RETENTION_TURNS</code> (500 by default) after a question is answered, any new proposal of the same <code>kind</code> that shares even one target key with it is folded into the answered candidate and never delivered. Answer "A or B?" at turn 1 and propose "A or C?" at turn 7: the producer reports the second as proposed or touched, but it is a duplicate of an answered record and nothing asks it. This fails in the safe direction (fewer questions, never a repeat). The intended fix is for the answered branch to require an equal <code>target_keys</code> set, or the same <code>disjunction_id</code>, rather than an intersection.</p>
+<h2 id="producers">Producers<a class="headerlink" href="#producers" title="Permanent link">&para;</a></h2>
+<p>Three thin adapters, each a separate function. Each is disabled by not calling it, and the queue works with any subset. The assembler never calls them. A host passes each the signal it already holds.</p>
 <table>
 <thead>
 <tr>
-<th>Extra</th>
-<th>Command</th>
-<th>Includes</th>
+<th>Function</th>
+<th>Source</th>
+<th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Base</td>
-<td><code>pip install popoto</code></td>
-<td>ContentField (no extra deps)</td>
+<td><code>propose_from_disjunctions(agent_id, turn)</code></td>
+<td><a href="../reconciliation/">Reconciliation</a> <code>disjoin</code> annotations</td>
+<td>Imports <code>reconciliation</code> lazily</td>
 </tr>
 <tr>
-<td>Embeddings</td>
-<td><code>pip install popoto[embeddings]</code></td>
-<td>numpy</td>
+<td><code>propose_from_gate(agent_id, metadata, turn, query_text)</code></td>
+<td><code>assemble()</code> metadata</td>
+<td>See below</td>
 </tr>
 <tr>
-<td>Ollama</td>
-<td><code>pip install popoto[embeddings]</code></td>
-<td>numpy (no extra Python deps)</td>
-</tr>
-<tr>
-<td>Voyage AI</td>
-<td><code>pip install popoto[voyage]</code></td>
-<td>numpy, voyageai</td>
-</tr>
-<tr>
-<td>OpenAI</td>
-<td><code>pip install popoto[openai]</code></td>
-<td>numpy, openai</td>
+<td><code>propose_from_resolution(record, turn)</code></td>
+<td><code>evidence_gap</code> references on a <a href="../reference-resolution/">Reference Resolution</a> <code>ResolutionRecord</code></td>
+<td>Uses the reference's own clarifying question and candidates</td>
 </tr>
 </tbody>
 </table>
-<h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
+<p><code>propose_from_gate</code> is <strong>dormant unless <code>confidence_gate_threshold</code> is set</strong> on the <code>ContextAssembler</code>. Without a threshold, <code>assemble()</code> emits no gate metadata and the producer has nothing to read. It also acts <strong>only in <code>"refuse"</code> mode</strong>. In <code>"flag"</code> mode the records were injected anyway, nothing was withheld, and asking would spend the shared budget on a fact the agent is already using. The question text names the refused key as well as the query, so two refusals of different facts under one query stay two candidates.</p>
+<h2 id="answer-recognition">Answer recognition<a class="headerlink" href="#answer-recognition" title="Permanent link">&para;</a></h2>
+<p><code>record_answer(candidate, answer_text, turn)</code> classifies the reply with a deterministic matcher. After normalization (lowercase, punctuation stripped, whitespace collapsed), in order:</p>
+<ol>
+<li>In <code>DEFLECTION_PHRASES</code> ("skip", "pass", "not sure", "no idea", "i don't know", "rather not say", and similar): <code>deflected</code>.</li>
+<li>Equal to exactly one option's normalized label, or to its 1-based index: <code>answered</code>.</li>
+<li>Anything else, including a reply matching more than one option: <code>unrecognized</code>.</li>
+</ol>
+<p>Deflections are checked first so a non-answer is never scored as an answer. An LLM classifier is deliberately out of scope.</p>
+<p><code>deflected</code> and <code>unrecognized</code> set the candidate to <code>cooled</code> with <code>cooldown_until = turn + QUESTION_COOLDOWN_TURNS</code> and write no evidence. The free-text reply is <strong>never stored or logged</strong>. Only the matched option index is kept, because a reply can echo sensitive content.</p>
+<h2 id="answers-are-evidence">Answers are evidence<a class="headerlink" href="#answers-are-evidence" title="Permanent link">&para;</a></h2>
+<p>An <code>answered</code> reply never overwrites anything. It is applied as defeasible evidence through the existing observation machinery:</p>
+<ol>
+<li><strong>Claim.</strong> A Lua compare-and-set flips <code>status</code> from <code>delivered</code> (or <code>pending</code>) to <code>answered</code> and writes <code>answer_option</code>. If the status was anything else, the call returns <code>AnswerResult(applied=False, reason="not_open")</code> and changes nothing. That includes a reply that arrives after an ignored question was already moved to <code>cooled</code>: the late reply is not applied, and the question can be asked again after its cooldown.</li>
+<li><strong>Apply.</strong> The chosen option's <code>acted</code> keys map to the <code>acted</code> outcome and its <code>contradicted</code> keys to <code>contradicted</code>, applied through <code>ObservationProtocol.on_context_used</code>. Each target that declares a <code>ConfidenceField</code> then gets <code>QUESTION_ANSWER_WEIGHT - 1</code> further <code>update_confidence</code> observations at the same signal.</li>
+</ol>
+<p>The total is <code>QUESTION_ANSWER_WEIGHT</code> observations. <code>update_confidence</code> has no weight argument, so this stands in for one. Past <code>evidence_cap</code> each observation has gain <code>1/(cap+1)</code>, so the evidence count stays capped and a later contradiction keeps its full gain. The claim is "W strong observations", never "dominates".</p>
+<p>Other properties:</p>
+<ul>
+<li><code>_superseded_by</code> is <strong>never</strong> set. A human answer must not close a validity interval.</li>
+<li>Claiming first means a crash between the steps loses that answer's evidence but never double-counts it. A second <code>record_answer</code> on an answered candidate is a no-op.</li>
+<li>Targets without a <code>ConfidenceField</code>, notably the <code>JournalEntry</code> sides of a disjunction, receive only the outcome effects they support. The answer is recorded on the candidate as <code>answer_option</code>. <strong>Disjunction answers are recorded only.</strong> Writing them back into the journal or Reconciliation so the disjunction resolves is out of scope for this feature.</li>
+</ul>
+<p>See <a href="../confidence-field/">ConfidenceField</a> for the update rule and <a href="../observation-protocol/">ObservationProtocol</a> for the outcome vocabulary.</p>
+<h2 id="fail-closed-behavior">Fail-closed behavior<a class="headerlink" href="#fail-closed-behavior" title="Permanent link">&para;</a></h2>
+<p><code>propose*</code>, <code>next_question</code>, <code>record_answer</code> and <code>note_use</code> log and return <code>None</code>, <code>0</code> or a non-applied <code>AnswerResult</code> on any Redis error. They never raise into the caller. Invalid input is the exception: an unknown <code>kind</code> or <code>ambiguity_signal</code>, an empty question, or an option whose <code>acted</code> and <code>contradicted</code> lists overlap raises <code>ValueError</code>, because that is a producer bug. <code>assemble()</code>'s own outage contract is untouched.</p>
+<p><code>AnswerResult.reason</code> is one of <code>applied</code>, <code>cooled</code>, <code>not_open</code>, <code>apply_failed</code>, <code>disabled</code>, <code>error</code>.</p>
+<h2 id="kill-switch">Kill switch<a class="headerlink" href="#kill-switch" title="Permanent link">&para;</a></h2>
+<p>Set <code>POPOTO_QUESTION_QUEUE_DISABLE=1</code> (any of the usual truthy strings) to turn the queue off. It is read on every call, not at import, so it can be flipped on a running deploy without editing model code. Disabled, producers write nothing, <code>next_question()</code> returns <code>None</code>, and <code>record_answer()</code> returns <code>reason="disabled"</code>.</p>
+<p>The queue is default-on. What defaults on is the queue, not delivery: whether a question ever reaches a person is the host's call.</p>
+<h2 id="tuning-constants">Tuning constants<a class="headerlink" href="#tuning-constants" title="Permanent link">&para;</a></h2>
+<p>Pinned in <code>popoto.fields.constants.Defaults</code>. These are experimental tuning values, not user configuration. All counts are in host-supplied turns.</p>
 <table>
 <thead>
 <tr>
-<th>Variable</th>
+<th>Constant</th>
 <th>Default</th>
-<th>Description</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>POPOTO_CONTENT_PATH</code></td>
-<td><code>~/.popoto/content</code></td>
-<td>Base directory for content files and embeddings</td>
+<td><code>QUESTION_BUDGET_TURNS</code></td>
+<td>5</td>
+<td>K: one delivery per this many turns, per agent</td>
 </tr>
 <tr>
-<td><code>VOYAGE_API_KEY</code></td>
-<td><em>(none)</em></td>
-<td>API key for VoyageProvider (alternative to passing <code>api_key=</code>)</td>
+<td><code>QUESTION_EXPIRY_TURNS</code></td>
+<td>20</td>
+<td>N: undelivered candidates expire after this many turns</td>
 </tr>
 <tr>
-<td><code>OPENAI_API_KEY</code></td>
-<td><em>(none)</em></td>
-<td>API key for OpenAIProvider (alternative to passing <code>api_key=</code>)</td>
+<td><code>QUESTION_RECENT_USE_TURNS</code></td>
+<td>5</td>
+<td>Window for the "recently used" gate factor</td>
 </tr>
 <tr>
-<td><em>(none)</em></td>
-<td>—</td>
-<td>OllamaProvider requires no API key</td>
+<td><code>QUESTION_ANSWER_WEIGHT</code></td>
+<td>3</td>
+<td>Total observations an answered reply writes per target</td>
+</tr>
+<tr>
+<td><code>QUESTION_RETENTION_TURNS</code></td>
+<td>500</td>
+<td><code>prune()</code> deletes non-pending candidates older than this</td>
+</tr>
+<tr>
+<td><code>QUESTION_COOLDOWN_TURNS</code></td>
+<td>10</td>
+<td>Re-ask cooldown after a non-answer</td>
+</tr>
+<tr>
+<td><code>QUESTION_BUCKET_TTL_SECONDS</code></td>
+<td>604800</td>
+<td>Wall-clock TTL backstop on the token bucket</td>
 </tr>
 </tbody>
 </table>
+<h2 id="agent-integration">Agent integration<a class="headerlink" href="#agent-integration" title="Permanent link">&para;</a></h2>
+<p>The host drives the queue. The library supplies a candidate and records the outcome.</p>
+<ol>
+<li>Pass a monotonic <code>turn</code> integer on every call. The library owns no counter.</li>
+<li>Call <code>next_question(agent_id, turn, query_cues=...)</code> once per turn. A non-<code>None</code> result is the one question you may ask.</li>
+<li>Phrase it and deliver it however your application delivers anything. Transport is not the library's concern.</li>
+<li>When the person replies, call <code>record_answer(candidate, reply_text, turn)</code>.</li>
+<li>Optionally call <code>prune(agent_id, turn)</code> periodically to bound retention.</li>
+</ol>
+<p>Do not build a second path that asks questions around the queue, such as a producer that messages the person directly. The budget only protects the person if every question goes through <code>next_question()</code>.</p>
+<h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">question_queue</span> <span class="k">as</span> <span class="n">qq</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># A producer proposes; it never asks directly.</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">qq</span><span class="o">.</span><span class="n">propose</span><span class="p">(</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">"a1"</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">question_text</span><span class="o">=</span><span class="s2">"Does Dana prefer morning or afternoon meetings?"</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">kind</span><span class="o">=</span><span class="s2">"disjunction"</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">source_module</span><span class="o">=</span><span class="s2">"reconciliation"</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">target_keys</span><span class="o">=</span><span class="p">[</span><span class="n">key_a</span><span class="p">,</span> <span class="n">key_b</span><span class="p">],</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">options</span><span class="o">=</span><span class="p">[</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>        <span class="p">{</span><span class="s2">"label"</span><span class="p">:</span> <span class="s2">"morning"</span><span class="p">,</span> <span class="s2">"acted"</span><span class="p">:</span> <span class="p">[</span><span class="n">key_a</span><span class="p">],</span> <span class="s2">"contradicted"</span><span class="p">:</span> <span class="p">[</span><span class="n">key_b</span><span class="p">]},</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>        <span class="p">{</span><span class="s2">"label"</span><span class="p">:</span> <span class="s2">"afternoon"</span><span class="p">,</span> <span class="s2">"acted"</span><span class="p">:</span> <span class="p">[</span><span class="n">key_b</span><span class="p">],</span> <span class="s2">"contradicted"</span><span class="p">:</span> <span class="p">[</span><span class="n">key_a</span><span class="p">]},</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="p">],</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">ambiguity_signal</span><span class="o">=</span><span class="s2">"disjunction"</span><span class="p">,</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">turn</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="p">)</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="c1"># Or let a producer adapter read an existing signal.</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="n">qq</span><span class="o">.</span><span class="n">propose_from_disjunctions</span><span class="p">(</span><span class="s2">"a1"</span><span class="p">,</span> <span class="n">turn</span><span class="o">=</span><span class="mi">12</span><span class="p">)</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">"topic"</span><span class="p">:</span> <span class="s2">"deployment"</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">"a1"</span><span class="p">)</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="n">qq</span><span class="o">.</span><span class="n">propose_from_gate</span><span class="p">(</span><span class="s2">"a1"</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">,</span> <span class="n">turn</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span> <span class="n">query_text</span><span class="o">=</span><span class="s2">"deployment"</span><span class="p">)</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="c1"># The host asks the queue once per turn.</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="n">q</span> <span class="o">=</span> <span class="n">qq</span><span class="o">.</span><span class="n">next_question</span><span class="p">(</span><span class="s2">"a1"</span><span class="p">,</span> <span class="n">turn</span><span class="o">=</span><span class="mi">13</span><span class="p">,</span> <span class="n">query_cues</span><span class="o">=</span><span class="s2">"morning meetings with Dana"</span><span class="p">)</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="k">if</span> <span class="n">q</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>    <span class="o">...</span>  <span class="c1"># host phrases and delivers q.question_text</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>    <span class="n">outcome</span> <span class="o">=</span> <span class="n">qq</span><span class="o">.</span><span class="n">record_answer</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="s2">"morning"</span><span class="p">,</span> <span class="n">turn</span><span class="o">=</span><span class="mi">14</span><span class="p">)</span>
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">outcome</span><span class="o">.</span><span class="n">applied</span><span class="p">,</span> <span class="n">outcome</span><span class="o">.</span><span class="n">reason</span><span class="p">,</span> <span class="n">outcome</span><span class="o">.</span><span class="n">option_index</span><span class="p">)</span>
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>    <span class="c1"># True applied 0</span>
+</code></pre></div>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="../../fields/#contentfield">Fields &gt; ContentField</a> -- field reference</li>
-<li><a href="../../fields/#embeddingfield">Fields &gt; EmbeddingField</a> -- field reference</li>
-<li><a href="../../query/#semantic-search">Making Queries &gt; Semantic Search</a> -- query interface</li>
-<li><a href="../../configuration/#content-and-embedding-configuration">Configuration</a> -- global setup</li>
-<li><a href="../../reference/popoto/fields/content_field/">API Reference: ContentField</a> -- method signatures</li>
+<li><a href="../context-assembler/#confidence-gate">ContextAssembler</a> - the gate whose refusals feed <code>propose_from_gate</code></li>
+<li><a href="../reconciliation/">Reconciliation</a> - source of <code>disjoin</code> pairs</li>
+<li><a href="../reference-resolution/">Reference Resolution</a> - source of <code>evidence_gap</code> references</li>
+<li><a href="../confidence-field/">ConfidenceField</a> - answers feed confidence as defeasible evidence</li>
+<li><a href="../observation-protocol/">ObservationProtocol</a> - the outcome vocabulary answers map onto</li>
 </ul>
 
 

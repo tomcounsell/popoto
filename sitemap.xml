@@ -197,6 +197,10 @@
          <lastmod>2026-10-02</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/features/question-queue/</loc>
+         <lastmod>2026-10-02</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/features/reconciliation/</loc>
          <lastmod>2026-10-02</lastmod>
     </url>
@@ -570,6 +574,10 @@
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/provenance_journal/</loc>
+         <lastmod>2026-10-02</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/recipes/question_queue/</loc>
          <lastmod>2026-10-02</lastmod>
     </url>
     <url>
