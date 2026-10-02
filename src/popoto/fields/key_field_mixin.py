@@ -56,7 +56,7 @@ See Also
 
 from decimal import Decimal
 from datetime import date, datetime, time
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Iterable
 import logging
 from ..backends import get_backend
 from ..models.db_key import DB_key
@@ -65,10 +65,17 @@ from ..models.query import QueryException
 from ..redis_db import ENCODING
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
-    from ..backends import UnitOfWork
     from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.KeyFieldMixin")
+
+# ``pipeline=`` is duck-typed (#631 architect decision 1): the field layer
+# only asks ``is not None`` and hands it to the backend as ``uow=``. It is
+# annotated ``Any`` rather than ``UnitOfWork | None`` because ``Field.on_save``
+# still annotates ``redis.client.Pipeline``, and mypy rejects a narrower type
+# as an incompatible multiple-inheritance definition in ``shortcuts.py`` and
+# ``decaying_sorted_field.py``, which this slice does not own (same as WS1c's
+# ``indexed_field_mixin.py``).
 
 
 def _members_as_bytes(members: Iterable[str]) -> set[bytes]:
@@ -268,7 +275,7 @@ class KeyFieldMixin:
         model_instance: "Model",
         field_name: str,
         field_value,
-        pipeline: "Optional[UnitOfWork]" = None,
+        pipeline: Any = None,
         **kwargs,
     ):
         """
@@ -339,7 +346,7 @@ class KeyFieldMixin:
         model_instance: "Model",
         field_name: str,
         field_value,
-        pipeline: "Optional[UnitOfWork]" = None,
+        pipeline: Any = None,
         **kwargs,
     ):
         """

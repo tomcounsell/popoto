@@ -485,7 +485,7 @@ class TestSourceShape:
         "scard sismember sunion sinter zadd zrem zincrby zscore zcard zrange "
         "zrevrange zrangebyscore zrevrangebyscore zunionstore zdiffstore "
         "zrangestore expire expireat eval evalsha hscan sscan zscan scan_iter "
-        "pipeline".split()
+        "pipeline delete exists".split()
     )
 
     SOURCES = {name: path.read_text() for name, path in OWNED.items()}

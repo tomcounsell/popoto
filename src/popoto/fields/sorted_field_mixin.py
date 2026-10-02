@@ -59,10 +59,17 @@ from ..models.query import QueryException
 from ..redis_db import ENCODING
 
 if typing.TYPE_CHECKING:  # pragma: no cover - import cycle guard
-    from ..backends import UnitOfWork
     from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.SortedFieldMixin")
+
+# ``pipeline=`` is duck-typed (#631 architect decision 1): the field layer
+# only asks ``is not None`` and hands it to the backend as ``uow=``. It is
+# annotated ``Any`` rather than ``UnitOfWork | None`` because ``Field.on_save``
+# still annotates ``redis.client.Pipeline``, and mypy rejects a narrower type
+# as an incompatible multiple-inheritance definition in ``shortcuts.py`` and
+# ``decaying_sorted_field.py``, which this slice does not own (same as WS1c's
+# ``indexed_field_mixin.py``).
 
 
 class SortedFieldMixin:
@@ -619,7 +626,7 @@ class SortedFieldMixin:
         model_instance: "Model",
         field_name: str,
         field_value: typing.Union[int, float],
-        pipeline: "typing.Optional[UnitOfWork]" = None,
+        pipeline: "typing.Any" = None,
         **kwargs,
     ):
         """
@@ -706,7 +713,7 @@ class SortedFieldMixin:
         model_instance: "Model",
         field_name: str,
         field_value,
-        pipeline: "typing.Optional[UnitOfWork]" = None,
+        pipeline: "typing.Any" = None,
         **kwargs,
     ):
         """

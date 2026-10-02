@@ -3715,6 +3715,10 @@ class Query:
                 list(reversed(db_keys))[:limit] if reverse_order else db_keys[:limit]
             )
 
+        # ``ordered_keys`` is the materialized form of ``db_keys`` (a set on
+        # entry); a distinct name so the ``set``-typed parameter is not rebound.
+        ordered_keys: list[Any]
+        hashes_list: list[dict[Any, Any] | None]
         if values:
             if not isinstance(values, tuple):
                 raise QueryException(
@@ -3741,16 +3745,16 @@ class Query:
                 # Materialize once: the backend iterates the keys and the zip
                 # below iterates them again, and a set must be walked in the
                 # same order both times.
-                db_keys = list(db_keys)
-                value_lists = get_backend().load_fields_many(db_keys, list(values))
+                ordered_keys = list(db_keys)
+                value_lists = get_backend().load_fields_many(ordered_keys, list(values))
                 hashes_list = [
                     {field_name: result[i] for i, field_name in enumerate(values)}
                     for result in value_lists
                 ]
 
         else:
-            db_keys = list(db_keys)
-            hashes_list = get_backend().load_records(db_keys)
+            ordered_keys = list(db_keys)
+            hashes_list = get_backend().load_records(ordered_keys)
 
         # A missing record is None from load_records (and was {} from the
         # pipelined HGETALL it replaced); the projection path never yields one.
@@ -3758,7 +3762,9 @@ class Query:
             # A member whose hash is gone (Meta.ttl expiry, or an external
             # DEL). Repair what the key alone can repair so the next read
             # is clean; clean_indexes() covers the rest.
-            missing = [db_key for db_key, data in zip(db_keys, hashes_list) if not data]
+            missing = [
+                db_key for db_key, data in zip(ordered_keys, hashes_list) if not data
+            ]
             purged = model._purge_orphan_keys(missing)
             logger.info(
                 "%s: purged %d expired index member(s); run "
@@ -3776,7 +3782,7 @@ class Query:
                 lazy=lazy and not values,
                 source_redis_key=source_key,
             )
-            for source_key, redis_hash in zip(db_keys, hashes_list)
+            for source_key, redis_hash in zip(ordered_keys, hashes_list)
             if redis_hash
         ]
 
