@@ -209,6 +209,49 @@ class TestOnDeleteReachesTheBackend:
         assert Probe.query.filter_for_keys_set(status="s") == set()
         assert Probe.query.filter_for_keys_set(tags__contains="x") == set()
 
+    # #744 review B1. Before the seam ``TagFieldMixin.on_delete`` normalised
+    # the field value only on the no-pointer path; the first WS1c cut built
+    # the fallback keys eagerly, so a record whose in-memory ``tags`` had been
+    # reassigned to a non-list (and never saved -- ``save()`` coerces through
+    # the formatter, ``delete()`` hands the hook the raw attribute) raised
+    # ``ModelException`` on a public ``delete()`` where base returned True.
+    BAD_TAGS = [
+        pytest.param("oops", id="str"),
+        pytest.param({"a": 1}, id="dict"),
+        pytest.param([object()], id="object-list"),
+    ]
+
+    @pytest.mark.parametrize("bad_value", BAD_TAGS)
+    def test_delete_with_a_pointer_never_normalizes_in_memory_tags(
+        self, spy, bad_value
+    ):
+        Probe.create(name="b1", status="s", tags=["a"])
+        obj = Probe(name="b1")
+        obj.tags = bad_value
+        spy.calls.clear()
+        assert obj.delete() is True  # as before the seam
+        assert "drop_tag_entries" in spy.calls
+        assert Probe.query.get(name="b1") is None
+        assert Probe.query.filter_for_keys_set(tags__contains="a") == set()
+
+    @pytest.mark.parametrize("bad_value", BAD_TAGS)
+    def test_delete_without_a_pointer_still_normalizes_in_memory_tags(
+        self, spy, bad_value
+    ):
+        # The other half of base's order: with no pointer the fallback *is*
+        # built, so the same value still raises there -- which also proves
+        # the lazy sequence materialises rather than silently returning [].
+        Probe.create(name="b2", status="s", tags=["a"])
+        popoto.get_redis().delete(
+            TagFieldMixin._tag_pointer_side_key(_key("b2"), "tags")
+        )
+        obj = Probe(name="b2")
+        obj.tags = bad_value
+        with pytest.raises(ModelException, match="TagField"):
+            obj.delete()
+        assert Probe.query.get(name="b2") is not None  # nothing deleted
+        Probe.query.get(name="b2").delete()
+
     def test_direct_hook_call_without_a_pipeline_executes_now(self, spy):
         obj = Probe.create(name="h", status="s", tags=["x"])
         spy.calls.clear()
@@ -329,10 +372,15 @@ class TestSourceShape:
     the gap for the command names the mixins could reach for.
     """
 
+    # Plain key commands too (#744 review TD2). ``get`` is deliberately
+    # absent: ``kwargs.get(...)`` is an attribute call with that name, and
+    # ``Model.delete()``/``Model.exists()`` are the same trap for the two
+    # listed below -- neither mixin calls them today, so the list holds.
     REDIS_COMMANDS = frozenset(
         "hset hget hgetall hdel hmget sadd srem smembers sunion sinter scard "
         "sismember zadd zrem zrange eval evalsha register_script scan_keys "
-        "scan_iter hscan sscan zscan pipeline".split()
+        "scan_iter hscan sscan zscan pipeline "
+        "exists delete type expire ttl".split()
     )
 
     SOURCES = {INDEXED_PY: INDEXED_PY.read_text(), TAG_PY: TAG_PY.read_text()}

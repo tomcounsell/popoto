@@ -80,7 +80,8 @@ Usage
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, overload
 
 import msgpack
 
@@ -93,6 +94,46 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.TagFieldMixin")
+
+
+class _LazyFallbackIdxs(Sequence[str]):
+    """Fallback index keys that are built on first use, not at construction.
+
+    ``Backend.drop_tag_entries`` takes ``fallback_idxs`` as a ``Sequence[str]``
+    and consults it only after the pointer side key came back empty. Before
+    the seam, ``on_delete`` computed those keys inside that same no-pointer
+    branch, so ``_normalize(field_value)`` -- which raises ``ModelException``
+    on a non-list value -- never ran while a pointer existed. Building the
+    list eagerly in the mixin moved that raise onto every delete (#744 review,
+    B1). This wrapper keeps base's order through the unchanged signature:
+    ``bool()``/``len()``/iteration call ``build`` once and cache the result.
+    """
+
+    __slots__ = ("_build", "_items")
+
+    def __init__(self, build: Callable[[], list[str]]) -> None:
+        self._build = build
+        self._items: list[str] | None = None
+
+    def _materialize(self) -> list[str]:
+        if self._items is None:
+            self._items = self._build()
+        return self._items
+
+    def __len__(self) -> int:
+        return len(self._materialize())
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._materialize())
+
+    @overload
+    def __getitem__(self, index: int) -> str: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[str]: ...
+
+    def __getitem__(self, index: int | slice) -> str | Sequence[str]:
+        return self._materialize()[index]
 
 
 # ``TAG_SWAP_LUA`` moved to ``popoto.backends.redis`` (#631 WS0).
@@ -262,17 +303,25 @@ class TagFieldMixin(IndexedFieldMixin):
         from the pointer side key (still present because Model.delete() runs
         field hooks before the hash DELETE). It falls back to the field-value
         derived keys passed here if the pointer is somehow absent (legacy /
-        partial state).
+        partial state). Those keys are handed over lazily: ``_normalize``
+        rejects a non-list value, and as before the seam that must only be
+        reachable on the no-pointer path -- a record whose in-memory ``tags``
+        was reassigned to ``"oops"`` and never saved still deletes cleanly
+        while its pointer exists.
         """
         member_key = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
 
-        # Fallback: derive Set keys from the field value if no pointer exists.
-        fallback_idxs: list[str] = []
-        if field_value:
+        def _fallback_idxs() -> list[str]:
+            # Fallback: derive Set keys from the field value if no pointer
+            # exists. Runs only when the backend finds no pointer.
+            if not field_value:
+                return []
             prefix = cls.get_special_use_field_db_key(model_instance, field_name)
-            fallback_idxs = [
+            return [
                 DB_key(prefix, tag).redis_key for tag in cls._normalize(field_value)
             ]
+
+        fallback_idxs = _LazyFallbackIdxs(_fallback_idxs)
 
         backend = get_backend()
         if pipeline is not None:
