@@ -54,6 +54,24 @@ never closed -- from leaking a connection per test. The connection is not
 shared across threads: psycopg serialises calls on it, but two threads'
 transactions would interleave.
 
+Locking
+-------
+A transaction alone is not the Redis single thread: two *instances* (two
+connections) can interleave at statement granularity, and a read-modify-write
+on a row that does not exist yet has nothing for ``FOR UPDATE`` to lock. So
+every operation that writes a record key -- :meth:`save_record`,
+:meth:`delete_record`, :meth:`increment_field` and :meth:`purge_orphan` --
+takes ``pg_advisory_xact_lock(hashtext(key))`` as its *first* statement
+(:func:`_lock_record_keys`), held to the end of the transaction. On the
+``uow=`` path that is the unit of work's transaction, taken at ``commit()``
+rather than when the method was called. Without the lock on the writers, an
+increment on an absent field could read "no row", lose to a concurrent
+``save_record`` committing ``n = 100`` on another instance, and upsert
+``0 + 1`` over it: a stored ``1`` that no serial order produces (PR #737
+review, B1). The one operation that names two keys, a rename through
+``obsolete_key``, locks both ascending by lock id so two instances renaming in
+opposite directions take them in the same order.
+
 The atomic-increment envelope
 -----------------------------
 ``ATOMIC_INCREMENT_LUA`` reads the field, ``cmsgpack.unpack``s it, adds the
@@ -154,6 +172,29 @@ def _field_bytes(name: Any) -> bytes:
     return str(name).encode(ENCODING)
 
 
+def _lock_record_keys(cur: Any, keys: Sequence[str]) -> None:
+    """Take the per-key transaction advisory lock for every key in ``keys``,
+    in one global order (see "Locking" in the module docstring).
+
+    Runs as the *first* statement of every operation that writes a record
+    key, so two instances' read-modify-write sequences on the same key are
+    serialised the way Redis's single thread serialises them. Lock ids are
+    ``hashtext(key)``; when an operation names more than one key (a rename
+    with ``obsolete_key``) they are taken ascending by lock id, ``DISTINCT``
+    so a hash collision locks once, so two instances renaming in opposite
+    directions cannot deadlock on each other. The ordered subquery is the
+    documented Postgres idiom for acquiring advisory locks in order: the
+    volatile call is evaluated per row as the sorted rows stream.
+    """
+    cur.execute(
+        "SELECT pg_advisory_xact_lock(h) FROM ("
+        "  SELECT DISTINCT hashtext(k) AS h FROM unnest(%s::text[]) AS t(k)"
+        "  ORDER BY h"
+        ") AS locks",
+        (list(keys),),
+    )
+
+
 # -- Lua parity helpers for increment_field ------------------------------------
 
 
@@ -198,7 +239,18 @@ def _current_value(packed: bytes | None, is_decimal: bool) -> float:
 def _cmsgpack_pack_number(value: float) -> bytes:
     """Pack a Lua number as Redis's ``cmsgpack`` does: a msgpack integer when
     the double is integral and fits ``int64``, else ``float32`` when the
-    narrowing is lossless, else ``float64``."""
+    narrowing is lossless, else ``float64``.
+
+    One documented, un-emulated hole at exactly ``2**63``: cmsgpack decides
+    "fits ``int64``" with a C ``(int64_t)d`` cast, which is undefined
+    behaviour for ``9223372036854775808.0``. On aarch64 it saturates, so an
+    arm64 Redis stores ``cf 7fffffffffffffff`` (``int64`` max); an x86-64
+    Redis and this function store the float32 ``ca 5f000000``. The *returned*
+    value (``%.14g``) is identical either way; only a later decode differs
+    (``int`` ``2**63 - 1`` against ``float`` ``2**63``). Emulating one
+    platform's UB would be wrong on the other, so the deviation is recorded
+    here and in ``docs/features/postgres-backend.md`` instead.
+    """
     if math.isfinite(value) and value.is_integer() and -(2**63) <= value < 2**63:
         return msgpack.packb(int(value))
     if not math.isnan(value):
@@ -362,7 +414,15 @@ class PostgresBackend:
             [float(numeric[name]) for name in numeric_names] if numeric else []
         )
 
+        locked = [key]
+        if obsolete_key and obsolete_key != key:
+            locked.append(obsolete_key)
+
         def op(cur: Any) -> Any:
+            # First statement: serialise against increment_field / delete_record
+            # on these keys (B1 in the #737 review). On the ``uow=`` path this
+            # runs at commit(), inside the unit of work's transaction.
+            _lock_record_keys(cur, locked)
             # Mirrors the Redis pipeline's reply: the HSET count of newly
             # created fields when any were given, else the SADD reply.
             reply = 0
@@ -445,6 +505,7 @@ class PostgresBackend:
         self, key: str, *, class_set: str, uow: UnitOfWork | None = None
     ) -> Any:
         def op(cur: Any) -> Any:
+            _lock_record_keys(cur, [key])
             cur.execute("DELETE FROM popoto_record WHERE key = %s", (key,))
             existed = cur.rowcount > 0
             cur.execute("DELETE FROM popoto_numeric WHERE key = %s", (key,))
@@ -489,8 +550,10 @@ class PostgresBackend:
 
         def op(cur: Any) -> Any:
             # Serialise read-modify-write on this record (``FOR UPDATE`` cannot
-            # lock a row that does not exist yet).
-            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (key,))
+            # lock a row that does not exist yet) -- against other increments
+            # *and* against save_record / delete_record, which take the same
+            # lock first.
+            _lock_record_keys(cur, [key])
             row = cur.execute(
                 "SELECT value FROM popoto_record WHERE key = %s AND field = %s "
                 "FOR UPDATE",
@@ -745,10 +808,13 @@ class PostgresBackend:
         set_idxs = [idx for idx, kind in refs if kind != "sorted"]
 
         def op(cur: Any) -> Any:
-            # One statement, one snapshot: the EXISTS gate and both DELETEs
-            # see the same state, which is the Lua's "only if its record is
-            # still gone" rule. A save committing *during* this statement is
-            # the residual window Redis's single thread does not have.
+            # The record key's advisory lock first, so a save_record of the
+            # same key in flight on another instance commits before the gate
+            # below reads (and the gate then sees the record and purges
+            # nothing), rather than racing it. Then one statement, one
+            # snapshot: the EXISTS gate and both DELETEs see the same state,
+            # which is the Lua's "only if its record is still gone" rule.
+            _lock_record_keys(cur, [record_key])
             row = cur.execute(
                 "WITH gone AS ("
                 "  SELECT NOT EXISTS (SELECT 1 FROM popoto_record WHERE key = %(key)s)"

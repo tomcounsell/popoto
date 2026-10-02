@@ -22,12 +22,40 @@ The record family, the atomic increment, and the orphan purge, all behind the
 |---|---|
 | `save_record`, `load_record`, `load_records`, `load_fields`, `record_exists`, `delete_record`, `list_keys`, `count_records` | `popoto_record(key, field bytea, value bytea)`, one row per field, so the msgpack bytes the field layer emits are stored and returned untouched and a save merges fields the way `HSET` does. The class set lives in `popoto_set(idx, member)`. |
 | `save_record(numeric=...)` | `popoto_numeric(key, field, value double precision)`, the typed side-map the decay query will `ORDER BY`. |
-| `increment_field` | Advisory lock, `SELECT ... FOR UPDATE`, decode / add / re-encode in Python, upsert; reproduces the Redis Lua's `%.14g` return and cmsgpack's integer / float32 / float64 packing, including the `Decimal` envelope and the absent-record case. |
+| `increment_field` | Per-key advisory lock, `SELECT ... FOR UPDATE`, decode / add / re-encode in Python, upsert; reproduces the Redis Lua's `%.14g` return and cmsgpack's integer / float32 / float64 packing, including the `Decimal` envelope and the absent-record case. |
 | `purge_orphan` | One CTE statement: an `EXISTS` gate over `popoto_record` and conditional deletes from `popoto_sorted` / `popoto_set`. |
 | `begin()` | `PostgresUnitOfWork`: a queue of operations run inside one transaction on `commit()`; leaving the `with` block without committing discards it. |
 
 Tables are created with `CREATE TABLE IF NOT EXISTS` on the first connection a
 backend instance opens, in whatever schema the URL's `search_path` names.
+
+## Cross-instance serialisation
+
+Redis runs every command and script on one thread, so an `increment_field`
+and a `save_record` on the same key can never interleave. Postgres gives each
+backend instance its own connection, and a transaction on its own only
+serialises rows that already exist (`FOR UPDATE` cannot lock a row that an
+upsert is about to create). Every operation that writes a record key --
+`save_record`, `delete_record`, `increment_field` and `purge_orphan` --
+therefore takes `pg_advisory_xact_lock(hashtext(key))` as its first statement,
+held until the transaction ends; on the `uow=` path that is the unit of work's
+transaction at `commit()`. A rename (`save_record(obsolete_key=...)`) locks
+both keys in one global order (ascending lock id) so two instances renaming
+in opposite directions cannot deadlock on each other. Without this, an
+increment on an absent field could read "no row", lose to another instance
+committing `n = 100`, and store `0 + 1`: a value no serial order produces.
+
+## Known deviations from the Redis oracle
+
+**`2**63` packs differently per platform.** cmsgpack decides whether a Lua
+number "fits `int64`" with a C `(int64_t)d` cast, which is undefined
+behaviour at exactly `9223372036854775808.0`. On aarch64 the cast saturates,
+so an arm64 Redis stores the msgpack `int64` max (`cf 7fffffffffffffff`); an
+x86-64 Redis, and the Postgres backend on every platform, store the lossless
+float32 (`ca 5f000000`). The value `increment_field` *returns* is identical
+either way; only a later decode of the stored bytes differs (`int`
+`2**63 - 1` against `float` `2**63`). The Postgres backend documents this
+rather than emulating one platform's undefined behaviour.
 
 **Not implemented in WS3a**: record TTL (`save_record(ttl=...)` /
 `expire_at=...` raises `NotImplementedError` rather than silently storing a

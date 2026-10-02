@@ -21,12 +21,15 @@ plugin-bound client and the Postgres leg through the harness's own schema.
 from __future__ import annotations
 
 import struct
+import threading
+import time
 from decimal import Decimal
 from typing import Any
 
 import msgpack
 import pytest
 
+from popoto.backends import postgres as postgres_module
 from popoto.backends.postgres import PostgresBackend
 from popoto.backends.redis import RedisBackend
 
@@ -339,6 +342,79 @@ class TestIncrement:
         results = uow.commit()
         assert isinstance(results, list) and results
         assert backend.load_record(k) == {b"n": msgpack.packb(5)}
+
+    def test_a_concurrent_save_from_another_instance_cannot_be_lost(
+        self, backend, backend_is_redis, monkeypatch
+    ):
+        """Cross-instance serialisation of ``increment_field`` against
+        ``save_record`` on the same key (PR #737 review, B1).
+
+        Instance A increments ``n`` on a record that does not exist yet.
+        Between A's "no row" read and its upsert, instance B (a second
+        backend, so a second connection) saves ``n = 100``. The only serial
+        outcomes are ``100`` (increment, then save) and ``101`` (save, then
+        increment); Redis's single thread can produce nothing else. Without a
+        lock shared by both operations A's upsert lands on B's committed row
+        and overwrites it with ``0 + 1``, a value no serial order produces.
+
+        The interleaving is forced deterministically: ``_current_value`` is
+        hooked to run B's save on a thread while A is mid-transaction, and the
+        hook returns only once that save has either committed (the lost-update
+        shape) or is blocked on A's lock in ``pg_stat_activity`` (the fixed
+        shape). Postgres-leg only: the Redis Lua has no hook point and needs
+        none.
+        """
+        if backend_is_redis:
+            pytest.skip("Postgres-leg assertion: Redis serialises these natively")
+        import psycopg
+
+        k = key("race")
+        other = PostgresBackend(backend.url)
+        probe = psycopg.connect(backend.url, autocommit=True)
+        other_pid = other._connection().info.backend_pid
+        save_errors: list[BaseException] = []
+
+        def save_from_b() -> None:
+            try:
+                other.save_record(k, {b"n": msgpack.packb(100)}, class_set=CLASS_SET)
+            except BaseException as exc:  # surfaced by the assertion below
+                save_errors.append(exc)
+
+        saver = threading.Thread(target=save_from_b, name="instance-B-save")
+        real_current_value = postgres_module._current_value
+
+        def hooked_current_value(packed, is_decimal):
+            # Fire once: A has read "no row" and is inside its transaction.
+            monkeypatch.setattr(postgres_module, "_current_value", real_current_value)
+            saver.start()
+            deadline = time.monotonic() + 10.0
+            while saver.is_alive() and time.monotonic() < deadline:
+                row = probe.execute(
+                    "SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s",
+                    (other_pid,),
+                ).fetchone()
+                if row is not None and row[0] == "Lock":
+                    break  # B is queued behind A's advisory lock
+                time.sleep(0.01)
+            else:
+                assert not saver.is_alive(), "B neither committed nor blocked"
+            return real_current_value(packed, is_decimal)
+
+        monkeypatch.setattr(postgres_module, "_current_value", hooked_current_value)
+        try:
+            got = backend.increment_field(k, "n", 1, kind="int")
+            saver.join(timeout=10.0)
+            assert not saver.is_alive(), "B's save never completed after A committed"
+        finally:
+            probe.close()
+            other.close()
+        assert not save_errors, f"B's save_record raised: {save_errors[0]!r}"
+        assert got in (1, 101)
+        final = msgpack.unpackb(backend.load_record(k)[b"n"])
+        assert final in (
+            100,
+            101,
+        ), f"lost update: stored n={final}; a serial order gives 100 or 101"
 
 
 # -- J. Orphan purge ------------------------------------------------------------
