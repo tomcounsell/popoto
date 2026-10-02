@@ -26,7 +26,11 @@ Design notes:
       ``Relationship`` field and no ``HSET`` onto a record's own hash here.
     - **All mutations route through** ``ValidityField.execute_supersede``. This
       module never issues a ``ZADD``/``HSET`` of its own, so there is exactly one
-      place that knows ``SUPERSEDE_LUA``'s KEYS/ARGV order.
+      place that turns the field layer's vocabulary into the backend's
+      ``supersede`` call (and, one layer down, exactly one place -- the Redis
+      backend -- that knows ``SUPERSEDE_LUA``'s KEYS/ARGV order). Reads here
+      (chain links, the anchor's interval) go through ``popoto.backends``
+      too: ``map_get`` and ``interval_of`` (#631 WS1e).
     - **Membership is decided inside the script, and an absent member raises**
       (#588). ``_member_key`` resolves a key string and issues no Redis command;
       ``SUPERSEDE_LUA`` runs the ``EXISTS`` check at the instant of the write, so
@@ -70,10 +74,9 @@ import time
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence, Union
 
-import redis.client
 import redis.exceptions
 
-from ..redis_db import get_REDIS_DB
+from ..backends import UnitOfWork, get_backend
 from .validity_field import (
     ValidityField,
     ValidityMemberAbsentError,
@@ -150,7 +153,7 @@ class SupersedeResult:
 
     instance: Any
     closed_key: Optional[str] = None
-    pipeline: Optional[redis.client.Pipeline] = None
+    pipeline: Optional[UnitOfWork] = None
     close_index: Optional[int] = None
 
 
@@ -217,7 +220,7 @@ class SupersessionProtocol:
         identity_key: Union[str, Sequence[str]],
         at: Optional[float] = None,
         field_name: Optional[str] = None,
-        pipeline: Optional[redis.client.Pipeline] = None,
+        pipeline: Optional[UnitOfWork] = None,
     ) -> Optional[str]:
         """Replace whichever record is currently open for ``identity_key``.
 
@@ -294,7 +297,7 @@ class SupersessionProtocol:
         at: Optional[float] = None,
         superseded_by: Any = None,
         field_name: Optional[str] = None,
-        pipeline: Optional[redis.client.Pipeline] = None,
+        pipeline: Optional[UnitOfWork] = None,
     ) -> Optional[str]:
         """Close one specific record's interval — the identity-free direct form.
 
@@ -366,7 +369,7 @@ class SupersessionProtocol:
         identity_key: Union[str, Sequence[str]],
         at: Optional[float] = None,
         field_name: Optional[str] = None,
-        pipeline: Optional[redis.client.Pipeline] = None,
+        pipeline: Optional[UnitOfWork] = None,
     ) -> SupersedeResult:
         """Save ``new_instance`` and close the identity's incumbent, atomically.
 
@@ -430,7 +433,7 @@ class SupersessionProtocol:
         closes: Any,
         at: Optional[float] = None,
         field_name: Optional[str] = None,
-        pipeline: Optional[redis.client.Pipeline] = None,
+        pipeline: Optional[Any] = None,
     ) -> SupersedeResult:
         """Save ``new_instance`` and close ``closes``, atomically.
 
@@ -528,26 +531,27 @@ class SupersessionProtocol:
         if resolved is None:
             return []
         model = type(instance)
-        valid_from_key, _ = ValidityField.get_interval_keys(model, resolved)
+        interval_keys = ValidityField.get_interval_keys(model, resolved)
 
         anchor = _member_key(instance)
         if anchor is None:
             return []
         # Membership, not resolvability. ``_member_key`` no longer probes
         # (#588 D1), so the "unsaved instance -> []" contract this method
-        # documents has to live here. ``ZSCORE`` rather than ``EXISTS`` on
-        # purpose: it is the same rule ``_walk_links`` already applies to a
-        # dangling link, so an anchor and a link are judged by one criterion.
-        # Read-only path; ``_member_key`` still issues zero commands.
-        if get_REDIS_DB().zscore(valid_from_key, anchor) is None:
+        # documents has to live here. The interval's ``valid_from`` rather
+        # than ``EXISTS`` on purpose: it is the same rule ``_walk_links``
+        # already applies to a dangling link, so an anchor and a link are
+        # judged by one criterion. Read-only path; ``_member_key`` still
+        # issues zero commands.
+        if _valid_from_of(interval_keys, anchor) is None:
             return []
 
         fwd_key = ValidityField.get_chain_fwd_key(model, resolved)
         rev_key = ValidityField.get_chain_rev_key(model, resolved)
 
         seen = {anchor}
-        older = _walk_links(rev_key, anchor, valid_from_key, seen)
-        newer = _walk_links(fwd_key, anchor, valid_from_key, seen)
+        older = _walk_links(rev_key, anchor, interval_keys, seen)
+        newer = _walk_links(fwd_key, anchor, interval_keys, seen)
 
         chain: "list[Any]" = []
         for member in reversed(older):
@@ -624,13 +628,24 @@ def _validate_caller_pipeline(pipeline: Any, entry_point: str) -> None:
     ``watching and not explicit_transaction`` is the precise condition, NOT
     ``watching`` alone: ``watch()`` + ``multi()`` is redis-py's standard
     optimistic-locking pattern and queues normally.
+
+    Duck-typed since #631 WS1e (architect decision 1: the field layer tests a
+    unit of work for presence and shape, never ``isinstance`` against
+    redis-py). The shape required is the one :func:`_save_and_close` then
+    reads: a ``command_stack`` to take ``close_index`` from, and the
+    ``transaction`` / ``watching`` / ``explicit_transaction`` flags the three
+    refusals inspect. That is a Redis pipeline's shape, which is honest: the
+    ``close_index`` contract is a queue position, a thing the backend
+    protocol's ``UnitOfWork`` does not yet expose, so a caller-supplied unit
+    of work from another backend is refused here, up front, rather than
+    failing part-way through the save.
     """
-    if not isinstance(pipeline, redis.client.Pipeline):
+    if not hasattr(pipeline, "command_stack"):
         raise ValueError(
             f"SupersessionProtocol.{entry_point}: pipeline must be a redis "
             f"Pipeline, got {type(pipeline).__name__}"
         )
-    if pipeline.transaction is not True:
+    if getattr(pipeline, "transaction", True) is not True:
         raise ValueError(
             f"SupersessionProtocol.{entry_point}: pipeline(transaction=False) "
             "voids the save-and-close atomicity guarantee. Use "
@@ -655,7 +670,7 @@ def _save_and_close(
     *,
     field_name: Optional[str],
     at: Optional[float],
-    pipeline: Optional[redis.client.Pipeline],
+    pipeline: Optional[UnitOfWork],
     mode: str,
     identity_digest: str,
     old_member: str,
@@ -672,11 +687,12 @@ def _save_and_close(
         )
 
     owns_pipeline = pipeline is None
+    pipe: Any
     if pipeline is not None:
         _validate_caller_pipeline(pipeline, entry_point)
         pipe = pipeline
     else:
-        pipe = get_REDIS_DB().pipeline()
+        pipe = get_backend().begin()
 
     saved = new_instance.save(pipeline=pipe)
 
@@ -719,6 +735,12 @@ def _save_and_close(
 
     clock = time.time()
     instant = clock if at is None else float(at)
+    # Queue position of the supersede in the unit of work. ``command_stack`` is
+    # the redis-py pipeline's queue; the backend protocol's ``UnitOfWork`` has
+    # no position method yet, so this read -- and the ``close_index`` contract
+    # it serves -- is Redis-pipeline-shaped. It is not an accessor or script
+    # site; it is listed in the WS1e PR body as the one remaining shape
+    # assumption, with a ``UnitOfWork`` position method as the WS3e follow-up.
     close_index = len(pipe.command_stack)
     ValidityField.execute_supersede(
         new_instance,
@@ -750,8 +772,11 @@ def _save_and_close(
         )
 
     try:
-        results = pipe.execute()
+        # ``UnitOfWork.commit``; on Redis that is ``execute()`` (decision 1).
+        results = pipe.commit()
     except redis.exceptions.ResponseError as e:
+        # The Redis unit of work surfaces the script's error reply here, at
+        # result parsing, so the remap has to live beside the commit.
         raise map_lua_error(e) from e
     closed = results[close_index] if close_index < len(results) else None
     if isinstance(closed, bytes):
@@ -791,7 +816,7 @@ def _apply_supersede(
     identity_digest: str,
     clock: float,
     instant: float,
-    pipeline: Optional[redis.client.Pipeline],
+    pipeline: Optional[UnitOfWork],
 ) -> Optional[str]:
     """Run the script in mode ``'supersede'``, resolving the incumbent by pointer.
 
@@ -821,7 +846,7 @@ def _apply_invalidate(
     new_member: str,
     clock: float,
     instant: float,
-    pipeline: Optional[redis.client.Pipeline],
+    pipeline: Optional[UnitOfWork],
 ) -> Optional[str]:
     """Run the script in mode ``'invalidate'`` against one explicit member."""
     result = ValidityField.execute_supersede(
@@ -839,9 +864,7 @@ def _apply_invalidate(
     return _closed_key(result, pipeline)
 
 
-def _closed_key(
-    result: Any, pipeline: Optional[redis.client.Pipeline]
-) -> Optional[str]:
+def _closed_key(result: Any, pipeline: Optional[UnitOfWork]) -> Optional[str]:
     """Normalize ``execute_supersede``'s return into ``str | None``.
 
     On the pipeline branch the script has not run yet and the return value is
@@ -866,15 +889,28 @@ def _walk_one(instance: Any, field_name: Optional[str], forward: bool) -> Any:
         if forward
         else ValidityField.get_chain_rev_key(model, resolved)
     )
-    linked = get_REDIS_DB().hget(link_key, member)
+    linked = get_backend().map_get(link_key, member)
     if not linked:
         return None
     member_key = linked.decode() if isinstance(linked, bytes) else str(linked)
     return _hydrate(model, member_key)
 
 
+def _valid_from_of(interval_keys: "tuple[str, str]", member: str) -> Optional[float]:
+    """The member's stored ``valid_from``, or ``None`` when it has no interval.
+
+    One ``interval_of`` through the backend (on Redis, the ``ZSCORE`` pair on
+    the ``valid_from`` / ``invalid_at`` indexes); only the start is consulted.
+    The single criterion :meth:`SupersessionProtocol.chain` applies to its
+    anchor and :func:`_walk_links` applies to every link.
+    """
+    valid_from_key, invalid_at_key = interval_keys
+    start, _ = get_backend().interval_of(valid_from_key, invalid_at_key, member)
+    return start
+
+
 def _walk_links(
-    link_key: str, start: str, valid_from_key: str, seen: "set[str]"
+    link_key: str, start: str, interval_keys: "tuple[str, str]", seen: "set[str]"
 ) -> "list[str]":
     """Follow ``link_key`` from ``start``, returning members in hop order.
 
@@ -885,14 +921,14 @@ def _walk_links(
     members: "list[str]" = []
     current = start
     while True:
-        linked = get_REDIS_DB().hget(link_key, current)
+        linked = get_backend().map_get(link_key, current)
         if not linked:
             return members
         member = linked.decode() if isinstance(linked, bytes) else str(linked)
         if member in seen:
             logger.debug("chain: cycle detected at %s, terminating walk", member)
             return members
-        if get_REDIS_DB().zscore(valid_from_key, member) is None:
+        if _valid_from_of(interval_keys, member) is None:
             logger.debug("chain: dangling link to %s, terminating walk", member)
             return members
         seen.add(member)
