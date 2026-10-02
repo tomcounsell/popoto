@@ -320,8 +320,10 @@ class Backend(Protocol):
 
     def scan_record_keys(self, pattern: str) -> list[str]:
         """Replaces ``scan_keys`` + ``TYPE`` filter (``_scan_hash_keys``,
-        ``Query.keys(catchall=True)``, ``check_indexes``): only hash-typed keys
-        survive, so a side key sharing the glob never reaches ``HGETALL``."""
+        ``check_indexes``): only hash-typed keys survive, so a side key sharing
+        the glob never reaches ``HGETALL``. ``Query.keys(catchall=True)`` is
+        deliberately not a consumer: it also returns the ``$SortF:`` ZSET keys
+        (``tests/test_timeseries.py`` counts them), so it stays on ``native()``."""
         ...
 
     # -- F. Sorted indexes ---------------------------------------------------

@@ -144,6 +144,7 @@ def test_score_uses_pk_not_a_recomputed_key_for_a_mutated_instance():
     assert popoto.SortedField.score(record, "score") == 7.5
 
 
+@pytest.mark.redis_only
 def test_score_follows_a_rebound_global_client(monkeypatch, assert_captured):
     """``score()`` resolves the client per call, not from an import snapshot.
 
