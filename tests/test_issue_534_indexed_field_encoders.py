@@ -72,6 +72,7 @@ def test_indexed_encoder_type_saves_and_round_trips(field_name, value):
     assert getattr(reloaded, field_name) == value
 
 
+@pytest.mark.redis_only  # reads the record hash's raw bytes (#631)
 @pytest.mark.parametrize(
     "field_name,value",
     [
@@ -128,6 +129,7 @@ def test_indexed_none_value_still_saves():
     assert reloaded.at is None
 
 
+@pytest.mark.redis_only  # reads the record hash's raw bytes (#631)
 def test_indexed_str_value_unaffected():
     """Types outside the registry keep their existing bytes."""
 

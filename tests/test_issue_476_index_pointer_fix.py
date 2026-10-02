@@ -37,6 +37,10 @@ from popoto.fields.indexed_field_mixin import IndexedFieldMixin
 from popoto.fields.shortcuts import IndexedField, UniqueField
 from popoto.redis_db import POPOTO_REDIS_DB
 
+# Every test here inspects the Redis hash / pointer side key / value Set
+# layout through a raw client (#631 WS1c): Redis-only as a whole file.
+pytestmark = pytest.mark.redis_only
+
 
 def _raw_redis() -> redis_lib.Redis:
     """Raw redis.Redis connection (decode_responses=False) on the same DB."""
