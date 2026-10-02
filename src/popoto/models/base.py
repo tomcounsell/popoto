@@ -2390,8 +2390,6 @@ class Model(metaclass=ModelBase):
         """
         from decimal import Decimal as _Decimal
 
-        from ..redis_db import ENCODING
-
         # Validate field exists
         if field_name not in self._meta.fields:
             raise AttributeError(
@@ -2421,56 +2419,23 @@ class Model(metaclass=ModelBase):
                 f"'{field_name}' is type {field.type.__name__}"
             )
 
-        field_name_bytes = field_name.encode(ENCODING)
+        # The read-decode-add-encode-write script (``ATOMIC_INCREMENT_LUA``)
+        # lives in the backend since #631 WS1a; the Decimal tagged-dict
+        # envelope is its business, the field type is named by ``kind``.
+        kind: Literal["int", "float", "decimal"]
+        if field.type is int:
+            kind = "int"
+        elif field.type is _Decimal:
+            kind = "decimal"
+        else:
+            kind = "float"
+        score_delta = float(delta) if isinstance(delta, _Decimal) else delta
 
-        # Lua script that atomically reads, decodes msgpack, increments,
-        # re-encodes, and writes back. Uses cmsgpack which is built into
-        # Redis since version 2.6.
-        #
-        # KEYS[1] = redis hash key
-        # ARGV[1] = field name (bytes)
-        # ARGV[2] = delta value (string representation)
-        # ARGV[3] = 1 if field is Decimal type (uses tagged dict encoding), 0 otherwise
-        #
-        # Returns the new numeric value as a string.
-        lua_script = """
-        local current_packed = redis.call('HGET', KEYS[1], ARGV[1])
-        local current_val = 0
-        local is_decimal = tonumber(ARGV[3])
-
-        if current_packed then
-            local decoded = cmsgpack.unpack(current_packed)
-            if is_decimal == 1 and type(decoded) == 'table' and decoded['as_encodable'] then
-                current_val = tonumber(decoded['as_encodable'])
-            elseif type(decoded) == 'number' then
-                current_val = decoded
-            end
-        end
-
-        local delta = tonumber(ARGV[2])
-        local new_val = current_val + delta
-
-        if is_decimal == 1 then
-            local encoded = cmsgpack.pack({['__Decimal__'] = true, ['as_encodable'] = tostring(new_val)})
-            redis.call('HSET', KEYS[1], ARGV[1], encoded)
-        else
-            local encoded = cmsgpack.pack(new_val)
-            redis.call('HSET', KEYS[1], ARGV[1], encoded)
-        end
-
-        return tostring(new_val)
-        """
-
-        is_decimal = 1 if field.type is _Decimal else 0
-        delta_str = str(float(delta) if isinstance(delta, _Decimal) else delta)
-
-        if isinstance(pipeline, redis.client.Pipeline):
-            # When using a pipeline, register the script and call it
-            script = get_REDIS_DB().register_script(lua_script)
-            pipeline = script(
-                keys=[redis_key],
-                args=[field_name_bytes, delta_str, is_decimal],
-                client=pipeline,
+        if pipeline is not None:
+            # Queued on the caller's unit of work: the script is registered
+            # and EVALSHA'd, and nothing is returned until the caller commits.
+            get_backend().increment_field(
+                redis_key, field_name, delta, kind=kind, uow=pipeline
             )
 
             # Update in-memory values optimistically
@@ -2492,35 +2457,16 @@ class Model(metaclass=ModelBase):
                 sortedset_db_key = field_cls.get_partitioned_sortedset_db_key(
                     self, field_name
                 )
-                score_delta = float(delta) if isinstance(delta, _Decimal) else delta
-                pipeline = pipeline.zincrby(
-                    sortedset_db_key.redis_key, score_delta, redis_key
+                get_backend().sorted_increment(
+                    sortedset_db_key.redis_key, redis_key, score_delta, uow=pipeline
                 )
 
             return pipeline
         else:
-            # Execute the Lua script directly
-            result_str = run_lua(
-                get_REDIS_DB(),
-                lua_script,
-                1,
-                redis_key,
-                field_name_bytes,
-                delta_str,
-                is_decimal,
+            # Execute now; the backend parses the reply into the field type.
+            new_val = get_backend().increment_field(
+                redis_key, field_name, delta, kind=kind
             )
-
-            # Parse result and convert to field type
-            if isinstance(result_str, bytes):
-                result_str = result_str.decode(ENCODING)
-
-            if field.type is int:
-                # Lua may return "15.0" for integer arithmetic; parse via float then int
-                new_val = int(float(result_str))
-            elif field.type is _Decimal:
-                new_val = _Decimal(result_str)
-            else:
-                new_val = float(result_str)
 
             # Update in-memory instance
             setattr(self, field_name, new_val)
@@ -2533,9 +2479,8 @@ class Model(metaclass=ModelBase):
                 sortedset_db_key = field_cls.get_partitioned_sortedset_db_key(
                     self, field_name
                 )
-                score_delta = float(delta) if isinstance(delta, _Decimal) else delta
-                get_REDIS_DB().zincrby(
-                    sortedset_db_key.redis_key, score_delta, redis_key
+                get_backend().sorted_increment(
+                    sortedset_db_key.redis_key, redis_key, score_delta
                 )
 
             return new_val
@@ -2586,18 +2531,13 @@ class Model(metaclass=ModelBase):
             self, field_name
         )
 
-        if isinstance(pipeline, redis.client.Pipeline):
-            pipeline.zadd(sortedset_db_key.redis_key, {redis_key: now})
-            setattr(self, field_name, now)
-            if self._saved_field_values is not None:
-                self._saved_field_values[field_name] = now
-            return pipeline
-        else:
-            get_REDIS_DB().zadd(sortedset_db_key.redis_key, {redis_key: now})
-            setattr(self, field_name, now)
-            if self._saved_field_values is not None:
-                self._saved_field_values[field_name] = now
-            return now
+        get_backend().sorted_add(
+            sortedset_db_key.redis_key, redis_key, now, uow=pipeline
+        )
+        setattr(self, field_name, now)
+        if self._saved_field_values is not None:
+            self._saved_field_values[field_name] = now
+        return pipeline if pipeline is not None else now
 
     def resolve_pressure(self, field_name, pipeline=None):
         """Reset homeostatic pressure for a CyclicDecayField member.
