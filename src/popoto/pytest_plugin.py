@@ -30,6 +30,14 @@ Disabling:
 
         pytest -p no:popoto
 
+Conformance harness (#631):
+
+    Tests marked ``conformance`` that request the ``backend`` fixture run once
+    per configured storage backend. Opt in with
+    ``popoto_conformance_backends = "redis,postgres"`` (ini) or the
+    ``POPOTO_CONFORMANCE_BACKENDS`` environment variable; the default is Redis
+    only. See the "Conformance harness" section at the bottom of this module.
+
 Auth Preservation:
 
     The plugin preserves any host, port, password, and username from the
@@ -52,9 +60,13 @@ Known limits:
 import asyncio
 import logging
 import os
+import re
 import threading
+import uuid
 import warnings
+from dataclasses import dataclass, field
 from typing import Any, Callable
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 import pytest
 import redis
@@ -86,6 +98,7 @@ def pytest_configure(config):
     """
     _collapse_src_popoto()
     _configure_test_db(config)
+    _register_conformance_markers(config)
 
 
 def _collapse_src_popoto():
@@ -311,12 +324,21 @@ def _swap_db(target_db, **extra_kwargs):
 
 
 def pytest_addoption(parser):
-    """Register the ``popoto_test_db`` ini option."""
+    """Register the ``popoto_test_db`` and ``popoto_conformance_backends`` ini
+    options."""
     parser.addini(
         "popoto_test_db",
         "Redis database number to isolate Popoto tests on. Setting this (or "
         "the POPOTO_TEST_DB environment variable) is what activates the "
         "plugin; without either it does nothing.",
+        default="",
+    )
+    parser.addini(
+        "popoto_conformance_backends",
+        "Comma-separated storage backends the `backend` fixture is "
+        "parametrised over in tests marked `conformance` (any of: redis, "
+        "postgres). The POPOTO_CONFORMANCE_BACKENDS environment variable "
+        "overrides it. Unset: redis only.",
         default="",
     )
 
@@ -501,3 +523,349 @@ def _popoto_db0_tripwire(request):
                 f"({after} keys found, 0 expected).  DB 0 was empty at session "
                 f"start.",
             )
+
+
+# -- Conformance harness (#631 WS2) -------------------------------------------
+#
+# A test marked ``conformance`` that requests the ``backend`` fixture runs once
+# per configured storage backend, with ``popoto.set_backend()`` bound to that
+# backend for the duration of the test and reset with ``set_backend(None)`` on
+# teardown. Which backends is an opt-in in the same shape as ``popoto_test_db``:
+#
+#   POPOTO_CONFORMANCE_BACKENDS=redis,postgres pytest -m conformance
+#
+#   [tool.pytest.ini_options]
+#   popoto_conformance_backends = "redis,postgres"
+#
+# Neither set: Redis only, so a downstream project sees no change. Unmarked
+# tests never see Postgres even when it is configured; a test that requests
+# ``backend`` without the marker gets the Redis backend, unparametrised.
+#
+# The Postgres leg isolates on one schema per session, ``popoto_test_<uuid>``,
+# created at first use and ``DROP SCHEMA ... CASCADE``d at session end, with
+# every table in it truncated before each test (the FLUSHDB mirror). Two
+# refusals mirror ``Db0FlushRefusedError`` and are raised *before* any
+# statement reaches the server, as the typed
+# :class:`PostgresIsolationRefusedError`: schema ``public`` (or any name the
+# harness did not generate) and a ``POSTGRES_URL`` naming no database. When
+# ``psycopg`` is not installed or ``POSTGRES_URL`` is unset the Postgres leg
+# *skips* with a visible reason rather than failing.
+#
+# ``psycopg`` is only ever imported inside the Postgres-leg code below, never at
+# module scope: this plugin loads in every downstream pytest session.
+
+CONFORMANCE_BACKENDS: tuple[str, ...] = ("redis", "postgres")
+"""Every backend name ``popoto_conformance_backends`` may list."""
+
+POSTGRES_TEST_SCHEMA_PREFIX = "popoto_test_"
+"""Every schema the harness creates, truncates or drops carries this prefix."""
+
+_POSTGRES_TEST_SCHEMA = re.compile(
+    rf"^{re.escape(POSTGRES_TEST_SCHEMA_PREFIX)}[0-9a-f]{{32}}$"
+)
+
+
+class PostgresIsolationRefusedError(redis_db.PopotoException, ValueError):
+    """Raised before any statement runs when the conformance harness would
+    touch a Postgres namespace it must not own.
+
+    The Postgres mirror of :class:`~popoto.redis_db.Db0FlushRefusedError`,
+    with the same two bases for the same reasons: ``PopotoException`` logs the
+    refusal even when a caller swallows it, ``ValueError`` matches the
+    ``popoto_test_db=0`` refusal. Two cases raise it: a schema name that is
+    ``public`` (or anything else the harness did not generate), and a
+    ``POSTGRES_URL`` that names no database, which libpq would silently
+    resolve to the connecting role's default.
+    """
+
+
+def _register_conformance_markers(config: Any) -> None:
+    """Register ``conformance`` / ``redis_only`` so a downstream suite using
+    the fixture does not need its own ``markers`` entry (popoto's own
+    ``pyproject.toml`` lists them too; pytest tolerates the duplicate)."""
+    config.addinivalue_line(
+        "markers",
+        "conformance: storage-backend conformance tests; the `backend` fixture "
+        "is parametrised over POPOTO_CONFORMANCE_BACKENDS / "
+        "popoto_conformance_backends (default: redis only)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "redis_only: inside a conformance file, an assertion that only holds "
+        "on Redis -- skipped under every other backend parameter",
+    )
+
+
+def _resolve_conformance_backends(config: Any) -> tuple[str, ...]:
+    """The backends ``backend`` is parametrised over, in configured order.
+
+    Priority mirrors ``_resolve_test_db``: ``POPOTO_CONFORMANCE_BACKENDS`` >
+    ``popoto_conformance_backends`` ini > ``("redis",)``. Names are
+    case-insensitive and de-duplicated; an unknown name is a ``ValueError``
+    (fail loudly, like a non-integer ``popoto_test_db``) rather than a silent
+    Redis-only run that *looks* like Postgres coverage.
+    """
+    env_value = os.environ.get("POPOTO_CONFORMANCE_BACKENDS", "").strip()
+    ini_value = config.getini("popoto_conformance_backends")
+    if not isinstance(ini_value, str):
+        ini_value = ""
+    raw_value = env_value if env_value else ini_value.strip()
+    if not raw_value:
+        return ("redis",)
+    names = tuple(
+        name
+        for name in dict.fromkeys(part.strip().lower() for part in raw_value.split(","))
+        if name
+    )
+    unknown = [name for name in names if name not in CONFORMANCE_BACKENDS]
+    if unknown:
+        raise ValueError(
+            f"popoto_conformance_backends names unknown backend(s) {unknown!r}; "
+            f"choose from {list(CONFORMANCE_BACKENDS)!r}"
+        )
+    return names or ("redis",)
+
+
+def pytest_generate_tests(metafunc: Any) -> None:
+    """Parametrise ``backend`` over the configured backends -- only for tests
+    carrying the ``conformance`` marker.
+
+    The marker is the opt-in: a test (or module, via ``pytestmark``) that
+    requests ``backend`` without it is left alone, so a module that defines
+    its *own* ``backend`` fixture, or an unmarked test that only ever meant
+    Redis, is never multiplied by this hook.
+    """
+    if "backend" not in metafunc.fixturenames:
+        return
+    if metafunc.definition.get_closest_marker("conformance") is None:
+        return
+    names = _resolve_conformance_backends(metafunc.config)
+    metafunc.parametrize("backend", names, indirect=True, ids=names)
+
+
+def _check_schema_name(name: str) -> str:
+    """Refuse any schema the harness did not generate -- before any SQL.
+
+    ``public`` is the documented refusal (plan decision 4); requiring the
+    ``popoto_test_`` prefix plus exactly 32 lowercase hex characters (what
+    ``uuid4().hex`` generates) is the same guard stated positively, so a ``DROP SCHEMA ... CASCADE`` can never reach
+    a namespace with someone else's tables in it. The name is interpolated
+    through ``psycopg.sql.Identifier`` anyway; pinning it to a plain
+    identifier keeps a quoted schema name from ever being a surprise.
+    """
+    if name == "public" or not _POSTGRES_TEST_SCHEMA.match(name):
+        raise PostgresIsolationRefusedError(
+            f"refusing to use Postgres schema {name!r} for tests: the "
+            f"conformance harness only touches schemas named "
+            f"{POSTGRES_TEST_SCHEMA_PREFIX}<32 lowercase hex characters> that it "
+            "generated itself "
+            "(schema 'public' is refused outright, mirroring the DB-0 refusal)"
+        )
+    return name
+
+
+def _check_postgres_url(url: str) -> str:
+    """Refuse a ``POSTGRES_URL`` that names no database -- before connecting.
+
+    libpq resolves a db-less URL to a database named after the connecting
+    role, which is the Postgres shape of the db-less ``REDIS_URL`` resolving to
+    database 0 (#584/#639): a valid-looking binding to somewhere nobody chose.
+    """
+    parts = urlsplit(url)
+    if parts.scheme not in ("postgresql", "postgres"):
+        raise PostgresIsolationRefusedError(
+            f"POSTGRES_URL must be a postgresql:// URL, got {url!r}"
+        )
+    if not parts.path.strip("/"):
+        raise PostgresIsolationRefusedError(
+            f"POSTGRES_URL is {url!r}, which names no database; libpq would "
+            "resolve it to the connecting role's default. Name the database "
+            "explicitly (e.g. postgresql://localhost:5432/postgres)."
+        )
+    return url
+
+
+def _url_with_search_path(url: str, schema: str) -> str:
+    """``url`` with libpq's ``options=-c search_path=<schema>`` appended.
+
+    How the per-session schema reaches ``PostgresBackend`` without changing
+    its WS0 constructor: every connection the backend opens from this URL
+    resolves unqualified table names inside the test schema. An existing
+    ``options`` value is extended, not replaced.
+    """
+    parts = urlsplit(url)
+    directive = f"-c search_path={schema}"
+    merged: list[tuple[str, str]] = []
+    seen = False
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        if key == "options":
+            merged.append((key, f"{value} {directive}".strip()))
+            seen = True
+        else:
+            merged.append((key, value))
+    if not seen:
+        merged.append(("options", directive))
+    new_query = urlencode(merged, quote_via=quote)
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, new_query, parts.fragment)
+    )
+
+
+def _psycopg_importable() -> bool:
+    try:
+        import psycopg  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _require_postgres() -> str:
+    """The validated ``POSTGRES_URL``, or ``pytest.skip`` with a reason that
+    names what is missing. A refusal (db-less URL) is an error, not a skip."""
+    if not _psycopg_importable():
+        pytest.skip(
+            "psycopg is not installed (pip install 'popoto[postgres]'); "
+            "Postgres conformance leg skipped"
+        )
+    url = os.environ.get("POSTGRES_URL", "").strip()
+    if not url:
+        pytest.skip("POSTGRES_URL is unset; Postgres conformance leg skipped")
+    return _check_postgres_url(url)
+
+
+@dataclass
+class PostgresTestSchema:
+    """The per-session Postgres namespace the conformance harness owns.
+
+    ``url`` is the validated ``POSTGRES_URL`` (no search_path); ``backend_url``
+    is what the Postgres leg hands to ``PostgresBackend``. ``connect()`` opens
+    a fresh autocommit admin connection for a test that wants to look at the
+    schema directly.
+    """
+
+    name: str
+    url: str
+    _conn: Any = field(default=None, repr=False)
+
+    @property
+    def backend_url(self) -> str:
+        return _url_with_search_path(self.url, self.name)
+
+    def connect(self) -> Any:
+        import psycopg
+
+        return psycopg.connect(self.url, autocommit=True)
+
+    def create(self) -> None:
+        from psycopg import sql
+
+        _check_schema_name(self.name)
+        conn = self.connect()
+        try:
+            conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(self.name)))
+        except BaseException:
+            conn.close()
+            raise
+        self._conn = conn
+
+    def truncate_all(self) -> list[str]:
+        """``TRUNCATE`` every table in the schema (the per-test FLUSHDB
+        mirror). Returns the table names it truncated; empty while the backend
+        has created none."""
+        from psycopg import sql
+
+        _check_schema_name(self.name)
+        rows = self._conn.execute(
+            "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = %s "
+            "ORDER BY tablename",
+            (self.name,),
+        ).fetchall()
+        tables = [row[0] for row in rows]
+        if tables:
+            self._conn.execute(
+                sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY").format(
+                    sql.SQL(", ").join(
+                        sql.Identifier(self.name, table) for table in tables
+                    )
+                )
+            )
+        return tables
+
+    def drop(self) -> None:
+        from psycopg import sql
+
+        _check_schema_name(self.name)
+        try:
+            self._conn.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(self.name)
+                )
+            )
+        finally:
+            self._conn.close()
+            self._conn = None
+
+
+@pytest.fixture(scope="session")
+def popoto_postgres_schema() -> Any:
+    """One ``popoto_test_<hex>`` schema for the session: created here, dropped
+    with ``CASCADE`` at teardown. Skips (never fails) when ``psycopg`` or
+    ``POSTGRES_URL`` is absent; raises :class:`PostgresIsolationRefusedError`
+    on a db-less URL before connecting."""
+    url = _require_postgres()
+    schema = PostgresTestSchema(
+        name=f"{POSTGRES_TEST_SCHEMA_PREFIX}{uuid.uuid4().hex}", url=url
+    )
+    schema.create()
+    logger.debug("Popoto conformance harness created Postgres schema %s", schema.name)
+    try:
+        yield schema
+    finally:
+        schema.drop()
+        logger.debug(
+            "Popoto conformance harness dropped Postgres schema %s", schema.name
+        )
+
+
+@pytest.fixture
+def backend(request: Any) -> Any:
+    """The storage backend under test, bound process-wide for the test.
+
+    Parametrised by :func:`pytest_generate_tests` for ``conformance`` tests;
+    unparametrised (Redis) otherwise. Each leg calls ``set_backend(impl)`` so
+    ``popoto.get_backend()`` inside the code under test resolves to the same
+    object, and ``set_backend(None)`` on teardown so the next test re-selects.
+    """
+    from popoto.backends import set_backend
+
+    name = getattr(request, "param", "redis")
+    if name == "redis":
+        from popoto.backends.redis import RedisBackend
+
+        impl: Any = RedisBackend()
+    elif name == "postgres":
+        if request.node.get_closest_marker("redis_only") is not None:
+            pytest.skip("marked redis_only: assertion only holds on Redis")
+        _require_postgres()
+        schema = request.getfixturevalue("popoto_postgres_schema")
+        schema.truncate_all()
+        from popoto.backends.postgres import PostgresBackend
+
+        impl = PostgresBackend(schema.backend_url)
+    else:  # unreachable through _resolve_conformance_backends; defensive
+        raise ValueError(f"unknown conformance backend {name!r}")
+
+    set_backend(impl)
+    try:
+        yield impl
+    finally:
+        set_backend(None)
+
+
+@pytest.fixture
+def backend_is_redis(backend: Any) -> bool:
+    """``True`` on the Redis leg -- for an assertion that must branch rather
+    than skip (``redis_only`` is the marker for the skip shape)."""
+    from popoto.backends.redis import RedisBackend
+
+    return isinstance(backend, RedisBackend)

@@ -93,6 +93,13 @@ monitoring = [
 mcp = [
     "mcp>=1.2",
 ]
+# Storage backend seam POC (#631). Only the PostgresBackend needs the driver;
+# selection in popoto.backends is lazy and falls back to Redis when psycopg is
+# absent, so a bare `pip install popoto` is unchanged. The conformance harness
+# (popoto.pytest_plugin's `backend` fixture) skips its Postgres leg without it.
+postgres = [
+    "psycopg[binary]>=3.1",
+]
 benchmark = [
     "huggingface_hub>=0.23",
     "sentence-transformers>=2.7",
@@ -138,6 +145,8 @@ markers = [
     "benchmark: performance benchmarking tests",
     "concurrent_mp: spawn-based multiprocess concurrency tests (skip with '-m \"not concurrent_mp\"')",
     "contract: production contracts that stay red until their fix lands (deselect with '-m \"not contract\"')",
+    "conformance: storage-backend conformance tests; the `backend` fixture is parametrised over POPOTO_CONFORMANCE_BACKENDS / popoto_conformance_backends (default: redis only)",
+    "redis_only: inside a conformance file, an assertion that only holds on Redis -- skipped under every other backend parameter",
 ]
 addopts = "-v"
 popoto_test_db = "15"

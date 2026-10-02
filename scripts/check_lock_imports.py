@@ -56,6 +56,7 @@ PACKAGES: list[tuple[str, str]] = [
     ("anthropic", "anthropic"),
     ("sentry_sdk", "monitoring"),
     ("mcp", "mcp"),
+    ("psycopg", "postgres"),
 ]
 
 
