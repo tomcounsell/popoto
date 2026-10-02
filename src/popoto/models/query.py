@@ -74,7 +74,7 @@ if TYPE_CHECKING:
     from .base import Model, ModelOptions
     from ..fields.sorted_field_mixin import SortedFieldMixin
 
-from ..backends import get_backend
+from ..backends import as_key_str, as_key_strs, get_backend
 from ..redis_db import (
     ENCODING,
     get_async_redis_db,
@@ -1134,8 +1134,8 @@ class QueryBuilder:
         if not scored:
             return []
 
-        # Hydrate model instances
-        hashes = get_backend().load_records([key for key, _score in scored])
+        # Hydrate model instances (str at the backend boundary, WS1f)
+        hashes = get_backend().load_records(as_key_strs(key for key, _score in scored))
 
         instances = []
         for (key, score), data in zip(scored, hashes):
@@ -2256,7 +2256,9 @@ class Query:
         if redis_key:
             from ..models.encoding import decode_popoto_model_hashmap
 
-            hashmap = get_backend().load_record(redis_key)
+            # A caller may hand back a ``bytes`` key from ``Query.keys()``;
+            # the backend takes ``str`` (WS1f).
+            hashmap = get_backend().load_record(as_key_str(redis_key))
             if not hashmap:
                 return None
             instance = decode_popoto_model_hashmap(
@@ -2327,7 +2329,10 @@ class Query:
 
         from ..models.encoding import decode_popoto_model_hashmap
 
-        hashes_list = get_backend().load_records(redis_keys)
+        # ``redis_keys`` may be the ``bytes`` ``Query.keys()`` hands out; the
+        # backend takes ``str`` (WS1f). The zip below keeps the caller's objects
+        # so ``source_redis_key`` is what they passed.
+        hashes_list = get_backend().load_records(as_key_strs(redis_keys))
 
         results = []
         live_instances = []
@@ -3744,9 +3749,15 @@ class Query:
             else:
                 # Materialize once: the backend iterates the keys and the zip
                 # below iterates them again, and a set must be walked in the
-                # same order both times.
+                # same order both times. ``db_keys`` is the query layer's raw
+                # ``bytes`` set (``filter_for_keys_set`` / ``keys()``); the
+                # backend takes ``str`` (WS1f), so the decoded copy is what
+                # crosses the seam while ``ordered_keys`` keeps the caller's
+                # objects for ``source_redis_key`` and the orphan purge.
                 ordered_keys = list(db_keys)
-                value_lists = get_backend().load_fields_many(ordered_keys, list(values))
+                value_lists = get_backend().load_fields_many(
+                    as_key_strs(ordered_keys), list(values)
+                )
                 hashes_list = [
                     {field_name: result[i] for i, field_name in enumerate(values)}
                     for result in value_lists
@@ -3754,7 +3765,7 @@ class Query:
 
         else:
             ordered_keys = list(db_keys)
-            hashes_list = get_backend().load_records(ordered_keys)
+            hashes_list = get_backend().load_records(as_key_strs(ordered_keys))
 
         # A missing record is None from load_records (and was {} from the
         # pipelined HGETALL it replaced); the projection path never yields one.

@@ -75,7 +75,7 @@ from ..fields.key_field_mixin import KeyFieldMixin
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
-from ..backends import get_backend
+from ..backends import as_key_str, as_key_strs, get_backend
 from ..redis_db import ENCODING, run_lua
 from ..exceptions import (
     CorruptFieldError,
@@ -1134,7 +1134,7 @@ class Model(metaclass=ModelBase):
                     )
             finally:
                 self.__dict__.pop("_quarantine_clear_suppressed", None)
-            return pipeline if pipeline else True
+            return pipeline if pipeline is not None else True
 
         # Full save path (existing behavior, unchanged)
         if not self.is_valid():
@@ -1237,7 +1237,7 @@ class Model(metaclass=ModelBase):
                 )
         finally:
             self.__dict__.pop("_quarantine_clear_suppressed", None)
-        return pipeline if pipeline else True
+        return pipeline if pipeline is not None else True
 
     def _raise_if_quarantine_blocks(self, validate_names: Iterable[str]) -> None:
         """Refuse a write that would overwrite quarantined field bytes (#573).
@@ -1383,7 +1383,7 @@ class Model(metaclass=ModelBase):
 
         # Handle update_fields empty list as no-op
         if update_fields is not None and len(update_fields) == 0:
-            return pipeline or 0
+            return pipeline if pipeline is not None else 0
 
         # Immutability guard: prevent accidental KeyField mutation
         # Only fires when _saved_field_values is populated (loaded from DB or
@@ -1415,7 +1415,7 @@ class Model(metaclass=ModelBase):
             try:
                 self._check_never_record()
             except NeverRecordException:
-                return pipeline if pipeline else False
+                return pipeline if pipeline is not None else False
 
         # WriteFilterMixin: check write filter before any save work
         from ..fields.write_filter import WriteFilterMixin
@@ -1424,7 +1424,7 @@ class Model(metaclass=ModelBase):
             try:
                 self._check_write_filter()
             except SkipSaveException:
-                return pipeline if pipeline else False
+                return pipeline if pipeline is not None else False
 
         # EventStreamMixin: detect create vs update before persistence
         # _db_content is {} on fresh instances, populated after first save
@@ -1439,9 +1439,14 @@ class Model(metaclass=ModelBase):
             update_fields=update_fields,
             **kwargs,
         )
-        if not pipeline_or_success:
-            return pipeline or False
-        elif pipeline:
+        # pre_save returns False on a refused save and otherwise the unit of
+        # work it was given (or True). Both tests are identity tests, not
+        # truthiness (#631 decision 1): a Postgres unit of work is falsy while
+        # empty, and `if not pipeline_or_success` would read a successful
+        # pre_save on a fresh unit of work as a refusal.
+        if pipeline_or_success is False:
+            return pipeline if pipeline is not None else False
+        elif pipeline is not None:
             pipeline = pipeline_or_success
 
         # The field pre-save validation hook: the last chance to refuse a save
@@ -2084,7 +2089,9 @@ class Model(metaclass=ModelBase):
             else:
                 resolved: DB_key = db_key if db_key else cls(**kwargs).db_key
                 key = resolved.redis_key
-        return get_backend().record_exists(key)
+        # A caller may pass a ``bytes`` key from ``Query.keys()``; the backend
+        # takes ``str`` (WS1f).
+        return get_backend().record_exists(as_key_str(key))
 
     @classmethod
     def idle_seconds(
@@ -2188,8 +2195,12 @@ class Model(metaclass=ModelBase):
         if not names:
             raise ValueError("load_fields() requires at least one field name")
         # Command choice is a parity requirement the backend carries: one name
-        # issues HGET, more issue HMGET (see RedisBackend.load_fields).
-        raw_values: Iterable[Any] = get_backend().load_fields(redis_key, list(names))
+        # issues HGET, more issue HMGET (see RedisBackend.load_fields). The key
+        # may arrive as ``bytes`` from ``Query.keys()``; the backend takes
+        # ``str`` (WS1f).
+        raw_values: Iterable[Any] = get_backend().load_fields(
+            as_key_str(redis_key), list(names)
+        )
         result: Dict[str, Any] = {}
         for name, raw_value in zip(names, raw_values):
             if raw_value is None:
@@ -2220,7 +2231,9 @@ class Model(metaclass=ModelBase):
             ``dict[bytes, bytes]`` as returned by ``HGETALL``. Empty dict
             when the key does not exist.
         """
-        return get_backend().load_record(redis_key) or {}
+        # ``str`` at the backend boundary (WS1f): the key may be the ``bytes``
+        # shape ``Query.keys()`` hands out.
+        return get_backend().load_record(as_key_str(redis_key)) or {}
 
     def delete(
         self,
@@ -2269,7 +2282,10 @@ class Model(metaclass=ModelBase):
         # non-indexed quarantined field has no index to misdirect.
         delete_redis_key = self._redis_key or self.db_key.redis_key
 
-        if pipeline:
+        # Presence, not truthiness (#631 decision 1): a caller's Postgres unit
+        # of work is falsy while empty, and `if pipeline:` would discard it
+        # and run the delete in an internal transaction of its own.
+        if pipeline is not None:
             result_pipeline = pipeline
             existed = None  # unknown/unused: caller executes and owns the result
         else:
@@ -3859,11 +3875,16 @@ class Model(metaclass=ModelBase):
         backend = get_backend()
 
         def _count_orphans(keys_to_check: list) -> int:
-            """Batched EXISTS, return count of non-existent keys."""
+            """Batched EXISTS, return count of non-existent keys.
+
+            The composite-index step hands this the side map's *values*,
+            which are the ``bytes`` payloads ``map_set`` stored; the backend
+            takes ``str`` keys (WS1f), so each batch is decoded at the call.
+            """
             orphan_count = 0
             for i in range(0, len(keys_to_check), batch_size):
                 batch = keys_to_check[i : i + batch_size]
-                results = backend.records_exist(batch)
+                results = backend.records_exist(as_key_strs(batch))
                 orphan_count += sum(1 for exists in results if not exists)
             return orphan_count
 
@@ -4092,11 +4113,18 @@ class Model(metaclass=ModelBase):
         backend = get_backend()
 
         def _collect_orphans(keys_to_check: list) -> list:
-            """Batched EXISTS, return list of non-existent keys."""
+            """Batched EXISTS, return list of non-existent keys.
+
+            Returns the caller's own objects (the composite-index step passes
+            the side map's ``bytes`` values and compares against them), while
+            the backend call itself takes ``str`` (WS1f).
+            """
             orphans = []
             for i in range(0, len(keys_to_check), batch_size):
                 batch = keys_to_check[i : i + batch_size]
-                for key, exists in zip(batch, backend.records_exist(batch)):
+                for key, exists in zip(
+                    batch, backend.records_exist(as_key_strs(batch))
+                ):
                     if not exists:
                         orphans.append(key)
             return orphans

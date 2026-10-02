@@ -24,6 +24,17 @@ import msgpack
 import pytest
 import redis as redis_lib
 
+# Redis-level as a whole file (#631 WS1c review TD1, applied in WS1f): every
+# test here plants or reads ``$IdxPtr:`` side keys and raw hash bytes through
+# ``POPOTO_REDIS_DB``, forces mid-EVAL errors, or spawns children bound to the
+# Redis client. The mark is inert until the module also opts into
+# ``conformance``; it records the classification so a later flip cannot run
+# these on a second backend by accident.
+pytestmark = pytest.mark.redis_only(
+    reason="Redis-level throughout: raw $IdxPtr:/hash reads, forced mid-EVAL "
+    "errors and multiprocess children on POPOTO_REDIS_DB"
+)
+
 import popoto
 from popoto import ModelException
 from popoto.fields.indexed_field_mixin import IndexedFieldMixin

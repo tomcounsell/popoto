@@ -779,7 +779,9 @@ class Field(metaclass=FieldBase):
         #         from ..redis_db import POPOTO_REDIS_DB
         #         return POPOTO_REDIS_DB.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)
 
-        return pipeline if pipeline else None
+        # Architect decision 1 (#631): the unit of work is tested for presence,
+        # never truthiness -- a Postgres unit of work is falsy while empty.
+        return pipeline if pipeline is not None else None
 
     @classmethod
     def on_delete(
@@ -821,7 +823,7 @@ class Field(metaclass=FieldBase):
         Returns:
             The pipeline if provided, otherwise None.
         """
-        return pipeline if pipeline else None
+        return pipeline if pipeline is not None else None
 
     def get_filter_query_params(self, field_name: str) -> set:
         """

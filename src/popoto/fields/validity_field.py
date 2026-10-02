@@ -86,7 +86,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
-from ..backends import UnitOfWork, get_backend
+from ..backends import UnitOfWork, as_key_str, get_backend
 from ..models.db_key import DB_key
 from ..redis_db import ENCODING
 from .constants import Defaults
@@ -838,8 +838,10 @@ class ValidityField(Field):
         """
         t = time.time() if as_of is None else float(as_of)
         valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
+        # The member may be a ``bytes`` key from ``Query.keys()``; the backend
+        # takes ``str`` (WS1f).
         start, close = get_backend().interval_of(
-            valid_from_key, invalid_at_key, member_key
+            valid_from_key, invalid_at_key, as_key_str(member_key)
         )
         if start is None or close is None:
             return False
@@ -1155,7 +1157,7 @@ class ValidityField(Field):
                     "first argument is a model class rather than an instance"
                 ) from e
         score, _ = get_backend().interval_of(
-            *cls.get_interval_keys(model, field_name), member_key
+            *cls.get_interval_keys(model, field_name), as_key_str(member_key)
         )
         return None if score is None else float(score)
 

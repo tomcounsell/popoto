@@ -28,7 +28,7 @@ import redis.exceptions
 
 from ..exceptions import ModelException
 from ..redis_db import ENCODING, get_REDIS_DB, run_lua, scan_keys
-from . import UnitOfWork
+from . import UnitOfWork, as_key_str
 
 __all__ = [
     "RedisBackend",
@@ -42,9 +42,9 @@ __all__ = [
 ]
 
 
-def _as_str(value: Any) -> str:
-    """Decode a Redis reply element to ``str`` (bytes or str in, str out)."""
-    return value.decode() if isinstance(value, bytes) else str(value)
+# Reply decoding shares the boundary helper the field layer uses for its
+# arguments (WS1f): one definition of "bytes or str in, str out".
+_as_str = as_key_str
 
 
 def _bound(value: float, inclusive: bool) -> str:
