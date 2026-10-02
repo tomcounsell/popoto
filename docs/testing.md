@@ -72,9 +72,14 @@ pytest -p no:popoto
 The storage backend seam ([#631](https://github.com/tomcounsell/popoto/issues/631))
 adds a second, opt-in dimension to the plugin: a test marked `conformance` that
 requests the `backend` fixture runs once per configured storage backend, with
-`popoto.set_backend()` bound to that backend for the test and reset with
-`set_backend(None)` on teardown. Unmarked tests never see it, and a test that
+`popoto.set_backend()` bound to that backend for the test and the previous
+binding restored on teardown. Unmarked tests never see it, and a test that
 requests `backend` without the marker gets the Redis backend, unparametrised.
+The test-process default is Redis: an opted-in session (`popoto_test_db` /
+`POPOTO_TEST_DB`) pins `RedisBackend` before collection regardless of
+`POSTGRES_URL`, and the Postgres leg is fixture-scoped, so only a
+`conformance` test's `[postgres]` parameter ever binds `PostgresBackend` and it
+is unbound again when that test ends.
 
 ```python
 import pytest
