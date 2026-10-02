@@ -36,7 +36,23 @@ from typing import Any, Callable
 REDIS_URL = os.environ.get("REDIS_URL", "")
 if not REDIS_URL:
     sys.exit("set REDIS_URL=redis://localhost:6379/<n> (n != 0) before running")
-if REDIS_URL.rstrip("/").endswith(":6379") or REDIS_URL.endswith("/0"):
+
+
+def _redis_db_number(url: str) -> int:
+    """The database a redis URL resolves to: the path segment, else the ``db``
+    query parameter, else 0 (redis-py's default, which is why a bare
+    ``redis://localhost`` is DB 0 and must be refused here)."""
+    from urllib.parse import parse_qs, urlsplit
+
+    parts = urlsplit(url)
+    path = parts.path.strip("/")
+    if path:
+        return int(path)
+    qs = parse_qs(parts.query).get("db")
+    return int(qs[0]) if qs else 0
+
+
+if _redis_db_number(REDIS_URL) == 0:
     sys.exit(f"refusing to bench against DB 0 ({REDIS_URL!r}); name a non-zero DB")
 POSTGRES_URL = os.environ.get("POSTGRES_URL", "")
 if not POSTGRES_URL:

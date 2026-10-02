@@ -63,9 +63,12 @@ per-leg split differed between the PR body and the review (TD-33 below): the
 totals here are not comparable to #751's because #752 added `test_decay.py`
 (150 tests × 2 legs) since.
 
-Every Postgres-leg skip is a named `redis_only` reason or a harness
-"Postgres-leg assertion on the Redis leg" skip; none is a failure disguised
-as a skip. **Zero Postgres-backend bugs were found by the slice files** --
+Every Postgres-leg skip is a `redis_only` mark or a harness "Postgres-leg
+assertion on the Redis leg" skip; none is a failure disguised as a skip.
+Not every mark names its reason: 13 of them (`test_key_fields.py` 9,
+`test_issue_534_*` 2, `test_tag_field.py` 2) carry no `reason=`, so the
+plugin prints the generic "assertion only holds on Redis" and §1.3
+classifies them from the PR that added them. **Zero Postgres-backend bugs were found by the slice files** --
 #751's reading of every mark (19 sampled by its reviewer with the mark
 stripped) stands, and #752 adds the family-H methods the marks were waiting
 for.
@@ -81,16 +84,23 @@ environmental failure on DB 12; on DB 10 that test passes.)
 
 `redis_only` marks are counted from the file at head; the reason categories
 are the mark's own `reason=` text (an unstated mark is classified from the
-PR that added it).
+PR that added it). Leg attribution for every row: the id's *final*
+bracketed parameter list, matched greedily from the end of the id (so a
+glob parameter such as `[ab]` that makes the id end in `]]` stays inside the
+list), split on `-`, and assigned to the leg whose token it contains; an id
+with no leg token is leg-less. The rows sum to §1.1's totals exactly
+(770 / 16, 644 / 142, 2 leg-less). A first draft of this table used a
+non-greedy match that read every `]]`-terminated id as leg-less and
+under-counted `test_indexes.py` and `test_records.py` (#753 review B1).
 
 | File | `conformance` | Redis leg | Postgres leg | `redis_only` marks by reason |
 |---|---|---|---|---|
-| `tests/conformance/test_records.py` (WS3a) | yes | 48 / 3 skip | 51 / 0 | -- (3 Redis-leg skips are Postgres-only probes) |
-| `tests/conformance/test_indexes.py` (WS3b) | yes | 87 / 0 | 87 / 0 | -- (18 leg-less `stringmatchlen` pins) |
+| `tests/conformance/test_records.py` (WS3a) | yes | 61 / 3 skip | 64 / 0 | -- (3 Redis-leg skips are Postgres-only probes) |
+| `tests/conformance/test_indexes.py` (WS3b) | yes | 96 / 0 | 96 / 0 | -- |
 | `tests/conformance/test_swaps.py` (WS3c) | yes | 54 / 3 | 55 / 2 | -- (deterministic interleavings are per-leg) |
 | `tests/conformance/test_validity.py` (WS3e) | yes | 48 / 2 | 50 / 0 | -- |
-| `tests/conformance/test_decay.py` (WS3d) | yes | 147 / 2 | 149 / 0 | -- |
-| `tests/conformance/test_harness.py`, `test_postgres_bootstrap.py` (WS2) | yes | 3 / 6 | 8 / 1 | -- |
+| `tests/conformance/test_decay.py` (WS3d) | yes | 147 / 2 | 149 / 0 | -- (plus 1 leg-less packer pin) |
+| `tests/conformance/test_harness.py`, `test_postgres_bootstrap.py` (WS2) | yes | 3 / 6 | 8 / 1 | -- (plus 1 leg-less DDL-names pin) |
 | `tests/test_indexed_fields.py` | yes (#751) | 26 / 0 | 26 / 0 | none |
 | `tests/test_retrieval_quality_regression.py` | yes (#752) | 11 / 0 | 11 / 0 | none |
 | `tests/test_issue_534_indexed_field_encoders.py` | yes (#751) | 13 / 0 | 8 / 5 | raw Redis read 2 (hash bytes via `hget`; 5 ids) |
@@ -134,7 +144,7 @@ mentions in a module comment and a docstring).
 |---|---|---|---|---|
 | 1 | `models/base.py:2163` | `idle_seconds` | `recipes/memory_lifecycle.py` idleness (object-header read) | `OBJECT IDLETIME` |
 | 2 | `models/base.py:2633` | `resolve_pressure` | `CyclicDecayField` pressure hash | `HSET` |
-| 3 | `models/base.py:2746` | `_adjust_cycle_amplitudes` | `CyclicDecayField` (`CYCLES_ADJUST_LUA`; the one `run_lua(` left outside `backends/`) | `EVALSHA`/`EVAL` |
+| 3 | `models/base.py:2746` | `_adjust_cycle_amplitudes` | `CyclicDecayField` (`CYCLES_ADJUST_LUA`; the one `run_lua(` left in the slice's *routed* modules -- the out-of-scope field modules in §2.2 still hold 24 `run_lua(` sites across seven files -- `existence_filter` 9, `co_occurrence_field` 6, `bm25_field` 3, `cyclic_decay_field` 2, `prediction_ledger` 2, `access_tracker` 1, `td_value_field` 1 -- plus two in `extraction/decision_log.py`, all untouched by design) | `EVALSHA`/`EVAL` |
 | 4 | `models/base.py:3599` | `rebuild_indexes` step 1 | `GeoField` index drop | `DEL` |
 | 5 | `models/base.py:4362` | `raw_update` | migrations' hook-free `HSET` bypass (expressible as `save_record(class_set=None)` since protocol-2; left ledgered) | pipelined `HSET` |
 | 6 | `models/query.py:789` | `composite_score` | ranking path: temp ZSETs, `ZUNIONSTORE`, top-K | `ZADD`, `EXPIRE`, `ZUNIONSTORE`, `ZREVRANGE*` |
@@ -251,14 +261,36 @@ dropped.
 | `supersede` (supersede mode, explicit incumbent) | 86 | 122 | 137 | 314 | 500 | 579 | 3.7x |
 | `swap_index` (new value, non-unique) | 73 | 99 | 123 | 512 | 655 | 819 | **7.0x** |
 | `sorted_range` (30-day window, reverse, limit 50) | 99 | 130 | 149 | 80 | 92 | 103 | 0.8x |
-| `Model.save()` (key + decay + confidence + validity) | 503 | 1542 | 2484 | 1487 | 1975 | 2209 | 3.0x |
-| `list(filter(relevance__gte=cutoff, limit=50))` + hydrate | 1788 | 2871 | 5726 | 1586 | 1795 | 2069 | 0.9x |
+| `Model.save()` (key + decay + confidence + validity) -- **bimodal, see note** | 503 | 1542 | 2484 | 1487 | 1975 | 2209 | 3.0x (range 2.2x-4.5x) |
+| `list(filter(relevance__gte=cutoff, limit=50))` + hydrate -- **bimodal, see note** | 1788 | 2871 | 5726 | 1586 | 1795 | 2069 | 0.9x (range 0.8x-2.5x) |
 | `top_by_decay("relevance", n=50)` through `Query` | 11243 | 13734 | 18133 | 61957 | 68357 | 75060 | 5.5x |
 
 Mean of the p50 ratios: 3.2x. A first run before the `filter()` fix (it
 returned a lazy `QueryBuilder` in 1 µs) gave the same picture within noise
 (3.4x mean; `swap_index` 9.9x, `decayed_rank` all-arms 6.3x), so the second
 run is reported.
+
+**Two rows are bimodal across runs and must not be read as a stable ratio**
+(#753 review TD1). Three further runs of the committed script on the same
+head and machine, same environment, `REDIS_URL=redis://localhost:6379/10`:
+
+| Op | Table row | Run A | Run B | Run C | Reviewer's 3 runs (DB 13) | Range over all 7 |
+|---|---|---|---|---|---|---|
+| `list(filter(…))` + hydrate, Postgres p50 µs (ratio) | 1586 (0.9x) | 3846 (2.0x) | 4572 (2.4x) | 4354 (2.2x) | 3072 / 4823 / 1535 (1.6x / 2.5x / 0.8x) | **1535-4823 µs, 0.8x-2.5x** |
+| `Model.save()`, Postgres p50 µs (ratio) | 1487 (3.0x) | 975 (2.3x) | 1034 (2.3x) | 986 (2.2x) | 1976 / 1787 / 1193 (4.5x / 3.3x / 2.8x) | **975-1976 µs, 2.2x-4.5x** |
+
+The Redis p50s for both rows held within ±25% across all seven runs (filter
+1788-1957 µs; save 430-503 µs); the Postgres side is what moves. The likely
+cause is the "no `ANALYZE`" caveat above: the hydration is a `WHERE key =
+ANY(%s)` over `popoto_record` in a freshly seeded schema with no statistics,
+and `Model.save()` runs five statements plus the `popoto_supersede` call in
+one transaction whose plans are equally unanalysed. An `ANALYZE` after
+seeding, and prepared statements across iterations, would be the first two
+things to try before quoting either row. The other twelve rows stayed within
+±25% in every run (the per-run means of ratios were 3.3x, 3.3x, 3.4x). p95
+and p99 are noisier than p50 on the two slowest rows (the reviewer saw one
+`top_by_decay` Postgres p99 of 1.33 s and one `decayed_rank + base` Redis
+p99 of 213 ms); p50 is the number to compare.
 
 **Read this as a POC number on a laptop with the generic schema and no
 tuning**: one autocommit connection per backend instance, no pool, no
