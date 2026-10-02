@@ -1347,6 +1347,10 @@ class ContextAssembler:
             the model to declare a ``ConfidenceField``. Default ``None``
             (gate disabled; no shipped default — see
             ``EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`` and issue #463).
+            When the gate was applied and gated (either mode), the additive
+            key ``metadata["gate"]["refused_keys"]`` lists the pull-path
+            candidates' Redis keys, rank 0 first (read by
+            ``question_queue.propose_from_gate``); it is absent otherwise.
         confidence_gate_mode: ``"refuse"`` (default) or ``"flag"``. Only
             meaningful when ``confidence_gate_threshold`` is not ``None``.
         graph_traversal_relationship_fields: Optional list of

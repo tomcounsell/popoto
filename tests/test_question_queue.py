@@ -478,6 +478,39 @@ class TestExpiryAndTiming:
             reask,
         )
 
+    def test_stale_pass_cannot_cool_a_redelivered_question(self):
+        """ABA: worker A reads `delivered` (delivered_turn=0); worker B cools
+        and re-delivers it at C; A's pass on its stale read must not cool the
+        question the host is now showing."""
+        C = qq.QUESTION_COOLDOWN_TURNS
+        k = _fact("aba").db_key.redis_key
+        cand = _confirmation(k, turn=0)
+        assert qq.next_question(AGENT, turn=0) is not None
+        qq.note_use(AGENT, [k], C)
+        stale_view = list(QuestionCandidate.query.filter(agent_id=AGENT))
+        got = qq.next_question(AGENT, turn=C)
+        assert got is not None and (got.ask_count, got.delivered_turn) == (2, C)
+
+        assert qq._expire_stale_in(stale_view, C) == (0, [])
+        stored = _reload(cand)
+        assert (stored.status, stored.delivered_turn, stored.ask_count) == (
+            "delivered",
+            C,
+            2,
+        )
+        assert qq.record_answer(got, "yes", turn=C + 1).reason == "applied"
+
+    def test_legacy_delivered_without_delivered_turn_still_cools(self):
+        """A delivered hash written before delivered_turn existed (field
+        absent) is guarded as nil and cooled from created_turn."""
+        C = qq.QUESTION_COOLDOWN_TURNS
+        cand = _confirmation(_fact("legacy").db_key.redis_key, turn=0)
+        assert qq.next_question(AGENT, turn=0) is not None
+        get_REDIS_DB().hdel(cand.db_key.redis_key, "delivered_turn")
+        qq.expire_stale(AGENT, turn=C)
+        stored = _reload(cand)
+        assert (stored.status, stored.cooldown_until) == ("cooled", C)
+
     def test_staleness_check_expires_a_delivered_candidate(self):
         a, b = _fact("ds1"), _fact("ds2")
         cand = _disjunction(a, b)

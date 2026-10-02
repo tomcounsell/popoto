@@ -118,7 +118,7 @@ Deflections are checked first so a non-answer is never scored as an answer. An L
 
 An `answered` reply never overwrites anything. It is applied as defeasible evidence through the existing observation machinery:
 
-1. **Claim.** A Lua compare-and-set flips `status` from `delivered` (or `pending`) to `answered` and writes `answer_option`. If the status was anything else, the call returns `AnswerResult(applied=False, reason="not_open")` and changes nothing.
+1. **Claim.** A Lua compare-and-set flips `status` from `delivered` (or `pending`) to `answered` and writes `answer_option`. If the status was anything else, the call returns `AnswerResult(applied=False, reason="not_open")` and changes nothing. That includes a reply that arrives after an ignored question was already moved to `cooled`: the late reply is not applied, and the question can be asked again after its cooldown.
 2. **Apply.** The chosen option's `acted` keys map to the `acted` outcome and its `contradicted` keys to `contradicted`, applied through `ObservationProtocol.on_context_used`. Each target that declares a `ConfidenceField` then gets `QUESTION_ANSWER_WEIGHT - 1` further `update_confidence` observations at the same signal.
 
 The total is `QUESTION_ANSWER_WEIGHT` observations. `update_confidence` has no weight argument, so this stands in for one. Past `evidence_cap` each observation has gain `1/(cap+1)`, so the evidence count stays capped and a later contradiction keeps its full gain. The claim is "W strong observations", never "dominates".

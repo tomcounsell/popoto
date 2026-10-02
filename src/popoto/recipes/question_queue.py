@@ -377,8 +377,10 @@ class AnswerResult:
         applied: True only when an ``answered`` reply was claimed *and* its
             evidence was written.
         reason: ``"applied"``, ``"cooled"`` (deflected/unrecognized, no
-            evidence), ``"not_open"`` (the claim failed: already answered or
-            otherwise closed), ``"apply_failed"`` (claimed, evidence write
+            evidence), ``"not_open"`` (the claim failed: already answered,
+            expired, or -- for a reply arriving after the question was
+            ignored for ``QUESTION_COOLDOWN_TURNS`` -- already moved to
+            ``cooled``), ``"apply_failed"`` (claimed, evidence write
             failed -- the answer is lost, never double-counted),
             ``"disabled"`` (kill switch) or ``"error"`` (Redis error before
             the claim).
@@ -460,18 +462,22 @@ end
 return 0
 """
 
-#: Compare-and-set on the model hash's msgpack-encoded ``status`` field.
-#: KEYS[1] candidate hash. ARGV[1] = n allowed statuses, then n encoded
-#: statuses, then field/encoded-value pairs to write on a match.
-#: Returns 1 on a claim, 0 otherwise (including a missing hash).
+#: Compare-and-set on the model hash's msgpack-encoded ``status`` field,
+#: optionally guarded by further fields.
+#: KEYS[1] candidate hash. ARGV[1] = n allowed statuses, ARGV[2] = g guard
+#: pairs, then n encoded statuses, then g field/encoded-expected-value pairs
+#: (an absent field compares as msgpack ``nil``), then field/encoded-value
+#: pairs to write on a match. Returns 1 on a claim, 0 otherwise (including a
+#: missing hash).
 _CLAIM_LUA = """
 local current = redis.call('HGET', KEYS[1], 'status')
 if not current then
     return 0
 end
 local n = tonumber(ARGV[1])
+local g = tonumber(ARGV[2])
 local matched = false
-for i = 2, n + 1 do
+for i = 3, n + 2 do
     if current == ARGV[i] then
         matched = true
         break
@@ -480,7 +486,14 @@ end
 if not matched then
     return 0
 end
-for i = n + 2, #ARGV, 2 do
+local first_guard = n + 3
+for i = first_guard, first_guard + 2 * g - 1, 2 do
+    local stored = redis.call('HGET', KEYS[1], ARGV[i]) or '\\192'
+    if stored ~= ARGV[i + 1] then
+        return 0
+    end
+end
+for i = first_guard + 2 * g, #ARGV, 2 do
     redis.call('HSET', KEYS[1], ARGV[i], ARGV[i + 1])
 end
 return 1
@@ -578,12 +591,22 @@ def _claim(
     candidate: QuestionCandidate,
     allowed: Sequence[str],
     updates: Dict[str, Any],
+    guard: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """CAS the candidate's status from one of ``allowed``; on a match write
     ``updates`` (field -> python value, msgpack-encoded like the model does).
+
+    ``guard`` (field -> expected python value) additionally requires each
+    stored field to still hold exactly that value, so a transition decided
+    on an earlier read cannot land on a candidate that has since gone
+    through the same status again (ABA).
     """
-    args: List[Any] = [len(allowed)]
+    guard = guard or {}
+    args: List[Any] = [len(allowed), len(guard)]
     args.extend(msgpack.packb(s) for s in allowed)
+    for field_name, value in guard.items():
+        args.append(field_name)
+        args.append(msgpack.packb(value))
     for field_name, value in updates.items():
         args.append(field_name)
         args.append(msgpack.packb(value))
@@ -787,6 +810,11 @@ def _cool_ignored(candidate: QuestionCandidate, turn: int) -> bool:
     ``delivered_turn + QUESTION_COOLDOWN_TURNS`` -- the turn at which it is
     recognised as ignored -- and the result is the same whichever later turn
     the expiry pass happens to run on. ``ask_count`` keeps the history.
+
+    Guarded on the ``delivered_turn`` this caller read: if another worker
+    cooled and re-delivered the candidate in the meantime, its status is
+    ``delivered`` again but with a newer ``delivered_turn``, and this stale
+    decision must not cool the question the host is showing right now.
     """
     return _claim(
         candidate,
@@ -796,6 +824,7 @@ def _cool_ignored(candidate: QuestionCandidate, turn: int) -> bool:
             "cooldown_until": _ignored_since(candidate) + QUESTION_COOLDOWN_TURNS,
             "resolved_turn": int(turn),
         },
+        guard={"delivered_turn": _int_attr(candidate, "delivered_turn")},
     )
 
 
@@ -1217,7 +1246,10 @@ def record_answer(
       ``answer_option``. Only on a successful claim are the chosen option's
       effects applied (:func:`_apply_option_effects`). A crash between the two
       loses this answer's evidence; it never double-counts, because a second
-      call fails the claim (``reason="not_open"``).
+      call fails the claim (``reason="not_open"``). Only ``delivered`` and
+      ``pending`` are claimable: a late reply to a question the expiry pass
+      already cooled as ignored also gets ``not_open`` and writes nothing --
+      the question is re-asked after its cooldown instead.
     * ``deflected`` / ``unrecognized`` -- the candidate becomes ``cooled``
       with ``cooldown_until = turn + QUESTION_COOLDOWN_TURNS``; no evidence
       is written, so stored confidence is bit-identical.
