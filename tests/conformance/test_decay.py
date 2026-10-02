@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import math
 import random
+import struct
 import threading
 from typing import Any
 
@@ -181,17 +182,61 @@ def reply(state: tuple[float, int, int, int]) -> tuple[float, int, int, int]:
     )
 
 
+#: The order ``cmsgpack.pack`` emits the script's four keys in, measured on
+#: Redis (Lua 5.1's hash order). Written out here independently of the
+#: backend's own ``_CONFIDENCE_KEY_ORDER`` so the Postgres leg cannot agree
+#: with a mutated packer (#661); the Redis leg holds both to the Lua's bytes.
+LUA_KEY_ORDER = ("corroborations", "confidence", "contradictions", "evidence_count")
+
+
+def cmsgpack_number(value: float) -> bytes:
+    """cmsgpack's rule, independently: integral -> msgpack int, else float32
+    when lossless, else float64."""
+    if float(value).is_integer() and -(2**63) <= value < 2**63:
+        return msgpack.packb(int(value))
+    narrowed = struct.unpack(">f", struct.pack(">f", value))[0]
+    if narrowed == value:
+        return struct.pack(">Bf", 0xCA, value)
+    return struct.pack(">Bd", 0xCB, value)
+
+
 def packed(state: tuple[float, int, int, int]) -> bytes:
-    """What ``cmsgpack.pack(updated)`` stores for ``state`` -- the Postgres
-    backend's packer, which the Redis leg holds to the Lua's bytes."""
+    """What ``cmsgpack.pack(updated)`` stores for ``state``."""
     confidence, evidence, corroborations, contradictions = state
-    return _pack_confidence(
-        {
-            "confidence": confidence,
-            "evidence_count": evidence,
-            "corroborations": corroborations,
-            "contradictions": contradictions,
-        }
+    values = {
+        "confidence": confidence,
+        "evidence_count": evidence,
+        "corroborations": corroborations,
+        "contradictions": contradictions,
+    }
+    out = bytearray([0x84])
+    for name in LUA_KEY_ORDER:
+        out += msgpack.packb(name) + cmsgpack_number(values[name])
+    return bytes(out)
+
+
+#: ``HGET`` after one 0.9 signal from the 0.5 seed, recorded from Redis
+#: (``redis-cli`` on the local build, 2026-10-03): the anchor both the
+#: packer above and the backend's are held to.
+LUA_BYTES_AFTER_FIRST_UPDATE = bytes.fromhex(
+    "84ae636f72726f626f726174696f6e7301aa636f6e666964656e6365cb3fe6666666666666"
+    "ae636f6e74726164696374696f6e7300ae65766964656e63655f636f756e7401"
+)
+
+
+def test_the_packers_agree_with_the_recorded_lua_bytes():
+    state = lua_update((INITIAL, 0, 0, 0), 0.9)
+    assert packed(state) == LUA_BYTES_AFTER_FIRST_UPDATE
+    assert (
+        _pack_confidence(
+            {
+                "confidence": state[0],
+                "evidence_count": state[1],
+                "corroborations": state[2],
+                "contradictions": state[3],
+            }
+        )
+        == LUA_BYTES_AFTER_FIRST_UPDATE
     )
 
 
@@ -1104,6 +1149,54 @@ class TestConfidenceUpdate:
         for _ in range(2 * rounds):
             state = lua_update(state, 0.9)
         assert backend.map_get(CONF, member("m")) == packed(state)
+
+    def test_two_connections_cannot_both_create_the_row(
+        self, backend, backend_is_redis, monkeypatch
+    ):
+        """The advisory lock's job, forced (Postgres leg): ``FOR UPDATE`` has
+        nothing to lock when the companion row does not exist yet, so two
+        instances that both read "no row" would both insert and the second
+        would overwrite the first (evidence_count 1 instead of 2). A barrier
+        patched into ``_confidence_state`` -- reached only *after* the
+        ``SELECT`` -- lets both instances through at once when the lock is
+        gone; with the lock the second never arrives and the barrier simply
+        times out for the first."""
+        if backend_is_redis:
+            pytest.skip("Postgres-leg interleaving: the Lua is one thread")
+        from popoto.backends import postgres as postgres_module
+
+        save(backend, "m")
+        other = PostgresBackend(backend.url)
+        barrier = threading.Barrier(2)
+        original = postgres_module._confidence_state
+
+        def gated(raw: Any, initial: float) -> Any:
+            try:
+                barrier.wait(timeout=2)
+            except threading.BrokenBarrierError:
+                pass
+            return original(raw, initial)
+
+        monkeypatch.setattr(postgres_module, "_confidence_state", gated)
+        errors: list[BaseException] = []
+
+        def worker(instance: Any) -> None:
+            try:
+                self.update(instance, "m", 0.9)
+            except BaseException as e:  # noqa: BLE001
+                errors.append(e)
+
+        threads = [threading.Thread(target=worker, args=(b,)) for b in (backend, other)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+        other.close()
+        assert not errors, errors
+        assert stored(backend, "m")["evidence_count"] == 2
+        assert backend.map_get(CONF, member("m")) == packed(
+            lua_update(lua_update((INITIAL, 0, 0, 0), 0.9), 0.9)
+        )
 
 
 # -- the Postgres stubs are gone ------------------------------------------------
