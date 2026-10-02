@@ -41,7 +41,9 @@ EXPECTED_TABLES = {
     "popoto_set",
     "popoto_sorted",
     "popoto_map",
+    "popoto_open_ptr",
 }
+EXPECTED_INDEXES = ["popoto_open_ptr_prefix_member", "popoto_sorted_idx_score"]
 
 
 @pytest.fixture
@@ -117,12 +119,13 @@ def test_concurrent_first_connections_bootstrap_one_schema(empty_schema):
                 row[0]
                 for row in conn.execute(
                     "SELECT indexname FROM pg_catalog.pg_indexes "
-                    "WHERE schemaname = %s AND indexname = 'popoto_sorted_idx_score'",
-                    (empty_schema.name,),
+                    "WHERE schemaname = %s AND indexname = ANY(%s) "
+                    "ORDER BY indexname",
+                    (empty_schema.name, EXPECTED_INDEXES),
                 )
             ]
         assert tables == EXPECTED_TABLES
-        assert indexes == ["popoto_sorted_idx_score"]
+        assert indexes == EXPECTED_INDEXES
     finally:
         for instance in backends:
             instance.close()
