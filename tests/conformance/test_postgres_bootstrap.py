@@ -41,6 +41,7 @@ EXPECTED_TABLES = {
     "popoto_set",
     "popoto_sorted",
     "popoto_map",
+    "popoto_pointer",
 }
 
 

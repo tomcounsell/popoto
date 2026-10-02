@@ -88,6 +88,73 @@ holds the line. The two-argument lock form is a separate key space from the
 one-argument `hashtext(key)` record locks, so no record key can collide with
 it. A bootstrap that fails closes its connection before the error propagates.
 
+## What is implemented (WS3c)
+
+The atomic index and tag swaps -- `INDEX_SWAP_LUA` and `TAG_SWAP_LUA` on
+Redis -- and their delete-side counterparts, under the same harness and
+oracle (`tests/conformance/test_swaps.py`):
+
+| Protocol methods | Postgres shape |
+|---|---|
+| `swap_index` | One transaction following the Lua's phases. *Validation*, reads only: the pointer (`popoto_pointer`, then the pre-#476 in-hash `{field}\x00idxset` field of `popoto_record`, adopted and scrubbed as the Lua does), the idempotent re-save check (pointer already names the new index and the member is in it: rewrite the field bytes, reply 1), then uniqueness (`SELECT 1 FROM popoto_set WHERE idx = new AND member <> self`), which raises `ModelException` **before any write**. *Mutation*, all-or-nothing: `DELETE` the old membership (the pointer's index, else the field layer's `legacy_old_idx` hint), `INSERT ... ON CONFLICT DO NOTHING` the new, repoint, upsert the field bytes. Reply 1. |
+| `swap_tags` | Previous membership from `popoto_pointer`, then the diff: `DELETE` from the indexes no longer named, `INSERT` into the newly named, reset the pointer rows to exactly the new set, upsert the packed tag list. Reply 1. |
+| `drop_index_entry` | Pointer (then the in-hash legacy field, then `fallback_idx`) decides which index; `DELETE` the membership (the `SREM` reply), `DELETE` the pointer rows. |
+| `drop_tag_entries` | Every index the pointer names, else `fallback_idxs` -- consulted only after the pointer read came back empty and never materialised up front, because the field layer hands in a lazy sequence whose first use may raise; `DELETE` each membership; the pointer `DELETE`'s row count is the `DEL` reply (1 / 0). |
+
+```sql
+CREATE TABLE IF NOT EXISTS popoto_pointer (
+    key   text NOT NULL,
+    field text NOT NULL,
+    idx   text NOT NULL,
+    PRIMARY KEY (key, field, idx)
+);
+```
+
+**The pointer is a table, not a record field.** Both scripts need to know
+which index a record *was* in for a field before they can move it, and on
+Redis that is the `$IdxPtr:` / `$TagPtr:` side key. The plan's "the index row
+is the pointer" holds only in reverse -- `popoto_set(idx, member)` answers
+"who is in this index", not "which index is this record in for this field",
+and an index name is opaque to the protocol -- so the reverse lookup is a row
+of its own: one per `(key, field)` for an indexed/unique field, one per tag
+for a tag field. It is never a field of `popoto_record` (that is the pre-#476
+in-hash scheme the Lua scrubs), so `load_record` returns exactly what
+`HGETALL` does. Of the Lua's two migration fallbacks only the second has a
+Postgres shape: no record written by this backend can carry a pre-#540 side
+key (`{key}\x00idxptr\x00{field}`), but a record *imported* with the pre-#476
+`{field}\x00idxset` field can, and both swaps honour it.
+
+**Conflict mapping.** The Lua replies `redis.error_reply('POPOTO_UNIQUE_CONFLICT')`
+and `RedisBackend.swap_index` turns that into `ModelException("Uniqueness
+violation on {record_key}.{field}: the value indexed at {new_idx!r} is already
+taken by another instance")`. The Postgres backend raises the same exception
+class with the byte-identical message from inside the swap's transaction, so
+the field layer's re-wrap (`IndexedFieldMixin._unique_conflict_message`,
+deviation 6) sees the same object on both backends and a user still reads
+`Uniqueness violation on Model.field: value 'x' is already taken by another
+instance`. Because the raise precedes every write, the transaction -- on the
+`uow=` path the whole queue -- rolls back untouched: the "validation phase
+then mutation phase" comment in the Lua is a real rollback here. One
+difference, on the queued path only: a Redis pipeline relays the server's raw
+`ResponseError('POPOTO_UNIQUE_CONFLICT')` from `execute()`, where Postgres
+raises the protocol's `ModelException` from `commit()`; the conflicting swap
+leaves no trace on either (see "Known deviations" for what happens to the
+rest of the queue).
+
+**Concurrency.** Two instances claiming one unique value for two *different*
+records each read an empty index, and `FOR UPDATE` has nothing to lock on a
+row that does not exist, so `swap_index` with `unique=True` takes the
+advisory lock on the target index as well as on the record key (both through
+the same ordered helper the record writers use). The second claimant waits,
+re-reads under the lock, sees the first's committed row and raises: exactly
+one success and one conflict, as Redis's single thread guarantees.
+`tests/conformance/test_swaps.py::TestConcurrentUniqueClaim` forces the
+interleaving deterministically (the second claim is started while the first
+is mid-transaction and must show up blocked on the lock in `pg_stat_activity`)
+and, with the index lock removed, stores two members. The other three swaps
+lock the record key only, which serialises them against each other and
+against `save_record` / `delete_record` on the same record.
+
 ## Cross-instance serialisation
 
 Redis runs every command and script on one thread, so an `increment_field`
@@ -150,9 +217,22 @@ yields nothing where Redis raises `WRONGTYPE`. Callers pass the right kind.
 
 **`-0.0` scores are stored as `0.0`**, matching `ZADD`'s normalisation.
 
+**A conflicting swap's migration scrub is rolled back.** `INDEX_SWAP_LUA`
+`HDEL`s an adopted pre-#476 in-hash pointer *before* it checks uniqueness, so
+on Redis a save that then conflicts has still scrubbed the legacy field. On
+Postgres the conflict rolls the whole transaction back, scrub included, and
+the next save scrubs it. The legacy field is hidden from every decoder (its
+name contains `\x00`), so nothing user-visible differs.
+
+**A queued conflict surfaces as a different exception.** On the `uow=` path a
+Redis pipeline raises the server's `ResponseError('POPOTO_UNIQUE_CONFLICT')`
+from `execute()`; Postgres raises `ModelException` with the backend's wording
+from `commit()`. The executed-now path raises the identical `ModelException`
+on both. Pinned leg-aware in `test_swaps.py::TestUnitOfWork`.
+
 **Not implemented**: record TTL (`save_record(ttl=...)` / `expire_at=...`
 raises `NotImplementedError` rather than silently storing a record that never
-expires), and the atomic index/tag swaps, decay ranking, confidence, validity and
-supersession families, which still raise `NotImplementedError` naming the
-method. `native()` raises on Postgres by design: it is the Redis-only escape
-hatch for out-of-scope features.
+expires), and the decay ranking, confidence, validity and supersession
+families, which still raise `NotImplementedError` naming the method.
+`native()` raises on Postgres by design: it is the Redis-only escape hatch for
+out-of-scope features.

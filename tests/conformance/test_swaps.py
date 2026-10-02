@@ -821,6 +821,73 @@ class TestConcurrentUniqueClaim:
         final = msgpack.unpackb(backend.load_record(key(1))[b"f"])
         assert found[1 if final == "left" else 2] == {key(1)}
 
+    def test_the_second_mover_waits_for_the_first_on_the_record_lock(
+        self, backend, backend_is_redis, monkeypatch
+    ):
+        """The deterministic shape of the record race above, Postgres leg only.
+
+        Instance A is moving record 1 from ``start`` to ``left`` and has read
+        its pointer; ``_remove_member`` is hooked to start instance B's move
+        of the same record to ``right`` on a thread and to return only once B
+        is either done (both read ``start`` as the old index: a dual
+        membership) or blocked on A's record lock. With the lock B waits,
+        then reads ``left`` as the old index and leaves it: the record ends in
+        ``right`` only, as Redis's single thread would leave it.
+        """
+        if backend_is_redis:
+            pytest.skip("Postgres-leg assertion: Redis serialises these natively")
+        import psycopg
+
+        swap(backend, key(1), "start", unique=False)
+        other = PostgresBackend(backend.url)
+        probe = psycopg.connect(backend.url, autocommit=True)
+        other_pid = other._connection().info.backend_pid
+        outcome: list[Any] = []
+
+        def move_from_b() -> None:
+            try:
+                outcome.append(swap(other, key(1), "right", unique=False))
+            except BaseException as exc:  # asserted below
+                outcome.append(exc)
+
+        mover = threading.Thread(target=move_from_b, name="instance-B-move")
+        real_remove_member = postgres_module._remove_member
+
+        def hooked_remove_member(cur, index, member):
+            # Fire once: A has read the pointer (``start``) and is about to
+            # leave it, inside its transaction.
+            monkeypatch.setattr(postgres_module, "_remove_member", real_remove_member)
+            mover.start()
+            deadline = time.monotonic() + 10.0
+            while mover.is_alive() and time.monotonic() < deadline:
+                row = probe.execute(
+                    "SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s",
+                    (other_pid,),
+                ).fetchone()
+                if row is not None and row[0] == "Lock":
+                    break  # B is queued behind A's record lock
+                time.sleep(0.01)
+            else:
+                assert not mover.is_alive(), "B neither finished nor blocked"
+            return real_remove_member(cur, index, member)
+
+        monkeypatch.setattr(postgres_module, "_remove_member", hooked_remove_member)
+        try:
+            got = swap(backend, key(1), "left", unique=False)
+            mover.join(timeout=10.0)
+            assert not mover.is_alive(), "B's move never completed after A committed"
+        finally:
+            probe.close()
+            other.close()
+        assert got == 1
+        assert outcome == [1], outcome
+        assert members(backend, "start", "left", "right") == [
+            set(),
+            set(),
+            {key(1)},
+        ], "dual membership: B did not see A's move"
+        assert backend.load_record(key(1)) == {b"f": packed("right")}
+
 
 # -- Still stubbed ---------------------------------------------------------------
 
