@@ -30,6 +30,14 @@ from popoto import redis_db
 # the name under test.
 from popoto import counters  # noqa: E402
 from popoto.models import base as models_base  # noqa: E402
+from popoto.backends import redis as backends_redis  # noqa: E402
+
+# Built at collection time, BEFORE any rebind: the #631 rule is that
+# ``RedisBackend`` stores no client, so an instance constructed against the
+# pre-rebind global must still reach the post-rebind one. A backend that
+# captured ``get_REDIS_DB()`` in ``__init__`` would make this object a frozen
+# snapshot and fail the probe below.
+_BACKEND_BUILT_BEFORE_REBIND = backends_redis.RedisBackend()
 
 
 class RecordingClient:
@@ -75,7 +83,7 @@ def recorder(monkeypatch):
 def test_targets_were_imported_before_the_rebind():
     """Guard against the #661 vacuity: a target imported *after* the spy is
     installed snapshots the spy and passes no matter what."""
-    for name in ("popoto.counters", "popoto.models.base"):
+    for name in ("popoto.counters", "popoto.models.base", "popoto.backends.redis"):
         assert name in sys.modules, (
             f"{name} must already be imported before any rebind, or this "
             "file's spy tests pass vacuously (#661)"
@@ -103,3 +111,44 @@ def test_model_exists_uses_the_current_client(recorder):
         "Model.exists() bypassed the rebound client — models/base.py is "
         "holding a stale module-level POPOTO_REDIS_DB snapshot (#655)"
     )
+
+
+def test_redis_backend_uses_the_current_client(recorder):
+    """``backends.redis.RedisBackend`` must reach Redis through the live global.
+
+    Probed on an instance built at collection time (before the rebind) so that
+    a client captured in ``__init__`` -- the #655 bug one layer up, which the
+    #631 plan forbids -- cannot pass by being constructed after the spy.
+    """
+    backend = _BACKEND_BUILT_BEFORE_REBIND
+    assert backend.client is recorder, (
+        "RedisBackend.client is not the rebound client — the backend captured "
+        "a client at construction instead of resolving get_REDIS_DB() per call"
+    )
+    backend.record_exists("popoto_test:631:nonexistent")
+    assert "exists" in recorder.calls, (
+        "RedisBackend.record_exists() bypassed the rebound client — "
+        "backends/redis.py is holding a stale client reference (#631 rule 1)"
+    )
+    recorder.calls.clear()
+    backend.sorted_count("popoto_test:631:nonexistent-zset")
+    assert "zcard" in recorder.calls
+    recorder.calls.clear()
+    backend.begin()
+    assert (
+        "pipeline" in recorder.calls
+    ), "RedisBackend.begin() must open the unit of work on the current client"
+
+
+def test_redis_backend_stores_nothing():
+    """The mechanism, not only the behaviour: no instance state at all.
+
+    A future ``self._client = get_REDIS_DB()`` would pass the behavioural
+    probes above as long as the session never reconfigures between
+    construction and use; this pins the shape directly, the way
+    ``test_popoto_redis_db_rebind.py`` asserts ``"POPOTO_REDIS_DB" not in
+    vars(popoto)``.
+    """
+    assert vars(backends_redis.RedisBackend()) == {}
+    assert "__init__" not in vars(backends_redis.RedisBackend)
+    assert isinstance(vars(backends_redis.RedisBackend)["client"], property)
