@@ -49,11 +49,28 @@ asked (an M5 disjoin annotation that gets retracted) registers a staleness
 check with :func:`register_staleness_check`. :func:`expire_stale` -- which
 :func:`next_question` runs before every delivery -- expires any open candidate
 of that kind for which the check returns ``True``, so a stale question is
-never asked. The M5 disjunction producer is a later dispatch; it will call::
+never asked. The M5 disjunction producer registers exactly such a check at
+import time (:func:`_disjunction_is_stale`).
 
-    register_staleness_check("disjunction", lambda cand, turn: (
-        cand.disjunction_id not in live_disjoin_ids(cand.agent_id)
-    ))
+Producers
+---------
+
+Three thin adapters turn an existing ambiguity signal into a :func:`propose`
+call. Each is a separate function the host calls when, and only when, it wants
+that source -- so each is independently disableable by not calling it, and the
+queue works with any subset (including none):
+
+* :func:`propose_from_disjunctions` -- M5 ``disjoin`` annotations (#564).
+  Imports ``reconciliation`` lazily, so the queue works without M5.
+* :func:`propose_from_gate` -- a confidence-gate refusal in ``assemble()``
+  metadata. **Dormant unless the host configures
+  ``ContextAssembler(confidence_gate_threshold=...)``**: without a threshold
+  there is no ``metadata["gate"]`` and the producer has no input.
+* :func:`propose_from_resolution` -- M4 ``evidence_gap`` references on a
+  ``ResolutionRecord`` (#563).
+
+All three fail closed: on any error they log and return ``0`` / ``None`` and
+never raise into the caller.
 
 Example::
 
@@ -79,6 +96,8 @@ Example::
         qq.record_answer(q, "morning", turn=14)
 """
 
+import importlib
+import json
 import logging
 import re
 import string
@@ -1078,3 +1097,269 @@ def prune(agent_id: str, current_turn: int) -> int:
     except Exception:
         logger.exception("question_queue: prune failed")
     return deleted
+
+
+# ---------------------------------------------------------------------------
+# Producers -- thin adapters, each independently disableable (by not calling
+# it) and each failing closed. The assembler never calls these: a host hands
+# them the signal it already holds.
+# ---------------------------------------------------------------------------
+
+
+def _reconciliation() -> Any:
+    """Lazily import M5. Raises ``ImportError`` when it is unavailable, which
+    the callers below turn into "no input" rather than a crash.
+
+    ``importlib.import_module`` rather than ``from . import reconciliation``:
+    the latter short-circuits on the package attribute once M5 was ever
+    imported, so it could not observe M5 being made unavailable.
+    """
+    return importlib.import_module(f"{__package__}.reconciliation")
+
+
+def _live_disjoins(agent_id: str) -> List[Tuple[str, str, str]]:
+    """``(disjunction_id, side_a_key, side_b_key)`` for every *live* M5
+    ``disjoin`` annotation of ``agent_id``, oldest first.
+
+    ``merge_log_entries`` returns only ``validity__current=True`` annotations,
+    so a retracted disjoin is simply absent here. Side A is the annotation's
+    ``target`` (the entry reconciled), side B is the payload's ``other``. The
+    stable id is the payload's ``disjunction_id`` (shared with the two
+    ``ClaimMembership`` rows), falling back to the annotation's own key.
+    Raises on an unavailable M5 or a Redis error.
+    """
+    recon = _reconciliation()
+    live: List[Tuple[str, str, str]] = []
+    for annotation in recon.merge_log_entries(agent_id):
+        if getattr(annotation, "kind", None) != "disjoin":
+            continue
+        payload = recon._decode_payload(annotation)
+        if payload is None:
+            continue
+        side_a = str(getattr(annotation, "target", None) or "")
+        side_b = str(payload.get("other") or "")
+        if not side_a or not side_b or side_a == side_b:
+            continue
+        disjunction_id = str(payload.get("disjunction_id") or annotation.pk)
+        live.append((disjunction_id, side_a, side_b))
+    return live
+
+
+def _disjunction_is_stale(candidate: QuestionCandidate, turn: int) -> bool:
+    """Staleness check for M5-produced candidates (registered at import).
+
+    A candidate with no ``disjunction_id`` was not produced from an M5
+    annotation and is never stale here. One with an id is stale when that id
+    no longer appears among the live disjoins -- the annotation was retracted,
+    so the question is no longer warranted and is expired rather than asked.
+    Raises if M5 cannot be read; ``_is_stale`` then neither expires nor
+    delivers the candidate this turn (fail closed).
+    """
+    disjunction_id = _str_attr(candidate, "disjunction_id")
+    if not disjunction_id:
+        return False
+    live_ids = {d for d, _, _ in _live_disjoins(_str_attr(candidate, "agent_id"))}
+    return disjunction_id not in live_ids
+
+
+register_staleness_check("disjunction", _disjunction_is_stale)
+
+
+def _entry_statement(key: str) -> str:
+    """The journal statement behind ``key``, or ``""`` if it cannot be read."""
+    try:
+        from .provenance_journal import JournalEntry
+
+        entry = JournalEntry.query.get(redis_key=key, _no_track=True)
+    except Exception:
+        return ""
+    return "" if entry is None else str(getattr(entry, "statement", "") or "")
+
+
+def _distinct_labels(texts: Sequence[str]) -> List[str]:
+    """Use ``texts`` as option labels unless any is blank or two normalize
+    equal, in which case fall back to ``option 1`` ... (the 1-based index
+    always matches in :func:`classify_answer` anyway)."""
+    normalized = [normalize_text(t) for t in texts]
+    if all(normalized) and len(set(normalized)) == len(normalized):
+        return list(texts)
+    return [f"option {i + 1}" for i in range(len(texts))]
+
+
+def propose_from_disjunctions(agent_id: str, turn: int) -> int:
+    """Propose one ``disjunction`` question per live M5 disjunct pair.
+
+    Reads ``reconciliation.merge_log_entries(agent_id)`` filtered to
+    ``kind="disjoin"`` and decodes each payload for the pair's two sides.
+    Options are exclusive by construction: A = ``acted:[a],
+    contradicted:[b]``, B = the mirror. ``disjunction_id`` is set so the
+    registered staleness check expires the candidate if the annotation is
+    later retracted. Calling this again re-observes the same pairs, which
+    dedup folds into a touch (bumping ``last_seen_turn``).
+
+    The answer is recorded on the candidate (``answer_option``); the
+    ``JournalEntry`` sides carry no ConfidenceField, so nothing about them
+    changes. Feeding the answer back so the disjunction resolves is out of
+    scope (an M1/M5 change).
+
+    Returns:
+        The number of pairs proposed or touched; ``0`` when M5 is unavailable,
+        the kill switch is set, or on any error. Never raises.
+    """
+    if not question_queue_enabled():
+        return 0
+    try:
+        disjoins = _live_disjoins(agent_id)
+    except ImportError:
+        logger.info("question_queue: M5 reconciliation unavailable; no disjoins")
+        return 0
+    except Exception:
+        logger.exception("question_queue: reading M5 disjoins failed")
+        return 0
+    proposed = 0
+    for disjunction_id, side_a, side_b in disjoins:
+        try:
+            label_a, label_b = _distinct_labels(
+                [_entry_statement(side_a), _entry_statement(side_b)]
+            )
+            candidate = propose(
+                agent_id=agent_id,
+                question_text=(
+                    f"Two things I hold conflict: {label_a!r} or {label_b!r}. "
+                    "Which is right?"
+                ),
+                kind="disjunction",
+                source_module="reconciliation",
+                target_keys=[side_a, side_b],
+                ambiguity_signal="disjunction",
+                turn=turn,
+                options=[
+                    {"label": label_a, "acted": [side_a], "contradicted": [side_b]},
+                    {"label": label_b, "acted": [side_b], "contradicted": [side_a]},
+                ],
+                disjunction_id=disjunction_id,
+            )
+        except Exception:
+            logger.exception("question_queue: disjunction proposal failed")
+            continue
+        proposed += int(candidate is not None)
+    return proposed
+
+
+def propose_from_gate(
+    agent_id: str,
+    metadata: Any,
+    turn: int,
+    query_text: str,
+) -> Optional[QuestionCandidate]:
+    """Propose a ``confirmation`` question from a confidence-gate refusal.
+
+    ``metadata`` is ``assemble()``'s metadata dict (an ``AssemblyResult`` is
+    accepted too). Acts only when ``metadata["gate"]`` reports ``gated`` and
+    carries a non-empty ``refused_keys``; ``k`` is the top (rank-0) refused
+    key, the one whose confidence fell below threshold. Options: ``"yes"`` =
+    ``acted:[k]``, ``"no"`` = ``contradicted:[k]``.
+
+    **Dormant unless ``confidence_gate_threshold`` is configured** on the
+    ``ContextAssembler``: without it ``assemble()`` emits no gate metadata
+    and this producer has nothing to read.
+
+    Returns:
+        The new or existing candidate; ``None`` when there was no refusal,
+        when disabled, or on any error. Never raises.
+    """
+    try:
+        if not isinstance(metadata, dict):
+            metadata = getattr(metadata, "metadata", None)
+        gate = metadata.get("gate") if isinstance(metadata, dict) else None
+        if not isinstance(gate, dict) or not gate.get("gated"):
+            return None
+        refused = [str(k) for k in gate.get("refused_keys") or [] if k]
+        if not refused:
+            return None
+        key = refused[0]
+        topic = str(query_text or "").strip() or "this topic"
+        return propose(
+            agent_id=agent_id,
+            question_text=(
+                f"I'm not confident in what I recall about {topic!r}. "
+                "Is it still accurate?"
+            ),
+            kind="confirmation",
+            source_module="context_assembler.confidence_gate",
+            target_keys=[key],
+            ambiguity_signal="gate_refusal",
+            turn=turn,
+            options=[
+                {"label": "yes", "acted": [key]},
+                {"label": "no", "contradicted": [key]},
+            ],
+        )
+    except Exception:
+        logger.exception("question_queue: gate proposal failed")
+        return None
+
+
+def propose_from_resolution(record: Any, turn: int) -> int:
+    """Propose one ``referent`` question per M4 ``evidence_gap`` reference.
+
+    Reads ``record.references_json`` (the shape ``_serialise_reference`` in
+    ``extraction/resolution_log.py`` writes) and, for each entry whose
+    ``status == "evidence_gap"``, proposes its ``question`` with one option
+    per entry in ``candidates``. Options carry empty ``acted`` /
+    ``contradicted`` lists: the answer is recorded (``answer_option``), never
+    applied as evidence.
+
+    Each reference gets its own target key,
+    ``"{record_key}#ref:{start}:{end}"``, so two gaps in one sentence are two
+    questions rather than one swallowed by key-intersection dedup.
+
+    Returns:
+        The number of references proposed or touched; ``0`` when there are
+        none, when disabled, or on any error. Never raises.
+    """
+    if not question_queue_enabled():
+        return 0
+    try:
+        agent_id = str(getattr(record, "agent_id", "") or "")
+        record_key = str(record.db_key.redis_key)
+        references = json.loads(str(getattr(record, "references_json", "") or "[]"))
+    except Exception:
+        logger.exception("question_queue: unreadable ResolutionRecord")
+        return 0
+    if not agent_id or not isinstance(references, list):
+        return 0
+    proposed = 0
+    for ref in references:
+        try:
+            if not isinstance(ref, dict) or ref.get("status") != "evidence_gap":
+                continue
+            seen: Dict[str, str] = {}
+            for cand in ref.get("candidates") or []:
+                text = str(cand)
+                if normalize_text(text) and normalize_text(text) not in seen:
+                    seen[normalize_text(text)] = text
+            if not seen:
+                continue
+            surface = str(ref.get("surface") or "")
+            question = str(ref.get("question") or "").strip() or (
+                f"Who or what does {surface!r} refer to?"
+            )
+            candidate = propose(
+                agent_id=agent_id,
+                question_text=question,
+                kind="referent",
+                source_module="extraction.resolution",
+                target_keys=[f"{record_key}#ref:{ref.get('start')}:{ref.get('end')}"],
+                ambiguity_signal="evidence_gap",
+                turn=turn,
+                options=[
+                    {"label": label, "acted": [], "contradicted": []}
+                    for label in seen.values()
+                ],
+            )
+        except Exception:
+            logger.exception("question_queue: evidence_gap proposal failed")
+            continue
+        proposed += int(candidate is not None)
+    return proposed
