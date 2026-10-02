@@ -51,14 +51,15 @@ import warnings
 from decimal import Decimal
 import datetime
 import typing
-import redis
 
+from ..backends import get_backend
 from ..models.canonical_key import canonical_key_str
 from ..models.db_key import DB_key
 from ..models.query import QueryException
-from ..redis_db import get_REDIS_DB
+from ..redis_db import ENCODING
 
 if typing.TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from ..backends import UnitOfWork
     from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.SortedFieldMixin")
@@ -502,7 +503,7 @@ class SortedFieldMixin:
             QueryException: Propagated from the partition key builder.
         """
         key = cls.get_partitioned_sortedset_db_key(model_instance, field_name).redis_key
-        return int(get_REDIS_DB().zcard(key))
+        return get_backend().sorted_count(key)
 
     @classmethod
     def members(
@@ -537,16 +538,7 @@ class SortedFieldMixin:
             QueryException: Propagated from the partition key builder.
         """
         key = cls.get_partitioned_sortedset_db_key(model_instance, field_name).redis_key
-        # Resolve the client attribute at call time so test spies and fault
-        # injectors patched onto POPOTO_REDIS_DB keep intercepting the read.
-        return [
-            raw.decode() if isinstance(raw, bytes) else str(raw)
-            for raw in (
-                get_REDIS_DB().zrevrange(key, start, stop)
-                if reverse
-                else get_REDIS_DB().zrange(key, start, stop)
-            )
-        ]
+        return get_backend().sorted_members(key, start, stop, reverse=reverse)
 
     @classmethod
     def score(
@@ -614,15 +606,12 @@ class SortedFieldMixin:
         # pair it with ``obsolete_redis_key`` for the old one. A read has no
         # such pairing, so it must ask for where the member is now.
         member = model_instance.pk
-        # The accessor, not the module-level ``POPOTO_REDIS_DB`` its sibling
-        # readers above use: that name is a snapshot this module took at
-        # import, and ``set_REDIS_DB_settings()`` rebinds ``redis_db``'s
-        # global without updating it, so a rebound process reads from the
-        # pre-reconfiguration client (#655). Spies and fault injectors
-        # patched onto the client object still intercept, since the accessor
-        # hands back that same object.
-        reply = get_REDIS_DB().zscore(key, member)
-        return None if reply is None else float(reply)
+        # Through the backend seam (#631), which resolves the client on every
+        # call: ``set_REDIS_DB_settings()`` rebinds ``redis_db``'s global and
+        # a module-level snapshot would never see it (#655). Spies and fault
+        # injectors patched onto the client object still intercept, since the
+        # backend hands back that same object.
+        return get_backend().sorted_score(key, member)
 
     @classmethod
     def on_save(
@@ -630,7 +619,7 @@ class SortedFieldMixin:
         model_instance: "Model",
         field_name: str,
         field_value: typing.Union[int, float],
-        pipeline: redis.client.Pipeline = None,
+        pipeline: "typing.Optional[UnitOfWork]" = None,
         **kwargs,
     ):
         """
@@ -688,27 +677,28 @@ class SortedFieldMixin:
                         if old_val is not None:
                             old_ss_key.append(canonical_key_str(old_val))
                     # Use saved_redis_key if available (key may have changed too)
-                    old_member = kwargs.get(
-                        "saved_redis_key",
-                        model_instance.obsolete_redis_key
-                        or model_instance.db_key.redis_key,
+                    old_member = typing.cast(
+                        str,
+                        kwargs.get(
+                            "saved_redis_key",
+                            model_instance.obsolete_redis_key
+                            or model_instance.db_key.redis_key,
+                        ),
                     )
-                    if isinstance(pipeline, redis.client.Pipeline):
-                        pipeline.zrem(old_ss_key.redis_key, old_member)
-                    else:
-                        get_REDIS_DB().zrem(old_ss_key.redis_key, old_member)
+                    get_backend().sorted_remove(
+                        old_ss_key.redis_key, old_member, uow=pipeline
+                    )
 
         sortedset_member = model_instance.db_key.redis_key
         sortedset_score = cls.convert_to_numeric(field, field_value)
 
-        if isinstance(pipeline, redis.client.Pipeline):
-            return pipeline.zadd(
-                sortedset_db_key.redis_key, {sortedset_member: sortedset_score}
-            )
-        else:
-            return get_REDIS_DB().zadd(
-                sortedset_db_key.redis_key, {sortedset_member: sortedset_score}
-            )
+        reply = get_backend().sorted_add(
+            sortedset_db_key.redis_key, sortedset_member, sortedset_score, uow=pipeline
+        )
+        # Architect decision 1 (#631): a unit of work is any non-None handle,
+        # and the caller gets its own handle back, as the chained
+        # ``pipeline.zadd(...)`` returned it before the seam.
+        return pipeline if pipeline is not None else reply
 
     @classmethod
     def on_delete(
@@ -716,7 +706,7 @@ class SortedFieldMixin:
         model_instance: "Model",
         field_name: str,
         field_value,
-        pipeline: redis.client.Pipeline = None,
+        pipeline: "typing.Optional[UnitOfWork]" = None,
         **kwargs,
     ):
         """
@@ -770,22 +760,20 @@ class SortedFieldMixin:
                     old_val = saved.get(pf)
                     if old_val is not None:
                         sortedset_db_key.append(canonical_key_str(old_val))
-                if pipeline:
-                    return pipeline.zrem(sortedset_db_key.redis_key, saved_redis_key)
-                else:
-                    return get_REDIS_DB().zrem(
-                        sortedset_db_key.redis_key, saved_redis_key
-                    )
+                reply = get_backend().sorted_remove(
+                    sortedset_db_key.redis_key, saved_redis_key, uow=pipeline
+                )
+                return pipeline if pipeline is not None else reply
 
         sortedset_db_key = cls.get_partitioned_sortedset_db_key(
             model_instance, field_name
         )
         # Use saved_redis_key if provided, otherwise fall back to current db_key
         sortedset_member = saved_redis_key or model_instance.db_key.redis_key
-        if pipeline:
-            return pipeline.zrem(sortedset_db_key.redis_key, sortedset_member)
-        else:
-            return get_REDIS_DB().zrem(sortedset_db_key.redis_key, sortedset_member)
+        reply = get_backend().sorted_remove(
+            sortedset_db_key.redis_key, sortedset_member, uow=pipeline
+        )
+        return pipeline if pipeline is not None else reply
 
     @classmethod
     def filter_query(
@@ -796,7 +784,7 @@ class SortedFieldMixin:
         _limit: "int | None" = None,
         _desc: bool = False,
         **query_params,
-    ) -> set:
+    ) -> list[bytes]:
         """
         Execute a range query against the Sorted Set index.
 
@@ -807,10 +795,12 @@ class SortedFieldMixin:
 
         Query Parameter Parsing:
             The method parses __gt, __gte, __lt, __lte suffixes to determine
-            the range bounds. Redis uses special syntax for exclusive bounds:
-            a leading '(' makes the bound exclusive. For example:
-            - price__gte=10 becomes min="10" (inclusive)
-            - price__gt=10 becomes min="(10" (exclusive)
+            the range bounds, which it hands to the backend as numbers plus
+            inclusivity flags. The Redis wire format -- a leading '(' for an
+            exclusive bound, ``-inf``/``+inf`` for an open one -- is rendered
+            by the Redis backend, not here. For example:
+            - price__gte=10 becomes lo=10, lo_inclusive=True (min="10")
+            - price__gt=10 becomes lo=10, lo_inclusive=False (min="(10")
 
         Partition Handling:
             For partitioned sorted fields (those with partition_by), the query
@@ -851,7 +841,15 @@ class SortedFieldMixin:
                 price__gte=10.0, price__lt=50.0, category='electronics'
             )
         """
-        value_range = {"min": "-inf", "max": "+inf"}
+        # Bounds travel as the numeric value ``convert_to_numeric`` produced
+        # (int, float) plus an inclusivity flag; the backend renders the wire
+        # form. Keeping the int unconverted is what keeps the rendered bound
+        # byte-identical to the pre-seam ``f"{numeric_value}"`` (``10``, not
+        # ``10.0``); the two parse to the same double either way.
+        lo: float = float("-inf")
+        hi: float = float("inf")
+        lo_inclusive = True
+        hi_inclusive = True
 
         for query_param, query_value in query_params.items():
             if field_name not in query_param:
@@ -865,25 +863,24 @@ class SortedFieldMixin:
                     )
                 low, high = query_value
                 field_obj = model_class._meta.fields[field_name]
-                numeric_low = cls.convert_to_numeric(field_obj, low)
-                numeric_high = cls.convert_to_numeric(field_obj, high)
-                value_range["min"] = f"{numeric_low}"
-                value_range["max"] = f"{numeric_high}"
+                lo = cls.convert_to_numeric(field_obj, low)
+                hi = cls.convert_to_numeric(field_obj, high)
+                lo_inclusive = hi_inclusive = True
                 continue
 
             numeric_value = cls.convert_to_numeric(
                 model_class._meta.fields[field_name], query_value
             )
             if "__gt" in query_param:
-                inclusive = query_param.split("__gt")[1]
-                value_range["min"] = f"{'' if inclusive == 'e' else '('}{numeric_value}"
+                lo = numeric_value
+                lo_inclusive = query_param.split("__gt")[1] == "e"
             elif "__lt" in query_param:
-                inclusive = query_param.split("__lt")[1]
-                value_range["max"] = f"{'' if inclusive == 'e' else '('}{numeric_value}"
+                hi = numeric_value
+                hi_inclusive = query_param.split("__lt")[1] == "e"
             elif query_param == field_name:
                 # Exact match: set both min and max to the same value (inclusive)
-                value_range["min"] = f"{numeric_value}"
-                value_range["max"] = f"{numeric_value}"
+                lo = hi = numeric_value
+                lo_inclusive = hi_inclusive = True
             else:
                 pass  # this is just a mixin, another subclass may have valid query params
 
@@ -907,30 +904,22 @@ class SortedFieldMixin:
                 f"{', '.join(model_class._meta.fields[field_name].partition_by)}"
             )
 
-        bounded = isinstance(_limit, int) and _limit > 0
-        if bounded and _desc:
-            # ZREVRANGEBYSCORE takes the bounds high-then-low.
-            redis_db_keys_list = get_REDIS_DB().zrevrangebyscore(
-                sortedset_db_key.redis_key,
-                value_range["max"],
-                value_range["min"],
-                start=0,
-                num=_limit,
-            )
-        elif bounded:
-            redis_db_keys_list = get_REDIS_DB().zrangebyscore(
-                sortedset_db_key.redis_key,
-                value_range["min"],
-                value_range["max"],
-                start=0,
-                num=_limit,
-            )
-        elif _desc:
-            redis_db_keys_list = get_REDIS_DB().zrevrangebyscore(
-                sortedset_db_key.redis_key, value_range["max"], value_range["min"]
-            )
-        else:
-            redis_db_keys_list = get_REDIS_DB().zrangebyscore(
-                sortedset_db_key.redis_key, value_range["min"], value_range["max"]
-            )
-        return list(redis_db_keys_list)
+        # The backend applies the bound only for a positive int ``limit`` and
+        # swaps the bound order for a reverse read, exactly as the four
+        # ZRANGEBYSCORE/ZREVRANGEBYSCORE branches here did before the seam.
+        members = get_backend().sorted_range(
+            sortedset_db_key.redis_key,
+            lo,
+            hi,
+            lo_inclusive=lo_inclusive,
+            hi_inclusive=hi_inclusive,
+            reverse=_desc,
+            limit=_limit,
+        )
+        # Re-encode the backend's decoded str members (#732 deviation 11) to
+        # the pre-seam bytes shape, in order: ``Query.filter_for_keys_set``
+        # intersects this list with the other fields' raw bytes replies, and a
+        # str list against a bytes set is a silent empty match. The same
+        # convention as ``_members_as_bytes`` in ``key_field_mixin`` and
+        # ``indexed_field_mixin`` (WS1c); one later PR flips the whole layer.
+        return [member.encode(ENCODING) for member in members]

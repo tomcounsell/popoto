@@ -74,8 +74,9 @@ if TYPE_CHECKING:
     from .base import Model, ModelOptions
     from ..fields.sorted_field_mixin import SortedFieldMixin
 
+from ..backends import get_backend
 from ..redis_db import (
-    get_REDIS_DB,
+    ENCODING,
     get_async_redis_db,
     normalize_redis_keys,
 )
@@ -253,10 +254,10 @@ def _fire_on_read(model_class, instances):
     ]
     if not valid:
         return
-    pipe = get_REDIS_DB().pipeline()
+    uow = get_backend().begin()
     for inst in valid:
-        inst.on_read(pipeline=pipe)
-    pipe.execute()
+        inst.on_read(pipeline=uow)
+    uow.commit()
 
 
 class _HydrationIterator:
@@ -654,11 +655,8 @@ class QueryBuilder:
         if not redis_keys:
             return []
 
-        # Fetch model instances via pipeline
-        pipe = get_REDIS_DB().pipeline()
-        for key in redis_keys:
-            pipe.hgetall(key)
-        raw_results = pipe.execute()
+        # Fetch model instances in one batch
+        raw_results = get_backend().load_records(redis_keys)
 
         instances = []
         for key, data in zip(redis_keys, raw_results):
@@ -785,25 +783,30 @@ class QueryBuilder:
             if resolved_key:
                 resolved_keys[resolved_key] = weight
 
+        # native(): composite_score ranking path -- co-occurrence / similarity
+        # boosts and the ZUNIONSTORE / ZREVRANGE over 5-second temp ZSETs are
+        # out of the #631 slice (plan escape hatch); hydration below is not.
+        client = get_backend().native()
+
         # --- Handle co_occurrence_boost ---
         if co_occurrence_boost:
             co_key = f"$CSQ:{model_name}:co_occurrence:{uid}"
-            get_REDIS_DB().zadd(
+            client.zadd(
                 co_key,
                 {str(k): float(v) for k, v in co_occurrence_boost.items()},
             )
-            get_REDIS_DB().expire(co_key, 5)
+            client.expire(co_key, 5)
             temp_keys.append(co_key)
             resolved_keys[co_key] = 1.0  # weight already in the scores
 
         # --- Handle similarity_boost ---
         if similarity_boost:
             sim_key = f"$CSQ:{model_name}:similarity:{uid}"
-            get_REDIS_DB().zadd(
+            client.zadd(
                 sim_key,
                 {str(k): float(v) for k, v in similarity_boost.items()},
             )
-            get_REDIS_DB().expire(sim_key, 5)
+            client.expire(sim_key, 5)
             temp_keys.append(sim_key)
             resolved_keys[sim_key] = 1.0  # weight already in the scores
 
@@ -816,12 +819,12 @@ class QueryBuilder:
         temp_keys.append(composite_key)
 
         try:
-            get_REDIS_DB().zunionstore(
+            client.zunionstore(
                 composite_key,
                 resolved_keys,
                 aggregate=aggregate,
             )
-            get_REDIS_DB().expire(composite_key, 5)
+            client.expire(composite_key, 5)
 
             # --- Validity mask (#580, plan D5b) ---
             # Must run BEFORE the top-K read: the decay-Lua gate only makes a
@@ -837,7 +840,7 @@ class QueryBuilder:
 
             # --- ZREVRANGE top-K ---
             if min_score is not None:
-                raw_results = get_REDIS_DB().zrevrangebyscore(
+                raw_results = client.zrevrangebyscore(
                     composite_key,
                     "+inf",
                     str(min_score),
@@ -846,7 +849,7 @@ class QueryBuilder:
                     withscores=True,
                 )
             else:
-                raw_results = get_REDIS_DB().zrevrange(
+                raw_results = client.zrevrange(
                     composite_key, 0, limit - 1, withscores=True
                 )
 
@@ -872,10 +875,7 @@ class QueryBuilder:
                 return []
 
             # --- Hydrate models ---
-            pipe = get_REDIS_DB().pipeline()
-            for key in pks:
-                pipe.hgetall(key)
-            hashes = pipe.execute()
+            hashes = get_backend().load_records(pks)
 
             instances = []
             for key, data in zip(pks, hashes):
@@ -1032,16 +1032,18 @@ class QueryBuilder:
         model_name = model_class.__name__
         sim_key = f"$CSQ:{model_name}:sim_only:{uid}"
 
+        # native(): semantic_search's similarity-only ranking -- a 5-second
+        # temp ZSET read back with ZREVRANGE (ranking path, out of the #631
+        # slice); hydration below is not.
+        client = get_backend().native()
         try:
-            get_REDIS_DB().zadd(
+            client.zadd(
                 sim_key,
                 {str(k): float(v) for k, v in similarity_boost.items()},
             )
-            get_REDIS_DB().expire(sim_key, 5)
+            client.expire(sim_key, 5)
 
-            raw_results = get_REDIS_DB().zrevrange(
-                sim_key, 0, limit - 1, withscores=True
-            )
+            raw_results = client.zrevrange(sim_key, 0, limit - 1, withscores=True)
 
             if not raw_results:
                 return []
@@ -1065,10 +1067,7 @@ class QueryBuilder:
                 return []
 
             # Hydrate
-            pipe = get_REDIS_DB().pipeline()
-            for key in pks:
-                pipe.hgetall(key)
-            hashes = pipe.execute()
+            hashes = get_backend().load_records(pks)
 
             instances = []
             for key, data in zip(pks, hashes):
@@ -1080,7 +1079,7 @@ class QueryBuilder:
 
             return instances
         finally:
-            get_REDIS_DB().delete(sim_key)
+            client.delete(sim_key)
 
     def keyword_search(
         self,
@@ -1136,10 +1135,7 @@ class QueryBuilder:
             return []
 
         # Hydrate model instances
-        pipe = get_REDIS_DB().pipeline()
-        for key, _score in scored:
-            pipe.hgetall(key)
-        hashes = pipe.execute()
+        hashes = get_backend().load_records([key for key, _score in scored])
 
         instances = []
         for (key, score), data in zip(scored, hashes):
@@ -1281,11 +1277,11 @@ class QueryBuilder:
             # backfills with in-scope candidates.
             client_filters = getattr(self._query, "_pending_client_filters", None) or {}
             if client_filters and sorted_results:
-                pipe = get_REDIS_DB().pipeline()
-                for key, _score in sorted_results:
-                    pipe.hgetall(key)
+                hashes = get_backend().load_records(
+                    [key for key, _score in sorted_results]
+                )
                 in_scope = []
-                for (key, score), data in zip(sorted_results, pipe.execute()):
+                for (key, score), data in zip(sorted_results, hashes):
                     if not data:
                         continue
                     instance = decode_popoto_model_hashmap(
@@ -1316,10 +1312,8 @@ class QueryBuilder:
         # Hydrate model instances
         missing = [(key, s) for key, s in sorted_results if key not in prefetched]
         if missing:
-            pipe = get_REDIS_DB().pipeline()
-            for key, _score in missing:
-                pipe.hgetall(key)
-            for (key, _score), data in zip(missing, pipe.execute()):
+            hashes = get_backend().load_records([key for key, _score in missing])
+            for (key, _score), data in zip(missing, hashes):
                 if data:
                     prefetched[key] = decode_popoto_model_hashmap(
                         model_class, data, source_redis_key=key
@@ -1589,8 +1583,12 @@ class QueryBuilder:
                 zadd_mapping[member] = score
 
             if zadd_mapping:
-                get_REDIS_DB().zadd(temp_key, zadd_mapping)
-                get_REDIS_DB().expire(temp_key, 5)
+                # native(): DecayingSortedField / CyclicDecayField scores
+                # materialized into a composite_score temp ZSET (ranking path,
+                # out of the #631 slice)
+                client = get_backend().native()
+                client.zadd(temp_key, zadd_mapping)
+                client.expire(temp_key, 5)
 
         return temp_key
 
@@ -1642,8 +1640,12 @@ class QueryBuilder:
             # Unpartitioned: single global hash
             data_hash_key = field.get_data_hash_key_from_values(model_class, field_name)
 
+        # native(): ConfidenceField companion-hash read and its composite_score
+        # temp ZSET (ranking path, out of the #631 slice)
+        client = get_backend().native()
+
         # Read all entries from companion hash
-        all_data = get_REDIS_DB().hgetall(data_hash_key)
+        all_data = client.hgetall(data_hash_key)
 
         temp_key = f"$CSQ:{model_name}:confidence:{field_name}:{uid}"
         temp_keys.append(temp_key)
@@ -1664,8 +1666,8 @@ class QueryBuilder:
                 zadd_mapping[member_key] = float(confidence)
 
             if zadd_mapping:
-                get_REDIS_DB().zadd(temp_key, zadd_mapping)
-                get_REDIS_DB().expire(temp_key, 5)
+                client.zadd(temp_key, zadd_mapping)
+                client.expire(temp_key, 5)
 
         return temp_key
 
@@ -1694,12 +1696,16 @@ class QueryBuilder:
         temp_key = f"$CSQ:{model_name}:access:{uid}"
         temp_keys.append(temp_key)
 
+        # native(): AccessTrackerMixin meta-hash reads materialized into a
+        # composite_score temp ZSET (ranking path, out of the #631 slice)
+        client = get_backend().native()
+
         # Get all instance keys
-        all_keys = get_REDIS_DB().smembers(model_class._meta.db_class_set_key.redis_key)
+        all_keys = client.smembers(model_class._meta.db_class_set_key.redis_key)
 
         if all_keys:
             zadd_mapping = {}
-            pipe = get_REDIS_DB().pipeline()
+            pipe = client.pipeline()
             decoded_keys = []
             for key in all_keys:
                 if isinstance(key, bytes):
@@ -1716,8 +1722,8 @@ class QueryBuilder:
                     zadd_mapping[key] = float(count)
 
             if zadd_mapping:
-                get_REDIS_DB().zadd(temp_key, zadd_mapping)
-                get_REDIS_DB().expire(temp_key, 5)
+                client.zadd(temp_key, zadd_mapping)
+                client.expire(temp_key, 5)
 
         return temp_key
 
@@ -1797,7 +1803,11 @@ class QueryBuilder:
         # default index-range form. Under BYSCORE they are score bounds and must
         # be str/float -- "(", "-inf" and "+inf" have no int spelling -- so the
         # upstream annotation is simply too narrow.
-        get_REDIS_DB().zrangestore(
+        #
+        # native(): composite_score's validity mask -- ZRANGESTORE / ZUNIONSTORE
+        # / ZDIFFSTORE over temp ZSETs (ranking path, out of the #631 slice)
+        client = get_backend().native()
+        client.zrangestore(
             closed_key,
             invalid_at_key,
             "-inf",  # type: ignore[arg-type]
@@ -1805,27 +1815,27 @@ class QueryBuilder:
             byscore=True,
         )
         # valid_from > t -- not yet started at t (exclusive lower bound).
-        get_REDIS_DB().zrangestore(
+        client.zrangestore(
             future_key,
             valid_from_key,
             f"({t}",  # type: ignore[arg-type]
             "+inf",  # type: ignore[arg-type]
             byscore=True,
         )
-        get_REDIS_DB().expire(closed_key, 5)
-        get_REDIS_DB().expire(future_key, 5)
+        client.expire(closed_key, 5)
+        client.expire(future_key, 5)
 
         # Union, not intersect: a member is excluded if it fails EITHER end of
         # the interval test. Weights are 0 only for tidiness -- ZDIFFSTORE
         # ignores the right-hand scores entirely.
-        get_REDIS_DB().zunionstore(excluded_key, {closed_key: 0, future_key: 0})
-        get_REDIS_DB().expire(excluded_key, 5)
+        client.zunionstore(excluded_key, {closed_key: 0, future_key: 0})
+        client.expire(excluded_key, 5)
 
         # Set difference. Members with no interval entry appear in neither
         # exclusion set, so they survive -- see the docstring for why that is
         # the required behavior and not an oversight.
-        get_REDIS_DB().zdiffstore(composite_key, [composite_key, excluded_key])
-        get_REDIS_DB().expire(composite_key, 5)
+        client.zdiffstore(composite_key, [composite_key, excluded_key])
+        client.expire(composite_key, 5)
 
     @staticmethod
     def _cleanup_temp_keys(temp_keys):
@@ -1835,7 +1845,9 @@ class QueryBuilder:
             temp_keys: List of Redis key strings to delete.
         """
         if temp_keys:
-            get_REDIS_DB().delete(*temp_keys)
+            # native(): composite_score temp-key cleanup (ranking path, out of
+            # the #631 slice)
+            get_backend().native().delete(*temp_keys)
 
     def all(self) -> list:
         """Execute the query and return all matching results.
@@ -2244,7 +2256,7 @@ class Query:
         if redis_key:
             from ..models.encoding import decode_popoto_model_hashmap
 
-            hashmap = get_REDIS_DB().hgetall(redis_key)
+            hashmap = get_backend().load_record(redis_key)
             if not hashmap:
                 return None
             instance = decode_popoto_model_hashmap(
@@ -2315,10 +2327,7 @@ class Query:
 
         from ..models.encoding import decode_popoto_model_hashmap
 
-        pipeline = get_REDIS_DB().pipeline()
-        for key in redis_keys:
-            pipeline.hgetall(key)
-        hashes_list = pipeline.execute()
+        hashes_list = get_backend().load_records(redis_keys)
 
         results = []
         live_instances = []
@@ -2377,16 +2386,18 @@ class Query:
             logger.warning(
                 "Query.keys(clean=True) is deprecated. Use Model.clean_indexes() for production-safe orphan cleanup."
             )
-            pipeline = get_REDIS_DB().pipeline()
+            # native(): the deprecated Query.keys(clean=True) orphan sweep --
+            # a KEYS-based admin path the plan routes through the escape hatch
+            # (Model.clean_indexes() is the routed replacement)
+            client = get_backend().native()
+            pipeline = client.pipeline()
             from ..fields.key_field_mixin import KeyFieldMixin
             from ..fields.relationship import Relationship
 
             for db_key in list(
-                get_REDIS_DB().smembers(
-                    self.model_class._meta.db_class_set_key.redis_key
-                )
+                client.smembers(self.model_class._meta.db_class_set_key.redis_key)
             ):
-                hash = get_REDIS_DB().hgetall(db_key)
+                hash = client.hgetall(db_key)
                 if not len(hash):
                     pipeline = pipeline.srem(
                         self.model_class._meta.db_class_set_key.redis_key, db_key
@@ -2399,9 +2410,9 @@ class Query:
                 field_key_prefix = field.get_special_use_field_db_key(
                     self.model_class, field_name
                 )
-                for field_key in get_REDIS_DB().keys(f"{field_key_prefix}:*"):
-                    for object_key in get_REDIS_DB().smembers(field_key):
-                        hash = get_REDIS_DB().hgetall(object_key)
+                for field_key in client.keys(f"{field_key_prefix}:*"):
+                    for object_key in client.smembers(field_key):
+                        hash = client.hgetall(object_key)
                         if not len(hash):
                             pipeline = pipeline.srem(field_key, object_key)
 
@@ -2411,13 +2422,20 @@ class Query:
             logger.warning(
                 "{catchall} is for debugging purposes only. Not for use in production environment"
             )
-            return list(get_REDIS_DB().keys(f"*{self.model_class.__name__}*"))
+            # native(): Query.keys(catchall=True) debug glob -- a raw KEYS over
+            # every key type (index ZSETs included), which no record-scoped
+            # protocol method expresses; debug-only by its own docstring
+            return list(get_backend().native().keys(f"*{self.model_class.__name__}*"))
         else:
-            return list(
-                get_REDIS_DB().smembers(
+            # The backend decodes the class set to str (#732 deviation 11);
+            # this layer keeps the pre-seam bytes shape until every WS1 family
+            # is merged and one PR flips the field and query layers together.
+            return [
+                key.encode(ENCODING)
+                for key in get_backend().list_keys(
                     self.model_class._meta.db_class_set_key.redis_key
                 )
-            )
+            ]
 
     def all(self, **kwargs) -> list:
         """Return all instances, with optional ``order_by``, ``limit``, and ``values``.
@@ -3600,9 +3618,8 @@ class Query:
             filtered counts to avoid materializing the full key set.
         """
         if not len(kwargs):
-            return int(
-                get_REDIS_DB().scard(self.model_class._meta.db_class_set_key.redis_key)
-                or 0
+            return get_backend().count_records(
+                self.model_class._meta.db_class_set_key.redis_key
             )
         # allow_pushdown=False preserves today's behavior exactly: count() never
         # armed the pushdown and must not start, because a bound tally is wrong.
@@ -3684,7 +3701,6 @@ class Query:
         """
         from .encoding import decode_popoto_model_hashmap
 
-        pipeline = get_REDIS_DB().pipeline()
         reverse_order = False
         # order the hashes list or objects before applying limit
         if order_by_attr_name and order_by_attr_name.startswith("-"):
@@ -3722,18 +3738,23 @@ class Query:
                     for db_key in db_keys
                 ]
             else:
-                [pipeline.hmget(db_key, values) for db_key in db_keys]
-                value_lists = pipeline.execute()
+                # Materialize once: the backend iterates the keys and the zip
+                # below iterates them again, and a set must be walked in the
+                # same order both times.
+                db_keys = list(db_keys)
+                value_lists = get_backend().load_fields_many(db_keys, list(values))
                 hashes_list = [
                     {field_name: result[i] for i, field_name in enumerate(values)}
                     for result in value_lists
                 ]
 
         else:
-            [pipeline.hgetall(db_key) for db_key in db_keys]
-            hashes_list = pipeline.execute()
+            db_keys = list(db_keys)
+            hashes_list = get_backend().load_records(db_keys)
 
-        if {} in hashes_list:
+        # A missing record is None from load_records (and was {} from the
+        # pipelined HGETALL it replaced); the projection path never yields one.
+        if not all(hashes_list):
             # A member whose hash is gone (Meta.ttl expiry, or an external
             # DEL). Repair what the key alone can repair so the next read
             # is clean; clean_indexes() covers the rest.
