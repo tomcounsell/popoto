@@ -185,15 +185,49 @@ class TestLoCoMoParityRegression:
 
     RESULTS_DIR = os.path.join(SCRIPT_DIR, "results", "external")
 
-    def _slice(self, filename):
+    # LoCoMo's published shape: 1986 questions, 446 of them category 5
+    # ("adversarial"), so the no-cat-5 leaderboard variant is exactly 1540.
+    CORPUS_FULL_SIZE = 1986
+    PARITY_FULL_N = 1540
+
+    def _load(self, filename):
         import json
 
         path = os.path.join(self.RESULTS_DIR, filename)
         if not os.path.exists(path):
             pytest.skip(f"committed artifact missing: {filename}")
         with open(path) as fh:
-            data = json.load(fh)
-        return leaderboard_parity_slice(data["by_question_type"])
+            return json.load(fh)
+
+    def _full_run_parity_slice(self, filename):
+        """Load a committed run, require it to *declare* full coverage, and
+        return its leaderboard-parity slice.
+
+        The coverage check reads the artifact's own metadata rather than a
+        pinned n, so it holds for any full run and trips for any sample: a
+        250-question stratified sample (``locomo_20260807_hybrid``) declares
+        ``sampling.limit == 250`` and ``summary.n_total == 250``, while a
+        full run declares ``limit is None`` and ``n_total == corpus_full_size``.
+        The slice's ``n`` is then cross-checked against the per-category
+        counts in the same file, so a result whose headline and breakdown
+        disagree cannot pass either.
+        """
+        data = self._load(filename)
+        sampling = data["sampling"]
+        summary = data["summary"]
+        assert sampling["limit"] is None, f"{filename} is a sampled run"
+        assert sampling["corpus_full_size"] == self.CORPUS_FULL_SIZE
+        assert summary["n_total"] == self.CORPUS_FULL_SIZE
+        assert summary["n_ok"] == summary["n_total"]
+        assert summary["n_errors"] == 0
+        assert len(data["questions"]) == self.CORPUS_FULL_SIZE
+
+        by_type = data["by_question_type"]
+        out = leaderboard_parity_slice(by_type)
+        assert out["excluded"] == ["5"]
+        retained = sum(v["n"] for k, v in by_type.items() if str(k) != "5")
+        assert out["n"] == retained == self.PARITY_FULL_N
+        return out
 
     def test_lexical_parity_slice_is_1540_qa(self):
         """Corrected (gold-blind) lexical parity numbers, issue #514.
@@ -202,35 +236,33 @@ class TestLoCoMoParityRegression:
         ``locomo_20260708.json``, scored by the gold-aware ID selection that
         #514 removed. ``locomo_latest`` now resolves to ``locomo_20260807``.
         """
-        out = self._slice("locomo_latest.json")
-        assert out["excluded"] == ["5"]
-        assert out["n"] == 1540  # 1986 full − 446 cat-5 = exact leaderboard variant
+        out = self._full_run_parity_slice("locomo_latest.json")
         assert out["recall_at_1"] == pytest.approx(0.2877, abs=1e-4)
         assert out["recall_at_5"] == pytest.approx(0.5130, abs=1e-4)
         assert out["recall_at_10"] == pytest.approx(0.5877, abs=1e-4)
         assert out["mrr"] == pytest.approx(0.3875, abs=1e-4)
 
-    def test_hybrid_parity_slice_is_a_labelled_sample(self):
-        """Hybrid parity numbers, gold-blind scoring on a 250-question sample.
+    def test_hybrid_parity_slice_is_a_full_run(self):
+        """Hybrid parity numbers, gold-blind scoring on the full 1986 (#569).
 
-        ``locomo_latest_hybrid`` is NOT a full-1986 run. A full hybrid pass
-        re-embeds ~1.19M records and measured ~5.2 h on the reference machine,
-        so #530 re-ran it as a 250-question stratified sample (seed 0) under
-        gold-blind scoring rather than leaving the pre-#514 full run standing.
-        The parity slice is therefore 194 questions, not 1540; asserting the
-        sampled n is deliberate, so a later full re-run trips this test instead
-        of silently swapping a sample for a full run (or vice versa).
+        ``locomo_latest_hybrid`` resolved to ``locomo_20260807_hybrid`` from
+        #530 until #569: a 250-question stratified sample (seed 0) whose
+        parity slice was 194 questions, re-run that way because a full hybrid
+        pass re-embeds ~1.19M records (~5.2 h on the reference machine). It
+        now resolves to ``locomo_20260918_hybrid``, the first full 1986-of-1986
+        hybrid run, so the hybrid arm sits on the same footing as the lexical
+        one above. ``_full_run_parity_slice`` enforces that footing from the
+        artifact's own ``sampling``/``summary`` metadata, so re-pointing the
+        ``latest`` alias back at a sample trips this test rather than silently
+        swapping a sample for a full run.
 
-        Re-pinned from 0.1552 / 0.4065 / 0.5181 / 0.2686 (``locomo_20260708``
-        = full 1986, pre-#514 scoring, unweighted RRF).
+        Re-pinned from 0.3041 / 0.4846 / 0.5619 / 0.3836 (the n=194 sample).
         """
-        out = self._slice("locomo_latest_hybrid.json")
-        assert out["excluded"] == ["5"]
-        assert out["n"] == 194  # 250 sampled − 56 cat-5
-        assert out["recall_at_1"] == pytest.approx(0.3041, abs=1e-4)
-        assert out["recall_at_5"] == pytest.approx(0.4846, abs=1e-4)
-        assert out["recall_at_10"] == pytest.approx(0.5619, abs=1e-4)
-        assert out["mrr"] == pytest.approx(0.3836, abs=1e-4)
+        out = self._full_run_parity_slice("locomo_latest_hybrid.json")
+        assert out["recall_at_1"] == pytest.approx(0.2857, abs=1e-4)
+        assert out["recall_at_5"] == pytest.approx(0.5117, abs=1e-4)
+        assert out["recall_at_10"] == pytest.approx(0.5896, abs=1e-4)
+        assert out["mrr"] == pytest.approx(0.3863, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------
