@@ -96,17 +96,16 @@ def test_postgres_url_with_psycopg_selects_the_stub(monkeypatch):
     assert backend.url == "postgresql://localhost/popoto_test"
 
 
-def test_the_stub_names_the_method_it_refuses(monkeypatch):
+def test_the_backend_names_what_it_refuses(monkeypatch):
     stub = PostgresBackend("postgresql://localhost/x")
-    # ``decayed_rank`` is WS3d's; the record family (WS3a), the index
-    # families (WS3b) and the swaps (WS3c) are implemented and would dial the
-    # URL instead of refusing.
-    with pytest.raises(NotImplementedError, match=r"PostgresBackend\.decayed_rank"):
-        stub.decayed_rank(
-            "Memory:_score", now=0.0, decay_rate=0.1, limit=None, pretrim_max_ratio=1.0
-        )
+    # Every protocol family is implemented (WS3a-e) and would dial the URL;
+    # the two refusals left are the Redis-only escape hatch and record TTL,
+    # both raised before any connection is opened.
     with pytest.raises(NotImplementedError, match="Redis-only"):
         stub.native()
+    with pytest.raises(NotImplementedError, match="TTL"):
+        stub.save_record("Memory:1", {b"a": b"1"}, class_set="$Class:Memory", ttl=60)
+    assert stub._conn is None
 
 
 def test_postgres_module_does_not_import_psycopg_at_module_scope(monkeypatch):

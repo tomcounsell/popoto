@@ -264,6 +264,132 @@ work's transaction, so a successor whose `save_record` is queued ahead of the
 supersede on the same unit of work is visible to the membership guard --
 transaction visibility, with no pipeline-ordering argument needed.
 
+## What is implemented (WS3d)
+
+The decay ranking and the confidence update -- `DECAY_SCORE_LUA` and
+`CAPPED_BAYESIAN_UPDATE_LUA` on Redis -- under the same harness and oracle
+(`tests/conformance/test_decay.py`):
+
+| Protocol methods | Postgres shape |
+|---|---|
+| `decayed_rank` | One `SELECT` (below): the member's last-seen timestamp from `popoto_sorted`, the base score decoded from the member's own `popoto_record` bytes, the confidence decoded from the `:data` companion row in `popoto_map`, the validity gate as two `NOT EXISTS` against the interval rows, the power law in the `ORDER BY`, `LIMIT` after the sort. Replies with the script's flat `[member, score, ...]` of `bytes`, every score rendered by Lua's `tostring` (`%.14g`). |
+| `confidence_update` | One transaction: the member's advisory lock, the `require_record` existence check (an absent record returns `None` and writes nothing; the field layer raises), `SELECT ... FOR UPDATE` on the companion row, the script's reads and arithmetic in Python, the upsert of the packed payload. Returns `(confidence, evidence_count, corroborations, contradictions)` parsed as the Redis backend parses the script's `tostring` reply. |
+
+```sql
+WITH scanned AS (
+  SELECT z.member,
+         greatest((%(now)s - z.score) / 86400.0, 0.01)        AS elapsed,
+         popoto_base_score(b.value)                            AS base,
+         greatest(0.0, least(1.0,
+             coalesce(popoto_confidence(cm.value), %(c0)s)))    AS c
+    FROM popoto_sorted AS z
+    LEFT JOIN popoto_record AS b
+           ON b.key = z.member AND b.field = %(base_field)s
+    LEFT JOIN popoto_map AS cm
+           ON cm.idx = %(conf_idx)s AND cm.member = z.member
+   WHERE z.idx = %(idx)s
+     AND NOT EXISTS (SELECT 1 FROM popoto_sorted AS ia
+                      WHERE ia.idx = %(invalid_idx)s AND ia.member = z.member
+                        AND ia.score <= %(as_of)s)
+     AND NOT EXISTS (SELECT 1 FROM popoto_sorted AS vf
+                      WHERE vf.idx = %(valid_idx)s AND vf.member = z.member
+                        AND vf.score > %(as_of)s)
+), scored AS (
+  SELECT member,
+         (CASE WHEN base < 0 THEN -1.0 ELSE 1.0 END) * abs(base)
+           * power(elapsed, -%(rate)s)
+           * power(greatest(elapsed, 1.0),
+                   -((%(rate)s * power(2.0, %(s)s * 2.0 * (%(c0)s - c)))
+                     - %(rate)s))                              AS score
+    FROM scanned
+)
+SELECT member, score FROM scored
+ ORDER BY score DESC, member COLLATE "C"
+ LIMIT %(limit)s
+```
+
+Each optional clause -- the base-score join, the confidence join and its
+factor, the gate, the limit -- is present exactly when the script's guard for
+it is true (`base_score_field ~= ''`; `confidence_hash_key ~= '' and s ~= 0`;
+both validity keys and a parseable as-of; a limit at all), so a disabled path
+reads nothing the script would not read. The validity gate is the script's
+exclusion rule verbatim: `invalid_at <= as_of` or `valid_from > as_of`
+excludes, and a member absent from an interval index is not excluded by it
+(`+inf` is `'infinity'::float8`, which is never `<=` a finite as-of).
+`pretrim_max_ratio` (ARGV[8]) only chooses between the script's two membership
+strategies, which are asserted reply-identical, so one statement has one
+strategy and the argument is accepted and unused.
+
+**Reading msgpack in SQL.** The script decodes two payloads inside the store
+(plan finding 2): `HGET member base_score_field` and `HGET confidence_hash
+member`. Here those bytes are `popoto_record.value` and `popoto_map.value`,
+so the bootstrap installs the subset of `cmsgpack.unpack` the two rules
+consume as PL/pgSQL: every integer and float encoding (`popoto_mp_number`
+rebuilds a float from sign, exponent and mantissa with exact `float8`
+arithmetic, subnormals and the signed zero included), the str-key lookup in a
+map and the first element of an array, and "is the buffer well-formed". The
+two rules are `popoto_base_score` -- a number; else a map whose truthy
+`as_encodable` is `tonumber`-ed (the `Decimal` envelope); else `1.0` -- and
+`popoto_confidence` -- `data['confidence'] or data[1]` when the payload is a
+table and that value is a number; else `c0`. What Redis's cmsgpack rejects is
+rejected here too: it predates the msgpack bin and ext families, so a bin,
+ext or `0xc1` byte anywhere in a payload is "Bad data format in input." and
+the default wins, on both backends. The conformance suite holds 43 base-score
+payload shapes and 18 confidence payload shapes to the Lua's reading on both
+legs.
+
+**Why the base score is not read from `popoto_numeric`.** Architect decision
+2 confirmed the numeric side-map for exactly this `ORDER BY`. The query reads
+the record bytes instead, for two reasons. The bytes are where the script
+reads the value, so they reproduce it by construction -- a `Decimal`
+envelope, a string, a boolean and a missing field all land where the Lua
+lands them. And the side-map only reproduces it under the invariant that
+`save_record(numeric=...)` keeps it current, which no caller holds today:
+every `save_record` call in `models/base.py` (WS1a) omits `numeric`, so the
+side-map is written by `increment_field` alone, and reading it would have
+ranked every member at base `1.0`. Whether the side-map survives into
+production is WS4's question; nothing in this family depends on the answer.
+
+**Floating point.** The Lua computes in doubles and Postgres in `double
+precision`, and both call the platform's `pow` (`power()` is a thin wrapper).
+The asserted contract is *identical order* and scores within **`1e-9`
+relative** of the Lua's; where no `pow` is involved (an elapsed time of
+exactly one day, whose power is exactly 1) the reply bytes are asserted
+equal. Measured on this tree (macOS aarch64, Redis and PostgreSQL 18.6 on
+the same libm): over 577 ranked scores in five random scenarios of 200
+members each -- random ages including the future, every base-score and
+confidence payload shape, random validity intervals, several decay rates,
+strengths and `c0`s, with and without the gate and a limit -- **0** of the
+rendered scores differed from the live Lua's and the maximum relative
+deviation was **0.0**; against a Python transcription of the script's
+arithmetic both legs sat within `4.4e-14`. Across libms (CI runs
+`redis:7-alpine` on musl and `postgres:16` on glibc) a last-ulp difference in
+`pow` is possible, which is why the tolerance is stated rather than
+bit-equality asserted. The tie-break is the script's: score descending, then
+the member *bytes* ascending (`COLLATE "C"`; Lua 5.1's `<` on strings is
+`strcoll`, which Redis runs in the C locale).
+
+**The confidence payload decodes identically; its key order is Redis's.**
+`cmsgpack.pack` of the script's four-key table packs each number by
+cmsgpack's integer / float32 / float64 rule, so a confidence of `0.5` is a
+float32, `1.0` an integer and `0.7` a float64 on both backends, and the
+Postgres backend reproduces that rule. The *order* of the four keys is the
+Lua table-hash iteration order of the server's bundled Lua / cmsgpack build,
+and the two servers this library supports do not agree: Redis 7 and 8 emit
+`corroborations, confidence, contradictions, evidence_count`; Valkey 8 emits
+`corroborations, evidence_count, confidence, contradictions` (measured in
+CI's `pytest (Valkey)` job). The backend pins Redis's order (see "Known
+deviations"). The conformance suite holds both legs to the *decoded* map and
+to the per-value encoding; it holds the Redis leg's bytes to Redis's order
+only when the server reports itself as Redis, to Valkey's only when it
+reports itself as Valkey, and the Postgres leg's bytes to the pinned Redis
+order always. The reply rounds the confidence through `%.14g` as the
+script's `tostring` does; the stored value is the raw double.
+Two instances updating one member concurrently serialise on the member's
+advisory lock and the row lock (`TestConfidenceUpdate::test_two_connections_both_apply`
+on both legs): every update lands and, the running mean being order-invariant
+below the cap, the final state is the serial one.
+
 ## Cross-instance serialisation
 
 Redis runs every command and script on one thread, so an `increment_field`
@@ -360,10 +486,50 @@ here; both are truthy exactly when something was closed, which is what
 `SupersedeResult.close_index` and `ProvenanceJournal._write` read.
 
 
+**The confidence payload's key order is Redis's, not the oracle's.**
+`cmsgpack.pack` emits the four keys of the confidence map in the Lua
+table-hash iteration order of the server's bundled Lua / cmsgpack build, and
+Redis 7/8 and Valkey 8 differ (`corroborations, confidence, contradictions,
+evidence_count` against `corroborations, evidence_count, confidence,
+contradictions`; both measured). The Postgres backend always writes Redis's
+order. The map decodes to the same keys, values and value encodings on every
+server, and every reader decodes it by key, so nothing user-visible differs;
+only a byte comparison of the stored payload against a Valkey-written one
+does. Documented rather than emulated per server: the backend has no server
+to ask.
+
+**A decay score that `pow` cannot represent raises on the ranking.** The
+Lua's `math.pow` returns `inf` on overflow and `0` on underflow and the
+script ranks the member with it; PostgreSQL's `power()` raises `value out of
+range: overflow` / `underflow` for a *finite* operand that leaves the double
+range, and the whole statement fails. Measured on PostgreSQL 18.6 and Redis
+8.10.2: a member at the `0.01`-day elapsed floor with `decay_rate=155` or
+more replies `inf` on Redis and raises on Postgres (`154` renders `1e+308`
+on both); a member 100 days old with `decay_rate=200`, or one whose
+last-seen timestamp is a finite `-1e300` at `decay_rate=2`, replies `0` on
+Redis and raises `underflow` on Postgres; and a confidence `strength` of
+`2000` against a confidence of `0` overflows `2 ** (s * 2 * (c0 - c))` the
+same way. Rates this large are outside any use the field layer documents
+(`Defaults.DECAY_RATE` is `0.1`; the docstring examples use `0.3` and
+`0.5`), so the backend does not emulate `inf`/`0`. Two neighbouring cases
+do **not** diverge, checked on the same servers rather than assumed from the
+rule above: a `-inf` last-seen timestamp scores `0` on both legs
+(`power('infinity', -rate)` is `0` without an error, since PostgreSQL's
+underflow check excludes infinite arguments), and `0x` hex in a `Decimal`
+envelope's `as_encodable` (or in `s` / `c0`) parses to the same number on
+both, because `::float8` goes through `strtod` just as Lua's `tonumber`
+does -- `"0x10"` is `16` on both. A `+inf` timestamp (a member "last seen"
+in the infinite future) floors its elapsed time at a hundredth of a day on
+both backends.
+
+**A `commit()` entry for a queued `confidence_update`** is the script's raw
+four-string reply on Redis and the typed `(confidence, evidence_count,
+corroborations, contradictions)` tuple here; `None` for an absent record on
+both. Callers read neither (the field layer returns `None` when queued).
+
 **Not implemented**: record TTL (`save_record(ttl=...)` / `expire_at=...`
 raises `NotImplementedError` rather than silently storing a record that never
-expires), and the decay ranking and confidence families, which still raise
-`NotImplementedError` naming the method. `native()` raises on Postgres by
-design: it is the Redis-only escape hatch for out-of-scope features; on the
-validity family that is the transfer path (`export_state` / `import_state` /
-`find_open_pointers_for_member`).
+expires), and `native()`, which raises on Postgres by design: it is the
+Redis-only escape hatch for out-of-scope features; on the validity family
+that is the transfer path (`export_state` / `import_state` /
+`find_open_pointers_for_member`). Every protocol method is implemented.

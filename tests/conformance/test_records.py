@@ -628,16 +628,19 @@ class TestScope:
             backend.set_expiry(key(1), expire_at=4102444800.0, uow=backend.begin())
         assert backend.load_record(key(1)) == {b"a": b"1"}
 
-    def test_other_families_still_raise_on_postgres(self, backend, backend_is_redis):
+    def test_only_native_still_raises_on_postgres(self, backend, backend_is_redis):
         # Families D, E, F and the rest of J are WS3b's and implemented (see
-        # ``test_indexes.py``); G is WS3c's (see ``test_swaps.py``) and I is
-        # WS3e's (see ``test_validity.py``); H still raises.
+        # ``test_indexes.py``); G is WS3c's (see ``test_swaps.py``), I is
+        # WS3e's (see ``test_validity.py``) and H is WS3d's (see
+        # ``test_decay.py``). Only the escape hatch refuses, by design.
         if backend_is_redis:
             pytest.skip("Postgres-leg assertion")
-        with pytest.raises(NotImplementedError, match=r"PostgresBackend\.decayed_rank"):
+        assert (
             backend.decayed_rank(
                 ZIDX, now=0.0, decay_rate=0.1, limit=None, pretrim_max_ratio=1.0
             )
+            == []
+        )
         with pytest.raises(NotImplementedError, match="Redis-only"):
             backend.native()
 
