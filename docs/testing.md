@@ -67,6 +67,69 @@ popoto_test_db = "14"
 pytest -p no:popoto
 ```
 
+## Backend Conformance Tests (opt-in)
+
+The storage backend seam ([#631](https://github.com/tomcounsell/popoto/issues/631))
+adds a second, opt-in dimension to the plugin: a test marked `conformance` that
+requests the `backend` fixture runs once per configured storage backend, with
+`popoto.set_backend()` bound to that backend for the test and reset with
+`set_backend(None)` on teardown. Unmarked tests never see it, and a test that
+requests `backend` without the marker gets the Redis backend, unparametrised.
+
+```python
+import pytest
+
+@pytest.mark.conformance
+def test_record_roundtrip(backend):
+    backend.save_record("Memory:1", {b"text": b"..."}, class_set="$Class:Memory")
+    assert backend.load_record("Memory:1") is not None
+```
+
+Which backends run is configured the way `popoto_test_db` is, and defaults to
+Redis only, so a project that never opts in sees no change:
+
+```ini
+# pyproject.toml
+[tool.pytest.ini_options]
+popoto_conformance_backends = "redis,postgres"
+```
+
+```bash
+POPOTO_CONFORMANCE_BACKENDS=redis,postgres POSTGRES_URL=postgresql://localhost:5432/postgres \
+    pytest -m conformance
+```
+
+The environment variable overrides the ini option. Names are `redis` and
+`postgres`; anything else is a configuration error, not a silent Redis-only
+run. Install the driver with `pip install 'popoto[postgres]'`.
+
+**The Postgres leg skips, never fails, when it cannot run**: with `psycopg` not
+installed or `POSTGRES_URL` unset, each `[postgres]` parameter reports
+`SKIPPED` with a reason naming what is missing (`pytest -rs` shows it). Two
+conditions are *refused* instead, raising `PostgresIsolationRefusedError`
+before any statement reaches the server, mirroring the DB-0 refusal on the
+Redis side: a `POSTGRES_URL` that names no database (libpq would resolve it to
+the connecting role's default), and any attempt to use schema `public`.
+
+**Isolation** is one schema per session: the harness runs
+`CREATE SCHEMA popoto_test_<hex>` at first use, truncates every table in it
+before each test (the `FLUSHDB` mirror), and `DROP SCHEMA ... CASCADE`s it at
+session end. The schema reaches `PostgresBackend` through the URL it is built
+with (`options=-c search_path=<schema>`), so every connection the backend opens
+resolves unqualified table names inside it. The Redis side is unchanged: the
+plugin still needs Redis bound (`popoto_test_db` / `REDIS_URL`) because its
+autouse flush runs before every test, including Postgres-leg tests.
+
+Two helpers for assertions that only hold on one backend: the `redis_only`
+marker skips a conformance test on every non-Redis leg, and the
+`backend_is_redis` fixture returns `True` on the Redis leg for a test that
+branches rather than skips. The `popoto_postgres_schema` session fixture exposes
+the schema name and an admin `connect()` for a test that wants to inspect it.
+
+In this repository `.github/workflows/tests.yml` runs `pytest -m conformance`
+as the `pytest (Postgres)` job against a `postgres:16` service, with the Redis
+service alongside it for the reason above.
+
 ## Manual Test Helpers
 
 The `popoto.testing` module provides helpers for non-pytest test runners or manual use:
