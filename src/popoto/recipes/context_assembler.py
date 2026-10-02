@@ -2015,6 +2015,16 @@ class ContextAssembler:
                         "mode": self.confidence_gate_mode,
                         "gated": gated,
                     }
+                    if gated:
+                        # Additive (#566): expose WHAT the gate judged below
+                        # threshold, in rank order, so a host can hand it to
+                        # question_queue.propose_from_gate(). Read from
+                        # all_pull_candidates -- pull_records is [] on a
+                        # refusal. Present only on this applied-and-gated
+                        # branch; consumers must tolerate its absence.
+                        gate_meta["refused_keys"] = [
+                            _get_key(c) for c in all_pull_candidates
+                        ]
 
         # --- Push path ---
         if self._cyclic_decay_field_name is not None:

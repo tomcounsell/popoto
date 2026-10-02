@@ -1522,6 +1522,23 @@ def _staleness_ratio_wrapper(assembler, records):
 # ---------------------------------------------------------------------------
 
 
+#: The five gate-metadata keys every branch has always emitted (#463). The
+#: #566 extension is additive: these keep their meaning on all three branches
+#: and ``refused_keys`` appears only on the applied-and-gated branch.
+GATE_BASE_KEYS = {"applied", "gate_score", "threshold", "mode", "gated"}
+
+
+def _assert_gate_contract(gate, refused_keys=None):
+    """Pin the additive-extension guarantee for one ``metadata["gate"]``."""
+    assert GATE_BASE_KEYS <= set(gate)
+    if refused_keys is None:
+        assert set(gate) == GATE_BASE_KEYS
+        assert "refused_keys" not in gate
+    else:
+        assert set(gate) == GATE_BASE_KEYS | {"refused_keys"}
+        assert gate["refused_keys"] == refused_keys
+
+
 class TestConfidenceGate:
     """Unit tests for the opt-in confidence gate on ContextAssembler.
 
@@ -1585,6 +1602,7 @@ class TestConfidenceGate:
             "mode": "refuse",
             "gated": False,
         }
+        _assert_gate_contract(result.metadata["gate"])
 
     def test_query_cues_none_skips_pull_path_gate_still_empty(self):
         """query_cues=None skips the pull path entirely: same empty-path
@@ -1602,6 +1620,7 @@ class TestConfidenceGate:
             "mode": "refuse",
             "gated": False,
         }
+        _assert_gate_contract(result.metadata["gate"])
 
     # -- "refuse" mode -------------------------------------------------------
 
@@ -1637,10 +1656,46 @@ class TestConfidenceGate:
             "threshold": 0.9,
             "mode": "refuse",
             "gated": True,
+            # Additive (#566): read from all_pull_candidates, which survives
+            # the refusal; pull_records is [] here.
+            "refused_keys": [record.db_key.redis_key],
         }
+        _assert_gate_contract(
+            result.metadata["gate"], refused_keys=[record.db_key.redis_key]
+        )
         # The push path is never gated: the same underlying record is still
         # discoverable via the real (unmocked) push scan and gets injected.
         assert result.metadata["push_count"] >= 1
+
+    def test_refused_keys_come_from_all_pull_candidates_in_rank_order(self):
+        """#566: refused_keys lists every candidate the pull path found, in
+        rank order (rank 0 first -- the record whose confidence was gated),
+        including ones that never made pull_records' cut. It is read from
+        all_pull_candidates because pull_records is [] after a refusal."""
+        records = []
+        for i in range(3):
+            r = GateMemory(agent_id="a1", topic=f"pull-topic-{i}", content="c")
+            r.save()
+            records.append(r)
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.9,
+            confidence_gate_mode="refuse",
+        )
+        # pull_records holds only rank 0; all_pull_candidates holds all three.
+        assembler._pull_path = lambda cues, filters: ([records[0]], list(records))
+
+        result = assembler.assemble(
+            query_cues={"topic": "pull-topic"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert result.metadata["pull_count"] == 0
+        _assert_gate_contract(
+            result.metadata["gate"],
+            refused_keys=[r.db_key.redis_key for r in records],
+        )
 
     def test_refuse_not_gated_retains_records(self):
         """refuse mode but gate_score >= threshold: nothing is dropped."""
@@ -1662,6 +1717,7 @@ class TestConfidenceGate:
         assert result.metadata["pull_count"] == 1
         assert result.metadata["gate"]["gated"] is False
         assert result.metadata["gate"]["applied"] is True
+        _assert_gate_contract(result.metadata["gate"])
 
     def test_refuse_assess_quality_fok_not_corrupted(self):
         """BLOCKER fix: a refusal must not corrupt _compute_quality's FoK
@@ -1716,7 +1772,11 @@ class TestConfidenceGate:
             "threshold": 0.9,
             "mode": "flag",
             "gated": True,
+            "refused_keys": [record.db_key.redis_key],
         }
+        _assert_gate_contract(
+            result.metadata["gate"], refused_keys=[record.db_key.redis_key]
+        )
 
     def test_flag_not_gated_retains_records(self):
         """flag mode, gate_score >= threshold: not gated, retained."""
@@ -1737,6 +1797,7 @@ class TestConfidenceGate:
         )
         assert result.metadata["pull_count"] == 1
         assert result.metadata["gate"]["gated"] is False
+        _assert_gate_contract(result.metadata["gate"])
 
     # -- Fault tolerance ----------------------------------------------------
 
@@ -1772,6 +1833,7 @@ class TestConfidenceGate:
             "mode": "refuse",
             "gated": False,
         }
+        _assert_gate_contract(result.metadata["gate"])
         # Not applied -> records untouched, even in refuse mode.
         assert result.metadata["pull_count"] == 1
 
