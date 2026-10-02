@@ -42,20 +42,24 @@ convention prefixes never collide with the key structure.
 
 Atomic multi-value maintenance
 ------------------------------
-Because a record belongs to N Sets at once, index maintenance rides a dedicated
-atomic Lua script, :data:`TAG_SWAP_LUA`, that *diffs* the record's previous tag
-membership against the new one and issues only the necessary ``SREM``/``SADD``
-calls — all inside a single server-side ``EVAL`` (no cross-process race, no
-orphaned members). The previous membership is read from a server-authoritative
-**pointer side key** (a standalone Redis Set of the value-Set keys the record
-currently belongs to), never from a client-side snapshot — the same #476 lesson
-that made :data:`INDEX_SWAP_LUA` use a side key instead of an in-hash pointer.
+Because a record belongs to N Sets at once, index maintenance rides the
+backend's atomic :meth:`~popoto.backends.Backend.swap_tags` — on Redis a
+dedicated Lua script, :data:`TAG_SWAP_LUA`, that *diffs* the record's previous
+tag membership against the new one and issues only the necessary
+``SREM``/``SADD`` calls, all inside a single server-side ``EVAL`` (no
+cross-process race, no orphaned members). The previous membership is read from
+a server-authoritative **pointer side key** (a standalone Redis Set of the
+value-Set keys the record currently belongs to), never from a client-side
+snapshot — the same #476 lesson that made :data:`INDEX_SWAP_LUA` use a side
+key instead of an in-hash pointer. Since #631 WS1c the pointer keys are
+derived inside :class:`popoto.backends.redis.RedisBackend`; this module names
+only the record key, the field and the new per-tag index keys.
 
 ``TagFieldMixin`` subclasses :class:`IndexedFieldMixin` so that
 ``isinstance(field, IndexedFieldMixin)`` remains true: this makes ``Model.save()``
-(a) exclude the tag field from the plain HSET mapping — :data:`TAG_SWAP_LUA` owns
-the hash write — and (b) run the field eagerly on its own atomic ``EVAL`` before
-the surrounding pipeline, closing the same unique-conflict window as #476. All four
+(a) exclude the tag field from the plain HSET mapping — the tag swap owns the
+hash write — and (b) run the field eagerly on its own atomic swap before the
+surrounding pipeline, closing the same unique-conflict window as #476. All four
 hook methods are fully overridden for multi-value semantics.
 
 Usage
@@ -76,15 +80,14 @@ Usage
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import msgpack
-import redis.client
 
+from ..backends import get_backend
 from ..exceptions import ModelException, QueryException
 from ..models.db_key import DB_key
-from ..redis_db import get_REDIS_DB, run_lua
-from .indexed_field_mixin import IndexedFieldMixin
+from .indexed_field_mixin import IndexedFieldMixin, _members_as_bytes
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
@@ -94,9 +97,10 @@ logger = logging.getLogger("POPOTO.TagFieldMixin")
 
 # ``TAG_SWAP_LUA`` moved to ``popoto.backends.redis`` (#631 WS0).
 # It is re-imported here under its existing name so every current
-# reader -- this module's own ``run_lua`` sites and the tests that
-# import it from here -- keeps finding it. The script text itself is
-# byte-identical.
+# reader -- the tests that import it from here, and
+# ``tests/test_transfer_roundtrip.py``'s source scan -- keeps finding it.
+# The script text itself is byte-identical; since WS1c this module no
+# longer runs it, ``RedisBackend.swap_tags`` does.
 from ..backends.redis import TAG_SWAP_LUA  # noqa: E402,F401
 
 
@@ -110,8 +114,9 @@ class TagFieldMixin(IndexedFieldMixin):
     ``Query.filter()`` through the same set-intersection pipeline.
 
     Subclasses :class:`IndexedFieldMixin` purely so ``Model.save()`` treats it as
-    an atomic-index field (HSET exclusion + eager EVAL); all behavior is overridden
-    for multi-value semantics. Tags are never part of the record's Redis key.
+    an atomic-index field (HSET exclusion + eager swap); all behavior is
+    overridden for multi-value semantics. Tags are never part of the record's
+    Redis key.
 
     Attributes:
         tag (bool): Always True for tag fields.
@@ -123,6 +128,13 @@ class TagFieldMixin(IndexedFieldMixin):
     # from the field's tag list value by on_save(), so nothing needs to be
     # carried across export/import.
     roundtrip_policy: str = "rebuild"
+
+    # The two key builders below are the Redis key layout the backend derives
+    # for itself (``popoto.backends.redis._tag_ptr_key`` and its pre-#540
+    # twin). This module no longer passes them to anything; they stay as
+    # documented, test-visible helpers (``tests/test_tag_field.py`` and
+    # ``tests/test_issue_540_*`` inspect these keys) and must stay byte-equal
+    # to the backend's builders.
 
     @staticmethod
     def _tag_pointer_side_key(model_hash_key: str, field_name: str) -> str:
@@ -209,40 +221,31 @@ class TagFieldMixin(IndexedFieldMixin):
         model_instance: "Model",
         field_name: str,
         field_value,
-        pipeline: redis.client.Pipeline = None,
+        pipeline: Any = None,  # duck-typed; see IndexedFieldMixin's note
         **kwargs,
     ):
-        """Atomically diff-and-update the per-tag Sets via :data:`TAG_SWAP_LUA`.
+        """Atomically diff-and-update the per-tag Sets via the backend's
+        ``swap_tags`` (:data:`TAG_SWAP_LUA` on Redis).
 
-        Internal path (no pipeline): runs the EVAL directly against
-        ``POPOTO_REDIS_DB`` — atomic on the server, eager (before the surrounding
-        save pipeline) exactly like IndexedFieldMixin. External path: queues the
-        EVAL into the caller's pipeline so the hash write and index update commit
-        together in one MULTI/EXEC.
+        Internal path (no pipeline): runs the swap now — atomic on the
+        server, eager (before the surrounding save pipeline) exactly like
+        IndexedFieldMixin. External path: queues the swap on the caller's
+        unit of work so the hash write and index update commit together in
+        one MULTI/EXEC.
         """
         tags = cls._normalize(field_value)
         member_key = model_instance.db_key.redis_key
-        ptr_key = cls._tag_pointer_side_key(member_key, field_name)
-        old_ptr_key = cls._pre_540_tag_pointer_side_key(member_key, field_name)
         prefix = cls.get_special_use_field_db_key(model_instance, field_name)
         new_set_keys = [DB_key(prefix, tag).redis_key for tag in tags]
         new_bytes = msgpack.packb(tags)
 
-        # numkeys = model hash key + 2 pointer side keys + N per-tag Set keys.
-        numkeys = 3 + len(new_set_keys)
-        args = [
-            member_key,  # KEYS[1] model hash key
-            ptr_key,  # KEYS[2] pointer side key
-            old_ptr_key,  # KEYS[3] pre-#540 pointer side key (migration)
-            *new_set_keys,  # KEYS[4..] new per-tag Set keys
-            field_name,  # ARGV[1]
-            member_key,  # ARGV[2] member
-            new_bytes,  # ARGV[3] packed tag list
-        ]
-        if isinstance(pipeline, redis.client.Pipeline):
-            run_lua(pipeline, TAG_SWAP_LUA, numkeys, *args)
+        backend = get_backend()
+        if pipeline is not None:
+            backend.swap_tags(
+                member_key, field_name, new_set_keys, new_bytes, uow=pipeline
+            )
             return pipeline
-        return run_lua(get_REDIS_DB(), TAG_SWAP_LUA, numkeys, *args)
+        return backend.swap_tags(member_key, field_name, new_set_keys, new_bytes)
 
     @classmethod
     def on_delete(
@@ -250,39 +253,36 @@ class TagFieldMixin(IndexedFieldMixin):
         model_instance: "Model",
         field_name: str,
         field_value,
-        pipeline: redis.client.Pipeline = None,
+        pipeline: Any = None,  # duck-typed; see IndexedFieldMixin's note
         **kwargs,
     ):
         """Remove the record from every tag Set it belongs to, then drop the pointer.
 
-        Reads the authoritative membership from the pointer side key (still present
-        because Model.delete() runs field hooks before the hash DELETE). Falls back
-        to the field value if the pointer is somehow absent (legacy / partial state).
+        The backend's ``drop_tag_entries`` reads the authoritative membership
+        from the pointer side key (still present because Model.delete() runs
+        field hooks before the hash DELETE). It falls back to the field-value
+        derived keys passed here if the pointer is somehow absent (legacy /
+        partial state).
         """
         member_key = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
-        ptr_key = cls._tag_pointer_side_key(member_key, field_name)
-        old_ptr_key = cls._pre_540_tag_pointer_side_key(member_key, field_name)
 
-        raw_sets = get_REDIS_DB().smembers(ptr_key)
-        if not raw_sets:
-            # Migration fallback: pre-#540 pointer written by 1.8.1/1.8.2.
-            raw_sets = get_REDIS_DB().smembers(old_ptr_key)
-        set_keys = [s.decode() if isinstance(s, bytes) else s for s in raw_sets]
-
-        if not set_keys and field_value:
-            # Fallback: derive Set keys from the field value if no pointer exists.
+        # Fallback: derive Set keys from the field value if no pointer exists.
+        fallback_idxs: list[str] = []
+        if field_value:
             prefix = cls.get_special_use_field_db_key(model_instance, field_name)
-            set_keys = [
+            fallback_idxs = [
                 DB_key(prefix, tag).redis_key for tag in cls._normalize(field_value)
             ]
 
-        if pipeline:
-            for set_key in set_keys:
-                pipeline.srem(set_key, member_key)
-            return pipeline.delete(ptr_key, old_ptr_key)
-        for set_key in set_keys:
-            get_REDIS_DB().srem(set_key, member_key)
-        return get_REDIS_DB().delete(ptr_key, old_ptr_key)
+        backend = get_backend()
+        if pipeline is not None:
+            backend.drop_tag_entries(
+                member_key, field_name, fallback_idxs=fallback_idxs, uow=pipeline
+            )
+            return pipeline
+        return backend.drop_tag_entries(
+            member_key, field_name, fallback_idxs=fallback_idxs
+        )
 
     def get_filter_query_params(self, field_name: str) -> set:
         """Valid tag lookups: membership / any-of / all-of.
@@ -301,19 +301,21 @@ class TagFieldMixin(IndexedFieldMixin):
 
     @classmethod
     def filter_query(cls, model: "Model", field_name: str, **query_params) -> set:
-        """Resolve tag lookups to matching Redis keys via plain Set commands.
+        """Resolve tag lookups to matching Redis keys via plain set-index reads.
 
-        - ``__contains=v`` → ``SMEMBERS`` of the single value Set.
-        - ``__any=[...]``  → ``SUNION`` of the value Sets (OR).
-        - ``__all=[...]``  → ``SINTER`` of the value Sets (AND).
+        - ``__contains=v`` → ``index_members`` of the single value Set.
+        - ``__any=[...]``  → ``index_union`` of the value Sets (OR).
+        - ``__all=[...]``  → ``index_intersection`` of the value Sets (AND).
 
         Multiple tag params AND-intersect client-side, consistent with the rest of
         ``filter_for_keys_set``. Empty any/all lists yield an empty match (no crash).
+        Returns the keys as ``bytes`` (see ``_members_as_bytes``).
         """
         prefix = model._meta.fields[field_name].get_special_use_field_db_key(
             model, field_name
         )
         keys_lists_to_intersect = list()
+        backend = get_backend()
 
         for query_param, query_value in query_params.items():
             if query_param == field_name:
@@ -327,17 +329,23 @@ class TagFieldMixin(IndexedFieldMixin):
                 )
             if query_param.endswith("__contains"):
                 keys_lists_to_intersect.append(
-                    get_REDIS_DB().smembers(DB_key(prefix, query_value).redis_key)
+                    _members_as_bytes(
+                        backend.index_members(DB_key(prefix, query_value).redis_key)
+                    )
                 )
             elif query_param.endswith("__any"):
                 set_keys = [DB_key(prefix, v).redis_key for v in query_value]
                 keys_lists_to_intersect.append(
-                    get_REDIS_DB().sunion(set_keys) if set_keys else set()
+                    _members_as_bytes(backend.index_union(set_keys))
+                    if set_keys
+                    else set()
                 )
             elif query_param.endswith("__all"):
                 set_keys = [DB_key(prefix, v).redis_key for v in query_value]
                 keys_lists_to_intersect.append(
-                    get_REDIS_DB().sinter(set_keys) if set_keys else set()
+                    _members_as_bytes(backend.index_intersection(set_keys))
+                    if set_keys
+                    else set()
                 )
 
         if keys_lists_to_intersect:
