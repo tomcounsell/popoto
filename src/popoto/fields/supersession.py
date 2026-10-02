@@ -433,7 +433,7 @@ class SupersessionProtocol:
         closes: Any,
         at: Optional[float] = None,
         field_name: Optional[str] = None,
-        pipeline: Optional[UnitOfWork] = None,
+        pipeline: Optional[Any] = None,
     ) -> SupersedeResult:
         """Save ``new_instance`` and close ``closes``, atomically.
 
@@ -643,8 +643,7 @@ def _validate_caller_pipeline(pipeline: Any, entry_point: str) -> None:
     if not hasattr(pipeline, "command_stack"):
         raise ValueError(
             f"SupersessionProtocol.{entry_point}: pipeline must be a redis "
-            f"Pipeline (the unit of work popoto.get_redis().pipeline() returns), "
-            f"got {type(pipeline).__name__}"
+            f"Pipeline, got {type(pipeline).__name__}"
         )
     if getattr(pipeline, "transaction", True) is not True:
         raise ValueError(

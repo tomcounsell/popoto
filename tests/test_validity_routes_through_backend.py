@@ -475,10 +475,14 @@ class TestSupersessionProtocolReachesTheBackend:
 
     def test_caller_pipeline_validation_is_duck_typed(self, spy):
         identity = SupersessionProtocol.identity_key("user_42", "plan")
-        with pytest.raises(ValueError, match="must be a redis Pipeline"):
+        with pytest.raises(ValueError, match="must be a redis Pipeline") as ei:
             SupersessionProtocol.save_and_supersede(
                 Claim(name="x"), identity_key=identity, pipeline=object()
             )
+        assert str(ei.value) == (
+            "SupersessionProtocol.save_and_supersede: pipeline must be a "
+            "redis Pipeline, got object"
+        )
         loose = popoto.get_redis().pipeline(transaction=False)
         with pytest.raises(ValueError, match="transaction=False"):
             SupersessionProtocol.save_and_supersede(
