@@ -5,9 +5,11 @@ WS3a implements family B (records), C (atomic increment) and J's
 maps), E (set indexes), F (sorted indexes) and the rest of J
 (``scan_index_members``, ``drop_index``). WS3c implements G (the atomic
 index and tag swaps). WS3e implements I (validity intervals and
-supersession). Every other method still raises
-:class:`NotImplementedError` naming itself; WS3d fills them in family by
-family behind the WS2 conformance harness.
+supersession). WS3d implements H (decay ranking and the confidence update).
+Every protocol method is implemented; the two refusals left are
+:meth:`PostgresBackend.native` (the Redis-only escape hatch, by design) and
+record TTL (``save_record(ttl=...)`` / ``set_expiry``), both raised before
+any connection is opened.
 
 ``psycopg`` is deliberately **not** imported at module scope: selection in
 :func:`popoto.backends.get_backend` must be able to import this module without
@@ -229,6 +231,112 @@ that is lossless and a float64 otherwise (:func:`_cmsgpack_pack_number`). The
 ``{"__Decimal__": True, "as_encodable": "%.14g"}``. Behaviour on an absent
 record or field is the Lua's: the current value is ``0``, and the write
 creates the field (and so the record) without touching any class set.
+
+Decay ranking and confidence
+----------------------------
+:meth:`decayed_rank` is ``DECAY_SCORE_LUA`` as one ``SELECT``
+(:func:`_decay_sql`): the member's last-seen timestamp from ``popoto_sorted``,
+the elapsed days ``greatest((now - score) / 86400, 0.01)``, the base score
+from the member's own record, the confidence from the ``:data`` companion
+map, the validity gate as two ``NOT EXISTS`` against the interval rows, the
+power law in the ``ORDER BY`` and the ``LIMIT`` after the sort::
+
+    WITH scanned AS (
+      SELECT z.member,
+             greatest((%(now)s - z.score) / 86400.0, 0.01)        AS elapsed,
+             popoto_base_score(b.value)                            AS base,
+             greatest(0.0, least(1.0,
+                 coalesce(popoto_confidence(cm.value), %(c0)s)))    AS c
+        FROM popoto_sorted AS z
+        LEFT JOIN popoto_record AS b
+               ON b.key = z.member AND b.field = %(base_field)s
+        LEFT JOIN popoto_map AS cm
+               ON cm.idx = %(conf_idx)s AND cm.member = z.member
+       WHERE z.idx = %(idx)s
+         AND NOT EXISTS (SELECT 1 FROM popoto_sorted AS ia
+                          WHERE ia.idx = %(invalid_idx)s AND ia.member = z.member
+                            AND ia.score <= %(as_of)s)
+         AND NOT EXISTS (SELECT 1 FROM popoto_sorted AS vf
+                          WHERE vf.idx = %(valid_idx)s AND vf.member = z.member
+                            AND vf.score > %(as_of)s)
+    ), scored AS (
+      SELECT member,
+             (CASE WHEN base < 0 THEN -1.0 ELSE 1.0 END) * abs(base)
+               * power(elapsed, -%(rate)s)
+               * power(greatest(elapsed, 1.0),
+                       -((%(rate)s * power(2.0, %(s)s * 2.0 * (%(c0)s - c)))
+                         - %(rate)s))                              AS score
+        FROM scanned
+    )
+    SELECT member, score FROM scored
+     ORDER BY score DESC, member COLLATE "C"
+     LIMIT %(limit)s
+
+Each optional clause -- the base-score join, the confidence join and its
+factor, the gate, the limit -- is present exactly when the script's guard
+for it is true (``base_score_field ~= ''``; ``confidence_hash_key ~= '' and
+s ~= 0``; both validity keys and a parseable as-of; a limit at all), so the
+disabled paths read nothing the script would not read. The arithmetic is
+the script's operation for operation, in ``double precision`` with the same
+libm ``pow`` behind ``power()``, and the tie-break is the script's
+comparator: score descending, then the member *bytes* ascending (``COLLATE
+"C"``; Lua 5.1's ``<`` on strings is ``strcoll``, which Redis runs in the C
+locale). The reply is the script's: a flat ``[member, score, ...]`` of
+``bytes`` with every score rendered by Lua's ``tostring`` (``%.14g``).
+``pretrim_max_ratio`` (ARGV[8]) only chooses between the script's two
+membership strategies, which are asserted reply-identical, so one statement
+has one strategy and the argument is accepted and unused.
+
+**Where the base score and the confidence come from.** Both are msgpack the
+script decodes *inside the store* (plan finding 2): ``HGET member
+base_score_field`` and ``HGET confidence_hash member``. Here those bytes are
+``popoto_record.value`` and ``popoto_map.value``, so the statement reads a
+number out of msgpack in SQL: ``SCHEMA_DDL`` installs the subset of
+``cmsgpack.unpack`` the two rules consume -- every integer and float
+encoding (``popoto_mp_number``, which rebuilds a float from sign, exponent
+and mantissa with exact ``float8`` arithmetic), the str-key lookup in a map
+and the first element of an array (``popoto_mp_map_find``,
+``popoto_mp_array_first``), and "is the buffer well-formed"
+(``popoto_mp_valid``). The two rules are ``popoto_base_score`` (a number;
+else a map whose truthy ``as_encodable`` is ``tonumber``-ed, the Decimal
+envelope; else ``1.0``) and ``popoto_confidence`` (``data['confidence'] or
+data[1]`` when the payload is a table and that is a number; else ``c0``).
+What Redis's cmsgpack rejects is rejected here: it predates the msgpack bin
+and ext families, so a bin, ext or ``0xc1`` byte anywhere in the payload is
+"Bad data format in input." and the script's ``pcall`` takes the default.
+
+The base score is deliberately **not** read from the ``popoto_numeric``
+side-map that architect decision 2 confirmed for this ``ORDER BY``. The
+record bytes are where the script reads it, so they reproduce its value by
+construction -- a ``Decimal`` envelope, a string, a boolean and a missing
+field all land where the Lua lands them -- whereas the side-map only
+reproduces it under the invariant that ``save_record(numeric=...)`` keeps it
+current, and no caller holds that invariant today: every ``save_record``
+call in ``models/base.py`` (#631 WS1a) omits ``numeric``, so the side-map is
+written by ``increment_field`` alone. Reading it would have ranked every
+member at base ``1.0``. Whether the side-map survives into production is
+WS4's question; nothing in this family depends on the answer.
+
+:meth:`confidence_update` is ``CAPPED_BAYESIAN_UPDATE_LUA`` in Python inside
+one transaction: the member's advisory lock (two instances updating one
+member serialise even when the companion row does not exist yet, and a
+``save_record`` / ``delete_record`` of the record waits), the
+``require_record`` existence check (``KEYS[2]`` on the queued path, the
+``EXISTS`` round trip on the direct one; an absent record returns ``None``
+and writes nothing -- WS0 deviation 7, the field layer raises), ``SELECT ...
+FOR UPDATE`` on the companion row, the script's reads of the payload with
+its ``or`` chains and Lua's string-to-number coercion
+(:func:`_confidence_state`), the capped running mean and the clamp, and the
+upsert of the packed payload. The payload is byte-identical to the Lua's:
+a fixmap of the four keys in the order ``cmsgpack.pack`` emits them for
+this table (:data:`_CONFIDENCE_KEY_ORDER`, Lua's hash order, measured) with
+each number packed by cmsgpack's integer / float32 / float64 rule
+(:func:`_cmsgpack_pack_number`), so a ``0.5`` is a float32, a ``1.0`` an
+integer and a ``0.7`` a float64 on both backends. The reply is the script's
+``tostring`` of each value, parsed as the Redis backend parses it: the
+confidence rounded through ``%.14g``, the counters as ``int``. On a unit of
+work the ``commit()`` entry is that typed tuple (Redis: the raw four-string
+reply), ``None`` for an absent record on both.
 """
 
 from __future__ import annotations
@@ -505,6 +613,330 @@ SCHEMA_DDL: tuple[str, ...] = (
     END
     $popoto$
     """,
+    # -- WS3d: decay ranking (family H) -----------------------------------
+    # ``DECAY_SCORE_LUA`` reads two msgpack payloads *inside the store*: the
+    # base score from the member's own hash and the confidence from the
+    # ``:data`` companion hash (plan finding 2). Both live here as opaque
+    # ``bytea`` -- ``popoto_record.value`` and ``popoto_map.value`` -- so the
+    # one-statement ranking the plan asks for needs to read a number out of
+    # msgpack in SQL. These functions are the subset of ``cmsgpack.unpack``
+    # the script's two rules consume: every integer and float encoding, the
+    # str/bin key lookup in a map, the first element of an array, and
+    # "is this buffer well-formed" (cmsgpack errors on a truncated object,
+    # and the script's ``pcall`` then falls back to the default). Everything
+    # else -- nil, booleans, nested containers, ext -- is skipped over, never
+    # decoded. See "Decay ranking and confidence" in the module docstring.
+    """
+    CREATE OR REPLACE FUNCTION popoto_mp_be(b bytea, p int, k int)
+    RETURNS bigint LANGUAGE plpgsql IMMUTABLE STRICT AS $popoto$
+    -- The big-endian unsigned integer of the k (<= 4) bytes at p, or NULL
+    -- when the buffer ends first.
+    DECLARE
+        r bigint := 0;
+        i int;
+    BEGIN
+        IF p + k > length(b) THEN RETURN NULL; END IF;
+        FOR i IN 0 .. k - 1 LOOP
+            r := r * 256 + get_byte(b, p + i);
+        END LOOP;
+        RETURN r;
+    END
+    $popoto$
+    """,
+    """
+    CREATE OR REPLACE FUNCTION popoto_mp_skip(b bytea, p int)
+    RETURNS int LANGUAGE plpgsql IMMUTABLE STRICT AS $popoto$
+    -- The position just past the msgpack value that starts at byte p, or
+    -- NULL when the buffer ends before the value does.
+    DECLARE
+        len int := length(b);
+        t   int;
+        n   bigint := 0;
+        q   int;
+    BEGIN
+        IF p >= len THEN RETURN NULL; END IF;
+        t := get_byte(b, p);
+        IF t <= 127 OR t >= 224 THEN RETURN p + 1;                  -- fixint
+        ELSIF t >= 160 AND t <= 191 THEN q := p + 1 + (t - 160);     -- fixstr
+        ELSIF t >= 144 AND t <= 159 THEN n := t - 144; q := p + 1;   -- fixarray
+        ELSIF t >= 128 AND t <= 143 THEN n := (t - 128) * 2; q := p + 1;  -- fixmap
+        ELSE
+            CASE t
+                WHEN 192, 194, 195 THEN q := p + 1;                  -- nil, false, true
+                -- 193 (never used), 196..201 (bin 8/16/32, ext 8/16/32) and
+                -- 212..216 (fixext 1..16) are "Bad data format in input." to
+                -- Redis's cmsgpack: pre-2013 msgpack, no bin/ext family. The
+                -- whole unpack then fails and the script takes its default,
+                -- so they are invalid here too (NULL), never skipped over.
+                WHEN 202 THEN q := p + 5;                            -- float 32
+                WHEN 203 THEN q := p + 9;                            -- float 64
+                WHEN 204, 208 THEN q := p + 2;                       -- uint 8, int 8
+                WHEN 205, 209 THEN q := p + 3;                       -- uint 16, int 16
+                WHEN 206, 210 THEN q := p + 5;                       -- uint 32, int 32
+                WHEN 207, 211 THEN q := p + 9;                       -- uint 64, int 64
+                WHEN 217 THEN q := p + 2 + popoto_mp_be(b, p + 1, 1);   -- str 8
+                WHEN 218 THEN q := p + 3 + popoto_mp_be(b, p + 1, 2);   -- str 16
+                WHEN 219 THEN q := p + 5 + popoto_mp_be(b, p + 1, 4);   -- str 32
+                WHEN 220 THEN n := popoto_mp_be(b, p + 1, 2); q := p + 3;      -- array 16
+                WHEN 221 THEN n := popoto_mp_be(b, p + 1, 4); q := p + 5;      -- array 32
+                WHEN 222 THEN n := popoto_mp_be(b, p + 1, 2) * 2; q := p + 3;  -- map 16
+                WHEN 223 THEN n := popoto_mp_be(b, p + 1, 4) * 2; q := p + 5;  -- map 32
+                ELSE RETURN NULL;                                    -- bad data format
+            END CASE;
+        END IF;
+        IF q IS NULL OR q > len THEN RETURN NULL; END IF;
+        WHILE n > 0 LOOP
+            q := popoto_mp_skip(b, q);
+            IF q IS NULL THEN RETURN NULL; END IF;
+            n := n - 1;
+        END LOOP;
+        RETURN q;
+    END
+    $popoto$
+    """,
+    """
+    CREATE OR REPLACE FUNCTION popoto_mp_valid(b bytea)
+    RETURNS boolean LANGUAGE plpgsql IMMUTABLE STRICT AS $popoto$
+    -- cmsgpack.unpack decodes every object in the buffer and errors on a
+    -- truncated one; the script's pcall then takes the default. True when
+    -- the whole buffer is a sequence of complete objects (an empty buffer
+    -- is: unpack returns nil).
+    DECLARE
+        q int := 0;
+    BEGIN
+        WHILE q < length(b) LOOP
+            q := popoto_mp_skip(b, q);
+            IF q IS NULL THEN RETURN false; END IF;
+        END LOOP;
+        RETURN true;
+    END
+    $popoto$
+    """,
+    """
+    CREATE OR REPLACE FUNCTION popoto_mp_number(b bytea, p int)
+    RETURNS double precision LANGUAGE plpgsql IMMUTABLE STRICT AS $popoto$
+    -- The Lua number cmsgpack would push for the value at p, or NULL when
+    -- that value is not a number. Integers become doubles as C casts them
+    -- (uint 64 is read as a *signed* int64, as cmsgpack does); float 32 and
+    -- float 64 are rebuilt from sign, exponent and mantissa with exact
+    -- float8 arithmetic, so the result is bit-identical to the encoded
+    -- value (subnormals and the signed zero included).
+    DECLARE
+        len int := length(b);
+        t   int;
+        b0  int;
+        b1  int;
+        s   int;
+        e   int;
+        m   bigint;
+        hi  bigint;
+        v   double precision;
+    BEGIN
+        IF p >= len THEN RETURN NULL; END IF;
+        t := get_byte(b, p);
+        IF t <= 127 THEN RETURN t; END IF;                            -- positive fixint
+        IF t >= 224 THEN RETURN t - 256; END IF;                      -- negative fixint
+        CASE t
+            WHEN 204 THEN RETURN popoto_mp_be(b, p + 1, 1);           -- uint 8
+            WHEN 205 THEN RETURN popoto_mp_be(b, p + 1, 2);           -- uint 16
+            WHEN 206 THEN RETURN popoto_mp_be(b, p + 1, 4);           -- uint 32
+            WHEN 208 THEN                                              -- int 8
+                v := popoto_mp_be(b, p + 1, 1);
+                RETURN CASE WHEN v >= 128 THEN v - 256 ELSE v END;
+            WHEN 209 THEN                                              -- int 16
+                v := popoto_mp_be(b, p + 1, 2);
+                RETURN CASE WHEN v >= 32768 THEN v - 65536 ELSE v END;
+            WHEN 210 THEN                                              -- int 32
+                v := popoto_mp_be(b, p + 1, 4);
+                RETURN CASE WHEN v >= 2147483648 THEN v - 4294967296 ELSE v END;
+            WHEN 207, 211 THEN                                         -- uint 64, int 64
+                hi := popoto_mp_be(b, p + 1, 4);
+                m  := popoto_mp_be(b, p + 5, 4);
+                IF hi IS NULL OR m IS NULL THEN RETURN NULL; END IF;
+                IF hi >= 2147483648 THEN hi := hi - 4294967296; END IF;
+                RETURN (hi * 4294967296 + m)::double precision;
+            WHEN 202 THEN                                              -- float 32
+                IF p + 5 > len THEN RETURN NULL; END IF;
+                b0 := get_byte(b, p + 1);
+                b1 := get_byte(b, p + 2);
+                s := b0 >> 7;
+                e := ((b0 & 127) << 1) | (b1 >> 7);
+                m := ((b1 & 127)::bigint << 16) | popoto_mp_be(b, p + 3, 2);
+                IF e = 255 THEN
+                    v := CASE WHEN m = 0 THEN 'infinity' ELSE 'nan' END;
+                ELSIF e = 0 THEN
+                    v := m::double precision * power(2.0::double precision, -149::double precision);
+                ELSE
+                    v := (m + 8388608)::double precision * power(2.0::double precision, (e - 150)::double precision);
+                END IF;
+                RETURN CASE WHEN s = 1 THEN -v ELSE v END;
+            WHEN 203 THEN                                              -- float 64
+                IF p + 9 > len THEN RETURN NULL; END IF;
+                b0 := get_byte(b, p + 1);
+                b1 := get_byte(b, p + 2);
+                s := b0 >> 7;
+                e := ((b0 & 127) << 4) | (b1 >> 4);
+                m := ((b1 & 15)::bigint << 48)
+                     | (popoto_mp_be(b, p + 3, 2) << 32)
+                     | popoto_mp_be(b, p + 5, 4);
+                IF e = 2047 THEN
+                    v := CASE WHEN m = 0 THEN 'infinity' ELSE 'nan' END;
+                ELSIF e = 0 THEN
+                    v := m::double precision * power(2.0::double precision, -1074::double precision);
+                ELSE
+                    v := (m + 4503599627370496)::double precision * power(2.0::double precision, (e - 1075)::double precision);
+                END IF;
+                RETURN CASE WHEN s = 1 THEN -v ELSE v END;
+            ELSE
+                RETURN NULL;
+        END CASE;
+    END
+    $popoto$
+    """,
+    """
+    CREATE OR REPLACE FUNCTION popoto_mp_str(b bytea, p int)
+    RETURNS bytea LANGUAGE plpgsql IMMUTABLE STRICT AS $popoto$
+    -- The bytes of the str (or bin: Lua has one string type) at p, or NULL
+    -- when the value there is not one or the buffer ends first.
+    DECLARE
+        t   int;
+        n   bigint;
+        q   int;
+    BEGIN
+        IF p >= length(b) THEN RETURN NULL; END IF;
+        t := get_byte(b, p);
+        IF t >= 160 AND t <= 191 THEN n := t - 160; q := p + 1;
+        ELSIF t = 217 THEN n := popoto_mp_be(b, p + 1, 1); q := p + 2;    -- str 8
+        ELSIF t = 218 THEN n := popoto_mp_be(b, p + 1, 2); q := p + 3;    -- str 16
+        ELSIF t = 219 THEN n := popoto_mp_be(b, p + 1, 4); q := p + 5;    -- str 32
+        ELSE RETURN NULL;
+        END IF;
+        IF n IS NULL OR q + n > length(b) THEN RETURN NULL; END IF;
+        RETURN substring(b from q + 1 for n::int);
+    END
+    $popoto$
+    """,
+    """
+    CREATE OR REPLACE FUNCTION popoto_mp_map_find(b bytea, want_str bytea, want_num double precision)
+    RETURNS int LANGUAGE plpgsql IMMUTABLE AS $popoto$
+    -- For a map at byte 0: the position of the value under the str key
+    -- ``want_str`` or, when that is NULL, under the number key ``want_num``
+    -- (Lua's ``data['confidence']`` / ``data[1]``). The *last* matching
+    -- entry wins, as it does when cmsgpack assigns into a Lua table. NULL
+    -- when the value at 0 is not a map or the key is absent.
+    DECLARE
+        t      int;
+        n      bigint;
+        q      int;
+        vp     int;
+        found  int;
+    BEGIN
+        IF length(b) = 0 THEN RETURN NULL; END IF;
+        t := get_byte(b, 0);
+        IF t >= 128 AND t <= 143 THEN n := t - 128; q := 1;
+        ELSIF t = 222 THEN n := popoto_mp_be(b, 1, 2); q := 3;
+        ELSIF t = 223 THEN n := popoto_mp_be(b, 1, 4); q := 5;
+        ELSE RETURN NULL;
+        END IF;
+        WHILE n > 0 LOOP
+            vp := popoto_mp_skip(b, q);
+            IF vp IS NULL THEN RETURN NULL; END IF;
+            IF want_str IS NOT NULL THEN
+                IF popoto_mp_str(b, q) = want_str THEN found := vp; END IF;
+            ELSIF popoto_mp_number(b, q) = want_num THEN
+                found := vp;
+            END IF;
+            q := popoto_mp_skip(b, vp);
+            IF q IS NULL THEN RETURN NULL; END IF;
+            n := n - 1;
+        END LOOP;
+        RETURN found;
+    END
+    $popoto$
+    """,
+    """
+    CREATE OR REPLACE FUNCTION popoto_mp_array_first(b bytea)
+    RETURNS int LANGUAGE plpgsql IMMUTABLE STRICT AS $popoto$
+    -- For a non-empty array at byte 0: the position of its first element
+    -- (Lua's ``data[1]``); NULL otherwise.
+    DECLARE
+        t int;
+    BEGIN
+        IF length(b) = 0 THEN RETURN NULL; END IF;
+        t := get_byte(b, 0);
+        IF t >= 145 AND t <= 159 THEN RETURN 1; END IF;
+        IF t = 220 AND popoto_mp_be(b, 1, 2) > 0 THEN RETURN 3; END IF;
+        IF t = 221 AND popoto_mp_be(b, 1, 4) > 0 THEN RETURN 5; END IF;
+        RETURN NULL;
+    END
+    $popoto$
+    """,
+    # The two rules of DECAY_SCORE_LUA, as it states them. A NULL payload is
+    # "no HGET row"; the defaults are the script's.
+    """
+    CREATE OR REPLACE FUNCTION popoto_base_score(v bytea)
+    RETURNS double precision LANGUAGE plpgsql IMMUTABLE AS $popoto$
+    -- local base_score = 1.0
+    -- if raw then
+    --     local ok, decoded = pcall(cmsgpack.unpack, raw)
+    --     if ok and type(decoded) == 'number' then base_score = decoded
+    --     elseif ok and type(decoded) == 'table' and decoded['as_encodable'] then
+    --         base_score = tonumber(decoded['as_encodable']) or 1.0
+    DECLARE
+        n  double precision;
+        vp int;
+        t  int;
+        s  bytea;
+    BEGIN
+        IF v IS NULL OR NOT popoto_mp_valid(v) THEN RETURN 1.0; END IF;
+        n := popoto_mp_number(v, 0);
+        IF n IS NOT NULL THEN RETURN n; END IF;
+        vp := popoto_mp_map_find(v, convert_to('as_encodable', 'UTF8'), NULL);
+        IF vp IS NULL THEN RETURN 1.0; END IF;
+        t := get_byte(v, vp);
+        -- Lua truthiness: nil and false fail the ``and``.
+        IF t = 192 OR t = 194 THEN RETURN 1.0; END IF;
+        n := popoto_mp_number(v, vp);
+        IF n IS NOT NULL THEN RETURN n; END IF;
+        s := popoto_mp_str(v, vp);
+        IF s IS NULL THEN RETURN 1.0; END IF;
+        BEGIN
+            RETURN convert_from(s, 'UTF8')::double precision;
+        EXCEPTION WHEN OTHERS THEN
+            RETURN 1.0;   -- tonumber(...) was nil
+        END;
+    END
+    $popoto$
+    """,
+    """
+    CREATE OR REPLACE FUNCTION popoto_confidence(v bytea)
+    RETURNS double precision LANGUAGE plpgsql IMMUTABLE AS $popoto$
+    -- local c = c0
+    -- if craw then
+    --     local ok, data = pcall(cmsgpack.unpack, craw)
+    --     if ok and type(data) == 'table' then
+    --         local v = data['confidence'] or data[1]
+    --         if type(v) == 'number' then c = v
+    -- NULL means "c stays c0"; the caller coalesces.
+    DECLARE
+        vp int;
+        t  int;
+    BEGIN
+        IF v IS NULL OR length(v) = 0 OR NOT popoto_mp_valid(v) THEN RETURN NULL; END IF;
+        vp := popoto_mp_map_find(v, convert_to('confidence', 'UTF8'), NULL);
+        IF vp IS NOT NULL THEN
+            t := get_byte(v, vp);
+            -- A truthy ``data['confidence']`` is v, number or not.
+            IF t <> 192 AND t <> 194 THEN RETURN popoto_mp_number(v, vp); END IF;
+        END IF;
+        -- ``data[1]``: the number key 1 of a map, or an array's first element.
+        vp := popoto_mp_map_find(v, NULL, 1.0);
+        IF vp IS NULL THEN vp := popoto_mp_array_first(v); END IF;
+        IF vp IS NULL THEN RETURN NULL; END IF;
+        RETURN popoto_mp_number(v, vp);
+    END
+    $popoto$
+    """,
 )
 
 #: The SQLSTATE ``popoto_supersede`` raises its ``POPOTO_VALIDITY_*`` replies
@@ -526,13 +958,6 @@ _LUA_NUMBER_FORMAT = "%.14g"
 #: An operation on a cursor; the unit of work queues these and runs them in
 #: one transaction, the executed-now path runs one in its own.
 Op = Callable[[Any], Any]
-
-
-def _todo(name: str) -> NotImplementedError:
-    return NotImplementedError(
-        f"PostgresBackend.{name} is not implemented in the backend-seam POC "
-        "(see docs/plans/sdlc-631.md WS3)"
-    )
 
 
 def _close_quietly(conn: Any) -> None:
@@ -869,6 +1294,217 @@ def _pack_increment_result(new_val: float, is_decimal: bool) -> bytes:
     return _cmsgpack_pack_number(new_val)
 
 
+# -- Lua parity helpers for decayed_rank / confidence_update -------------------
+
+
+def _lua_tonumber_or(value: Any, default: float) -> float:
+    """``tonumber(ARGV[n]) or default`` for an argument the Redis backend
+    renders with ``str()`` on the wire (``s``, ``c0``): Lua 5.1 parses the
+    rendering with ``strtod`` (whitespace, exponents, ``inf``/``nan``, and
+    ``0x`` hex), and anything it cannot parse is the default."""
+    text = str(value).strip()
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    if text.lstrip("+-")[:2].lower() == "0x":
+        try:
+            return float(int(text, 16))
+        except ValueError:
+            pass
+    return default
+
+
+def _cmsgpack_unpack_first(raw: bytes) -> tuple[bool, Any]:
+    """``pcall(cmsgpack.unpack, raw)`` as ``(ok, first_value)``.
+
+    ``cmsgpack.unpack`` decodes *every* object in the buffer and returns them
+    all (the script's ``ok, data`` keeps the first), errors on a truncated
+    object or on a type byte it does not know -- Redis's cmsgpack predates
+    the bin and ext families, so any of them anywhere in the buffer is "Bad
+    data format in input." -- and returns nothing, ``nil``, for an empty
+    buffer. Strings come back as ``str`` whatever their bytes (Lua has one
+    string type; ``surrogateescape`` keeps invalid UTF-8 from raising) and
+    integer map keys are kept (``data[1]``)."""
+    unpacker = msgpack.Unpacker(
+        raw=False, strict_map_key=False, unicode_errors="surrogateescape"
+    )
+    unpacker.feed(raw)
+    try:
+        objects = list(unpacker)
+    except Exception:
+        return False, None
+    if unpacker.tell() != len(raw):
+        return False, None  # "Missing bytes in input."
+    if any(_holds_bin_or_ext(obj) for obj in objects):
+        return False, None  # "Bad data format in input."
+    return True, (objects[0] if objects else None)
+
+
+def _holds_bin_or_ext(obj: Any) -> bool:
+    """A ``bytes`` (bin) or ``ExtType`` (ext) anywhere in a decoded object."""
+    if isinstance(obj, (bytes, msgpack.ExtType)):
+        return True
+    if isinstance(obj, dict):
+        return any(_holds_bin_or_ext(k) or _holds_bin_or_ext(v) for k, v in obj.items())
+    if isinstance(obj, list):
+        return any(_holds_bin_or_ext(item) for item in obj)
+    return False
+
+
+def _lua_or(*values: Any) -> Any:
+    """Lua's ``a or b or c``: the first operand that is neither nil nor false."""
+    for value in values:
+        if value is not None and value is not False:
+            return value
+    return None
+
+
+def _lua_index(data: Any, name: str, position: int) -> Any:
+    """``data[name] or data[position]`` on what ``cmsgpack.unpack`` built:
+    a Lua table is a ``dict`` (str and number keys) or a ``list``."""
+    if isinstance(data, dict):
+        return _lua_or(data.get(name), data.get(position))
+    if isinstance(data, list):
+        return data[position - 1] if len(data) >= position else None
+    return None
+
+
+def _lua_arith(value: Any) -> float:
+    """A value about to enter Lua arithmetic: numbers pass, numeric strings
+    are coerced (Lua 5.1 ``luaV_tonumber``), anything else is the script's
+    ``attempt to perform arithmetic on a ... value`` error."""
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"attempt to perform arithmetic on a {value!r} value")
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            raise ValueError("attempt to perform arithmetic on a string value")
+    raise ValueError(f"attempt to perform arithmetic on a {type(value).__name__}")
+
+
+#: The order ``cmsgpack.pack`` emits the four keys of the ``updated`` table
+#: in ``CAPPED_BAYESIAN_UPDATE_LUA`` -- Lua 5.1's ``lua_next`` order over a
+#: four-entry table of these strings, which is a property of Lua's own string
+#: hash (deterministic, unseeded in 5.1), not of the Redis build. Measured
+#: on the local Redis, and the Redis leg of
+#: ``tests/conformance/test_decay.py`` re-checks the stored bytes against it
+#: on every run. Packing in this order is what makes the stored payload
+#: byte-identical across backends.
+_CONFIDENCE_KEY_ORDER: tuple[str, ...] = (
+    "corroborations",
+    "confidence",
+    "contradictions",
+    "evidence_count",
+)
+
+
+def _pack_confidence(values: Mapping[str, float]) -> bytes:
+    """``cmsgpack.pack(updated)``: a fixmap of the four keys in Lua's hash
+    order, each number packed by cmsgpack's integer / float32 / float64
+    rule (:func:`_cmsgpack_pack_number`)."""
+    out = bytearray([0x80 | len(_CONFIDENCE_KEY_ORDER)])
+    for name in _CONFIDENCE_KEY_ORDER:
+        out += msgpack.packb(name)
+        out += _cmsgpack_pack_number(values[name])
+    return bytes(out)
+
+
+def _confidence_state(raw: bytes | None, initial: float) -> tuple[float, ...]:
+    """The script's ``(confidence, evidence_count, corroborations,
+    contradictions)`` after its ``if raw then ... end`` block, each already
+    coerced the way the arithmetic that follows coerces it."""
+    confidence: Any = initial
+    evidence: Any = 0
+    corroborations: Any = 0
+    contradictions: Any = 0
+    if raw is not None:
+        ok, data = _cmsgpack_unpack_first(raw)
+        if ok and isinstance(data, (dict, list)):
+            confidence = _lua_or(_lua_index(data, "confidence", 1), initial)
+            evidence = _lua_or(_lua_index(data, "evidence_count", 2), 0)
+            corroborations = _lua_or(_lua_index(data, "corroborations", 3), 0)
+            contradictions = _lua_or(_lua_index(data, "contradictions", 4), 0)
+    return (
+        _lua_arith(confidence),
+        _lua_arith(evidence),
+        _lua_arith(corroborations),
+        _lua_arith(contradictions),
+    )
+
+
+#: ``prior_weight`` in CAPPED_BAYESIAN_UPDATE_LUA: an internal constant, not
+#: user config (issue #407 decision Q2).
+_CONFIDENCE_PRIOR_WEIGHT = 1.0
+
+
+def _decay_sql(*, use_base: bool, modulate: bool, gate: bool, limited: bool) -> str:
+    """The one statement ``decayed_rank`` runs; see "Decay ranking and
+    confidence" in the module docstring for the SQL in full. Each optional
+    clause is present exactly when the script's corresponding guard
+    (``base_score_field ~= ''``, ``modulate``, ``gate``) is true, so the
+    disabled paths read nothing the script would not read."""
+    base = "popoto_base_score(b.value)" if use_base else "1.0::float8"
+    conf = (
+        "greatest(0.0::float8, least(1.0::float8, coalesce(popoto_confidence(cm.value), %(c0)s)))"
+        if modulate
+        else "NULL::double precision"
+    )
+    base_join = (
+        " LEFT JOIN popoto_record AS b"
+        " ON b.key = z.member AND b.field = %(base_field)s"
+        if use_base
+        else ""
+    )
+    conf_join = (
+        " LEFT JOIN popoto_map AS cm"
+        " ON cm.idx = %(conf_idx)s AND cm.member = z.member"
+        if modulate
+        else ""
+    )
+    gate_where = (
+        " AND NOT EXISTS (SELECT 1 FROM popoto_sorted AS ia"
+        "   WHERE ia.idx = %(invalid_idx)s AND ia.member = z.member"
+        "     AND ia.score <= %(as_of)s)"
+        " AND NOT EXISTS (SELECT 1 FROM popoto_sorted AS vf"
+        "   WHERE vf.idx = %(valid_idx)s AND vf.member = z.member"
+        "     AND vf.score > %(as_of)s)"
+        if gate
+        else ""
+    )
+    modulation = (
+        " * power(greatest(elapsed, 1.0::float8),"
+        "         -((%(rate)s * power(2.0::float8, %(s)s * 2.0::float8 * (%(c0)s - c))) - %(rate)s))"
+        if modulate
+        else ""
+    )
+    limit = " LIMIT %(limit)s" if limited else ""
+    return (
+        "WITH scanned AS ("
+        "  SELECT z.member,"
+        "         greatest((%(now)s - z.score) / 86400.0::float8, 0.01::float8) AS elapsed,"
+        f"         {base} AS base,"
+        f"         {conf} AS c"
+        "    FROM popoto_sorted AS z"
+        f"{base_join}{conf_join}"
+        "   WHERE z.idx = %(idx)s"
+        f"{gate_where}"
+        "), scored AS ("
+        "  SELECT member,"
+        "         (CASE WHEN base < 0 THEN -1.0::float8 ELSE 1.0::float8 END) * abs(base)"
+        "           * power(elapsed, -%(rate)s)"
+        f"{modulation}"
+        "         AS score"
+        "    FROM scanned"
+        ") SELECT member, score FROM scored"
+        '  ORDER BY score DESC, member COLLATE "C"'
+        f"{limit}"
+    )
+
+
 # -- Unit of work ---------------------------------------------------------------
 
 
@@ -937,8 +1573,8 @@ class PostgresUnitOfWork:
 class PostgresBackend:
     """The Postgres :class:`~popoto.backends.Backend`; see the module
     docstring for the schema, the connection policy, the increment envelope,
-    the sorted-set semantics, the atomic swaps and the validity family. Family H
-    still raise :class:`NotImplementedError`."""
+    the sorted-set semantics, the atomic swaps, the validity family and the
+    decay ranking. Only :meth:`native` and record TTL refuse."""
 
     def __init__(self, url: str) -> None:
         self.url = url
@@ -1720,7 +2356,65 @@ class PostgresBackend:
         validity: tuple[str, str, float] | None = None,
         pretrim_max_ratio: float,
     ) -> list[Any]:
-        raise _todo("decayed_rank")
+        # The arguments as the script sees them after ``tonumber`` of the
+        # Redis backend's ``str()`` rendering: ``now`` and ``decay_rate`` must
+        # parse (the script fails on ``nil`` arithmetic otherwise), ``s`` and
+        # ``c0`` default to 0 and 0.5.
+        now_val = float(str(now))
+        rate = float(str(decay_rate))
+        params: dict[str, Any] = {"idx": idx, "now": now_val, "rate": rate}
+
+        use_base = base_score_field != ""
+        if use_base:
+            params["base_field"] = _field_bytes(base_score_field)
+
+        # ``modulate = confidence_hash_key ~= '' and s ~= 0``.
+        modulate = False
+        if confidence is not None:
+            conf_idx = confidence[0]
+            s = _lua_tonumber_or(confidence[1], 0.0)
+            c0 = _lua_tonumber_or(confidence[2], 0.5)
+            modulate = conf_idx != "" and s != 0
+            if modulate:
+                params.update(conf_idx=conf_idx, s=s, c0=c0)
+
+        # ``gate = invalid_key ~= '' and valid_key ~= '' and as_of ~= nil``.
+        # A NaN as-of engages the script's gate but excludes nothing (every
+        # comparison with NaN is false); Postgres orders NaN above every
+        # number, so the gate is simply left off for it, same result.
+        gate = False
+        if validity is not None:
+            invalid_idx, valid_idx = validity[0], validity[1]
+            as_of = float(validity[2])
+            gate = invalid_idx != "" and valid_idx != "" and not math.isnan(as_of)
+            if gate:
+                params.update(invalid_idx=invalid_idx, valid_idx=valid_idx, as_of=as_of)
+
+        # ``for i = 1, math.min(max_results, #scored)``: a non-positive limit
+        # yields nothing; ``None`` is the Redis backend's ZCARD, every member.
+        limited = limit is not None
+        if limit is not None:
+            n = int(limit)
+            if n <= 0:
+                return []
+            params["limit"] = n
+
+        # ``pretrim_max_ratio`` (ARGV[8]) only chooses between the script's
+        # two membership strategies, which are asserted reply-identical; one
+        # statement has one strategy, so it is accepted and unused.
+        rows = self._query(
+            _decay_sql(
+                use_base=use_base, modulate=modulate, gate=gate, limited=limited
+            ),
+            params,
+        )
+        # The flat ``[member, tostring(score), ...]`` reply, element types and
+        # number rendering included (architect decision 4; WS1d kept it).
+        reply: list[Any] = []
+        for member, score in rows:
+            reply.append(str(member).encode(ENCODING))
+            reply.append(_lua_tostring(float(score)).encode(ENCODING))
+        return reply
 
     def confidence_update(
         self,
@@ -1733,7 +2427,74 @@ class PostgresBackend:
         require_record: str | None = None,
         uow: UnitOfWork | None = None,
     ) -> tuple[float, int, int, int] | None:
-        raise _todo("confidence_update")
+        # ARGV as the script reads them: ``tonumber`` of the ``str()`` wire
+        # rendering, so every quantity below is a double.
+        signal_val = float(str(signal))
+        initial_val = float(str(initial))
+        cap_val = float(str(cap))
+        locked = [member]
+        if require_record is not None and require_record != member:
+            locked.append(require_record)
+
+        def op(cur: Any) -> Any:
+            # The member's (record key's) advisory lock first: two instances
+            # updating one member serialise here even when the companion
+            # row does not exist yet, and a save_record / delete_record of
+            # the record waits for the update to commit. Then the row lock,
+            # which also orders this against map_set writers of the row.
+            _lock_record_keys(cur, locked)
+            if require_record is not None:
+                # KEYS[2] on the queued path, EXISTS on the direct one: an
+                # update for a record that no longer exists is a no-op.
+                cur.execute(
+                    "SELECT 1 FROM popoto_record WHERE key = %s", (require_record,)
+                )
+                if cur.fetchone() is None:
+                    return None
+            row = cur.execute(
+                "SELECT value FROM popoto_map WHERE idx = %s AND member = %s "
+                "FOR UPDATE",
+                (idx, member),
+            ).fetchone()
+            confidence, evidence, corroborations, contradictions = _confidence_state(
+                bytes(row[0]) if row else None, initial_val
+            )
+            # Capped-evidence update: running mean while effective evidence
+            # <= cap, fixed-gain exponential forgetting (window cap+1) beyond.
+            n_eff = min(evidence + _CONFIDENCE_PRIOR_WEIGHT, cap_val)
+            new_confidence = confidence + (signal_val - confidence) / (n_eff + 1)
+            new_confidence = max(0.0, min(1.0, new_confidence))
+            evidence = evidence + 1
+            if signal_val >= 0.5:
+                corroborations = corroborations + 1
+            else:
+                contradictions = contradictions + 1
+            cur.execute(
+                "INSERT INTO popoto_map (idx, member, value) VALUES (%s, %s, %s) "
+                "ON CONFLICT (idx, member) DO UPDATE SET value = EXCLUDED.value",
+                (
+                    idx,
+                    member,
+                    _pack_confidence(
+                        {
+                            "confidence": new_confidence,
+                            "evidence_count": evidence,
+                            "corroborations": corroborations,
+                            "contradictions": contradictions,
+                        }
+                    ),
+                ),
+            )
+            # The script replies with ``tostring`` of each (``%.14g``) and the
+            # Redis backend parses those; same rounding here.
+            return (
+                float(_lua_tostring(new_confidence)),
+                int(float(_lua_tostring(evidence))),
+                int(float(_lua_tostring(corroborations))),
+                int(float(_lua_tostring(contradictions))),
+            )
+
+        return self._run(op, uow)
 
     # -- I. Validity ---------------------------------------------------------
 

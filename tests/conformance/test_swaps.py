@@ -889,14 +889,19 @@ class TestConcurrentUniqueClaim:
         assert backend.load_record(key(1)) == {b"f": packed("right")}
 
 
-# -- Still stubbed ---------------------------------------------------------------
+# -- Nothing still stubbed -------------------------------------------------------
 
 
-def test_only_family_h_still_raises_on_postgres(backend, backend_is_redis):
-    # Family I is WS3e's (see ``test_validity.py``); H still raises.
+def test_no_family_still_raises_on_postgres(backend, backend_is_redis):
+    # Family I is WS3e's (see ``test_validity.py``) and H is WS3d's (see
+    # ``test_decay.py``); only ``native()`` refuses, by design.
     if backend_is_redis:
         pytest.skip("Postgres-leg assertion")
-    with pytest.raises(NotImplementedError, match=r"PostgresBackend\.decayed_rank"):
+    assert (
         backend.decayed_rank(
             idx("z"), now=0.0, decay_rate=0.1, limit=None, pretrim_max_ratio=1.0
         )
+        == []
+    )
+    with pytest.raises(NotImplementedError, match="Redis-only"):
+        backend.native()
