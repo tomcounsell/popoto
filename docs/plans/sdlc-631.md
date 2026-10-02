@@ -459,7 +459,8 @@ POC-level:
       or key layout (`test_import_surfaces_are_unchanged` extended with
       `get_backend`).
 - [ ] WS4 report published with environment-stated numbers and the three
-      explicit schema answers.
+      explicit schema answers. Report: `docs/plans/postgres_backend_poc.md`
+      (draft, measured at #752's head `4111db58`).
 
 ## Non-goals
 
