@@ -1399,14 +1399,16 @@ class PostgresBackend:
         fallback_idxs: Sequence[str],
         uow: UnitOfWork | None = None,
     ) -> Any:
-        fallback = list(fallback_idxs)
-
         def op(cur: Any) -> Any:
             _lock_record_keys(cur, [record_key])
             idxs = sorted(_pointer_all(cur, record_key, field))
-            if not idxs and fallback:
-                # No pointer: the field-value-derived indexes.
-                idxs = fallback
+            # ``fallback_idxs`` is consulted only here, after the pointer read
+            # came back empty, and never materialised up front: the field
+            # layer hands in a lazy sequence whose first use normalises the
+            # in-memory value and may raise (#744 review, B1), exactly as the
+            # Redis backend's ``if not set_keys and fallback_idxs`` defers it.
+            if not idxs and fallback_idxs:
+                idxs = list(fallback_idxs)
             for idx in idxs:
                 _remove_member(cur, idx, record_key)
             # DEL's reply for the pointer: 1 when it existed, else 0.
