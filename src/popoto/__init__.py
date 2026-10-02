@@ -120,6 +120,11 @@ from .transfer import (
 # module ``__getattr__`` at the bottom of this file instead, so the attribute
 # stays live. A real binding here would shadow that hook permanently.
 from .redis_db import get_async_redis_db
+
+# The storage-backend selectors (#631). Functions only, never the ``_BACKEND``
+# cache itself: a package-level copy of that global would be a snapshot
+# ``set_backend()`` could never update -- #651 one layer up.
+from .backends import get_backend, set_backend
 from .batch import batch
 from ._error_reporting import enable_error_reporting
 
@@ -278,6 +283,8 @@ __all__ = [
     "PublisherException",
     "SubscriberException",
     "get_redis",
+    "get_backend",
+    "set_backend",
     "batch",
     "StreamConsumer",
     "get_async_redis_db",

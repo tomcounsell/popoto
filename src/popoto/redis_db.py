@@ -323,6 +323,11 @@ class GuardedPipeline(redis.client.Pipeline):
         _check_flush(self, args)
         return super().execute_command(*args, **kwargs)
 
+    def commit(self) -> Any:
+        """``popoto.backends.UnitOfWork.commit``: on Redis the unit of work *is*
+        this pipeline (#631, architect decision 1), so commit is ``execute``."""
+        return self.execute()
+
 
 class GuardedRedis(redis.Redis):
     """Popoto's sync client. Refuses ``FLUSHDB`` on database 0 and ``FLUSHALL``
