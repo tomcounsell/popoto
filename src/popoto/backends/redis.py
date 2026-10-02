@@ -1016,6 +1016,21 @@ class RedisBackend:
             return [get_REDIS_DB().hget(key, names[0])]
         return list(get_REDIS_DB().hmget(key, list(names)))
 
+    def load_fields_many(
+        self, keys: Sequence[str], names: Sequence[str]
+    ) -> list[list[bytes | None]]:
+        # protocol-3: ``get_many_objects``'s projection batch, moved. Always
+        # HMGET -- the path never special-cased one name, and the pipelined
+        # ``Pipeline.hmget`` count is what ``test_query_hydration_count`` pins.
+        if not names:
+            raise ValueError("load_fields_many() requires at least one field name")
+        if not keys:
+            return []
+        pipeline = get_REDIS_DB().pipeline()
+        for key in keys:
+            pipeline.hmget(key, list(names))
+        return [list(reply) for reply in pipeline.execute()]
+
     def record_exists(self, key: str) -> bool:
         return bool(get_REDIS_DB().exists(key))
 

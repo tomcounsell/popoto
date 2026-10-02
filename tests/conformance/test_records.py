@@ -145,6 +145,25 @@ class TestSaveAndLoad:
         with pytest.raises(ValueError):
             backend.load_fields(key(1), [])
 
+    def test_load_fields_many_keeps_order_with_none_for_missing(self, backend):
+        # protocol-3: the batched projection read, both legs.
+        backend.save_record(key(1), {b"a": b"1", b"c": b"3"}, class_set=CLASS_SET)
+        backend.save_record(key(2), {b"a": b"x"}, class_set=CLASS_SET)
+        got = backend.load_fields_many(
+            [key(2), key("missing"), key(1), key(2)], ["a", "zz", "c"]
+        )
+        assert got == [
+            [b"x", None, None],
+            [None, None, None],
+            [b"1", None, b"3"],
+            [b"x", None, None],
+        ]
+        assert got[0] is not got[3], "one list per position, as HMGET replies"
+        assert backend.load_fields_many([key(1)], ["c"]) == [[b"3"]]
+        assert backend.load_fields_many([], ["a"]) == []
+        with pytest.raises(ValueError):
+            backend.load_fields_many([key(1)], [])
+
     def test_record_exists_and_class_set_bookkeeping(self, backend):
         assert not backend.record_exists(key(1))
         assert backend.list_keys(CLASS_SET) == set()
@@ -558,6 +577,17 @@ class TestUnitOfWork:
         assert backend.list_keys(CLASS_SET) == {key("kept")}
 
 
+class TestRecordsExist:
+    def test_present_absent_and_duplicated_keys_keep_input_order(self, backend):
+        backend.save_record(key(1), {b"a": b"1"}, class_set=CLASS_SET)
+        backend.save_record(key(3), {b"a": b"1"}, class_set=CLASS_SET)
+        keys = [key(1), key(2), key(3), key(1), key(2)]
+        assert backend.records_exist(keys) == [True, False, True, True, False]
+
+    def test_empty_input(self, backend):
+        assert backend.records_exist([]) == []
+
+
 # -- What WS3a does *not* implement ---------------------------------------------
 
 
@@ -599,12 +629,16 @@ class TestScope:
         assert backend.load_record(key(1)) == {b"a": b"1"}
 
     def test_other_families_still_raise_on_postgres(self, backend, backend_is_redis):
+        # Families D, E, F and the rest of J are WS3b's and implemented (see
+        # ``test_indexes.py``); G, H and I still raise.
         if backend_is_redis:
             pytest.skip("Postgres-leg assertion")
-        with pytest.raises(NotImplementedError, match=r"PostgresBackend\.sorted_add"):
-            backend.sorted_add(ZIDX, key(1), 1.0)
-        with pytest.raises(NotImplementedError, match=r"PostgresBackend\.map_get"):
-            backend.map_get(ZIDX, key(1))
+        with pytest.raises(NotImplementedError, match=r"PostgresBackend\.swap_index"):
+            backend.swap_index(key(1), "f", ZIDX, b"v", unique=False)
+        with pytest.raises(NotImplementedError, match=r"PostgresBackend\.decayed_rank"):
+            backend.decayed_rank(
+                ZIDX, now=0.0, decay_rate=0.1, limit=None, pretrim_max_ratio=1.0
+            )
         with pytest.raises(NotImplementedError, match=r"PostgresBackend\.supersede"):
             backend.supersede(
                 "$ValidityF:M",
