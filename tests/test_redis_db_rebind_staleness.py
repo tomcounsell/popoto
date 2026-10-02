@@ -32,12 +32,19 @@ from popoto import counters  # noqa: E402
 from popoto.models import base as models_base  # noqa: E402
 from popoto.backends import redis as backends_redis  # noqa: E402
 
-# Built at collection time, BEFORE any rebind: the #631 rule is that
+# Built AND USED at collection time, BEFORE any rebind: the #631 rule is that
 # ``RedisBackend`` stores no client, so an instance constructed against the
 # pre-rebind global must still reach the post-rebind one. A backend that
 # captured ``get_REDIS_DB()`` in ``__init__`` would make this object a frozen
-# snapshot and fail the probe below.
+# snapshot and fail the probe below. Construction alone is not enough: a
+# ``client`` property that lazily caches ``get_REDIS_DB()`` on *first access*
+# stores nothing at construction and, if first touched only inside a test
+# body, caches the spy and passes vacuously. Touching ``.client`` and issuing
+# one real command here forces that first access to happen against the real
+# pre-rebind client, so a lazy cache is frozen on it before any spy exists.
 _BACKEND_BUILT_BEFORE_REBIND = backends_redis.RedisBackend()
+_CLIENT_SEEN_BEFORE_REBIND = _BACKEND_BUILT_BEFORE_REBIND.client
+_BACKEND_BUILT_BEFORE_REBIND.record_exists("popoto_test:631:touched-at-collection")
 
 
 class RecordingClient:
@@ -88,6 +95,14 @@ def test_targets_were_imported_before_the_rebind():
             f"{name} must already be imported before any rebind, or this "
             "file's spy tests pass vacuously (#661)"
         )
+    # The same precondition for the backend instance: its first ``.client``
+    # access happened at collection, against the real client, not a spy.
+    assert not isinstance(_CLIENT_SEEN_BEFORE_REBIND, RecordingClient), (
+        "the pre-rebind backend's first client access saw a spy -- the "
+        "module-scope touch must run before any rebind, or a lazily cached "
+        "client passes vacuously (#661)"
+    )
+    assert isinstance(_CLIENT_SEEN_BEFORE_REBIND, redis_db.GuardedRedis)
 
 
 def test_counters_increment_uses_the_current_client(recorder):
@@ -116,14 +131,18 @@ def test_model_exists_uses_the_current_client(recorder):
 def test_redis_backend_uses_the_current_client(recorder):
     """``backends.redis.RedisBackend`` must reach Redis through the live global.
 
-    Probed on an instance built at collection time (before the rebind) so that
-    a client captured in ``__init__`` -- the #655 bug one layer up, which the
-    #631 plan forbids -- cannot pass by being constructed after the spy.
+    Probed on an instance built *and already used* at collection time (before
+    the rebind) so that a client captured in ``__init__`` -- the #655 bug one
+    layer up, which the #631 plan forbids -- cannot pass by being constructed
+    after the spy, and a client lazily cached on first ``.client`` access
+    cannot pass by being first touched after the spy.
     """
     backend = _BACKEND_BUILT_BEFORE_REBIND
+    assert _CLIENT_SEEN_BEFORE_REBIND is not recorder
     assert backend.client is recorder, (
         "RedisBackend.client is not the rebound client — the backend captured "
-        "a client at construction instead of resolving get_REDIS_DB() per call"
+        "a client at construction or on first access instead of resolving "
+        "get_REDIS_DB() per call"
     )
     backend.record_exists("popoto_test:631:nonexistent")
     assert "exists" in recorder.calls, (
@@ -148,7 +167,26 @@ def test_redis_backend_stores_nothing():
     construction and use; this pins the shape directly, the way
     ``test_popoto_redis_db_rebind.py`` asserts ``"POPOTO_REDIS_DB" not in
     vars(popoto)``.
+
+    The instance dict is checked *after* the instance has been used, never on
+    a fresh one: a lazily cached client (``if "_c" not in vars(self): self._c
+    = get_REDIS_DB()``) leaves a fresh instance empty and only grows state on
+    first access, so ``vars(RedisBackend()) == {}`` on its own proves nothing.
     """
-    assert vars(backends_redis.RedisBackend()) == {}
+    used = _BACKEND_BUILT_BEFORE_REBIND  # touched at collection and above
+    assert vars(used) == {}, (
+        f"RedisBackend grew instance state after use: {vars(used)!r} -- a "
+        "cached client is a snapshot set_REDIS_DB_settings() never updates"
+    )
+
+    fresh = backends_redis.RedisBackend()
+    fresh.client
+    fresh.record_exists("popoto_test:631:nonexistent")
+    fresh.sorted_count("popoto_test:631:nonexistent-zset")
+    assert (
+        vars(fresh) == {}
+    ), f"RedisBackend grew instance state after use: {vars(fresh)!r}"
+
     assert "__init__" not in vars(backends_redis.RedisBackend)
     assert isinstance(vars(backends_redis.RedisBackend)["client"], property)
+    assert vars(backends_redis.RedisBackend)["client"].fset is None

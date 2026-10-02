@@ -91,9 +91,11 @@ def _tag_pre_540_ptr_key(record_key: str, field: str) -> str:
 
 
 def _validity_keys(model_prefix: str, field: str) -> dict[str, str]:
-    """The six validity keys for one model/field, byte-equal to
+    """The five validity keys for one model/field, byte-equal to
     ``ValidityField.get_all_keys`` (``DB_key(prefix, "valid_from").redis_key``
-    and friends; the suffixes contain nothing ``DB_key.clean`` would escape)."""
+    and friends; the suffixes contain nothing ``DB_key.clean`` would escape).
+    The sixth key, the open pointer, is digest-specific and is built by
+    ``supersede``/``open_pointer`` at the call site."""
     base = f"{model_prefix}:{field}"
     return {
         "valid_from": f"{base}:valid_from",
