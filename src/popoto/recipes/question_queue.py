@@ -92,7 +92,7 @@ Example::
         turn=12,
     )
 
-    q = qq.next_question("a1", turn=13, query_cues="schedule a meeting")
+    q = qq.next_question("a1", turn=13, query_cues="morning meetings with Dana")
     if q is not None:
         ...  # host phrases and delivers q.question_text
         qq.record_answer(q, "morning", turn=14)
@@ -783,12 +783,25 @@ def _is_stale(candidate: QuestionCandidate, turn: int) -> Optional[bool]:
     return False
 
 
-def _expire(candidate: QuestionCandidate, turn: int) -> bool:
-    """CAS any not-yet-answered open candidate (including ``delivered``) to
-    ``expired``."""
+def _expire(
+    candidate: QuestionCandidate, turn: int, from_status: Optional[str] = None
+) -> bool:
+    """CAS the candidate to ``expired`` from the status the caller read.
+
+    ``from_status`` defaults to the candidate's local ``status``. The CAS is
+    deliberately *not* from any open status: an expiry decided on a
+    ``pending``/``cooled`` read (past ``expires_turn``, or stale) must not land
+    on a candidate another worker has since delivered -- that would flip the
+    question the host is showing to ``expired`` and its reply would then be
+    refused as ``not_open``. Only a pass that read ``delivered`` may expire a
+    ``delivered`` candidate.
+    """
+    status = from_status if from_status is not None else _str_attr(candidate, "status")
+    if status not in _OPEN_STATUSES:
+        return False
     return _claim(
         candidate,
-        tuple(sorted(_OPEN_STATUSES)),
+        (status,),
         {"status": "expired", "resolved_turn": int(turn)},
     )
 
@@ -867,7 +880,7 @@ def _expire_stale_in(
             if status == "delivered":
                 if int(turn) < _ignored_since(cand) + QUESTION_COOLDOWN_TURNS:
                     if _is_stale(cand, turn):
-                        expired += int(_expire(cand, turn))
+                        expired += int(_expire(cand, turn, "delivered"))
                     continue
                 if not _cool_ignored(cand, turn):
                     continue  # answered or otherwise moved concurrently
@@ -876,11 +889,11 @@ def _expire_stale_in(
                 continue
             expires = _int_attr(cand, "expires_turn")
             if expires is not None and int(turn) > expires:
-                expired += int(_expire(cand, turn))
+                expired += int(_expire(cand, turn, status))
                 continue
             stale = _is_stale(cand, turn)
             if stale:
-                expired += int(_expire(cand, turn))
+                expired += int(_expire(cand, turn, status))
             elif stale is False:
                 survivors.append(cand)
     finally:
@@ -1460,11 +1473,21 @@ def _entry_statement(key: str) -> str:
 
 
 def _distinct_labels(texts: Sequence[str]) -> List[str]:
-    """Use ``texts`` as option labels unless any is blank or two normalize
-    equal, in which case fall back to ``option 1`` ... (the 1-based index
-    always matches in :func:`classify_answer` anyway)."""
+    """Use ``texts`` as option labels unless any is blank, two normalize
+    equal, or one is a :data:`DEFLECTION_PHRASES` entry, in which case fall
+    back to ``option 1`` ... (the 1-based index always matches in
+    :func:`classify_answer` anyway).
+
+    A label equal to a deflection phrase (a referent literally named "Next")
+    could never be chosen by name -- :func:`classify_answer` checks
+    deflections first -- so the whole set falls back to index labels.
+    """
     normalized = [normalize_text(t) for t in texts]
-    if all(normalized) and len(set(normalized)) == len(normalized):
+    if (
+        all(normalized)
+        and len(set(normalized)) == len(normalized)
+        and not DEFLECTION_PHRASES.intersection(normalized)
+    ):
         return list(texts)
     return [f"option {i + 1}" for i in range(len(texts))]
 
@@ -1574,6 +1597,14 @@ def propose_from_gate(
             return None
         key = refused[0]
         topic = str(query_text or "").strip() or "this topic"
+        # NOTE: the raw Redis key in the person-facing text (and the cue tokens
+        # its fragments add) -- left as-is because propose() dedups on kind +
+        # target_keys intersection OR exact normalized text. Without the key,
+        # two refusals of different facts under the same query would match on
+        # text alone and collapse into one candidate. Removing it needs that
+        # text-match rule to also require compatible target_keys, which
+        # changes dedup for every producer; the host phrases question_text
+        # before delivery anyway. The topic still supplies the cue tokens.
         return propose(
             agent_id=agent_id,
             question_text=(
@@ -1650,7 +1681,7 @@ def propose_from_resolution(record: Any, turn: int) -> int:
                 turn=turn,
                 options=[
                     {"label": label, "acted": [], "contradicted": []}
-                    for label in seen.values()
+                    for label in _distinct_labels(list(seen.values()))
                 ],
             )
         except Exception:

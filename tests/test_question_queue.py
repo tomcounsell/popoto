@@ -500,6 +500,23 @@ class TestExpiryAndTiming:
         )
         assert qq.record_answer(got, "yes", turn=C + 1).reason == "applied"
 
+    def test_stale_pending_view_cannot_expire_a_delivered_question(self):
+        """Worker A reads `pending`; worker B delivers it at T == expires_turn;
+        A's pass at T+1 on its stale read must not expire the live delivery."""
+        E = qq.QUESTION_EXPIRY_TURNS
+        k = _fact("exp-race").db_key.redis_key
+        cand = _confirmation(k, turn=0)
+        assert cand.expires_turn == E
+        stale_view = list(QuestionCandidate.query.filter(agent_id=AGENT))
+        assert [c.status for c in stale_view] == ["pending"]
+        qq.note_use(AGENT, [k], E)
+        got = qq.next_question(AGENT, turn=E)
+        assert got is not None and got.candidate_id == cand.candidate_id
+
+        assert qq._expire_stale_in(stale_view, E + 1) == (0, [])
+        assert _reload(cand).status == "delivered"
+        assert qq.record_answer(got, "yes", turn=E + 1).reason == "applied"
+
     def test_legacy_delivered_without_delivered_turn_still_cools(self):
         """A delivered hash written before delivered_turn existed (field
         absent) is guarded as nil and cooled from created_turn."""

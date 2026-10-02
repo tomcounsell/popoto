@@ -350,6 +350,35 @@ class TestResolutionProducer:
         assert result.applied and result.option_index == 1
         assert _reload(q).answer_option == 1
 
+    def test_deflection_named_referent_falls_back_to_index_labels(self):
+        """A referent literally named "Next" could never be chosen by name
+        (deflections are checked first), so the options use index labels."""
+        gap = {
+            "surface": "it",
+            "start": 0,
+            "end": 2,
+            "status": "evidence_gap",
+            "candidates": ["Next", "Dana"],
+            "question": "Is 'it' Next or Dana?",
+        }
+        assert qq.propose_from_resolution(_resolution_record(refs=[gap]), turn=1)
+        (cand,) = _candidates()
+        assert [o["label"] for o in cand.options] == ["option 1", "option 2"]
+        assert qq.classify_answer(cand.options, "next") == ("deflected", None)
+        assert qq.classify_answer(cand.options, "Option 1") == ("answered", 0)
+
+    @pytest.mark.parametrize(
+        "texts, expected",
+        [
+            (["Dana", "Priya"], ["Dana", "Priya"]),
+            (["Dana", "dana"], ["option 1", "option 2"]),
+            (["Dana", ""], ["option 1", "option 2"]),
+            (["Later", "Dana"], ["option 1", "option 2"]),
+        ],
+    )
+    def test_distinct_labels(self, texts, expected):
+        assert qq._distinct_labels(texts) == expected
+
     @pytest.mark.parametrize(
         "refs_json", ["not json", "{}", json.dumps([{"status": "evidence_gap"}])]
     )

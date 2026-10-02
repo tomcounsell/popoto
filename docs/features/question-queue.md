@@ -195,7 +195,7 @@ result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="a1")
 qq.propose_from_gate("a1", result.metadata, turn=12, query_text="deployment")
 
 # The host asks the queue once per turn.
-q = qq.next_question("a1", turn=13, query_cues="schedule a meeting")
+q = qq.next_question("a1", turn=13, query_cues="morning meetings with Dana")
 if q is not None:
     ...  # host phrases and delivers q.question_text
 
