@@ -938,7 +938,7 @@ class RedisBackend:
         key: str,
         fields: Mapping[Any, bytes],
         *,
-        class_set: str,
+        class_set: str | None = None,
         obsolete_key: str | None = None,
         ttl: int | None = None,
         expire_at: float | None = None,
@@ -955,9 +955,12 @@ class RedisBackend:
             db.expire(key, ttl)  # 2
         elif expire_at is not None:
             db.expireat(key, int(expire_at))  # 2
-        db.sadd(class_set, key)  # 3
+        # protocol-2: ``class_set=None`` leaves the class set untouched (3, 4a).
+        if class_set is not None:
+            db.sadd(class_set, key)  # 3
         if obsolete_key and obsolete_key != key:  # 4
-            db.srem(class_set, obsolete_key)  # 4a - remove old key from class set
+            if class_set is not None:
+                db.srem(class_set, obsolete_key)  # 4a - remove old key from set
             db.delete(obsolete_key)  # 4b
         if uow is not None:
             return None
@@ -966,6 +969,25 @@ class RedisBackend:
         # EVAL-only (all fields are indexed), fields is empty so results[0] is
         # the first queued op result (expire/sadd), still an int.
         return results[0] if results else 0
+
+    def set_expiry(
+        self,
+        key: str,
+        *,
+        ttl: int | None = None,
+        expire_at: float | None = None,
+        uow: UnitOfWork | None = None,
+    ) -> Any:
+        # protocol-2: the partial save's trailing EXPIRE/EXPIREAT, issued after
+        # the field hooks so it lands on a hash the INDEX_SWAP EVAL created.
+        db: Any = get_REDIS_DB() if uow is None else uow
+        if ttl is not None:
+            reply = db.expire(key, ttl)
+        elif expire_at is not None:
+            reply = db.expireat(key, int(expire_at))
+        else:
+            return None
+        return None if uow is not None else bool(reply)
 
     def load_record(self, key: str) -> dict[Any, bytes] | None:
         hashmap = get_REDIS_DB().hgetall(key)
@@ -1104,12 +1126,14 @@ class RedisBackend:
             return None
         return int(reply)
 
-    def map_scan(self, idx: str, pattern: str = "*") -> dict[str, bytes]:
+    def map_scan(
+        self, idx: str, pattern: str = "*", count: int = 100
+    ) -> dict[str, bytes]:
         result: dict[str, bytes] = {}
         cursor = 0
         while True:
             cursor, data = get_REDIS_DB().hscan(
-                idx, cursor=cursor, match=pattern, count=100
+                idx, cursor=cursor, match=pattern, count=count
             )
             for member_key, raw_value in data.items():
                 result[_as_str(member_key)] = raw_value
