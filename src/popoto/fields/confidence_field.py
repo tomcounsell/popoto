@@ -39,22 +39,21 @@ Example:
 import logging
 
 import msgpack
-import redis
 
+from ..backends import get_backend
 from ..exceptions import ModelException
 from ..models.canonical_key import canonical_key_str
 from ..models.query import QueryException
-from ..redis_db import get_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
 
 logger = logging.getLogger("POPOTO.ConfidenceField")
 
-# ``CAPPED_BAYESIAN_UPDATE_LUA`` moved to ``popoto.backends.redis`` (#631 WS0).
-# It is re-imported here under its existing name so every current
-# reader -- this module's own ``run_lua`` sites and the tests that
-# import it from here -- keeps finding it. The script text itself is
-# byte-identical.
+# ``CAPPED_BAYESIAN_UPDATE_LUA`` moved to ``popoto.backends.redis`` (#631 WS0)
+# and the ``EVAL`` of it moved into ``RedisBackend.confidence_update`` (#631
+# WS1d); this module no longer evaluates the script itself. The constant is
+# still re-exported here under its existing name so a reader importing it
+# from here keeps finding it. The script text itself is byte-identical.
 from ..backends.redis import CAPPED_BAYESIAN_UPDATE_LUA  # noqa: E402,F401
 
 
@@ -126,7 +125,7 @@ class ConfidenceField(Field):
 
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
         member_key = model_instance.db_key.redis_key
-        raw = get_REDIS_DB().hget(data_hash_key, member_key)
+        raw = get_backend().map_get(data_hash_key, member_key)
         if not raw:
             return None
 
@@ -152,10 +151,10 @@ class ConfidenceField(Field):
     def import_state(cls, model_instance, field_name, state, **kwargs):
         """Restore companion-hash confidence metadata after import.
 
-        Written with a raw ``HSET`` of msgpack -- mirroring what ``on_save``
-        does -- because there is no public setter (``update_confidence`` is
-        signal-only and would apply the capped-evidence update rule rather
-        than restoring exact values).
+        Written as a plain ``map_set`` of msgpack (``HSET`` on Redis) --
+        mirroring what ``on_save`` does -- because there is no public setter
+        (``update_confidence`` is signal-only and would apply the
+        capped-evidence update rule rather than restoring exact values).
 
         This deliberately OVERWRITES: ``on_save`` has already run by the time
         the transfer driver calls this, and it seeds the entry with
@@ -177,7 +176,7 @@ class ConfidenceField(Field):
             "corroborations": int(state.get("corroborations", 0) or 0),
             "contradictions": int(state.get("contradictions", 0) or 0),
         }
-        get_REDIS_DB().hset(data_hash_key, member_key, msgpack.packb(data))
+        get_backend().map_set(data_hash_key, member_key, msgpack.packb(data))
         return None
 
     def __init__(self, **kwargs):
@@ -330,13 +329,15 @@ class ConfidenceField(Field):
         member_key = model_instance.db_key.redis_key
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
 
-        db = pipeline if isinstance(pipeline, redis.client.Pipeline) else get_REDIS_DB()
+        # Architect decision 1 (#631): the unit of work is duck-typed. Every
+        # write below takes ``uow=pipeline``; ``None`` means execute now.
+        backend = get_backend()
 
         # Check if on_delete preserved migration data (key migration scenario)
         migration_data = getattr(model_instance, "_confidence_migration_data", {})
         if field_name in migration_data:
             old_raw = migration_data.pop(field_name)
-            db.hset(data_hash_key, member_key, old_raw)
+            backend.map_set(data_hash_key, member_key, old_raw, uow=pipeline)
             # Clean up the temp attribute if empty
             if not migration_data:
                 try:
@@ -361,21 +362,30 @@ class ConfidenceField(Field):
                         model_instance, field_name
                     )
                     if old_hash_key and old_hash_key != data_hash_key:
-                        # Read old data directly from Redis
-                        old_raw = get_REDIS_DB().hget(old_hash_key, member_key)
+                        # Read the old entry now (never queued): the move
+                        # below depends on its value.
+                        old_raw = backend.map_get(old_hash_key, member_key)
                         if old_raw:
-                            db.hset(data_hash_key, member_key, old_raw)
-                            db.hdel(old_hash_key, member_key)
+                            backend.map_set(
+                                data_hash_key, member_key, old_raw, uow=pipeline
+                            )
+                            backend.map_delete(old_hash_key, member_key, uow=pipeline)
                             return result
 
-        # Initialize with HSETNX (atomic set-if-not-exists, no race condition)
+        # Initialize set-if-not-exists (HSETNX on Redis: atomic, no race)
         initial_data = {
             "confidence": field.initial_confidence,
             "evidence_count": 0,
             "corroborations": 0,
             "contradictions": 0,
         }
-        db.hsetnx(data_hash_key, member_key, msgpack.packb(initial_data))
+        backend.map_set(
+            data_hash_key,
+            member_key,
+            msgpack.packb(initial_data),
+            only_if_absent=True,
+            uow=pipeline,
+        )
 
         return result
 
@@ -407,19 +417,15 @@ class ConfidenceField(Field):
 
             # During key migration (saved_redis_key present), preserve confidence
             # data so on_save can restore it in the new partition hash.
+            backend = get_backend()
             if kwargs.get("saved_redis_key"):
-                old_raw = get_REDIS_DB().hget(data_hash_key, member_key)
+                old_raw = backend.map_get(data_hash_key, member_key)
                 if old_raw:
                     if not hasattr(model_instance, "_confidence_migration_data"):
                         model_instance._confidence_migration_data = {}
                     model_instance._confidence_migration_data[field_name] = old_raw
 
-            db = (
-                pipeline
-                if isinstance(pipeline, redis.client.Pipeline)
-                else get_REDIS_DB()
-            )
-            db.hdel(data_hash_key, member_key)
+            backend.map_delete(data_hash_key, member_key, uow=pipeline)
 
         return super().on_delete(
             model_instance, field_name, field_value, pipeline=pipeline, **kwargs
@@ -483,35 +489,36 @@ class ConfidenceField(Field):
 
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
 
+        backend = get_backend()
         if pipeline is not None:
-            # Batched: the Lua EXISTS guard on KEYS[2] replaces the
-            # round-trip check below, so N suppressions cost one execute().
-            run_lua(
-                pipeline,
-                CAPPED_BAYESIAN_UPDATE_LUA,
-                2,
+            # Batched: the script's EXISTS guard on ``require_record`` (its
+            # KEYS[2]) replaces the round-trip check below, so N suppressions
+            # cost one execute().
+            backend.confidence_update(
                 data_hash_key,
                 member_key,
-                member_key,
-                str(signal),
-                str(field.initial_confidence),
-                str(field.evidence_cap),
+                signal,
+                initial=field.initial_confidence,
+                cap=field.evidence_cap,
+                require_record=member_key,
+                uow=pipeline,
             )
             return None
 
-        if not get_REDIS_DB().exists(member_key):
-            raise TypeError("update_confidence() requires a saved model instance")
-
-        result = run_lua(
-            get_REDIS_DB(),
-            CAPPED_BAYESIAN_UPDATE_LUA,
-            1,  # number of KEYS
+        result = backend.confidence_update(
             data_hash_key,
             member_key,
-            str(signal),
-            str(field.initial_confidence),
-            str(field.evidence_cap),
+            signal,
+            initial=field.initial_confidence,
+            cap=field.evidence_cap,
+            require_record=member_key,
         )
+        if result is None:
+            # Protocol deviation 7 (#732): the backend reports an absent
+            # record as ``None``; the exception and its wording are this
+            # layer's contract (tests/test_confidence_field.py::
+            # TestConfidenceFieldErrors), so they stay here.
+            raise TypeError("update_confidence() requires a saved model instance")
 
         new_confidence = float(result[0])
 
@@ -552,7 +559,7 @@ class ConfidenceField(Field):
         member_key = model_instance.db_key.redis_key
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
 
-        raw = get_REDIS_DB().hget(data_hash_key, member_key)
+        raw = get_backend().map_get(data_hash_key, member_key)
         if raw is None:
             return field.initial_confidence
 
@@ -578,7 +585,7 @@ class ConfidenceField(Field):
         member_key = model_instance.db_key.redis_key
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
 
-        raw = get_REDIS_DB().hget(data_hash_key, member_key)
+        raw = get_backend().map_get(data_hash_key, member_key)
         if raw is None:
             return {
                 "confidence": field.initial_confidence,
@@ -611,23 +618,16 @@ class ConfidenceField(Field):
         base_key = field.get_special_use_field_db_key(model_class, field_name)
         data_hash_key = base_key.redis_key + ":data"
 
+        # ``count=100`` is the HSCAN batch hint this loop always used (the
+        # protocol-2 ``map_scan(count=)`` parameter exists for this site).
         result = {}
-        cursor = 0
-        while True:
-            cursor, data = get_REDIS_DB().hscan(
-                data_hash_key, cursor=cursor, match=pattern, count=100
-            )
-            for member_key, raw_value in data.items():
-                if isinstance(member_key, bytes):
-                    member_key = member_key.decode()
-                try:
-                    result[member_key] = msgpack.unpackb(raw_value, raw=False)
-                except Exception:
-                    logger.warning(
-                        "Failed to unpack confidence data for %s", member_key
-                    )
-            if cursor == 0:
-                break
+        for member_key, raw_value in (
+            get_backend().map_scan(data_hash_key, pattern, count=100).items()
+        ):
+            try:
+                result[member_key] = msgpack.unpackb(raw_value, raw=False)
+            except Exception:
+                logger.warning("Failed to unpack confidence data for %s", member_key)
         return result
 
     @classmethod
@@ -661,11 +661,16 @@ class ConfidenceField(Field):
                 f"Nothing to migrate."
             )
 
-        # Read the unpartitioned hash
+        # Read the unpartitioned hash. ``map_scan`` is a cursor scan (HSCAN
+        # on Redis, batched at 1000 like the maintenance paths in
+        # ``models/base.py``) where this used to be one HGETALL; same
+        # entries, decoded member keys, and no O(N) blocking read of a hash
+        # this method exists to shrink.
         base_key = field.get_special_use_field_db_key(model_class, field_name)
         unpartitioned_key = base_key.redis_key + ":data"
 
-        all_data = get_REDIS_DB().hgetall(unpartitioned_key)
+        backend = get_backend()
+        all_data = backend.map_scan(unpartitioned_key, count=1000)
         if not all_data:
             return {"total": 0, "migrated": 0, "errors": [], "partitions": {}}
 
@@ -676,16 +681,10 @@ class ConfidenceField(Field):
             "partitions": {},
         }
 
-        for member_key_raw, raw_value in all_data.items():
-            member_key = (
-                member_key_raw.decode()
-                if isinstance(member_key_raw, bytes)
-                else member_key_raw
-            )
-
-            # Load the model instance from Redis to read partition field values
+        for member_key, raw_value in all_data.items():
+            # Load the model instance to read partition field values
             try:
-                redis_hash = get_REDIS_DB().hgetall(member_key)
+                redis_hash = backend.load_record(member_key)
                 if not redis_hash:
                     report["errors"].append(
                         {
@@ -719,7 +718,7 @@ class ConfidenceField(Field):
             report["partitions"][partition_label] += 1
 
             if not dry_run:
-                get_REDIS_DB().hset(partitioned_key, member_key, raw_value)
+                backend.map_set(partitioned_key, member_key, raw_value)
                 report["migrated"] += 1
 
         # Delete the old unpartitioned hash after successful migration
@@ -727,6 +726,6 @@ class ConfidenceField(Field):
             report["errors"]
         ):
             if report["migrated"] > 0:
-                get_REDIS_DB().delete(unpartitioned_key)
+                backend.drop_index(unpartitioned_key, "map")
 
         return report
