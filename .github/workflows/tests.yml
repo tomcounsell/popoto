@@ -178,3 +178,84 @@ jobs:
 
       - name: Run tests
         run: pytest -m "not slow" --tb=short
+
+  # Storage backend seam POC (#631, docs/plans/sdlc-631.md, WS2). Runs only
+  # the tests marked `conformance`, parametrised over both backends. It
+  # carries a Redis service as well as Postgres on purpose: the pytest
+  # plugin binds Redis in pytest_configure and its autouse fixture issues
+  # FLUSHDB before every test, and tests/test_ci_workflow_redis_url.py
+  # requires every job in this file to pin REDIS_URL to popoto_test_db.
+  postgres:
+    name: pytest (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      # The database number must match `popoto_test_db` in pyproject.toml;
+      # tests/test_ci_workflow_redis_url.py fails if the two ever disagree.
+      REDIS_URL: redis://localhost:6379/15
+      # Names the database explicitly: the harness refuses a db-less URL
+      # (PostgresIsolationRefusedError) the way the Redis side refuses DB 0.
+      # The harness creates one popoto_test_<hex> schema per session inside
+      # it and drops it at teardown; schema `public` is never touched.
+      POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      POPOTO_CONFORMANCE_BACKENDS: redis,postgres
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: pyproject.toml
+
+      # [postgres] supplies psycopg; without it the Postgres leg of every
+      # conformance test skips, which would make this job green by vacuity.
+      # The "Verify" step below fails if psycopg cannot reach the service.
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,embeddings,benchmark,postgres]"
+
+      - name: Verify servers reachable
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg
+          import redis
+
+          r = redis.from_url(os.environ["REDIS_URL"])
+          r.ping()
+          print("redis:", r.info("server").get("redis_version"))
+          with psycopg.connect(os.environ["POSTGRES_URL"]) as conn:
+              (version,) = conn.execute("SELECT version()").fetchone()
+          print("postgres:", version)
+          PY
+
+      - name: Run conformance tests
+        run: pytest -m conformance --tb=short
