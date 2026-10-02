@@ -66,9 +66,9 @@ class UnitOfWork(Protocol):
 
 
 class Backend(Protocol):
-    """The 44 storage operations behind the agent-memory field layer.
+    """The 45 storage operations behind the agent-memory field layer.
 
-    Grouped as the plan enumerates them: A unit of work (2), B records (9),
+    Grouped as the plan enumerates them: A unit of work (2), B records (10),
     C atomic increment (1), D side maps (4), E set indexes (7), F sorted
     indexes (7), G atomic swaps (4), H decay and confidence (2), I validity (5),
     J orphan purge and maintenance (3). Each docstring names the Lua script or
@@ -77,7 +77,10 @@ class Backend(Protocol):
     The plan froze WS0 at 42. Two were added by ``feature/backend-seam-protocol-1``
     because WS1a could not route ``models/base.py``'s maintenance paths without
     them: :meth:`records_exist` (B) and :meth:`drop_index` (J). Both are marked
-    ``protocol-1`` in their docstrings.
+    ``protocol-1`` in their docstrings. ``feature/backend-seam-protocol-2``
+    added :meth:`set_expiry` (B), made :meth:`save_record`'s ``class_set``
+    optional, and gave :meth:`map_scan` a ``count`` hint, so WS1a's partial
+    save keeps the pre-seam wire order (PR #735 review, B1/B2, tech-debt 1).
     """
 
     # -- A. Unit of work ---------------------------------------------------
@@ -103,7 +106,7 @@ class Backend(Protocol):
         key: str,
         fields: Mapping[Any, bytes],
         *,
-        class_set: str,
+        class_set: str | None = None,
         obsolete_key: str | None = None,
         ttl: int | None = None,
         expire_at: float | None = None,
@@ -119,6 +122,31 @@ class Backend(Protocol):
         backend treats them as opaque. ``numeric`` is the decoded float value
         of every ``IntField``/``FloatField``/``DecimalField`` so Postgres can
         keep a typed column; Redis ignores it. ``expire_at`` is epoch seconds.
+
+        ``class_set=None`` means *do not touch the class set*: no ``SADD`` of
+        ``key`` and no ``SREM`` of ``obsolete_key`` (its ``DEL`` still runs).
+        ``Model.save(update_fields=...)`` needs it because the pre-seam partial
+        path registered the key only on key migration, and an unconditional
+        ``SADD`` surfaced a never-fully-saved hash -- one with no KeyField --
+        through ``query.all()`` (#735 review B1). ``protocol-2`` change.
+        """
+        ...
+
+    def set_expiry(
+        self,
+        key: str,
+        *,
+        ttl: int | None = None,
+        expire_at: float | None = None,
+        uow: UnitOfWork | None = None,
+    ) -> Any:
+        """Replaces a standalone ``EXPIRE key ttl`` / ``EXPIREAT key at``
+        (``Model.save``'s partial path, where the expiry is queued *after* the
+        field hooks so it lands on a hash the ``INDEX_SWAP`` EVAL has already
+        created -- queued before it, the expiry hits a missing key and a
+        ``Meta.ttl`` record lives forever; #735 review B2). ``expire_at`` is
+        epoch seconds; with both ``None`` nothing is issued. ``protocol-2``
+        addition.
         """
         ...
 
@@ -227,9 +255,16 @@ class Backend(Protocol):
         """Replaces ``HDEL idx member``."""
         ...
 
-    def map_scan(self, idx: str, pattern: str = "*") -> dict[str, bytes]:
-        """Replaces the ``HSCAN idx MATCH pattern`` loop
-        (``ConfidenceField.get_confidence_filtered``)."""
+    def map_scan(
+        self, idx: str, pattern: str = "*", count: int = 100
+    ) -> dict[str, bytes]:
+        """Replaces the ``HSCAN idx MATCH pattern COUNT count`` loop
+        (``ConfidenceField.get_confidence_filtered`` at 100;
+        ``check_indexes``/``clean_indexes`` step 5 at 1000). ``count`` is the
+        per-round-trip batch hint of the cursor scan it replaces -- a parity
+        knob, not a result-set limit; a backend without cursors ignores it.
+        ``protocol-2`` parameter.
+        """
         ...
 
     # -- E. Set indexes ------------------------------------------------------

@@ -56,7 +56,7 @@ class PostgresBackend:
         key: str,
         fields: Mapping[Any, bytes],
         *,
-        class_set: str,
+        class_set: str | None = None,
         obsolete_key: str | None = None,
         ttl: int | None = None,
         expire_at: float | None = None,
@@ -64,6 +64,16 @@ class PostgresBackend:
         uow: UnitOfWork | None = None,
     ) -> Any:
         raise _todo("save_record")
+
+    def set_expiry(
+        self,
+        key: str,
+        *,
+        ttl: int | None = None,
+        expire_at: float | None = None,
+        uow: UnitOfWork | None = None,
+    ) -> Any:
+        raise _todo("set_expiry")
 
     def load_record(self, key: str) -> dict[Any, bytes] | None:
         raise _todo("load_record")
@@ -125,7 +135,9 @@ class PostgresBackend:
     ) -> int | None:
         raise _todo("map_delete")
 
-    def map_scan(self, idx: str, pattern: str = "*") -> dict[str, bytes]:
+    def map_scan(
+        self, idx: str, pattern: str = "*", count: int = 100
+    ) -> dict[str, bytes]:
         raise _todo("map_scan")
 
     # -- E. Set indexes ------------------------------------------------------

@@ -109,6 +109,42 @@ class TestRecords:
         assert results[0] == 1
         assert client.hgetall(key) == {b"f": b"v"}
 
+    def test_save_record_without_a_class_set_leaves_the_set_alone(
+        self, backend, client
+    ):
+        # protocol-2 (#735 review B1): ``class_set=None`` means no SADD of the
+        # key and no SREM of the obsolete key; the obsolete hash is still DEL'd.
+        old, new = f"{PREFIX}:Record:p-old", f"{PREFIX}:Record:p-new"
+        class_set = f"$Class:{PREFIX}:Record"
+        client.hset(old, mapping={b"f": b"\x01"})
+        client.sadd(class_set, old)
+        assert backend.save_record(new, {b"f": b"\x02"}, obsolete_key=old) == 1
+        assert client.hgetall(new) == {b"f": b"\x02"}
+        assert not client.exists(old)
+        assert client.smembers(class_set) == {old.encode()}, "set untouched"
+        uow = backend.begin()
+        assert backend.save_record(new, {b"g": b"\x03"}, uow=uow) is None
+        assert uow.commit() == [1]
+        assert client.smembers(class_set) == {old.encode()}
+
+    def test_set_expiry_matches_expire_and_expireat(self, backend, client):
+        # protocol-2 (#735 review B2): the partial save's trailing EXPIRE.
+        import time
+
+        key = f"{PREFIX}:Record:ttl"
+        client.hset(key, mapping={b"f": b"v"})
+        assert backend.set_expiry(key, ttl=600) is True
+        assert client.ttl(key) == 600
+        assert backend.set_expiry(key, expire_at=time.time() + 1200) is True
+        assert 1190 <= client.ttl(key) <= 1200
+        assert backend.set_expiry(key) is None, "nothing to issue"
+        assert backend.set_expiry(f"{PREFIX}:Record:missing", ttl=5) is False
+        uow = backend.begin()
+        assert backend.set_expiry(key, ttl=30, uow=uow) is None
+        assert 1190 <= client.ttl(key) <= 1200, "nothing applied before commit()"
+        assert uow.commit() == [True]
+        assert client.ttl(key) == 30
+
 
 class TestIncrement:
     def test_increment_matches_the_msgpack_envelope(self, backend, client):
@@ -194,6 +230,9 @@ class TestSideMaps:
         backend.map_set(idx, "other", b"\x03")
         assert backend.map_scan(idx) == {"m1": b"\x01", "other": b"\x03"}
         assert backend.map_scan(idx, "m*") == {"m1": b"\x01"}
+        # protocol-2: ``count`` is the HSCAN batch hint, not a result limit.
+        assert backend.map_scan(idx, count=1) == {"m1": b"\x01", "other": b"\x03"}
+        assert backend.map_scan(idx, count=1000) == backend.map_scan(idx)
         assert backend.map_delete(idx, "m1") == 1
         assert client.hexists(idx, "m1") is False
 
