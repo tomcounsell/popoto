@@ -397,6 +397,8 @@ class TestSortedIndexes:
             backend.sorted_add(ZSET, m(suffix), score)
             assert backend.sorted_score(ZSET, m(suffix)) == score
         assert backend.sorted_score(ZSET, m("tiny")) == 5e-324
+        # ``== -0.0`` cannot see the sign; ZADD stores positive zero.
+        assert math.copysign(1.0, backend.sorted_score(ZSET, m("neg0"))) == 1.0
         assert backend.sorted_members(ZSET) == [
             m("ninf"),
             m("neg0"),

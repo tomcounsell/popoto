@@ -136,10 +136,23 @@ backend enumerates the three index tables only.
 `value out of range: overflow` for a finite-operand overflow, and the backend
 does not emulate `inf`. `inf` plus a finite delta is `inf` on both.
 
+**A failing operation in a unit of work rolls back the whole queue.** On
+Postgres `commit()` runs the queue in one transaction, so `[add a, increment
+inf by -inf, add b]` raises and stores nothing. A Redis pipeline reports the
+error but still commits the other commands (`a` and `b` are stored). Scores
+are also validated when an operation is queued, so a `NaN` raises before
+`commit()` on Postgres where Redis raises at execute.
+
+**A mismatched `kind` replies differently.** `drop_index` with the wrong
+`kind` replies 0 and deletes nothing on Postgres where Redis `DEL` replies 1
+and deletes whatever the key is; `scan_index_members` with the wrong `kind`
+yields nothing where Redis raises `WRONGTYPE`. Callers pass the right kind.
+
+**`-0.0` scores are stored as `0.0`**, matching `ZADD`'s normalisation.
+
 **Not implemented**: record TTL (`save_record(ttl=...)` / `expire_at=...`
 raises `NotImplementedError` rather than silently storing a record that never
-expires), `records_exist` (family B, added in protocol-1 and still a stub),
-and the atomic index/tag swaps, decay ranking, confidence, validity and
+expires), and the atomic index/tag swaps, decay ranking, confidence, validity and
 supersession families, which still raise `NotImplementedError` naming the
 method. `native()` raises on Postgres by design: it is the Redis-only escape
 hatch for out-of-scope features.

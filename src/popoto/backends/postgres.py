@@ -315,11 +315,15 @@ def _match_all(pattern: str) -> bool:
 
 
 def _check_score(score: float, *, what: str = "value") -> float:
-    """A ``NaN`` score is Redis's ``value is not a valid float`` error."""
+    """A ``NaN`` score is Redis's ``value is not a valid float`` error.
+
+    ``-0.0`` becomes ``0.0`` (IEEE: ``-0.0 + 0.0 == +0.0``): ``ZADD``
+    normalises the sign of zero and ``float8`` would keep it.
+    """
     score = float(score)
     if math.isnan(score):
         raise ValueError(f"{what} is not a valid float")
-    return score
+    return score + 0.0
 
 
 def _lock_record_keys(cur: Any, keys: Sequence[str]) -> None:
@@ -435,6 +439,10 @@ class PostgresUnitOfWork:
     returned) and leaves the queue empty, so a second ``commit()`` returns
     ``[]`` as a re-executed pipeline does. Leaving the ``with`` block without
     committing discards the queue, as ``Pipeline.__exit__`` resets.
+
+    Failure semantics differ: an operation that fails inside ``commit()``
+    rolls back the *entire* queue (one transaction), whereas a Redis pipeline
+    runs the remaining commands and commits them.
     """
 
     def __init__(self, backend: PostgresBackend) -> None:
@@ -472,7 +480,7 @@ class PostgresUnitOfWork:
 class PostgresBackend:
     """The Postgres :class:`~popoto.backends.Backend`; see the module
     docstring for the schema, the connection policy, the increment envelope
-    and the sorted-set semantics. Families G-I (and B's ``records_exist``)
+    and the sorted-set semantics. Families G-I
     still raise :class:`NotImplementedError`."""
 
     def __init__(self, url: str) -> None:
@@ -692,7 +700,14 @@ class PostgresBackend:
         return bool(rows[0][0])
 
     def records_exist(self, keys: Sequence[str]) -> list[bool]:
-        raise _todo("records_exist")
+        if not keys:
+            return []
+        rows = self._query(
+            "SELECT DISTINCT key FROM popoto_record WHERE key = ANY(%s)",
+            (list(keys),),
+        )
+        found = {row[0] for row in rows}
+        return [key in found for key in keys]
 
     def delete_record(
         self, key: str, *, class_set: str, uow: UnitOfWork | None = None
