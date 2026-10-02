@@ -13,6 +13,20 @@ import pytest
 import popoto
 from popoto.redis_db import POPOTO_REDIS_DB
 
+# #631 WS1f: this module runs on every configured storage backend. The
+# ``conformance`` mark opts in; the autouse fixture puts ``backend`` in every
+# test's fixture closure, which is what the plugin parametrises over
+# ``POPOTO_CONFORMANCE_BACKENDS`` (see docs/testing.md). Tests that inspect
+# Redis keys or spy on the Redis client carry ``redis_only`` and skip on the
+# other legs; nothing is deleted or weakened for the second backend.
+pytestmark = pytest.mark.conformance
+
+
+@pytest.fixture(autouse=True)
+def _backend_leg(backend):
+    """Bind the parametrised backend for every test in this module."""
+    yield
+
 
 class AtomicModel(popoto.Model):
     """Model with KeyField for testing atomic index creation."""
@@ -50,6 +64,9 @@ def cleanup():
 class TestAtomicSave:
     """Tests verifying save() executes atomically via internal pipeline."""
 
+    @pytest.mark.redis_only(
+        reason="reads the index through the raw Redis client (SMEMBERS/ZRANGE)"
+    )
     def test_save_indexes_exist_immediately(self):
         """After save(), KeyField index must contain the record."""
         obj = AtomicModel(name="test1", status="pending", value="data")
@@ -63,6 +80,9 @@ class TestAtomicSave:
         }
         assert obj.db_key.redis_key in member_strs
 
+    @pytest.mark.redis_only(
+        reason="reads the index through the raw Redis client (SMEMBERS/ZRANGE)"
+    )
     def test_save_class_set_exists_immediately(self):
         """After save(), class set must contain the record."""
         obj = AtomicModel(name="test2", status="active", value="data")
@@ -84,6 +104,9 @@ class TestAtomicSave:
         found_keys = [r.db_key.redis_key for r in results]
         assert obj.db_key.redis_key in found_keys
 
+    @pytest.mark.redis_only(
+        reason="async API: get_async_redis_db(), a plan non-goal for the seam"
+    )
     @pytest.mark.asyncio
     async def test_async_create_then_async_filter(self):
         """async_create() + async_filter() must find the record."""
@@ -101,6 +124,9 @@ class TestAtomicSave:
         result = obj.save()
         assert isinstance(result, int)
 
+    @pytest.mark.redis_only(
+        reason="reads the index through the raw Redis client (SMEMBERS/ZRANGE)"
+    )
     def test_save_with_sorted_field_atomic(self):
         """SortedField index must exist immediately after save()."""
         obj = SortedModel(item_id="s1", score=42.5, label="test")
@@ -129,6 +155,9 @@ class TestAtomicSave:
         reloaded = AtomicModel.query.get(name="partial")
         assert reloaded.value == "updated"
 
+    @pytest.mark.redis_only(
+        reason="passes a real redis-py Pipeline as the unit of work"
+    )
     def test_save_with_explicit_pipeline_unchanged(self):
         """Explicit pipeline path must still work as before."""
         pipeline = POPOTO_REDIS_DB.pipeline()

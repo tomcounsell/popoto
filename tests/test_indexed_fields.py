@@ -4,6 +4,20 @@ import pytest
 
 from popoto import Model, Field, AutoKeyField, IndexedField, UniqueField, ModelException
 
+# #631 WS1f: this module runs on every configured storage backend. The
+# ``conformance`` mark opts in; the autouse fixture puts ``backend`` in every
+# test's fixture closure, which is what the plugin parametrises over
+# ``POPOTO_CONFORMANCE_BACKENDS`` (see docs/testing.md). Tests that inspect
+# Redis keys or spy on the Redis client carry ``redis_only`` and skip on the
+# other legs; nothing is deleted or weakened for the second backend.
+pytestmark = pytest.mark.conformance
+
+
+@pytest.fixture(autouse=True)
+def _backend_leg(backend):
+    """Bind the parametrised backend for every test in this module."""
+    yield
+
 
 class IndexedModel(Model):
     """Model with indexed non-key fields for testing."""
