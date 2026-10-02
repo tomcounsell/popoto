@@ -98,8 +98,10 @@ def test_postgres_url_with_psycopg_selects_the_stub(monkeypatch):
 
 def test_the_stub_names_the_method_it_refuses(monkeypatch):
     stub = PostgresBackend("postgresql://localhost/x")
-    with pytest.raises(NotImplementedError, match=r"PostgresBackend\.load_record"):
-        stub.load_record("Memory:1")
+    # ``map_get`` is WS3b's; the record family is implemented since WS3a and
+    # would dial the URL instead of refusing.
+    with pytest.raises(NotImplementedError, match=r"PostgresBackend\.map_get"):
+        stub.map_get("Memory:_conf", "Memory:1")
     with pytest.raises(NotImplementedError, match="Redis-only"):
         stub.native()
 
