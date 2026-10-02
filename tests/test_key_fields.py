@@ -159,17 +159,20 @@ class TestKeyFieldRedisSets:
             "anonymous": KeySetModel.create(name="anonymous"),
         }
 
+    @pytest.mark.redis_only
     def test_class_wide_set_matches_query_all(self, members):
         class_set_key = KeySetModel._meta.db_class_set_key
         assert len(redis_db.POPOTO_REDIS_DB.smembers(class_set_key.redis_key)) == len(
             KeySetModel.query.all()
         )
 
+    @pytest.mark.redis_only
     def test_class_wide_set_matches_stored_keys(self, members):
         assert len(KeySetModel.query.all()) == len(
             redis_db.POPOTO_REDIS_DB.keys(f"{KeySetModel._meta.db_class_key}:*")
         )
 
+    @pytest.mark.redis_only
     def test_keyfield_set_holds_exactly_the_matching_instances(self, members):
         bp_key = _field_set_key(KeySetModel, "band", "BLACKPINK")
 
@@ -178,6 +181,7 @@ class TestKeyFieldRedisSets:
             members["jisoo"].db_key.redis_key.encode(),
         }
 
+    @pytest.mark.redis_only
     def test_second_keyfield_maintains_its_own_set(self, members):
         singer_key = _field_set_key(KeySetModel, "role", "singer")
         assert len(redis_db.POPOTO_REDIS_DB.smembers(singer_key)) == 2
@@ -193,6 +197,7 @@ class TestKeyFieldRedisSets:
             == members["lisa"]
         )
 
+    @pytest.mark.redis_only
     def test_delete_shrinks_the_keyfield_set(self, members):
         bp_key = _field_set_key(KeySetModel, "band", "BLACKPINK")
 
@@ -207,6 +212,7 @@ class TestKeyFieldRedisSets:
         results = KeySetModel.query.filter(role__isnull=True, band__isnull=True)
         assert list(results) == [members["anonymous"]]
 
+    @pytest.mark.redis_only
     def test_deleting_everything_empties_all_sets(self, members):
         class_set_key = KeySetModel._meta.db_class_set_key
         bp_key = _field_set_key(KeySetModel, "band", "BLACKPINK")
@@ -231,6 +237,7 @@ class TestKeyFieldIndexCleanupOnMutation:
             "job2": MutableKeyModel.create(status="pending", data="job2"),
         }
 
+    @pytest.mark.redis_only
     def test_setup_places_both_jobs_in_pending(self, jobs):
         pending_key = _field_set_key(MutableKeyModel, "status", "pending")
 
@@ -238,6 +245,7 @@ class TestKeyFieldIndexCleanupOnMutation:
         assert len(MutableKeyModel.query.filter(status="running")) == 0
         assert len(redis_db.POPOTO_REDIS_DB.smembers(pending_key)) == 2
 
+    @pytest.mark.redis_only
     def test_mutating_key_moves_instance_between_indexes(self, jobs):
         pending_key = _field_set_key(MutableKeyModel, "status", "pending")
         running_key = _field_set_key(MutableKeyModel, "status", "running")
@@ -262,6 +270,7 @@ class TestKeyFieldIndexCleanupOnMutation:
         assert MutableKeyModel.query.filter(status="pending")[0].data == "job2"
         assert MutableKeyModel.query.filter(status="running")[0].data == "job1"
 
+    @pytest.mark.redis_only
     def test_second_mutation_cleans_the_intermediate_index(self, jobs):
         running_key = _field_set_key(MutableKeyModel, "status", "running")
         completed_key = _field_set_key(MutableKeyModel, "status", "completed")
