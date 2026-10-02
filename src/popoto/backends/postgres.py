@@ -1,9 +1,11 @@
 """Postgres implementation of the storage backend seam (#631).
 
 WS3a implements family B (records), C (atomic increment) and J's
-``purge_orphan``, plus the unit of work they need. Every other method still
-raises :class:`NotImplementedError` naming itself; WS3b-e fill them in family
-by family behind the WS2 conformance harness.
+``purge_orphan``, plus the unit of work they need. WS3b implements D (side
+maps), E (set indexes), F (sorted indexes) and the rest of J
+(``scan_index_members``, ``drop_index``). Every other method still raises
+:class:`NotImplementedError` naming itself; WS3c-e fill them in family by
+family behind the WS2 conformance harness.
 
 ``psycopg`` is deliberately **not** imported at module scope: selection in
 :func:`popoto.backends.get_backend` must be able to import this module without
@@ -16,7 +18,16 @@ Generic tables (issue #631's POC decision), created with ``CREATE TABLE IF NOT
 EXISTS`` on the first connection a backend instance opens, into whatever
 schema the URL's ``search_path`` names (the conformance harness hands every
 instance a ``popoto_test_<hex>`` schema that way; the harness refuses
-``public`` before any statement runs).
+``public`` before any statement runs). The block runs inside one transaction
+under ``pg_advisory_xact_lock(631, hashtext(current_schema()))``, because
+``IF NOT EXISTS`` is not race-safe: two sessions that both find a table
+absent both try to create it, and the loser fails on the catalog's unique
+index (``UniqueViolation: pg_type_typname_nsp_index``; PR #737 review). With
+the lock, concurrent first connections queue and every later one finds the
+tables there. The two-argument lock form is a separate key space from the
+one-argument ``hashtext(key)`` locks the record writers take, so no record
+key can collide with it. Should the block fail, the connection it ran on is
+closed before the error propagates, so the next call retries from scratch.
 
 * ``popoto_record(key, field bytea, value bytea)`` -- **one row per field**,
   not the issue's ``data jsonb``: the field layer hands :meth:`save_record`
@@ -34,10 +45,45 @@ instance a ``popoto_test_<hex>`` schema that way; the harness refuses
   :meth:`increment_field`, so WS3d's ``decayed_rank`` can ``ORDER BY`` a typed
   column instead of a msgpack blob.
 * ``popoto_set(idx, member)`` and ``popoto_sorted(idx, member, score)`` --
-  the set and sorted indexes :meth:`purge_orphan` prunes and the class set
-  :meth:`save_record` registers in. WS3b owns their remaining operations; the
-  one-``idx``-column layout is the plan's convention (an index name is opaque
-  to the protocol, so the issue's ``(model, field)`` pair collapses into it).
+  the set and sorted indexes (families E and F, the class set
+  :meth:`save_record` registers in, and what :meth:`purge_orphan` prunes).
+  The one-``idx``-column layout is the plan's convention (an index name is
+  opaque to the protocol, so the issue's ``(model, field)`` pair collapses
+  into it). ``popoto_sorted`` carries a ``(idx, score)`` index for the range
+  reads.
+* ``popoto_map(idx, member, value bytea)`` -- the side maps (family D):
+  composite unique indexes, confidence payloads and supersession chain links,
+  one table for all three as the plan says.
+
+Sorted-set semantics on a table
+-------------------------------
+Redis orders a sorted set by score and breaks ties by member, comparing the
+member *bytes* (``memcmp``), in both directions. Postgres's default collation
+is locale-aware and does not agree (``'B'`` sorts between ``'a'`` and ``'b'``
+in ``en_US``), so every ordered read says ``ORDER BY score, member COLLATE
+"C"`` -- byte order for UTF-8 text -- and the reverse reads flip both keys.
+The ``(`` exclusive-bound strings and ``-inf``/``+inf`` the Redis backend
+renders (WS0 deviation 12) have no Postgres rendering at all: bounds are
+compared as ``double precision``, which holds ``±Infinity`` natively, with
+``>=``/``>`` and ``<=``/``<`` chosen by the inclusivity flags. ``ZRANGE``'s
+index arithmetic (negative indices count from the end, the stop is
+inclusive, an out-of-range window is empty) is done in SQL over a
+``row_number()`` window so one statement sees one snapshot. ``ZADD``'s reply
+-- 1 for a new member, 0 for a score update -- is the upsert's
+``RETURNING (xmax = 0)``; ``ZINCRBY`` is one ``ON CONFLICT DO UPDATE SET
+score = score + delta``, which locks the row it updates, so no advisory
+lock is needed for any index operation: each is one statement. A ``NaN``
+score (``ZADD``) or a ``NaN`` result (``ZINCRBY`` of ``inf`` by ``-inf``)
+raises ``ValueError`` with Redis's wording where Redis replies with an
+error; the increment's transaction rolls the row back.
+
+Scans (``scan_index_names``, ``scan_record_keys``, ``map_scan``) translate the
+Redis glob to a POSIX regular expression (:func:`_glob_to_regex`) and push it
+down as ``~``. On Redis ``SCAN MATCH`` sees every key of every type;
+:meth:`scan_index_names` here enumerates the three index tables only, so a
+*record* whose key happens to match an index glob is never returned (on Redis
+it would be, and ``rebuild_indexes`` would ``DEL`` it). ``map_scan``'s
+``count`` is ``HSCAN``'s batch hint and is ignored: there is no cursor.
 
 Connections
 -----------
@@ -91,6 +137,7 @@ creates the field (and so the record) without touching any class set.
 from __future__ import annotations
 
 import math
+import re
 import struct
 import weakref
 from decimal import Decimal
@@ -102,6 +149,12 @@ from ..redis_db import ENCODING
 from . import UnitOfWork
 
 __all__ = ["PostgresBackend", "PostgresUnitOfWork", "SCHEMA_DDL"]
+
+#: The two-argument advisory lock the DDL bootstrap takes, paired with
+#: ``hashtext(current_schema())`` so bootstraps of different schemas never
+#: queue on each other. A separate key space from the one-argument
+#: ``hashtext(key)`` record locks (see "Schema" in the module docstring).
+DDL_LOCK_CLASS = 631
 
 #: Executed in order, once per connection, before any other statement.
 SCHEMA_DDL: tuple[str, ...] = (
@@ -140,7 +193,22 @@ SCHEMA_DDL: tuple[str, ...] = (
     CREATE INDEX IF NOT EXISTS popoto_sorted_idx_score
         ON popoto_sorted (idx, score)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS popoto_map (
+        idx    text  NOT NULL,
+        member text  NOT NULL,
+        value  bytea NOT NULL,
+        PRIMARY KEY (idx, member)
+    )
+    """,
 )
+
+#: The index tables, by the ``kind`` the protocol names them with.
+_INDEX_TABLES: dict[str, str] = {
+    "sorted": "popoto_sorted",
+    "set": "popoto_set",
+    "map": "popoto_map",
+}
 
 #: Lua 5.1's ``LUAI_NUMFMT``: what ``tostring(number)`` renders inside Redis.
 _LUA_NUMBER_FORMAT = "%.14g"
@@ -170,6 +238,92 @@ def _field_bytes(name: Any) -> bytes:
     if isinstance(name, bytes):
         return name
     return str(name).encode(ENCODING)
+
+
+def _index_table(kind: str) -> str:
+    try:
+        return _INDEX_TABLES[kind]
+    except KeyError:
+        raise ValueError(
+            f"index kind must be one of {sorted(_INDEX_TABLES)}, got {kind!r}"
+        ) from None
+
+
+def _glob_to_regex(pattern: str) -> str:
+    """Translate a Redis glob (``SCAN MATCH`` / ``HSCAN MATCH``) to an anchored
+    POSIX regular expression for Postgres's ``~``.
+
+    Mirrors Redis's ``stringmatchlen``: ``*`` any run, ``?`` one character,
+    ``\\x`` the literal ``x``, ``[...]`` a class with ``^`` negation, ``a-z``
+    ranges and ``\\`` escapes, closed by ``]`` or by the end of the pattern. A
+    class is emitted as an alternation of escaped characters rather than a
+    bracket expression, so Postgres's bracket-escaping rules never apply;
+    negation is a lookahead. Ranges are expanded (a code-point span over 256
+    is refused, which no popoto pattern uses). Matching is case-sensitive and
+    ``.`` spans newlines, as Redis's does.
+    """
+    out: list[str] = ["^"]
+    i, n = 0, len(pattern)
+    while i < n:
+        ch = pattern[i]
+        if ch == "*":
+            out.append(".*")
+        elif ch == "?":
+            out.append(".")
+        elif ch == "\\" and i + 1 < n:
+            i += 1
+            out.append(re.escape(pattern[i]))
+        elif ch == "[":
+            i += 1
+            negate = i < n and pattern[i] == "^"
+            if negate:
+                i += 1
+            alternatives: list[str] = []
+            while i < n and pattern[i] != "]":
+                lo = pattern[i]
+                if lo == "\\" and i + 1 < n:
+                    # An escaped character is a literal, never a range start.
+                    i += 1
+                    alternatives.append(re.escape(pattern[i]))
+                elif i + 2 < n and pattern[i + 1] == "-":
+                    hi = pattern[i + 2]
+                    i += 2
+                    span = range(min(ord(lo), ord(hi)), max(ord(lo), ord(hi)) + 1)
+                    if len(span) > 256:
+                        raise ValueError(
+                            f"glob range {lo}-{hi} spans more than 256 code points"
+                        )
+                    alternatives.extend(re.escape(chr(c)) for c in span)
+                else:
+                    alternatives.append(re.escape(lo))
+                i += 1
+            body = "|".join(alternatives)
+            if negate:
+                out.append(f"(?!(?:{body}))." if body else ".")
+            else:
+                out.append(f"(?:{body})" if body else "(?!.).")
+        else:
+            out.append(re.escape(ch))
+        i += 1
+    out.append("$")
+    return "".join(out)
+
+
+def _match_all(pattern: str) -> bool:
+    """``*`` (or a run of them) matches every name: skip the regex."""
+    return pattern != "" and set(pattern) == {"*"}
+
+
+def _check_score(score: float, *, what: str = "value") -> float:
+    """A ``NaN`` score is Redis's ``value is not a valid float`` error.
+
+    ``-0.0`` becomes ``0.0`` (IEEE: ``-0.0 + 0.0 == +0.0``): ``ZADD``
+    normalises the sign of zero and ``float8`` would keep it.
+    """
+    score = float(score)
+    if math.isnan(score):
+        raise ValueError(f"{what} is not a valid float")
+    return score + 0.0
 
 
 def _lock_record_keys(cur: Any, keys: Sequence[str]) -> None:
@@ -285,6 +439,10 @@ class PostgresUnitOfWork:
     returned) and leaves the queue empty, so a second ``commit()`` returns
     ``[]`` as a re-executed pipeline does. Leaving the ``with`` block without
     committing discards the queue, as ``Pipeline.__exit__`` resets.
+
+    Failure semantics differ: an operation that fails inside ``commit()``
+    rolls back the *entire* queue (one transaction), whereas a Redis pipeline
+    runs the remaining commands and commits them.
     """
 
     def __init__(self, backend: PostgresBackend) -> None:
@@ -321,8 +479,9 @@ class PostgresUnitOfWork:
 
 class PostgresBackend:
     """The Postgres :class:`~popoto.backends.Backend`; see the module
-    docstring for the schema, the connection policy and the increment
-    envelope. Families D-I still raise :class:`NotImplementedError`."""
+    docstring for the schema, the connection policy, the increment envelope
+    and the sorted-set semantics. Families G-I
+    still raise :class:`NotImplementedError`."""
 
     def __init__(self, url: str) -> None:
         self.url = url
@@ -338,9 +497,20 @@ class PostgresBackend:
             import psycopg
 
             conn = psycopg.connect(self.url, autocommit=True)
+            try:
+                # One transaction, serialised per schema: ``IF NOT EXISTS`` is
+                # not race-safe on its own (see "Schema" in the module doc).
+                with conn.transaction():
+                    conn.execute(
+                        "SELECT pg_advisory_xact_lock(%s, hashtext(current_schema()))",
+                        (DDL_LOCK_CLASS,),
+                    )
+                    for statement in SCHEMA_DDL:
+                        conn.execute(statement)
+            except BaseException:
+                _close_quietly(conn)
+                raise
             self._finalizer = weakref.finalize(self, _close_quietly, conn)
-            for statement in SCHEMA_DDL:
-                conn.execute(statement)
             self._conn = conn
         return self._conn
 
@@ -373,7 +543,9 @@ class PostgresBackend:
         uow.queue(op)
         return None
 
-    def _query(self, sql: str, params: Sequence[Any]) -> list[tuple[Any, ...]]:
+    def _query(
+        self, sql: str, params: Sequence[Any] | Mapping[str, Any]
+    ) -> list[tuple[Any, ...]]:
         """A read, outside any transaction block (autocommit)."""
         return list(self._connection().execute(sql, params).fetchall())
 
@@ -548,7 +720,14 @@ class PostgresBackend:
         return bool(rows[0][0])
 
     def records_exist(self, keys: Sequence[str]) -> list[bool]:
-        raise _todo("records_exist")
+        if not keys:
+            return []
+        rows = self._query(
+            "SELECT DISTINCT key FROM popoto_record WHERE key = ANY(%s)",
+            (list(keys),),
+        )
+        found = {row[0] for row in rows}
+        return [key in found for key in keys]
 
     def delete_record(
         self, key: str, *, class_set: str, uow: UnitOfWork | None = None
@@ -632,9 +811,15 @@ class PostgresBackend:
         return float(result_str)
 
     # -- D. Side maps --------------------------------------------------------
+    # One row per (idx, member) in ``popoto_map``; every write is one
+    # statement, so no advisory lock is taken (see "Sorted-set semantics").
 
     def map_get(self, idx: str, member: str) -> bytes | None:
-        raise _todo("map_get")
+        rows = self._query(
+            "SELECT value FROM popoto_map WHERE idx = %s AND member = %s",
+            (idx, member),
+        )
+        return bytes(rows[0][0]) if rows else None
 
     def map_set(
         self,
@@ -645,65 +830,205 @@ class PostgresBackend:
         only_if_absent: bool = False,
         uow: UnitOfWork | None = None,
     ) -> bool | None:
-        raise _todo("map_set")
+        payload = bytes(value)
+
+        def op(cur: Any) -> Any:
+            if only_if_absent:
+                # HSETNX: 1 when the entry was created, 0 when it existed.
+                cur.execute(
+                    "INSERT INTO popoto_map (idx, member, value) VALUES (%s, %s, %s) "
+                    "ON CONFLICT DO NOTHING",
+                    (idx, member, payload),
+                )
+                return cur.rowcount > 0
+            # HSET: 1 for a new entry, 0 for an overwrite.
+            row = cur.execute(
+                "INSERT INTO popoto_map (idx, member, value) VALUES (%s, %s, %s) "
+                "ON CONFLICT (idx, member) DO UPDATE SET value = EXCLUDED.value "
+                "RETURNING (xmax = 0)",
+                (idx, member, payload),
+            ).fetchone()
+            return bool(row[0])
+
+        return self._run(op, uow)
 
     def map_delete(
         self, idx: str, member: str, *, uow: UnitOfWork | None = None
     ) -> int | None:
-        raise _todo("map_delete")
+        def op(cur: Any) -> Any:
+            cur.execute(
+                "DELETE FROM popoto_map WHERE idx = %s AND member = %s",
+                (idx, member),
+            )
+            return 1 if cur.rowcount > 0 else 0
+
+        return self._run(op, uow)
 
     def map_scan(
         self, idx: str, pattern: str = "*", count: int = 100
     ) -> dict[str, bytes]:
-        raise _todo("map_scan")
+        # ``count`` is HSCAN's per-round-trip batch hint; there is no cursor
+        # here, so it is accepted for signature parity and ignored.
+        if _match_all(pattern):
+            rows = self._query(
+                "SELECT member, value FROM popoto_map WHERE idx = %s", (idx,)
+            )
+        else:
+            rows = self._query(
+                "SELECT member, value FROM popoto_map WHERE idx = %s AND member ~ %s",
+                (idx, _glob_to_regex(pattern)),
+            )
+        return {member: bytes(value) for member, value in rows}
 
     # -- E. Set indexes ------------------------------------------------------
 
     def index_add(self, idx: str, member: str, *, uow: UnitOfWork | None = None) -> Any:
-        raise _todo("index_add")
+        def op(cur: Any) -> Any:
+            # SADD's reply: the number of members actually added.
+            cur.execute(
+                "INSERT INTO popoto_set (idx, member) VALUES (%s, %s) "
+                "ON CONFLICT DO NOTHING",
+                (idx, member),
+            )
+            return 1 if cur.rowcount > 0 else 0
+
+        return self._run(op, uow)
 
     def index_remove(
         self, idx: str, member: str, *, uow: UnitOfWork | None = None
     ) -> Any:
-        raise _todo("index_remove")
+        def op(cur: Any) -> Any:
+            cur.execute(
+                "DELETE FROM popoto_set WHERE idx = %s AND member = %s",
+                (idx, member),
+            )
+            return 1 if cur.rowcount > 0 else 0
+
+        return self._run(op, uow)
 
     def index_members(self, idx: str) -> set[str]:
-        raise _todo("index_members")
+        rows = self._query("SELECT member FROM popoto_set WHERE idx = %s", (idx,))
+        return {member for (member,) in rows}
 
     def index_union(self, idxs: Sequence[str]) -> set[str]:
-        raise _todo("index_union")
+        if not idxs:
+            return set()
+        rows = self._query(
+            "SELECT DISTINCT member FROM popoto_set WHERE idx = ANY(%s)",
+            (list(idxs),),
+        )
+        return {member for (member,) in rows}
 
     def index_intersection(self, idxs: Sequence[str]) -> set[str]:
-        raise _todo("index_intersection")
+        if not idxs:
+            return set()
+        distinct = list(dict.fromkeys(idxs))
+        # A member is in the intersection when it appears under every distinct
+        # index named; a missing index contributes nothing, so the result is
+        # empty, as SINTER with a missing key is.
+        rows = self._query(
+            "SELECT member FROM popoto_set WHERE idx = ANY(%s) "
+            "GROUP BY member HAVING count(DISTINCT idx) = %s",
+            (distinct, len(distinct)),
+        )
+        return {member for (member,) in rows}
 
     def scan_index_names(self, pattern: str) -> list[str]:
-        raise _todo("scan_index_names")
+        # The three index tables only; a record key never matches here (see
+        # "Sorted-set semantics" in the module docstring for the difference
+        # from SCAN, which sees every key of every type).
+        union = (
+            "SELECT idx FROM popoto_set UNION SELECT idx FROM popoto_sorted "
+            "UNION SELECT idx FROM popoto_map"
+        )
+        if _match_all(pattern):
+            rows = self._query(f"SELECT idx FROM ({union}) AS names", ())
+        else:
+            rows = self._query(
+                f"SELECT idx FROM ({union}) AS names WHERE idx ~ %s",
+                (_glob_to_regex(pattern),),
+            )
+        return [idx for (idx,) in rows]
 
     def scan_record_keys(self, pattern: str) -> list[str]:
-        raise _todo("scan_record_keys")
+        # Only record keys live in ``popoto_record``, so the TYPE filter the
+        # Redis backend applies after SCAN is the table itself.
+        if _match_all(pattern):
+            rows = self._query("SELECT DISTINCT key FROM popoto_record", ())
+        else:
+            rows = self._query(
+                "SELECT DISTINCT key FROM popoto_record WHERE key ~ %s",
+                (_glob_to_regex(pattern),),
+            )
+        return [key for (key,) in rows]
 
     # -- F. Sorted indexes ---------------------------------------------------
+    # See "Sorted-set semantics on a table" in the module docstring for the
+    # tie order, the bound comparison and the ZRANGE index arithmetic.
 
     def sorted_add(
         self, idx: str, member: str, score: float, *, uow: UnitOfWork | None = None
     ) -> Any:
-        raise _todo("sorted_add")
+        score = _check_score(score)
+
+        def op(cur: Any) -> Any:
+            # ZADD's reply: 1 for a new member, 0 when only the score changed.
+            row = cur.execute(
+                "INSERT INTO popoto_sorted (idx, member, score) VALUES (%s, %s, %s) "
+                "ON CONFLICT (idx, member) DO UPDATE SET score = EXCLUDED.score "
+                "RETURNING (xmax = 0)",
+                (idx, member, score),
+            ).fetchone()
+            return 1 if row[0] else 0
+
+        return self._run(op, uow)
 
     def sorted_remove(
         self, idx: str, member: str, *, uow: UnitOfWork | None = None
     ) -> Any:
-        raise _todo("sorted_remove")
+        def op(cur: Any) -> Any:
+            cur.execute(
+                "DELETE FROM popoto_sorted WHERE idx = %s AND member = %s",
+                (idx, member),
+            )
+            return 1 if cur.rowcount > 0 else 0
+
+        return self._run(op, uow)
 
     def sorted_score(self, idx: str, member: str) -> float | None:
-        raise _todo("sorted_score")
+        rows = self._query(
+            "SELECT score FROM popoto_sorted WHERE idx = %s AND member = %s",
+            (idx, member),
+        )
+        return float(rows[0][0]) if rows else None
 
     def sorted_count(self, idx: str) -> int:
-        raise _todo("sorted_count")
+        rows = self._query("SELECT count(*) FROM popoto_sorted WHERE idx = %s", (idx,))
+        return int(rows[0][0])
 
     def sorted_members(
         self, idx: str, start: int = 0, stop: int = -1, *, reverse: bool = False
     ) -> list[str]:
-        raise _todo("sorted_members")
+        order = "DESC" if reverse else "ASC"
+        # ZRANGE's window over the ranked members, resolved in SQL so the
+        # count and the slice come from one snapshot: a negative index counts
+        # from the end (clamped to 0 for ``start``), ``stop`` is inclusive,
+        # and ``start > stop`` or ``start >= n`` is empty.
+        rows = self._query(
+            "SELECT member FROM ("
+            "  SELECT member,"
+            f'    row_number() OVER (ORDER BY score {order}, member COLLATE "C" {order})'
+            "      - 1 AS rn,"
+            "    count(*) OVER () AS n"
+            "  FROM popoto_sorted WHERE idx = %(idx)s"
+            ") AS ranked"
+            " WHERE rn >= CASE WHEN %(start)s < 0"
+            "               THEN greatest(n + %(start)s, 0) ELSE %(start)s END"
+            "   AND rn <= CASE WHEN %(stop)s < 0 THEN n + %(stop)s ELSE %(stop)s END"
+            " ORDER BY rn",
+            {"idx": idx, "start": int(start), "stop": int(stop)},
+        )
+        return [member for (member,) in rows]
 
     def sorted_range(
         self,
@@ -716,12 +1041,43 @@ class PostgresBackend:
         reverse: bool = False,
         limit: int | None = None,
     ) -> list[str]:
-        raise _todo("sorted_range")
+        lo_op = ">=" if lo_inclusive else ">"
+        hi_op = "<=" if hi_inclusive else "<"
+        order = "DESC" if reverse else "ASC"
+        sql = (
+            "SELECT member FROM popoto_sorted "
+            f"WHERE idx = %s AND score {lo_op} %s AND score {hi_op} %s "
+            f'ORDER BY score {order}, member COLLATE "C" {order}'
+        )
+        params: list[Any] = [idx, float(lo), float(hi)]
+        # Same rule as the Redis backend: only a positive int bounds the read.
+        if isinstance(limit, int) and limit > 0:
+            sql += " LIMIT %s"
+            params.append(limit)
+        return [member for (member,) in self._query(sql, params)]
 
     def sorted_increment(
         self, idx: str, member: str, delta: float, *, uow: UnitOfWork | None = None
     ) -> float | None:
-        raise _todo("sorted_increment")
+        delta = _check_score(delta)
+
+        def op(cur: Any) -> Any:
+            # One upsert: ON CONFLICT DO UPDATE locks the row it reads, so two
+            # instances incrementing the same member serialise on it.
+            row = cur.execute(
+                "INSERT INTO popoto_sorted (idx, member, score) VALUES (%s, %s, %s) "
+                "ON CONFLICT (idx, member) DO UPDATE "
+                "SET score = popoto_sorted.score + EXCLUDED.score "
+                "RETURNING score",
+                (idx, member, delta),
+            ).fetchone()
+            new_score = float(row[0])
+            if math.isnan(new_score):
+                # Redis refuses ``inf + -inf``; raising here rolls the row back.
+                raise ValueError("resulting score is not a number (NaN)")
+            return new_score
+
+        return self._run(op, uow)
 
     # -- G. Atomic swaps -----------------------------------------------------
 
@@ -891,7 +1247,12 @@ class PostgresBackend:
     def scan_index_members(
         self, idx: str, kind: Literal["sorted", "set"]
     ) -> Iterator[str]:
-        raise _todo("scan_index_members")
+        # A generator like the Redis SSCAN/ZSCAN loop: nothing runs until the
+        # first ``next()``, and a missing index yields nothing.
+        table = _index_table(kind)
+        rows = self._query(f"SELECT member FROM {table} WHERE idx = %s", (idx,))
+        for (member,) in rows:
+            yield member
 
     def drop_index(
         self,
@@ -900,4 +1261,11 @@ class PostgresBackend:
         *,
         uow: UnitOfWork | None = None,
     ) -> Any:
-        raise _todo("drop_index")
+        table = _index_table(kind)
+
+        def op(cur: Any) -> Any:
+            # DEL's reply: 1 when the index existed (had any row), else 0.
+            cur.execute(f"DELETE FROM {table} WHERE idx = %s", (idx,))
+            return 1 if cur.rowcount > 0 else 0
+
+        return self._run(op, uow)
