@@ -912,3 +912,125 @@ class TestConcurrency:
         assert links(backend, first) == (second.encode(), old.encode())
         assert links(backend, second) == (None, first.encode())
         assert pointer(backend, "d") == second
+
+    # -- deterministic interleavings (Postgres leg) ----------------------------
+    # A barrier race seldom lands two connections *inside* the function at
+    # once, so it cannot see the locks. These hold the incumbent's
+    # ``invalid_at`` row from a probe connection, start both writers, wait
+    # until ``pg_stat_activity`` shows both blocked, release the row and
+    # check the outcome is a serial one. Redis's single thread cannot
+    # interleave at all, so the Redis leg skips (as #737's lost-update test
+    # does) rather than pretending to assert anything.
+
+    def _interleave(self, backend, calls):
+        import psycopg
+
+        (old,) = [member("old")]
+        probe = psycopg.connect(backend.url)
+        instances = [second_instance(backend) for _ in calls]
+        results: list[Any] = [None] * len(calls)
+        errors: list[BaseException] = []
+        threads: list[threading.Thread] = []
+        try:
+            probe.execute(
+                "SELECT score FROM popoto_sorted WHERE idx = %s AND member = %s "
+                "FOR UPDATE",
+                (IA, old),
+            )
+
+            def run(i: int, kwargs: dict) -> None:
+                try:
+                    results[i] = supersede(instances[i], **kwargs)
+                except BaseException as e:  # pragma: no cover - surfaced below
+                    errors.append(e)
+
+            for i, kwargs in enumerate(calls):
+                thread = threading.Thread(target=run, args=(i, kwargs))
+                threads.append(thread)
+                thread.start()
+                self._wait_for_blocked(probe, i + 1)
+            probe.rollback()
+            for thread in threads:
+                thread.join(timeout=30)
+        finally:
+            probe.close()
+            for instance in instances:
+                release(instance)
+        assert not errors, errors
+        assert not any(t.is_alive() for t in threads)
+        return results
+
+    @staticmethod
+    def _wait_for_blocked(probe: Any, count: int) -> None:
+        import time
+
+        deadline = time.monotonic() + 10.0
+        activity = (
+            "SELECT pid, wait_event_type, wait_event, query FROM pg_stat_activity"
+        )
+        while time.monotonic() < deadline:
+            # The view is snapshotted on first access within a transaction,
+            # and the probe is inside one (holding the row), so each poll
+            # must discard the previous snapshot or it never sees the writer.
+            probe.execute("SELECT pg_stat_clear_snapshot()")
+            rows = probe.execute(activity).fetchall()
+            blocked = [
+                row
+                for row in rows
+                if row[1] == "Lock" and "popoto_supersede" in (row[3] or "")
+            ]
+            if len(blocked) >= count:
+                return
+            time.sleep(0.02)
+        raise AssertionError(
+            f"{count} writer(s) never blocked on the held row; activity: {rows}"
+        )
+
+    def test_pointer_writers_blocked_on_the_incumbent_serialise_into_a_chain(
+        self, backend, backend_is_redis
+    ):
+        if backend_is_redis:
+            pytest.skip("Postgres-leg assertion: Redis cannot interleave a script")
+        old, a, b = save(backend, "old", "a", "b")
+        supersede(backend, new_member=old, valid_from=10.0, pointer_digest="d")
+        results = self._interleave(
+            backend,
+            [
+                dict(mode="supersede", new_member=a, now=51.0, pointer_digest="d"),
+                dict(mode="supersede", new_member=b, now=51.0, pointer_digest="d"),
+            ],
+        )
+        # The first writer in closes old; the second, released after it,
+        # must read its newcomer as the incumbent -- not the stale pointer.
+        assert results == [old, a]
+        assert interval(backend, old) == (10.0, 51.0)
+        assert interval(backend, a) == (51.0, 51.0)
+        assert interval(backend, b) == (51.0, INF)
+        assert links(backend, old) == (a.encode(), None)
+        assert links(backend, a) == (b.encode(), old.encode())
+        assert links(backend, b) == (None, a.encode())
+        assert pointer(backend, "d") == b
+
+    def test_a_pointer_writer_and_an_explicit_writer_blocked_on_one_incumbent(
+        self, backend, backend_is_redis
+    ):
+        if backend_is_redis:
+            pytest.skip("Postgres-leg assertion: Redis cannot interleave a script")
+        old, a, b = save(backend, "old", "a", "b")
+        supersede(backend, new_member=old, valid_from=10.0, pointer_digest="d")
+        results = self._interleave(
+            backend,
+            [
+                dict(mode="supersede", new_member=a, now=51.0, pointer_digest="d"),
+                dict(mode="supersede", new_member=b, old_member=old, now=52.0),
+            ],
+        )
+        # Exactly one close: the explicit writer, released second, re-reads
+        # the row it waited on and finds the incumbent already closed.
+        assert results == [old, None]
+        assert interval(backend, old) == (10.0, 51.0)
+        assert links(backend, old) == (a.encode(), None)
+        assert links(backend, a) == (None, old.encode())
+        assert links(backend, b) == (None, None)
+        assert interval(backend, b) == (52.0, INF)
+        assert pointer(backend, "d") == a
