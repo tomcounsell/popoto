@@ -367,38 +367,50 @@ integrator does not build a second, unrationed path around it.
 
 ## Success Criteria
 
-- [ ] All question sources write `QuestionCandidate` records; a test asserts no
+- [x] All question sources write `QuestionCandidate` records; a test asserts no
       module in `src/` addresses the person directly (grep-shaped assertion
       over the diff's new surface, in the `test_type_checking_guard.py` idiom).
-- [ ] At most one question per K turns is delivered, enforced structurally by a
+- [x] At most one question per K turns is delivered, enforced structurally by a
       Lua check-and-decrement, verified by a concurrent hammer test — not by a
       sequential one, which cannot detect a racy bucket.
-- [ ] A question is askable only when **both** gate factors hold; each delivered
+- [x] A question is askable only when **both** gate factors hold; each delivered
       question is traceable to the stored ambiguity signal and the stored
       recent-use evidence.
 - [ ] `ambiguity_signal` is a closed enum that distinguishes M5 judge
       abstention from M5 precedence tie from confidence-gate refusal (Q1).
-- [ ] An answer updates target-fact confidence as high-weight defeasible
+      *Not ticked: superseded by Revision 2. There is no judge-abstention
+      value; the enum is `("disjunction", "gate_refusal", "evidence_gap")`.
+      Its closedness is asserted by `test_invalid_input_raises` and
+      `test_all_enum_signals_pass_uniformly`.*
+- [x] An answer updates target-fact confidence as high-weight defeasible
       evidence, and a later contradiction still moves it — both asserted.
-- [ ] A `deflected` or `unrecognized` answer leaves stored confidence
+- [x] A `deflected` or `unrecognized` answer leaves stored confidence
       bit-identical.
-- [ ] Unasked candidates expire after N turns and are not delivered afterward.
-- [ ] K and N live in `Defaults` and are registered in
+- [x] Unasked candidates expire after N turns and are not delivered afterward.
+- [x] K and N live in `Defaults` and are registered in
       `tests/benchmarks/overrides.py`'s `MODULE_CONSTANTS`.
-- [ ] The queue functions with each producer absent, asserted per-producer.
-- [ ] A retracted M5 disjoin expires its candidate instead of asking.
+- [x] The queue functions with each producer absent, asserted per-producer.
+- [x] A retracted M5 disjoin expires its candidate instead of asking.
 - [ ] Dedup degrades to normalized-text matching with no embedding provider.
-- [ ] Redis unavailable → no question, no raise into the retrieval path.
-- [ ] The five existing confidence-gate metadata keys are unchanged; new keys
+      *Not ticked: dropped in Revision 1 (embedding dedup is a No-Go). The
+      v1 rule is key intersection plus normalized text, asserted by
+      `test_dedup_by_key_intersection_touches_pending` and
+      `test_dedup_by_normalized_text`.*
+- [x] Redis unavailable → no question, no raise into the retrieval path.
+- [x] The five existing confidence-gate metadata keys are unchanged; new keys
       are additive — asserted.
-- [ ] `VALID_OUTCOMES` is unchanged — asserted by test.
+- [x] `VALID_OUTCOMES` is unchanged — asserted by test.
 - [ ] `Defaults.QUESTION_QUEUE_ENABLED` disables proposal and gating at deploy
       level without a model-code edit.
-- [ ] Valkey-safe: core types + Lua only. Passes the Valkey CI job.
-- [ ] New code binds via `get_REDIS_DB()`; no plain `POPOTO_REDIS_DB` import.
-- [ ] `tests/test_question_queue.py` present; `docs/features/question-queue.md`
+      *Not ticked: superseded by Revision 2. The kill switch is the env var
+      `POPOTO_QUESTION_QUEUE_DISABLE`, read at call time; asserted by
+      `test_kill_switch_disables_propose_and_gating` and
+      `test_producers_honour_the_kill_switch`.*
+- [x] Valkey-safe: core types + Lua only. Passes the Valkey CI job.
+- [x] New code binds via `get_REDIS_DB()`; no plain `POPOTO_REDIS_DB` import.
+- [x] `tests/test_question_queue.py` present; `docs/features/question-queue.md`
       published; `mkdocs build --strict` passes.
-- [ ] `ruff check src/`, `black --check src/ tests/`,
+- [x] `ruff check src/`, `black --check src/ tests/`,
       `scripts/mypy_ratchet.py` pass.
 
 ## Step by Step Tasks

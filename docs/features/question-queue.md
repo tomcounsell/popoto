@@ -90,6 +90,8 @@ A producer may also register a staleness check with `register_staleness_check()`
 
 Dedup rules, with no embeddings: an incoming proposal duplicates an existing candidate that is open (`pending`, `delivered`, `cooled`) or `answered` within `QUESTION_RETENTION_TURNS` when `kind` matches and the `target_keys` sets intersect, or when the normalized question text matches exactly. A duplicate is not re-created. An open duplicate is touched (`last_seen_turn` bumped) and returned. The dedup check and create run under a short per-agent lock, and a proposal that cannot take the lock is dropped.
 
+**Known limitation.** The `answered` branch of that rule uses the same key intersection as the open branch, so for `QUESTION_RETENTION_TURNS` (500 by default) after a question is answered, any new proposal of the same `kind` that shares even one target key with it is folded into the answered candidate and never delivered. Answer "A or B?" at turn 1 and propose "A or C?" at turn 7: the producer reports the second as proposed or touched, but it is a duplicate of an answered record and nothing asks it. This fails in the safe direction (fewer questions, never a repeat). The intended fix is for the answered branch to require an equal `target_keys` set, or the same `disjunction_id`, rather than an intersection.
+
 ## Producers
 
 Three thin adapters, each a separate function. Each is disabled by not calling it, and the queue works with any subset. The assembler never calls them. A host passes each the signal it already holds.
