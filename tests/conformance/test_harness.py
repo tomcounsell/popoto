@@ -1,12 +1,11 @@
 """The conformance harness, proven on itself (#631 WS2).
 
-This is the one ``conformance``-marked file in WS2. Its job is to show that
+This was the one ``conformance``-marked file in WS2. Its job is to show that
 the harness in ``popoto.pytest_plugin`` does what the plan says, not to test
-any backend method: ``PostgresBackend`` is still the WS0 stub, so the one
-record round-trip below is ``xfail(strict=True, raises=NotImplementedError)``
-on the Postgres leg. WS3a makes it pass by implementing the three methods, at
-which point the strict xfail turns into a failure that says "remove the
-mark" -- the flip is the signal, not a silent pass.
+any backend method. The one record round-trip below was a strict xfail on the
+WS0 stub's ``NotImplementedError``; WS3a implemented the record family and
+removed the mark, so it now passes on both legs (``test_records.py`` is where
+the family is actually exercised).
 
 Three layers:
 
@@ -54,21 +53,6 @@ PREFIX = "popoto_test:631:harness"
 
 
 # -- 1. Parametrisation and binding -------------------------------------------
-
-
-@pytest.fixture
-def stub_xfails(request, backend):
-    """On the Postgres leg, declare the stub's ``NotImplementedError`` as the
-    expected outcome -- strictly, so WS3's implementation flips it red until
-    the mark is removed."""
-    if isinstance(backend, PostgresBackend):
-        request.applymarker(
-            pytest.mark.xfail(
-                strict=True,
-                raises=NotImplementedError,
-                reason="PostgresBackend is the WS0 stub; WS3a implements records",
-            )
-        )
 
 
 @pytest.mark.conformance
@@ -127,12 +111,8 @@ def test_session_default_backend_is_the_plugins_redis_pin():
 
 
 @pytest.mark.conformance
-def test_record_roundtrip(backend, stub_xfails):
-    """The proof the harness works: one save / load / delete on each leg.
-
-    Redis passes through ``RedisBackend``; Postgres is a strict xfail on the
-    stub's ``NotImplementedError`` (see ``stub_xfails``).
-    """
+def test_record_roundtrip(backend):
+    """The proof the harness works: one save / load / delete on each leg."""
     key = f"{PREFIX}:Record:1"
     class_set = f"$Class:{PREFIX}:Record"
     fields = {b"name": msgpack.packb("alice"), b"age": msgpack.packb(30)}
@@ -199,7 +179,8 @@ def test_postgres_truncate_mirrors_flush(backend, postgres_leg):
     with schema.connect() as conn:
         conn.execute(f"CREATE TABLE IF NOT EXISTS {schema.name}.probe (n int)")
         conn.execute(f"INSERT INTO {schema.name}.probe VALUES (1)")
-    assert schema.truncate_all() == ["probe"]
+    # The backend's own tables (WS3a onwards) are truncated alongside it.
+    assert "probe" in schema.truncate_all()
     with schema.connect() as conn:
         (count,) = conn.execute(f"SELECT count(*) FROM {schema.name}.probe").fetchone()
     assert count == 0
