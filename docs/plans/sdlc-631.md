@@ -497,3 +497,26 @@ POC-level:
    pairs touches `recipes/context_assembler.py`, which is otherwise out of
    scope. Accept that one recipe edit, or have the Redis backend keep a
    `decayed_rank_raw` twin for the POC's duration?
+
+## Architect decisions (2026-10-02)
+
+Answers to the four questions above, taken by the maintainer so WS0 can start.
+They bind the POC only; WS4 may reopen any of them for the production shape.
+
+1. **Duck-typed `pipeline=` — accepted for the POC.** The field layer checks
+   `uow is not None`; on Redis the `UnitOfWork` *is* the `GuardedPipeline`
+   object and the kwarg name does not change. A wrapper class is deferred to
+   production. WS0 must keep `tests/test_atomic_save.py` passing unchanged.
+2. **`numeric` side-map — confirmed for the POC.** `save_record`'s payload stays
+   opaque msgpack bytes; the backend receives the decoded numeric values it
+   needs for ordering as a side-map. WS4 reports whether the double write is
+   acceptable or whether the backend should own encoding.
+3. **`native()` is sanctioned, with a ledger.** The POC is judged against the
+   restated criterion: zero accessor/Lua sites outside `backends/` in the
+   slice's files, plus an enumerated `native()` ledger in each WS1 PR body and
+   in the WS4 report. Every `native()` call site carries a one-line comment
+   naming the out-of-scope feature it serves.
+4. **`rank_decayed` keeps the raw reply in WS0.** WS0 is a verbatim move, so
+   the Redis backend returns exactly what `DECAY_SCORE_LUA` returns today.
+   WS1d may change it to typed pairs and is allowed the one edit to
+   `recipes/context_assembler.py` that follows, stated in its PR body.
