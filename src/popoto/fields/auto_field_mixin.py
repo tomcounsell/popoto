@@ -349,4 +349,6 @@ class AutoFieldMixin:
         Returns:
             The pipeline unchanged, or None if no pipeline was provided.
         """
-        return pipeline if pipeline else None
+        # Presence, not truthiness (#631 decision 1): an empty Postgres unit
+        # of work is falsy, and None here breaks the Model.save hook chain.
+        return pipeline if pipeline is not None else None

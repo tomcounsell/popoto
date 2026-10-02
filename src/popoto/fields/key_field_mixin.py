@@ -313,7 +313,10 @@ class KeyFieldMixin:
             The pipeline (if provided) or the SADD result.
         """
         if model_instance._meta.fields[field_name].auto:
-            return pipeline if pipeline else None
+            # Presence, not truthiness (#631 decision 1): an empty Postgres
+            # unit of work is falsy, and returning None here would break the
+            # hook chain in Model.save/delete for every field after this one.
+            return pipeline if pipeline is not None else None
 
         # Remove from old index if the KeyField value changed.
         # _saved_field_values tracks values at last save/load. If the current
@@ -380,7 +383,7 @@ class KeyFieldMixin:
             The pipeline (if provided) or the SREM result.
         """
         if model_instance._meta.fields[field_name].auto:
-            return pipeline if pipeline else None
+            return pipeline if pipeline is not None else None
 
         unique_set_key = DB_key(
             cls.get_special_use_field_db_key(model_instance, field_name), field_value

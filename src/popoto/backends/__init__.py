@@ -38,6 +38,23 @@ This module never imports ``POPOTO_REDIS_DB`` by name, only the
 ``src/popoto/__init__.py`` exports :func:`get_backend` and :func:`set_backend`
 as functions, never ``_BACKEND`` -- a package-level copy of the cache would be a
 snapshot that ``set_backend`` could never update (#651, one layer up).
+
+``str`` at the boundary (WS1f)
+------------------------------
+Every ``key`` / ``member`` / ``idx`` / ``class_set`` / ``obsolete_key``
+parameter below is typed ``str``, and every set, sorted and scan *return* is
+decoded to ``str`` (#732 deviation 11). The field and query layers still
+carry raw ``bytes`` between themselves -- ``Query.keys()``,
+``filter_for_keys_set()`` and the ``_members_as_bytes`` re-encode at each
+field boundary keep the pre-seam shape so a filter composed across families
+intersects correctly -- so a ``bytes`` key can reach a backend call from
+``Query.all()`` / ``filter()`` hydration, ``get_many()``, the composite-index
+side map, or a caller-supplied ``redis_key``. Redis tolerates that (a UTF-8
+``str`` and the same ``bytes`` are one wire token) and Postgres does not
+(``operator does not exist: text = bytea``), so the rule is: **decode at the
+call, with :func:`as_key_str`, never inside the backend.** The backends may
+assume ``str``; ``tests/test_backend_str_boundary.py`` installs a backend that
+refuses anything else and drives every routed entry point through it.
 """
 
 from __future__ import annotations
@@ -46,7 +63,32 @@ import os
 from decimal import Decimal
 from typing import Any, Iterator, Literal, Mapping, Protocol, Sequence
 
-__all__ = ["Backend", "UnitOfWork", "get_backend", "set_backend"]
+__all__ = [
+    "Backend",
+    "UnitOfWork",
+    "as_key_str",
+    "as_key_strs",
+    "get_backend",
+    "set_backend",
+]
+
+
+def as_key_str(value: Any) -> str:
+    """Decode one key, member or index name to ``str`` at the backend boundary.
+
+    ``bytes`` (a raw Redis reply that the query layer carried) decodes as
+    UTF-8; a ``str`` passes through; anything else is ``str()``-ed, which is
+    what ``DB_key`` would have rendered. Used by the field and query layers
+    immediately before a backend call whose argument may still be the
+    ``bytes`` shape, and by :mod:`popoto.backends.redis` for its own reply
+    decoding, so the two directions share one definition.
+    """
+    return value.decode("utf-8") if isinstance(value, bytes) else str(value)
+
+
+def as_key_strs(values: Any) -> list[str]:
+    """:func:`as_key_str` over a sequence, preserving order (for ``keys=``)."""
+    return [as_key_str(v) for v in values]
 
 
 class UnitOfWork(Protocol):
