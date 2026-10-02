@@ -88,6 +88,101 @@ holds the line. The two-argument lock form is a separate key space from the
 one-argument `hashtext(key)` record locks, so no record key can collide with
 it. A bootstrap that fails closes its connection before the error propagates.
 
+## What is implemented (WS3e)
+
+The validity intervals and the supersession script, under the same harness
+and oracle (`tests/conformance/test_validity.py`):
+
+| Protocol methods | Postgres shape |
+|---|---|
+| `supersede` | One call of the PL/pgSQL function `popoto_supersede`, which is `SUPERSEDE_LUA` phase for phase (see below). Runs inside the caller's transaction: its own on the direct path, the unit of work's at `commit()`. |
+| `interval_of`, `interval_members` | Reads of `popoto_sorted` under the `valid_from` / `invalid_at` index names. `interval_members(select="valid")` is an `INTERSECT` of `valid_from <= as_of` and `invalid_at > as_of`; `select="excluded"` is one `WHERE (invalid_at <= as_of) OR (valid_from > as_of)` over both names, so a member absent from an index is excluded only by the index it is in, and one in neither is never excluded. |
+| `drop_validity` | Three `DELETE`s under the member's advisory lock: its rows from the three interval names in `popoto_sorted`, its rows from the two chain names in `popoto_map`, and every row of `popoto_open_ptr` whose `member` is it (the Redis backend's `{prefix}:open:*` scan-and-compare as one statement). Replies 1 when a pointer went, else 0, as the last `DEL` does. |
+| `open_pointer` | `SELECT member FROM popoto_open_ptr WHERE prefix = %s AND digest = %s`. |
+
+**Where the intervals live.** On Redis a `ValidityField` is three ZSETs
+(`valid_from`, `invalid_at`, `ingested_at`), two HASHes (the chain links)
+and one STRING per identity digest (the open pointer), all named from the
+`$ValidityF:<Model>` prefix. The backend keeps the intervals as rows of
+`popoto_sorted` under those same three names and the links as rows of
+`popoto_map` under the two chain names, rather than in the dedicated
+`popoto_validity(model, pk, valid_from, invalid_at)` table the issue sketched,
+because the field layer reads them through the *generic* families:
+`filter(validity__current=False)` is `sorted_members` on the `invalid_at` and
+`valid_from` names, and `SupersessionProtocol.chain` is `map_get` on the chain
+names. An interval kept anywhere else would be invisible to both. The index
+names are derived by the Redis backend's own `_validity_keys` (imported, not
+copied), so `get_all_keys` parity holds by construction. The one new table is
+the pointer:
+
+```sql
+CREATE TABLE IF NOT EXISTS popoto_open_ptr (
+    prefix text NOT NULL,   -- "$ValidityF:<Model>:<field>"
+    digest text NOT NULL,   -- the identity digest
+    member text NOT NULL,   -- the open record's key
+    PRIMARY KEY (prefix, digest)
+);
+CREATE INDEX IF NOT EXISTS popoto_open_ptr_prefix_member
+    ON popoto_open_ptr (prefix, member);
+```
+
+**`+inf`.** The open sentinel is `'infinity'::double precision`, stored and
+returned as Python's `float("inf")` exactly as the Redis backend returns
+`ZSCORE`'s `inf`. It compares as the Lua's `math.huge` does: `invalid_at <=
+as_of` is false for every finite `as_of` (an open record is never excluded)
+and true for `as_of = inf`, on both backends. Plan decision 5 keeps the float
+sentinel for the POC; whether `tstzrange` replaces it is WS4's question.
+
+**The supersede, phase for phase.** `popoto_supersede` takes the three
+interval names, the pointer's `(prefix, digest)`, the two chain names, the
+members, the mode, the three instants and the assertion flag, and does what
+`SUPERSEDE_LUA` does in the same order: resolve the incumbent from the pointer
+(mode `open` skips every guard), the #588 membership guards (`EXISTS` over
+`popoto_record`; an asserted incumbent that is absent is an error, one
+resolved from the pointer is "no incumbent"), the idempotency guard on the
+incumbent's `invalid_at`, the close-before-start check, the asserted
+`valid_from` check; then -- below the function's own `MUTATION PHASE`
+comment -- the close, both chain links, the `ON CONFLICT DO NOTHING` (NX)
+open of the newcomer, and the repoint. It returns the closed member or `''`.
+`now` is the caller's clock (WS0 deviation 2): every defaulted instant is
+filled from it in Python and the function never reads `clock_timestamp()`.
+
+**Token to exception.** Each `error_reply` token is a
+`RAISE EXCEPTION USING ERRCODE = 'P0631'` (a custom SQLSTATE in the PL/pgSQL
+class) whose `MESSAGE` is the same token line the Lua returns, and the backend
+hands that line to `validity_field.map_lua_error` -- the function the Redis
+backend calls on its `ResponseError` -- so `_LUA_ERROR_MAP` is the single
+source of the mapping and the exception text is identical on both backends:
+
+| Lua `error_reply` | Postgres `RAISE` | Exception |
+|---|---|---|
+| `POPOTO_VALIDITY_MEMBER_ABSENT successor <key>` | same `MESSAGE` | `ValidityMemberAbsentError` |
+| `POPOTO_VALIDITY_MEMBER_ABSENT incumbent <key>` | same `MESSAGE` | `ValidityMemberAbsentError` |
+| `POPOTO_VALIDITY_CLOSE_BEFORE_START` | same `MESSAGE` | `ValidityCloseBeforeStartError` |
+| `POPOTO_VALIDITY_VALID_FROM_CONFLICT <stored> <requested>` | token as `MESSAGE`, the two numbers as `DETAIL` | `ValidityValidFromConflictError` |
+
+The conflict's two numbers travel in `DETAIL` as Postgres `float8` text and
+are rendered in Python with Lua's `tostring` (`%.14g`), because the script
+prints `1759500000.123456` as `1759500000.1235` and Postgres would print
+every digit. Any other error from the function -- a different SQLSTATE --
+propagates untouched.
+
+**Serialisation.** Redis runs the script on one thread. Here the function's
+first statement is `pg_advisory_xact_lock` on the pointer key, the successor
+and the asserted incumbent (the record writers' key space and ordering), so
+two connections writing one identity queue and the second reads the first's
+newcomer as the incumbent, and `SELECT ... FOR UPDATE` on the incumbent's
+`invalid_at` row makes a second closer of the same record wait and then see
+it closed -- the idempotent no-op it is on Redis, with the close instant and
+the chain unmoved. `tests/conformance/test_validity.py::TestConcurrency`
+races two connections both ways and asserts the outcome is one of the serial
+orders on both backends.
+
+**#588 for free.** On the `uow=` path the function runs inside the unit of
+work's transaction, so a successor whose `save_record` is queued ahead of the
+supersede on the same unit of work is visible to the membership guard --
+transaction visibility, with no pipeline-ordering argument needed.
+
 ## Cross-instance serialisation
 
 Redis runs every command and script on one thread, so an `increment_field`
@@ -150,9 +245,22 @@ yields nothing where Redis raises `WRONGTYPE`. Callers pass the right kind.
 
 **`-0.0` scores are stored as `0.0`**, matching `ZADD`'s normalisation.
 
+**A supersede error inside a unit of work is typed at `commit()`.** On Redis
+the pipeline surfaces the script's reply as a raw
+`redis.exceptions.ResponseError` at `execute()`, which the field layer's
+`commit()` owners remap through `map_lua_error`; on Postgres the backend
+raises the typed `ValidityError` from `commit()` directly (and, per the
+rollback rule above, nothing else queued on that unit of work is applied).
+A caller that remaps the Redis error sees the same typed exception either
+way. `commit()`'s per-operation entry for a supersede is the raw script
+reply on Redis (`b"<closed>"` / `b""`) and the decoded member or `None`
+here; both are truthy exactly when something was closed, which is what
+`SupersedeResult.close_index` and `ProvenanceJournal._write` read.
+
 **Not implemented**: record TTL (`save_record(ttl=...)` / `expire_at=...`
 raises `NotImplementedError` rather than silently storing a record that never
-expires), and the atomic index/tag swaps, decay ranking, confidence, validity and
-supersession families, which still raise `NotImplementedError` naming the
-method. `native()` raises on Postgres by design: it is the Redis-only escape
-hatch for out-of-scope features.
+expires), and the atomic index/tag swaps, decay ranking and confidence
+families, which still raise `NotImplementedError` naming the method.
+`native()` raises on Postgres by design: it is the Redis-only escape hatch
+for out-of-scope features; on the validity family that is the transfer path
+(`export_state` / `import_state` / `find_open_pointers_for_member`).
