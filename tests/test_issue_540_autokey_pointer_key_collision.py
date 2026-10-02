@@ -18,10 +18,17 @@ alongside Popoto's other internal keys, so they sit outside every model's key
 space. A model name can never start with ``$``.
 """
 
+import pytest
+
 import popoto
 from popoto.fields.indexed_field_mixin import IndexedFieldMixin
 from popoto.fields.tag_field import TagFieldMixin
 from popoto.redis_db import POPOTO_REDIS_DB, scan_keys
+
+# Every test here plants or inspects the ``$IdxPtr:`` / ``$TagPtr:`` pointer
+# keys, their pre-#540 variants, or key globs (#631 WS1c): Redis-only as a
+# whole file.
+pytestmark = pytest.mark.redis_only
 
 
 class Sess540(popoto.Model):

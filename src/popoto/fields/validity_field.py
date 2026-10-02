@@ -44,6 +44,17 @@ Index Structure (plan D1) — six Redis keys per model/field::
 (The ``$ValidityF`` prefix is auto-derived by the ``FieldBase`` metaclass from
 the class name ``ValidityField``.)
 
+Since #631 (WS1e) every read and write of those keys goes through the storage
+backend -- ``popoto.backends.get_backend()`` -- rather than the Redis client:
+``supersede`` / ``interval_of`` / ``interval_members`` / ``drop_validity`` /
+``open_pointer`` (the validity group) plus ``sorted_members`` for the
+``__current=False`` complement. The backend receives the opaque
+``$ValidityF:<Model>`` namespace and the field name and derives the six keys
+itself, byte-equal to the helpers below (WS0 deviation 10). The three
+transfer-path methods (``export_state`` / ``import_state`` /
+``find_open_pointers_for_member``) are out of the slice and use the
+``native()`` escape hatch; each site is ledgered in the WS1e PR body.
+
 An as-of-``t`` membership test is ``valid_from <= t AND invalid_at > t``: two
 ``ZRANGEBYSCORE``s intersected, or two ``ZSCORE``s inside Lua. ``+inf`` as the
 open-interval sentinel is native to both Redis and Valkey sorted sets.
@@ -75,10 +86,9 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
-import redis.client
-
+from ..backends import UnitOfWork, get_backend
 from ..models.db_key import DB_key
-from ..redis_db import get_REDIS_DB, scan_keys, run_lua
+from ..redis_db import ENCODING
 from .constants import Defaults
 from .field import Field
 
@@ -168,10 +178,22 @@ def map_lua_error(e: BaseException) -> BaseException:
     """Return the typed exception for a :data:`SUPERSEDE_LUA` error reply.
 
     Package-internal, deliberately without a leading underscore: three call
-    sites across two packages import it (``supersession``,
-    ``recipes.provenance_journal``), which is more reach than a private name
+    sites across three packages import it (``backends.redis.RedisBackend.
+    supersede``, which raises the typed exception on the backend's direct
+    path; ``supersession._save_and_close`` and
+    ``recipes.provenance_journal``, which own a ``commit()``/``execute()`` and
+    remap the reply it raises), which is more reach than a private name
     honestly describes. It stays out of ``popoto.__all__`` -- internal to the
     package, not to the module.
+
+    The map lives here, not in the Redis backend, because the typed
+    exceptions it instantiates live here and the backend already imports this
+    module's sibling for ``SUPERSEDE_LUA``: a module-scope import in the other
+    direction is a cycle (the four field modules that re-import a Lua
+    constant from ``backends.redis`` would load it half-initialised), so the
+    backend reaches it with a function-local import instead. Moving the three
+    exception classes to a backend-neutral module is the fix, and is a
+    published-API move outside #631's WS1e file set.
 
     **Returns** the mapped exception instance, or ``e`` itself when no token
     matches. It never raises: every call site is spelled
@@ -336,12 +358,30 @@ class ValidityField(Field):
 
         A record may legitimately match zero pointers: it was never superseded
         on an identity, or it has already been closed and the pointer moved on.
+
+        Since #631 WS1e the one in-slice caller, :meth:`on_delete`, no longer
+        comes here: the backend's ``drop_validity`` performs this scan itself
+        (WS0 deviation 3). What remains is the transfer export path.
         """
         prefix = cls.get_prefix_db_key(model, field_name).redis_key
+        # native(): transfer export (plan non-goal ``transfer/``). The SCAN
+        # loop below is ``redis_db.scan_keys`` inlined -- cursor scan, COUNT
+        # 1000, all keys collected before the first GET -- so the wire shape
+        # is unchanged.
+        client = get_backend().native()
+        pointer_keys: "list[Any]" = []
+        cursor = 0
+        while True:
+            cursor, batch = client.scan(
+                cursor=cursor, match=f"{prefix}:open:*", count=1000
+            )
+            pointer_keys.extend(batch)
+            if cursor == 0:
+                break
         matched = []
-        for pointer_key in scan_keys(f"{prefix}:open:*"):
+        for pointer_key in pointer_keys:
             pointer_key = _as_str(pointer_key)
-            current = get_REDIS_DB().get(pointer_key)
+            current = client.get(pointer_key)
             if current is not None and _as_str(current) == member_key:
                 matched.append(pointer_key)
         return matched
@@ -398,20 +438,19 @@ class ValidityField(Field):
         member_key = model_instance.db_key.redis_key
         keys = cls.get_all_keys(model_instance, field_name)
 
-        valid_from = cast(
-            "Optional[float]", get_REDIS_DB().zscore(keys["valid_from"], member_key)
-        )
-        invalid_at = cast(
-            "Optional[float]", get_REDIS_DB().zscore(keys["invalid_at"], member_key)
-        )
-        ingested_at = cast(
-            "Optional[float]", get_REDIS_DB().zscore(keys["ingested_at"], member_key)
-        )
+        # native(): transfer export (plan non-goal ``transfer/``). The three
+        # interval scores and both chain links are read off the raw client,
+        # exactly as before #631; the protocol's ``interval_of`` could serve
+        # two of the five reads but the path is out of the slice as a whole.
+        client = get_backend().native()
+        valid_from: Optional[float] = client.zscore(keys["valid_from"], member_key)
+        invalid_at: Optional[float] = client.zscore(keys["invalid_at"], member_key)
+        ingested_at: Optional[float] = client.zscore(keys["ingested_at"], member_key)
         if valid_from is None and invalid_at is None and ingested_at is None:
             return None
 
-        fwd = get_REDIS_DB().hget(keys["chain_fwd"], member_key)
-        rev = get_REDIS_DB().hget(keys["chain_rev"], member_key)
+        fwd = client.hget(keys["chain_fwd"], member_key)
+        rev = client.hget(keys["chain_rev"], member_key)
 
         invalid_at_out: Union[float, str]
         if invalid_at is None or float(invalid_at) == Defaults.VALIDITY_OPEN_SENTINEL:
@@ -488,9 +527,15 @@ class ValidityField(Field):
         member_key = model_instance.db_key.redis_key
         keys = cls.get_all_keys(model_instance, field_name)
 
+        # native(): transfer import (plan non-goal ``transfer/``). Plain
+        # ``ZADD``/``HSET``/``SET`` with no ``NX`` guard, for the reasons in
+        # the docstring; the protocol has no unguarded open-pointer write
+        # (``supersede`` owns that key), so the whole path stays raw.
+        client = get_backend().native()
+
         valid_from = state.get("valid_from")
         if valid_from is not None:
-            get_REDIS_DB().zadd(keys["valid_from"], {member_key: float(valid_from)})
+            client.zadd(keys["valid_from"], {member_key: float(valid_from)})
 
         invalid_at = state.get("invalid_at")
         if invalid_at is not None:
@@ -499,22 +544,22 @@ class ValidityField(Field):
                 if invalid_at == cls.OPEN_SENTINEL_TOKEN
                 else float(invalid_at)
             )
-            get_REDIS_DB().zadd(keys["invalid_at"], {member_key: score})
+            client.zadd(keys["invalid_at"], {member_key: score})
 
         ingested_at = state.get("ingested_at")
         if ingested_at is not None:
-            get_REDIS_DB().zadd(keys["ingested_at"], {member_key: float(ingested_at)})
+            client.zadd(keys["ingested_at"], {member_key: float(ingested_at)})
 
         chain_fwd = state.get("chain_fwd")
         if chain_fwd:
-            get_REDIS_DB().hset(keys["chain_fwd"], member_key, chain_fwd)
+            client.hset(keys["chain_fwd"], member_key, chain_fwd)
 
         chain_rev = state.get("chain_rev")
         if chain_rev:
-            get_REDIS_DB().hset(keys["chain_rev"], member_key, chain_rev)
+            client.hset(keys["chain_rev"], member_key, chain_rev)
 
         for digest in state.get("open_pointers") or []:
-            get_REDIS_DB().set(
+            client.set(
                 cls.get_open_pointer_key(model_instance, field_name, str(digest)),
                 member_key,
             )
@@ -545,6 +590,25 @@ class ValidityField(Field):
         # only ``_meta``, which a model class carries too — hence ``ModelLike``
         # here and the narrowing cast at the boundary.
         return cls.get_special_use_field_db_key(cast("Model", model), field_name)
+
+    @classmethod
+    def _model_prefix(cls, model: "ModelLike") -> str:
+        """Return the opaque ``$ValidityF:{Model}`` namespace the backend takes.
+
+        The backend protocol's validity group (``supersede``, ``drop_validity``,
+        ``open_pointer``) takes this and the field name separately and appends
+        ``:{field}:{suffix}`` itself (WS0 deviation 10). It is
+        :meth:`get_prefix_db_key` minus its last segment -- built by the same
+        helper with zero field names (``DB_key(field_class_key,
+        db_class_key)``) rather than by string surgery, so the two stay
+        byte-equal under ``DB_key.clean``: a field name is a Python identifier
+        and the five suffixes contain nothing ``clean`` escapes, so
+        ``f"{prefix}:{field}:{suffix}"`` is exactly
+        ``DB_key(get_prefix_db_key(...), suffix).redis_key``.
+        ``tests/test_validity_routes_through_backend.py`` asserts that equality
+        for all six keys.
+        """
+        return cls.get_special_use_field_db_key(cast("Model", model)).redis_key
 
     @classmethod
     def get_valid_from_key(cls, model: "ModelLike", field_name: str) -> str:
@@ -686,18 +750,9 @@ class ValidityField(Field):
         """
         t = time.time() if as_of is None else float(as_of)
         valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
-        # redis-py types every command ``Awaitable[T] | T`` for both the sync and
-        # async clients, so mypy cannot see that these are concrete lists on the
-        # sync client we actually use. Same narrowing cast as
-        # ``ContextAssembler._resolve_excluded_keys``; CLAUDE.md notes this error
-        # family is redis-py-version-dependent.
-        started = cast(
-            "list[Any]", get_REDIS_DB().zrangebyscore(valid_from_key, "-inf", t)
+        return get_backend().interval_members(
+            valid_from_key, invalid_at_key, t, select="valid"
         )
-        still_open = cast(
-            "list[Any]", get_REDIS_DB().zrangebyscore(invalid_at_key, f"({t}", "+inf")
-        )
-        return {_as_str(m) for m in started} & {_as_str(m) for m in still_open}
 
     @classmethod
     def resolve_excluded_keys(
@@ -759,16 +814,13 @@ class ValidityField(Field):
         """
         t = time.time() if as_of is None else float(as_of)
         valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
-        # invalid_at <= t: already closed. The +inf open sentinel never matches.
-        # Read before valid_from, the order the assembler established.
-        closed = cast(
-            "list[Any]", get_REDIS_DB().zrangebyscore(invalid_at_key, "-inf", t)
+        # The backend owns both bound conventions: ``invalid_at <= t`` (already
+        # closed; the +inf open sentinel never matches) read before
+        # ``valid_from > t`` (not yet started), the order the assembler
+        # established. Absence from either index means *included*.
+        return get_backend().interval_members(
+            valid_from_key, invalid_at_key, t, select="excluded"
         )
-        # valid_from > t: not yet started.
-        future = cast(
-            "list[Any]", get_REDIS_DB().zrangebyscore(valid_from_key, f"({t}", "+inf")
-        )
-        return {_as_str(m) for m in closed + future}
 
     @classmethod
     def is_valid_at(
@@ -786,14 +838,8 @@ class ValidityField(Field):
         """
         t = time.time() if as_of is None else float(as_of)
         valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
-        # redis-py types ZSCORE ``Awaitable[float | None] | float | None`` to cover
-        # the async client; narrow to the sync reply (see the cast note in
-        # :meth:`resolve_valid_keys`).
-        start = cast(
-            "Optional[float]", get_REDIS_DB().zscore(valid_from_key, member_key)
-        )
-        close = cast(
-            "Optional[float]", get_REDIS_DB().zscore(invalid_at_key, member_key)
+        start, close = get_backend().interval_of(
+            valid_from_key, invalid_at_key, member_key
         )
         if start is None or close is None:
             return False
@@ -820,13 +866,15 @@ class ValidityField(Field):
         old_member: str = "",
         identity_digest: str = "",
         assert_valid_from: bool = False,
-        pipeline: Optional[redis.client.Pipeline] = None,
+        pipeline: Optional[UnitOfWork] = None,
     ) -> Any:
-        """Run :data:`SUPERSEDE_LUA` once against this model/field's six keys.
+        """Run one atomic supersede against this model/field's six keys.
 
         The single seam through which every validity mutation flows —
         ``ValidityField.on_save`` and ``SupersessionProtocol`` both call it, so
-        there is exactly one place that knows the script's KEYS/ARGV order.
+        there is exactly one place that turns the field layer's vocabulary into
+        the backend's ``supersede`` call. On Redis that is :data:`SUPERSEDE_LUA`;
+        the KEYS/ARGV order is the Redis backend's business now (#631 WS1e).
 
         Args:
             model: The model class (or instance) owning the field.
@@ -856,10 +904,11 @@ class ValidityField(Field):
                 ``ProvenanceJournal`` pass — preserves today's behavior for every
                 existing caller: their ``at=`` is a *close-time* assertion about
                 the incumbent, not a start-time assertion about the successor.
-            pipeline: Optional external pipeline. When given, the EVAL is queued
-                (following ``tag_field.py``'s threading shape) and the pipeline
-                is returned; the closed-member result is only available at
-                ``execute()`` time.
+            pipeline: Optional external unit of work (on Redis, a pipeline).
+                When given, the supersede is queued onto it (following
+                ``tag_field.py``'s threading shape) and the pipeline is
+                returned; the closed-member result is only available at
+                ``commit()``/``execute()`` time.
 
         Returns:
             The closed member key as ``str``, or ``None`` if nothing was closed —
@@ -876,13 +925,12 @@ class ValidityField(Field):
                 ``valid_from`` disagrees with the stored start.
 
         Note:
-            The ``ResponseError`` -> typed-exception remap lives on the
-            **non-pipeline** branch only. On a caller-supplied pipeline redis-py
-            raises during ``pipe.execute()`` result parsing, long after this
-            method returned, so the caller sees a raw
-            ``redis.exceptions.ResponseError``. Use
+            The typed-exception remap is the backend's, on its **direct**
+            branch only. On a caller-supplied pipeline redis-py raises during
+            ``pipe.execute()`` result parsing, long after this method returned,
+            so the caller sees a raw ``redis.exceptions.ResponseError``. Use
             :meth:`SupersessionProtocol.save_and_supersede`, which owns its
-            ``execute()``, to get a typed error in pipeline shape.
+            ``commit()``, to get a typed error in pipeline shape.
         """
         if mode not in VALID_MODES:
             raise ValueError(
@@ -892,45 +940,36 @@ class ValidityField(Field):
         if close_at is not None and valid_from is not None and mode != "open":
             # Cheap client-side pre-check for the direct-invalidation form, where
             # the caller already knows both ends. The authoritative check lives in
-            # the script (the stored valid_from is the one that matters).
+            # the backend (the stored valid_from is the one that matters).
             if float(close_at) < float(valid_from):
                 raise ValueError(
                     "ValidityField: close-at "
                     f"({close_at}) precedes valid_from ({valid_from})"
                 )
 
-        keys = cls.get_all_keys(model, field_name)
-        pointer_key = (
-            cls.get_open_pointer_key(model, field_name, identity_digest)
-            if identity_digest
-            else ""
+        # WS0 deviation 2: ``now`` is the script's ARGV[2] clock and travels
+        # explicitly. Deviation 10: the backend takes the ``$ValidityF:<Model>``
+        # namespace and the field name and derives the six keys itself. An empty
+        # ``identity_digest`` is ``pointer_digest=None`` -- no pointer read, no
+        # repoint. Architect decision 1: ``pipeline`` is the unit of work and
+        # is tested for presence, never for type.
+        result = get_backend().supersede(
+            cls._model_prefix(model),
+            field_name,
+            mode=mode,
+            new_member=new_member or "",
+            old_member=old_member or "",
+            now=clock,
+            valid_from=None if valid_from is None else float(valid_from),
+            ingested_at=None if ingested_at is None else float(ingested_at),
+            close_at=None if close_at is None else float(close_at),
+            assert_valid_from=assert_valid_from,
+            pointer_digest=identity_digest or None,
+            uow=pipeline,
         )
-        args = [
-            keys["valid_from"],  # KEYS[1]
-            keys["invalid_at"],  # KEYS[2]
-            keys["ingested_at"],  # KEYS[3]
-            pointer_key,  # KEYS[4] (may be '')
-            keys["chain_fwd"],  # KEYS[5]
-            keys["chain_rev"],  # KEYS[6]
-            new_member or "",  # ARGV[1]
-            repr(clock),  # ARGV[2]
-            "" if valid_from is None else repr(float(valid_from)),  # ARGV[3]
-            "" if ingested_at is None else repr(float(ingested_at)),  # ARGV[4]
-            mode,  # ARGV[5]
-            "" if close_at is None else repr(float(close_at)),  # ARGV[6]
-            old_member or "",  # ARGV[7]
-            "1" if assert_valid_from else "",  # ARGV[8]
-        ]
-
-        if isinstance(pipeline, redis.client.Pipeline):
-            run_lua(pipeline, SUPERSEDE_LUA, 6, *args)
+        if pipeline is not None:
             return pipeline
-        try:
-            result = run_lua(get_REDIS_DB(), SUPERSEDE_LUA, 6, *args)
-        except redis.exceptions.ResponseError as e:
-            raise map_lua_error(e) from e
-        closed = _as_str(result) if result else ""
-        return closed or None
+        return result
 
     # ------------------------------------------------------------------
     # TTL interaction (plan D9)
@@ -976,12 +1015,16 @@ class ValidityField(Field):
         model_instance: "Model",
         field_name: str,
         field_value: Any,
-        pipeline: Optional[redis.client.Pipeline] = None,
+        # ``Field.on_save`` (field.py, outside the WS1e file set) still spells
+        # the redis ``Pipeline``; ``Any`` keeps this override LSP-compatible
+        # while the runtime shape is the backend's ``UnitOfWork``.
+        pipeline: Optional[Any] = None,
         **kwargs: Any,
     ) -> Any:
         """Open (or re-affirm) this record's validity interval.
 
-        Routes through :data:`SUPERSEDE_LUA` in mode ``'open'`` rather than
+        Routes through :meth:`execute_supersede` -- the backend's ``supersede``
+        in mode ``'open'`` (:data:`SUPERSEDE_LUA` on Redis) -- rather than
         issuing a bare ``ZADD``, which is what makes the save path safe against
         plan Race 2: the script's ``ZSCORE``/``NX`` guards mean a save that
         interleaves with a concurrent supersession can never resurrect an
@@ -1064,8 +1107,8 @@ class ValidityField(Field):
             return
         if not member_key:
             return
-        stored = get_REDIS_DB().zscore(
-            cls.get_valid_from_key(model_instance, field_name), member_key
+        stored, _ = get_backend().interval_of(
+            *cls.get_interval_keys(model_instance, field_name), member_key
         )
         if stored is not None and float(stored) != declared:
             raise ValidityValidFromConflictError(
@@ -1111,8 +1154,8 @@ class ValidityField(Field):
                     "ValidityField.get_valid_from: pass member_key when the "
                     "first argument is a model class rather than an instance"
                 ) from e
-        score = get_REDIS_DB().zscore(
-            cls.get_valid_from_key(model, field_name), member_key
+        score, _ = get_backend().interval_of(
+            *cls.get_interval_keys(model, field_name), member_key
         )
         return None if score is None else float(score)
 
@@ -1122,23 +1165,25 @@ class ValidityField(Field):
         model_instance: "Model",
         field_name: str,
         field_value: Any,
-        pipeline: Optional[redis.client.Pipeline] = None,
+        pipeline: Optional[UnitOfWork] = None,
         **kwargs: Any,
     ) -> Any:
         """Remove every trace of this record from the validity keyspace.
 
-        ``ZREM`` from the three interval ZSETs, ``HDEL`` from both chain HASHes,
-        and clear any open-claim pointer still aimed at the record. Records are
-        normally *closed*, not deleted — this hook exists so an explicit
-        ``delete()`` (or a key migration, which calls it with ``saved_redis_key``)
-        does not leave orphaned index members behind.
+        One backend call, ``drop_validity``: on Redis, ``ZREM`` from the three
+        interval ZSETs, ``HDEL`` from both chain HASHes, and ``DEL`` of any
+        open-claim pointer still aimed at the record. Records are normally
+        *closed*, not deleted — this hook exists so an explicit ``delete()``
+        (or a key migration, which calls it with ``saved_redis_key``) does not
+        leave orphaned index members behind.
 
         Pointer cleanup scans ``{prefix}:open:*`` because the pointer keyspace is
         keyed by identity digest, not by member — the reverse lookup does not
-        exist by design (plan D1 fixes the key count at six). This is a
-        delete-time-only cost on a path that is rare relative to save and read;
-        adding a seventh per-record back-pointer key to avoid it was rejected as
-        the worse trade.
+        exist by design (plan D1 fixes the key count at six), which is why the
+        backend takes the member rather than a digest (WS0 deviation 3) and
+        does the scan itself. This is a delete-time-only cost on a path that
+        is rare relative to save and read; adding a seventh per-record
+        back-pointer key to avoid it was rejected as the worse trade.
 
         Known limitation: the deleted key is removed from both chain HASHes as a
         *field*, but a neighbor's link may still name it as a *value* (``fwd``
@@ -1151,30 +1196,11 @@ class ValidityField(Field):
             The ``pipeline`` if one was provided, else the pointer-cleanup result.
         """
         member = kwargs.get("saved_redis_key") or model_instance.db_key.redis_key
-        keys = cls.get_all_keys(model_instance, field_name)
-
-        stale_pointers = cls.find_open_pointers_for_member(
-            model_instance, field_name, member
+        result = get_backend().drop_validity(
+            cls._model_prefix(model_instance), field_name, member, uow=pipeline
         )
-
         if pipeline is not None:
-            pipeline.zrem(keys["valid_from"], member)
-            pipeline.zrem(keys["invalid_at"], member)
-            pipeline.zrem(keys["ingested_at"], member)
-            pipeline.hdel(keys["chain_fwd"], member)
-            pipeline.hdel(keys["chain_rev"], member)
-            for pointer_key in stale_pointers:
-                pipeline.delete(pointer_key)
             return pipeline
-
-        get_REDIS_DB().zrem(keys["valid_from"], member)
-        get_REDIS_DB().zrem(keys["invalid_at"], member)
-        get_REDIS_DB().zrem(keys["ingested_at"], member)
-        get_REDIS_DB().hdel(keys["chain_fwd"], member)
-        get_REDIS_DB().hdel(keys["chain_rev"], member)
-        result: Any = 0
-        for pointer_key in stale_pointers:
-            result = get_REDIS_DB().delete(pointer_key)
         return result
 
     # ------------------------------------------------------------------
@@ -1240,13 +1266,14 @@ class ValidityField(Field):
                 if query_value:
                     results.append(valid)
                 else:
-                    # Narrow the sync ZRANGE replies (see the cast note in
-                    # :meth:`resolve_valid_keys`).
-                    everything = set(
-                        cast("list[Any]", get_REDIS_DB().zrange(invalid_at_key, 0, -1))
-                    ) | set(
-                        cast("list[Any]", get_REDIS_DB().zrange(valid_from_key, 0, -1))
-                    )
+                    # Every member with an interval, as raw ``bytes`` to match
+                    # ``valid`` (see :meth:`_members_valid_at`).
+                    backend = get_backend()
+                    everything = {
+                        m.encode(ENCODING)
+                        for m in backend.sorted_members(invalid_at_key)
+                        + backend.sorted_members(valid_from_key)
+                    }
                     results.append(everything - valid)
 
             elif query_param == f"{field_name}__as_of":
@@ -1272,17 +1299,21 @@ class ValidityField(Field):
     ) -> "set[Any]":
         """Raw (``bytes``) member set whose interval covers ``t``.
 
-        The two-``ZRANGEBYSCORE`` primitive behind :meth:`filter_query`. Kept
+        The primitive behind :meth:`filter_query`: the backend's
+        ``interval_members(select="valid")`` -- on Redis the same two
+        ``ZRANGEBYSCORE`` reads as before -- re-encoded to ``bytes``. Kept
         separate from :meth:`resolve_valid_keys` because the query layer
-        intersects the raw index replies while assembler-side consumers want
-        decoded ``str`` keys.
+        intersects this with the other index fields' *raw* replies
+        (``set.intersection(*db_keys_sets)`` in ``filter_for_keys_set``),
+        which are still ``bytes`` on this branch; a ``str`` set here would
+        intersect to nothing against a ``KeyField`` filter. The protocol
+        decodes to ``str`` (WS0 deviation 11), so this is the one place the
+        encoding is reversed. When WS1b moves ``filter_for_keys_set`` to
+        ``str``, this ``encode`` goes with it.
         """
-        # Narrow the sync ZRANGEBYSCORE replies (see the cast note in
-        # :meth:`resolve_valid_keys`).
-        started = cast(
-            "list[Any]", get_REDIS_DB().zrangebyscore(valid_from_key, "-inf", t)
-        )
-        still_open = cast(
-            "list[Any]", get_REDIS_DB().zrangebyscore(invalid_at_key, f"({t}", "+inf")
-        )
-        return set(started) & set(still_open)
+        return {
+            m.encode(ENCODING)
+            for m in get_backend().interval_members(
+                valid_from_key, invalid_at_key, t, select="valid"
+            )
+        }
