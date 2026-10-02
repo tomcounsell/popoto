@@ -458,6 +458,16 @@ annotates the decision. Enabling the gate on a model without a
 `ConfidenceField`, or with an invalid `confidence_gate_mode`, raises
 `QueryException` at construction.
 
+A refusal is no longer a dead end. When `"refuse"` mode gates a query, the
+metadata gains one additive key, `gate["refused_keys"]`: the Redis keys of the
+pull-path candidates the gate judged below threshold, in rank order. It is
+present **only** on the applied-and-gated branch, so consumers must tolerate its
+absence (the other branches carry only `applied`, `gate_score`, `threshold`,
+`mode` and `gated`). A host can pass the metadata to
+`question_queue.propose_from_gate()`, which turns the refusal into a clarifying
+question; the answer then feeds back as defeasible confidence evidence. The
+assembler itself never proposes a question. See [Question Queue](question-queue.md).
+
 See [Confidence Gate](#confidence-gate)
 for the full `metadata["gate"]` shape, the fault-tolerant `get_confidence()`
 failure path, and the no-default policy on `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`.
@@ -467,6 +477,7 @@ failure path, and the no-default policy on `EXPERIMENTAL_CONFIDENCE_GATE_THRESHO
 - [Metacognitive Layer](metacognitive-layer.md) — retrieval quality scoring, FOK, and adaptive weight tuning
 - [Belief-Sheet View](belief-sheet-view.md) — read-path claim resolver wrapping `assemble()` with a fail-closed reader gate (`record_gate` seam)
 - [ConfidenceField](confidence-field.md) — the field the confidence gate reads via `get_confidence()`
+- [Question Queue](question-queue.md) — repair path for gate refusals: a rationed clarifying question whose answer feeds confidence
 - [PolicyCache](policy-cache.md) — learned action selection (uses ContextAssembler for retrieval)
 - [ValidityField and SupersessionProtocol](validity-and-supersession.md) — `assemble(as_of=t)` for point-in-time reconstruction, and how superseded records are excluded from default retrieval
 - [Hybrid Retrieval](hybrid-retrieval.md) — BM25Field, EmbeddingField, and RRF fusion primitives
