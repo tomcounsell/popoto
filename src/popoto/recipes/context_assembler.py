@@ -1961,7 +1961,7 @@ class ContextAssembler:
         # replaced (never mutated in place), so all_pull_candidates itself is
         # never touched here.
         suppression_candidates = all_pull_candidates
-        gate_meta = None
+        gate_meta: dict[str, Any] | None = None
         if self.confidence_gate_threshold is not None:
             if not pull_records:
                 gate_meta = {
