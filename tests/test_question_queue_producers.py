@@ -210,6 +210,19 @@ class TestDisjunctionProducer:
         # The budget was not spent on a question that was never asked.
         assert get_REDIS_DB().get(qq._bucket_key(AGENT)) is None
 
+    def test_retracted_disjoin_expires_an_already_delivered_candidate(self):
+        _m5_disjunction()
+        qq.propose_from_disjunctions(AGENT, turn=1)
+        (cand,) = _candidates()
+        assert qq.next_question(AGENT, turn=2).candidate_id == cand.candidate_id
+
+        ProvenanceJournal.retract(_disjoin_annotations()[0], agent_id=AGENT)
+        assert qq.expire_stale(AGENT, turn=3) == 1
+        stored = _reload(cand)
+        assert stored.status == "expired" and stored.ask_count == 1
+        # An answer arriving after the retraction is not applied.
+        assert qq.record_answer(stored, "1", turn=4).reason == "not_open"
+
     def test_unreadable_m5_neither_expires_nor_delivers(self, monkeypatch):
         """If M5 vanishes after proposal, staleness is unknown: fail closed."""
         _m5_disjunction()
@@ -254,6 +267,46 @@ class TestGateProducer:
     def test_no_refusal_proposes_nothing(self, metadata):
         assert qq.propose_from_gate(AGENT, metadata, turn=1, query_text="x") is None
         assert _candidates() == []
+
+    def test_flag_mode_proposes_nothing(self):
+        """In "flag" mode the low-confidence record was injected anyway: the
+        gate reports refused_keys, but there was no refusal to clarify."""
+        record = QQGateMemory(agent_id=AGENT, topic="deploy target")
+        record.save()
+        result = ContextAssembler(
+            model_class=QQGateMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="composite",
+            confidence_gate_threshold=0.9,
+            confidence_gate_mode="flag",
+        ).assemble(
+            query_cues={"topic": "deploy target"}, partition_filters={"agent_id": AGENT}
+        )
+        gate = result.metadata["gate"]
+        assert gate["gated"] is True and gate["mode"] == "flag"
+        assert record.db_key.redis_key in gate["refused_keys"]
+        assert result.metadata["pull_count"] >= 1  # injected despite the flag
+        assert qq.propose_from_gate(AGENT, result.metadata, 1, "deploy") is None
+        assert _candidates() == []
+
+    def test_different_refused_facts_under_one_query_stay_distinct(self):
+        made = []
+        for key in ("QQGateMemory:fact-one", "QQGateMemory:fact-two"):
+            metadata = {
+                "gate": {
+                    "applied": True,
+                    "gated": True,
+                    "mode": "refuse",
+                    "refused_keys": [key],
+                }
+            }
+            made.append(qq.propose_from_gate(AGENT, metadata, 1, "deploy"))
+        assert made[0].candidate_id != made[1].candidate_id
+        assert "QQGateMemory:fact-one" in made[0].question_text
+        assert {tuple(c.target_keys) for c in _candidates()} == {
+            ("QQGateMemory:fact-one",),
+            ("QQGateMemory:fact-two",),
+        }
 
     def test_dormant_without_a_threshold(self):
         QQGateMemory(agent_id=AGENT, topic="deploy").save()

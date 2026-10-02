@@ -24,8 +24,10 @@ Five rules shape every function below:
    score, on purpose.
 3. **The budget is structural.** At most one delivery per
    ``QUESTION_BUDGET_TURNS`` turns per agent, enforced by a Lua
-   check-and-set on a Redis key (:data:`_BUCKET_LUA`) -- never an in-process
-   counter, never reset on restart, never rewound by a regressed turn.
+   script (:data:`_DELIVER_LUA`) that grants the budget *and* claims a
+   candidate in one step, so budget is spent only when a question is actually
+   delivered -- never an in-process counter, never reset on restart, never
+   rewound by a regressed turn.
 4. **Answers are evidence, never overwrites.** An ``answered`` reply is mapped
    onto the existing closed outcome vocabulary (``acted`` / ``contradicted``)
    and applied through ``ObservationProtocol.on_context_used`` plus
@@ -96,17 +98,20 @@ Example::
         qq.record_answer(q, "morning", turn=14)
 """
 
+import contextvars
 import importlib
 import json
 import logging
 import re
 import string
+import time
 import uuid
 from dataclasses import dataclass
 from typing import (
     Any,
     Callable,
     Dict,
+    FrozenSet,
     Iterable,
     List,
     Optional,
@@ -308,10 +313,10 @@ class QuestionCandidate(Model):
     with a payload and a status (``RecallProposal`` is payload-free and
     TTL-expiring, and cannot be retrofitted).
 
-    ``status``, ``answer_option``, ``cooldown_until`` and ``resolved_turn`` are
-    deliberately **unindexed** plain fields: :func:`record_answer` flips them
-    with a Lua compare-and-set directly on the model hash, which an index
-    would not see. Reads go through the indexed ``agent_id``.
+    ``status``, ``ask_count``, ``delivered_turn``, ``answer_option``,
+    ``cooldown_until`` and ``resolved_turn`` are deliberately **unindexed**
+    plain fields: delivery and :func:`record_answer` write them with Lua
+    directly on the model hash, which an index would not see. Reads go through the indexed ``agent_id``.
 
     Fields:
         question_text: The question, phrased by the producer (or by the host
@@ -334,6 +339,10 @@ class QuestionCandidate(Model):
         resolved_turn: Turn the candidate left the open set (answered, cooled,
             expired), used as the retention reference by ``prune()``.
         cue_tokens: See :func:`cue_tokens_for`.
+        delivered_turn: Turn of the most recent delivery, written by the
+            delivery Lua. A ``delivered`` candidate that gets no reply within
+            ``QUESTION_COOLDOWN_TURNS`` of it is treated like a non-answer and
+            moved to ``cooled`` (see :func:`expire_stale`).
         disjunction_id: Set by the M5 producer so a retracted disjoin can
             expire its candidate via a registered staleness check.
         agent_id: Owning agent.
@@ -356,6 +365,7 @@ class QuestionCandidate(Model):
     answer_option = IntField(null=True)
     resolved_turn = IntField(null=True)
     cue_tokens = ListField(default=[])
+    delivered_turn = IntField(null=True)
     disjunction_id = StringField(null=True)
 
 
@@ -386,22 +396,68 @@ class AnswerResult:
 # Lua
 # ---------------------------------------------------------------------------
 
-#: Token bucket: grant iff no prior ask, or ``turn >= last_ask_turn + K``.
-#: A regressed turn (``turn < last_ask_turn``) can never satisfy that, so it
-#: is no grant and ``last_ask_turn`` is never rewound. Every grant refreshes
-#: the wall-clock TTL backstop.
-#: KEYS[1] bucket key; ARGV[1] turn, ARGV[2] K, ARGV[3] TTL seconds.
-_BUCKET_LUA = """
+#: Budget grant **and** delivery claim in one atomic step.
+#:
+#: The token bucket grants iff there is no prior ask or
+#: ``turn >= last_ask_turn + K``; a regressed turn can never satisfy that, so
+#: ``last_ask_turn`` is never rewound. Only when the bucket would grant are the
+#: candidates tried, in the caller's impact order: the first whose ``status``
+#: is still deliverable and whose ``cooldown_until`` has passed is flipped to
+#: ``delivered`` (``ask_count`` incremented server-side, ``delivered_turn``
+#: written). ``last_ask_turn`` is written -- with a fresh wall-clock TTL
+#: backstop -- **only** when that claim succeeds, so a candidate expired or
+#: claimed by another worker between the read and this script never burns the
+#: budget.
+#:
+#: KEYS[1] bucket key, KEYS[2..] candidate hashes in delivery preference.
+#: ARGV[1] turn, ARGV[2] K, ARGV[3] TTL seconds, ARGV[4] encoded
+#: ``"delivered"``, ARGV[5] encoded turn, ARGV[6] n allowed statuses, then n
+#: encoded statuses. Returns ``{index, new_ask_count}`` (1-based index into the
+#: candidates) on a delivery, else 0.
+_DELIVER_LUA = """
 local turn = tonumber(ARGV[1])
-local k = tonumber(ARGV[2])
 local last = redis.call('GET', KEYS[1])
-if last then
-    if turn < tonumber(last) + k then
-        return 0
+if last and turn < tonumber(last) + tonumber(ARGV[2]) then
+    return 0
+end
+local n = tonumber(ARGV[6])
+for c = 2, #KEYS do
+    local current = redis.call('HGET', KEYS[c], 'status')
+    local allowed = false
+    if current then
+        for i = 7, 6 + n do
+            if current == ARGV[i] then
+                allowed = true
+                break
+            end
+        end
+    end
+    if allowed then
+        local craw = redis.call('HGET', KEYS[c], 'cooldown_until')
+        if craw then
+            local ok, cooldown = pcall(cmsgpack.unpack, craw)
+            if ok and tonumber(cooldown) and turn < tonumber(cooldown) then
+                allowed = false
+            end
+        end
+    end
+    if allowed then
+        local count = 0
+        local raw = redis.call('HGET', KEYS[c], 'ask_count')
+        if raw then
+            local ok, v = pcall(cmsgpack.unpack, raw)
+            if ok and tonumber(v) then
+                count = tonumber(v)
+            end
+        end
+        count = count + 1
+        redis.call('HSET', KEYS[c], 'status', ARGV[4],
+            'ask_count', cmsgpack.pack(count), 'delivered_turn', ARGV[5])
+        redis.call('SET', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[3]))
+        return {c - 1, count}
     end
 end
-redis.call('SET', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[3]))
-return 1
+return 0
 """
 
 #: Compare-and-set on the model hash's msgpack-encoded ``status`` field.
@@ -435,19 +491,87 @@ def _bucket_key(agent_id: str) -> str:
     return f"$QuestionBucket:{agent_id}"
 
 
-def _try_acquire_budget(agent_id: str, turn: int) -> bool:
-    """Atomically take the agent's one ask per K turns. Raises on Redis
-    errors (callers fail closed)."""
-    granted = run_lua(
+#: Propose lock: a correctness bound, not a tuning knob, so it is pinned here
+#: rather than in ``Defaults``. The TTL only has to outlive one dedup scan
+#: plus one save (it exists so a crashed holder cannot wedge the agent's
+#: proposals); the wait is short because ``propose`` is called inline from
+#: a host turn and fails closed rather than stall it.
+_PROPOSE_LOCK_TTL_MS = 5000
+_PROPOSE_LOCK_ATTEMPTS = 50
+_PROPOSE_LOCK_RETRY_SECONDS = 0.01
+
+#: Release the propose lock only if this caller still owns it.
+#: KEYS[1] lock key; ARGV[1] owner token.
+_RELEASE_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+
+
+def _propose_lock_key(agent_id: str) -> str:
+    return f"$QuestionProposeLock:{agent_id}"
+
+
+def _acquire_propose_lock(agent_id: str) -> Optional[str]:
+    """``SET NX PX`` the agent's propose lock, retrying briefly. Returns the
+    owner token, or ``None`` if it could not be taken (callers fail closed).
+    Raises on Redis errors."""
+    token = uuid.uuid4().hex
+    key = _propose_lock_key(agent_id)
+    client = get_REDIS_DB()
+    for attempt in range(_PROPOSE_LOCK_ATTEMPTS):
+        if client.set(key, token, nx=True, px=_PROPOSE_LOCK_TTL_MS):
+            return token
+        if attempt + 1 < _PROPOSE_LOCK_ATTEMPTS:
+            time.sleep(_PROPOSE_LOCK_RETRY_SECONDS)
+    return None
+
+
+def _release_propose_lock(agent_id: str, token: str) -> None:
+    try:
+        run_lua(get_REDIS_DB(), _RELEASE_LUA, 1, _propose_lock_key(agent_id), token)
+    except Exception:
+        # The TTL bounds the damage; never let a release error mask the result.
+        logger.exception("question_queue: propose lock release failed")
+
+
+def _try_deliver(
+    agent_id: str, turn: int, ordered: Sequence[QuestionCandidate]
+) -> Optional[QuestionCandidate]:
+    """Atomically take the agent's one ask per K turns *and* claim the first
+    still-deliverable candidate of ``ordered`` (:data:`_DELIVER_LUA`).
+
+    Returns the delivered candidate (its in-memory ``status``, ``ask_count``
+    and ``delivered_turn`` updated), or ``None`` when the bucket refused or
+    no candidate could be claimed -- in both cases the bucket is untouched.
+    Raises on Redis errors (callers fail closed).
+    """
+    if not ordered:
+        return None
+    allowed = tuple(sorted(_DELIVERABLE_STATUSES))
+    result = run_lua(
         get_REDIS_DB(),
-        _BUCKET_LUA,
-        1,
+        _DELIVER_LUA,
+        1 + len(ordered),
         _bucket_key(agent_id),
+        *[cand.db_key.redis_key for cand in ordered],
         int(turn),
         int(QUESTION_BUDGET_TURNS),
         int(QUESTION_BUCKET_TTL_SECONDS),
+        msgpack.packb("delivered"),
+        msgpack.packb(int(turn)),
+        len(allowed),
+        *[msgpack.packb(s) for s in allowed],
     )
-    return bool(int(granted or 0))
+    if not isinstance(result, (list, tuple)) or len(result) != 2:
+        return None
+    cand = ordered[int(result[0]) - 1]
+    setattr(cand, "status", "delivered")
+    setattr(cand, "ask_count", int(result[1]))
+    setattr(cand, "delivered_turn", int(turn))
+    return cand
 
 
 def _claim(
@@ -637,11 +761,58 @@ def _is_stale(candidate: QuestionCandidate, turn: int) -> Optional[bool]:
 
 
 def _expire(candidate: QuestionCandidate, turn: int) -> bool:
+    """CAS any not-yet-answered open candidate (including ``delivered``) to
+    ``expired``."""
     return _claim(
         candidate,
-        tuple(_DELIVERABLE_STATUSES),
+        tuple(sorted(_OPEN_STATUSES)),
         {"status": "expired", "resolved_turn": int(turn)},
     )
+
+
+def _ignored_since(candidate: QuestionCandidate) -> int:
+    """The turn a ``delivered`` candidate was asked (``created_turn`` for a
+    candidate written before ``delivered_turn`` existed -- never
+    ``last_seen_turn``, which re-observation keeps bumping)."""
+    delivered = _int_attr(candidate, "delivered_turn")
+    if delivered is not None:
+        return delivered
+    return _int_attr(candidate, "created_turn") or 0
+
+
+def _cool_ignored(candidate: QuestionCandidate, turn: int) -> bool:
+    """CAS an ignored ``delivered`` candidate to ``cooled``.
+
+    The cooldown is measured from the delivery, so ``cooldown_until`` is
+    ``delivered_turn + QUESTION_COOLDOWN_TURNS`` -- the turn at which it is
+    recognised as ignored -- and the result is the same whichever later turn
+    the expiry pass happens to run on. ``ask_count`` keeps the history.
+    """
+    return _claim(
+        candidate,
+        ("delivered",),
+        {
+            "status": "cooled",
+            "cooldown_until": _ignored_since(candidate) + QUESTION_COOLDOWN_TURNS,
+            "resolved_turn": int(turn),
+        },
+    )
+
+
+#: Per-pass memo for staleness checks (see :func:`_staleness_memo`). ``None``
+#: outside an expiry pass.
+_PASS_MEMO: contextvars.ContextVar[Optional[Dict[Any, Any]]] = contextvars.ContextVar(
+    "question_queue_pass_memo", default=None
+)
+
+
+def _staleness_memo() -> Optional[Dict[Any, Any]]:
+    """The memo dict of the expiry pass currently running in this context, or
+    ``None``. A staleness check whose evidence is the same for every candidate
+    of a pass (the live-disjoin set) caches it here, so it is computed once
+    per :func:`next_question` / :func:`expire_stale` call rather than once per
+    candidate, without changing the ``check(candidate, turn)`` seam."""
+    return _PASS_MEMO.get()
 
 
 def _expire_stale_in(
@@ -649,27 +820,50 @@ def _expire_stale_in(
 ) -> Tuple[int, List[QuestionCandidate]]:
     """Expire what should expire; return ``(n_expired, survivors)`` where
     survivors are deliverable-status candidates whose staleness is known
-    False."""
+    False.
+
+    A ``delivered`` candidate is never asked again while it waits for its
+    reply, but it does not wait forever: a registered staleness check can
+    expire it, and once ``QUESTION_COOLDOWN_TURNS`` have passed since its
+    delivery with no reply it is treated like a non-answer and moved to
+    ``cooled`` (:func:`_cool_ignored`), after which it is handled like any
+    other cooled candidate -- re-askable, and subject to ``expires_turn``.
+    """
     expired = 0
     survivors: List[QuestionCandidate] = []
-    for cand in candidates:
-        if cand.status not in _DELIVERABLE_STATUSES:
-            continue
-        expires = _int_attr(cand, "expires_turn")
-        if expires is not None and int(turn) > expires:
-            expired += int(_expire(cand, turn))
-            continue
-        stale = _is_stale(cand, turn)
-        if stale:
-            expired += int(_expire(cand, turn))
-        elif stale is False:
-            survivors.append(cand)
+    token = _PASS_MEMO.set({})
+    try:
+        for cand in candidates:
+            status = _str_attr(cand, "status")
+            if status == "delivered":
+                if int(turn) < _ignored_since(cand) + QUESTION_COOLDOWN_TURNS:
+                    if _is_stale(cand, turn):
+                        expired += int(_expire(cand, turn))
+                    continue
+                if not _cool_ignored(cand, turn):
+                    continue  # answered or otherwise moved concurrently
+                status = "cooled"
+            if status not in _DELIVERABLE_STATUSES:
+                continue
+            expires = _int_attr(cand, "expires_turn")
+            if expires is not None and int(turn) > expires:
+                expired += int(_expire(cand, turn))
+                continue
+            stale = _is_stale(cand, turn)
+            if stale:
+                expired += int(_expire(cand, turn))
+            elif stale is False:
+                survivors.append(cand)
+    finally:
+        _PASS_MEMO.reset(token)
     return expired, survivors
 
 
 def expire_stale(agent_id: str, turn: int) -> int:
-    """Silently expire the agent's undelivered candidates that are past
-    ``expires_turn`` or that a registered staleness check reports stale.
+    """Silently expire the agent's not-yet-answered candidates that are past
+    ``expires_turn`` or that a registered staleness check reports stale, and
+    move ``delivered`` candidates ignored for ``QUESTION_COOLDOWN_TURNS`` to
+    ``cooled``.
 
     Expired candidates are status-marked and retained (``prune()`` deletes).
     Returns the number expired; ``0`` on a Redis error (fail closed).
@@ -708,9 +902,14 @@ def propose(
     *touched* (``last_seen_turn`` bumped, feeding the gate's impact factor)
     and returned; an answered one is returned unchanged.
 
+    The dedup check and the create run under a short per-agent ``SET NX``
+    lock, so concurrent proposals of one question yield one candidate. If the
+    lock cannot be taken within a brief retry window the proposal is dropped
+    (fail closed): a producer re-observes its ambiguity on a later turn.
+
     Returns:
-        The new or existing candidate; ``None`` when the kill switch is set or
-        on a Redis error.
+        The new or existing candidate; ``None`` when the kill switch is set,
+        the propose lock stays busy, or on a Redis error.
 
     Raises:
         ValueError: unknown ``kind`` / ``ambiguity_signal``, an empty question,
@@ -734,52 +933,91 @@ def propose(
         return None
 
     try:
-        key_set = set(keys)
-        for existing in _candidates(agent_id):
-            status = existing.status
-            if status == "answered":
-                if turn - _retention_reference(existing) > QUESTION_RETENTION_TURNS:
-                    continue
-            elif status not in _OPEN_STATUSES:
-                continue
-            same_keys = _str_attr(existing, "kind") == kind and bool(
-                key_set & set(_list_attr(existing, "target_keys"))
-            )
-            same_text = (
-                normalize_text(_str_attr(existing, "question_text")) == norm_text
-            )
-            if not (same_keys or same_text):
-                continue
-            if status in _OPEN_STATUSES and turn > (
-                _int_attr(existing, "last_seen_turn") or 0
-            ):
-                setattr(existing, "last_seen_turn", turn)
-                existing.save(update_fields=["last_seen_turn"])
-            return existing
-
-        labels = [o["label"] for o in cleaned_options]
-        candidate = QuestionCandidate(
-            candidate_id=uuid.uuid4().hex,
-            agent_id=agent_id,
-            question_text=question_text,
-            kind=kind,
-            source_module=source_module,
-            target_keys=keys,
-            options=cleaned_options,
-            ambiguity_signal=ambiguity_signal,
-            status="pending",
-            ask_count=0,
-            created_turn=turn,
-            expires_turn=turn + QUESTION_EXPIRY_TURNS,
-            last_seen_turn=turn,
-            cue_tokens=cue_tokens_for(question_text, *labels),
-            disjunction_id=disjunction_id,
+        token = _acquire_propose_lock(agent_id)
+    except Exception:
+        logger.exception("question_queue: propose lock failed")
+        return None
+    if token is None:
+        logger.warning(
+            "question_queue: propose lock for %s busy; proposal dropped", agent_id
         )
-        candidate.save()
-        return candidate
+        return None
+    try:
+        return _propose_locked(
+            agent_id,
+            question_text,
+            norm_text,
+            kind,
+            source_module,
+            keys,
+            ambiguity_signal,
+            turn,
+            cleaned_options,
+            disjunction_id,
+        )
     except Exception:
         logger.exception("question_queue: propose failed")
         return None
+    finally:
+        _release_propose_lock(agent_id, token)
+
+
+def _propose_locked(
+    agent_id: str,
+    question_text: str,
+    norm_text: str,
+    kind: str,
+    source_module: str,
+    keys: List[str],
+    ambiguity_signal: str,
+    turn: int,
+    cleaned_options: List[Dict[str, Any]],
+    disjunction_id: Optional[str],
+) -> QuestionCandidate:
+    """Dedup check-and-create; caller holds the agent's propose lock, so two
+    concurrent proposals of the same question cannot both miss the dedup scan.
+    Raises on Redis errors."""
+    key_set = set(keys)
+    for existing in _candidates(agent_id):
+        status = existing.status
+        if status == "answered":
+            if turn - _retention_reference(existing) > QUESTION_RETENTION_TURNS:
+                continue
+        elif status not in _OPEN_STATUSES:
+            continue
+        same_keys = _str_attr(existing, "kind") == kind and bool(
+            key_set & set(_list_attr(existing, "target_keys"))
+        )
+        same_text = normalize_text(_str_attr(existing, "question_text")) == norm_text
+        if not (same_keys or same_text):
+            continue
+        if status in _OPEN_STATUSES and turn > (
+            _int_attr(existing, "last_seen_turn") or 0
+        ):
+            setattr(existing, "last_seen_turn", turn)
+            existing.save(update_fields=["last_seen_turn"])
+        return existing
+
+    labels = [o["label"] for o in cleaned_options]
+    candidate = QuestionCandidate(
+        candidate_id=uuid.uuid4().hex,
+        agent_id=agent_id,
+        question_text=question_text,
+        kind=kind,
+        source_module=source_module,
+        target_keys=keys,
+        options=cleaned_options,
+        ambiguity_signal=ambiguity_signal,
+        status="pending",
+        ask_count=0,
+        created_turn=turn,
+        expires_turn=turn + QUESTION_EXPIRY_TURNS,
+        last_seen_turn=turn,
+        cue_tokens=cue_tokens_for(question_text, *labels),
+        disjunction_id=disjunction_id,
+    )
+    candidate.save()
+    return candidate
 
 
 def note_use(agent_id: str, keys: Iterable[str], turn: int) -> int:
@@ -837,9 +1075,10 @@ def next_question(
     (:func:`expire_stale`); cooldown; the VOI gate (:func:`passes_voi_gate`);
     relevance timing (``query_cues`` must share at least one cue token with
     the candidate; ``None`` disables timing); ordering by impact; and only
-    then the atomic token bucket, so the budget is never spent when there is
-    nothing to ask. On a grant the chosen candidate becomes ``delivered`` and
-    its ``ask_count`` is incremented.
+    then one atomic script that grants the token bucket *and* claims the
+    first still-deliverable candidate (:data:`_DELIVER_LUA`), so the budget is
+    never spent when nothing is actually delivered. The delivered candidate's
+    ``ask_count`` is incremented and ``delivered_turn`` recorded.
 
     Returns ``None`` -- never raises -- when disabled, when nothing passes,
     when the budget is exhausted (the bucket is not reset), or on a Redis
@@ -866,19 +1105,7 @@ def next_question(
         if not eligible:
             return None
         eligible.sort(key=_impact_order)
-        if not _try_acquire_budget(agent_id, turn):
-            return None
-        for cand in eligible:
-            if _claim(
-                cand,
-                tuple(_DELIVERABLE_STATUSES),
-                {
-                    "status": "delivered",
-                    "ask_count": (_int_attr(cand, "ask_count") or 0) + 1,
-                },
-            ):
-                return cand
-        return None
+        return _try_deliver(agent_id, turn, eligible)
     except Exception:
         logger.exception("question_queue: next_question failed")
         return None
@@ -1158,8 +1385,32 @@ def _disjunction_is_stale(candidate: QuestionCandidate, turn: int) -> bool:
     disjunction_id = _str_attr(candidate, "disjunction_id")
     if not disjunction_id:
         return False
-    live_ids = {d for d, _, _ in _live_disjoins(_str_attr(candidate, "agent_id"))}
-    return disjunction_id not in live_ids
+    return disjunction_id not in _live_disjoin_ids(_str_attr(candidate, "agent_id"))
+
+
+def _live_disjoin_ids(agent_id: str) -> FrozenSet[str]:
+    """Live disjunction ids for ``agent_id``, read once per expiry pass.
+
+    Inside a pass the result -- or the exception, so an unreadable M5 fails
+    every candidate closed without re-reading it -- is cached in
+    :func:`_staleness_memo`; outside a pass it is read directly.
+    """
+    memo = _staleness_memo()
+    slot = ("live_disjoin_ids", agent_id)
+    if memo is not None and slot in memo:
+        cached = memo[slot]
+        if isinstance(cached, BaseException):
+            raise cached
+        return cached
+    try:
+        ids = frozenset(d for d, _, _ in _live_disjoins(agent_id))
+    except Exception as exc:
+        if memo is not None:
+            memo[slot] = exc
+        raise
+    if memo is not None:
+        memo[slot] = ids
+    return ids
 
 
 register_staleness_check("disjunction", _disjunction_is_stale)
@@ -1255,10 +1506,20 @@ def propose_from_gate(
     """Propose a ``confirmation`` question from a confidence-gate refusal.
 
     ``metadata`` is ``assemble()``'s metadata dict (an ``AssemblyResult`` is
-    accepted too). Acts only when ``metadata["gate"]`` reports ``gated`` and
-    carries a non-empty ``refused_keys``; ``k`` is the top (rank-0) refused
-    key, the one whose confidence fell below threshold. Options: ``"yes"`` =
-    ``acted:[k]``, ``"no"`` = ``contradicted:[k]``.
+    accepted too). Acts only when ``metadata["gate"]`` reports ``gated``,
+    ``mode == "refuse"`` and a non-empty ``refused_keys``; ``k`` is the top
+    (rank-0) refused key, the one whose confidence fell below threshold.
+    Options: ``"yes"`` = ``acted:[k]``, ``"no"`` = ``contradicted:[k]``.
+
+    **Only ``"refuse"`` mode produces a question.** The assembler reports
+    ``refused_keys`` in ``"flag"`` mode too, but there the records were
+    injected into context anyway: nothing was withheld, so there is no
+    refusal to clarify, and asking would spend the shared budget on a fact
+    the agent is already using.
+
+    The question text names ``k`` as well as the query, so two refusals of
+    different facts under the same query stay two candidates instead of
+    being folded together by normalized-text dedup.
 
     **Dormant unless ``confidence_gate_threshold`` is configured** on the
     ``ContextAssembler``: without it ``assemble()`` emits no gate metadata
@@ -1274,6 +1535,8 @@ def propose_from_gate(
         gate = metadata.get("gate") if isinstance(metadata, dict) else None
         if not isinstance(gate, dict) or not gate.get("gated"):
             return None
+        if gate.get("mode") != "refuse":
+            return None
         refused = [str(k) for k in gate.get("refused_keys") or [] if k]
         if not refused:
             return None
@@ -1282,8 +1545,8 @@ def propose_from_gate(
         return propose(
             agent_id=agent_id,
             question_text=(
-                f"I'm not confident in what I recall about {topic!r}. "
-                "Is it still accurate?"
+                f"I'm not confident in what I recall about {topic!r} "
+                f"({key}). Is it still accurate?"
             ),
             kind="confirmation",
             source_module="context_assembler.confidence_gate",

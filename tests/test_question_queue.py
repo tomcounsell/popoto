@@ -188,6 +188,42 @@ class TestPropose:
             qq.propose(**base)
 
 
+class TestProposeConcurrency:
+    def test_concurrent_identical_proposals_create_one_candidate(self):
+        k = _fact("cc").db_key.redis_key
+        barrier = threading.Barrier(8)
+        got = []
+        lock = threading.Lock()
+
+        def worker():
+            barrier.wait()
+            cand = _confirmation(k, turn=0)
+            with lock:
+                got.append(cand)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+        stored = list(QuestionCandidate.query.filter(agent_id=AGENT))
+        assert len(stored) == 1
+        assert {c.candidate_id for c in got} == {stored[0].candidate_id}
+        assert get_REDIS_DB().get(qq._propose_lock_key(AGENT)) is None
+
+    def test_busy_propose_lock_fails_closed(self, monkeypatch):
+        monkeypatch.setattr(qq, "_PROPOSE_LOCK_ATTEMPTS", 2)
+        lock_key = qq._propose_lock_key(AGENT)
+        get_REDIS_DB().set(lock_key, "someone-else", px=60_000)
+        try:
+            assert _confirmation(_fact("busy").db_key.redis_key) is None
+            assert list(QuestionCandidate.query.filter(agent_id=AGENT)) == []
+            # Another owner's lock is never released by us.
+            assert get_REDIS_DB().get(lock_key) in (b"someone-else", "someone-else")
+        finally:
+            get_REDIS_DB().delete(lock_key)
+
+
 # ---------------------------------------------------------------------------
 # VOI gate + bucket
 # ---------------------------------------------------------------------------
@@ -281,6 +317,64 @@ class TestBudget:
         assert qq.next_question(AGENT, turn=0) is None
         assert get_REDIS_DB().get(qq._bucket_key(AGENT)) is None
 
+    @pytest.mark.parametrize("race", ["expired", "deflected"])
+    def test_candidate_lost_after_read_does_not_spend_budget(self, monkeypatch, race):
+        """Another worker expires (or a reply cools) the candidate between the
+        read and the delivery script: nothing is delivered, budget unspent."""
+        k = _fact("race").db_key.redis_key
+        _confirmation(k, turn=0)
+        real = qq._expire_stale_in
+
+        def racing(candidates, turn):
+            n, survivors = real(candidates, turn)
+            for cand in survivors:
+                fresh = _reload(cand)
+                if race == "expired":
+                    qq._expire(fresh, turn)
+                else:
+                    assert qq.record_answer(fresh, "not sure", turn).reason == "cooled"
+            return n, survivors
+
+        monkeypatch.setattr(qq, "_expire_stale_in", racing)
+        assert qq.next_question(AGENT, turn=0) is None
+        assert get_REDIS_DB().get(qq._bucket_key(AGENT)) is None
+
+    def test_delivers_next_candidate_when_first_is_lost(self, monkeypatch):
+        keys = self._seed(2)
+        real = qq._expire_stale_in
+        lost = []
+
+        def racing(candidates, turn):
+            n, survivors = real(candidates, turn)
+            first = sorted(survivors, key=qq._impact_order)[0]
+            qq._expire(_reload(first), turn)
+            lost.append(first.candidate_id)
+            return n, survivors
+
+        monkeypatch.setattr(qq, "_expire_stale_in", racing)
+        qq.note_use(AGENT, keys, 0)
+        got = qq.next_question(AGENT, turn=0)
+        assert got is not None and got.candidate_id != lost[0]
+        stored = _reload(got)
+        assert (stored.status, stored.ask_count, stored.delivered_turn) == (
+            "delivered",
+            1,
+            0,
+        )
+        assert get_REDIS_DB().get(qq._bucket_key(AGENT)) in (b"0", "0")
+
+    def test_delivery_script_error_fails_closed(self, monkeypatch):
+        """Candidates read fine; only the delivery Lua raises."""
+        cand = _confirmation(_fact("lua").db_key.redis_key, turn=0)
+
+        def broken_run_lua(*args, **kwargs):
+            raise redis.ConnectionError("down")
+
+        monkeypatch.setattr(qq, "run_lua", broken_run_lua)
+        assert qq.next_question(AGENT, turn=0) is None
+        assert _reload(cand).status == "pending"
+        assert get_REDIS_DB().get(qq._bucket_key(AGENT)) is None
+
 
 # ---------------------------------------------------------------------------
 # Expiry, staleness seam, timing, cooldown
@@ -341,6 +435,107 @@ class TestExpiryAndTiming:
         assert qq.next_question(AGENT, turn=reask_turn - 1) is None
         again = qq.next_question(AGENT, turn=reask_turn)
         assert again is not None and again.ask_count == 2
+
+    def test_ignored_question_reasked_after_cooldown_subject_to_budget(self):
+        """A delivered question that gets no reply is not stuck forever: after
+        QUESTION_COOLDOWN_TURNS it is cooled and asked again -- but only when
+        the budget allows."""
+        C = qq.QUESTION_COOLDOWN_TURNS
+        other_turn = C - 2
+        assert K <= other_turn < C < other_turn + K < qq.QUESTION_EXPIRY_TURNS
+        k = _fact("ign").db_key.redis_key
+        first = _confirmation(k, turn=0)
+        assert qq.next_question(AGENT, turn=0).candidate_id == first.candidate_id
+        for t in range(1, other_turn):
+            # Re-observed every turn, but it is waiting for its reply.
+            assert _confirmation(k, turn=t).candidate_id == first.candidate_id
+            qq.note_use(AGENT, [k], t)
+            assert qq.next_question(AGENT, turn=t) is None
+        k2 = _fact("ign2").db_key.redis_key
+        second = _confirmation(k2, turn=other_turn, text="Is ign2 accurate?")
+        assert qq.next_question(AGENT, turn=other_turn).candidate_id == (
+            second.candidate_id
+        )
+
+        # Ignored for C turns -> cooled, but the budget was just spent.
+        qq.note_use(AGENT, [k], C)
+        assert qq.next_question(AGENT, turn=C) is None
+        stored = _reload(first)
+        assert (stored.status, stored.cooldown_until, stored.ask_count) == (
+            "cooled",
+            C,
+            1,
+        )
+
+        reask = other_turn + K
+        qq.note_use(AGENT, [k], reask)
+        again = qq.next_question(AGENT, turn=reask)
+        assert again is not None and again.candidate_id == first.candidate_id
+        stored = _reload(first)
+        assert (stored.status, stored.ask_count, stored.delivered_turn) == (
+            "delivered",
+            2,
+            reask,
+        )
+
+    def test_staleness_check_expires_a_delivered_candidate(self):
+        a, b = _fact("ds1"), _fact("ds2")
+        cand = _disjunction(a, b)
+        assert qq.next_question(AGENT, turn=1).candidate_id == cand.candidate_id
+
+        def vanished(c, turn):
+            return c.candidate_id == cand.candidate_id
+
+        qq.register_staleness_check("disjunction", vanished)
+        try:
+            assert qq.expire_stale(AGENT, turn=2) == 1
+            assert _reload(cand).status == "expired"
+        finally:
+            qq.unregister_staleness_check("disjunction", vanished)
+
+    @pytest.mark.parametrize("m5_fails", [False, True])
+    def test_live_disjoins_read_once_per_pass(self, monkeypatch, m5_fails):
+        facts = [_fact(f"m{i}") for i in range(6)]
+        cands = []
+        for i in range(3):
+            a, b = facts[2 * i], facts[2 * i + 1]
+            ka, kb = a.db_key.redis_key, b.db_key.redis_key
+            cands.append(
+                qq.propose(
+                    agent_id=AGENT,
+                    question_text=f"Is it {a.name} or {b.name}?",
+                    kind="disjunction",
+                    source_module="test",
+                    target_keys=[ka, kb],
+                    options=[
+                        {"label": a.name, "acted": [ka], "contradicted": [kb]},
+                        {"label": b.name, "acted": [kb], "contradicted": [ka]},
+                    ],
+                    ambiguity_signal="disjunction",
+                    turn=0,
+                    disjunction_id=f"dj-{i}",
+                )
+            )
+        calls = []
+
+        def counting(agent_id):
+            calls.append(agent_id)
+            if m5_fails:
+                raise redis.ConnectionError("m5 down")
+            return [("dj-0", "x", "y")]
+
+        monkeypatch.setattr(qq, "_live_disjoins", counting)
+        got = qq.next_question(AGENT, turn=1)
+        assert calls == [AGENT]
+        statuses = [_reload(c).status for c in cands]
+        if m5_fails:
+            assert got is None and statuses == ["pending"] * 3
+        else:
+            assert got.candidate_id == cands[0].candidate_id
+            assert statuses == ["delivered", "expired", "expired"]
+        calls.clear()
+        qq.expire_stale(AGENT, turn=2)
+        assert calls == [AGENT]
 
 
 # ---------------------------------------------------------------------------
@@ -556,3 +751,11 @@ def test_claim_lua_matches_model_encoding():
     cand = _confirmation(k)
     raw = get_REDIS_DB().hget(cand.db_key.redis_key, "status")
     assert raw == msgpack.packb("pending")
+    assert qq.next_question(AGENT, turn=3) is not None
+    client = get_REDIS_DB()
+    assert client.hget(cand.db_key.redis_key, "status") == msgpack.packb("delivered")
+    # ask_count is incremented server-side with cmsgpack; it must still be the
+    # bytes the model itself would write, and reload as an int.
+    assert client.hget(cand.db_key.redis_key, "ask_count") == msgpack.packb(1)
+    assert client.hget(cand.db_key.redis_key, "delivered_turn") == msgpack.packb(3)
+    assert _reload(cand).ask_count == 1
