@@ -2437,10 +2437,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#coverage-of-the-2026-08-07-runs" class="md-nav__link">
+  <a href="#coverage-of-the-2026-08-07-and-2026-09-18-runs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Coverage of the 2026-08-07 runs
+        Coverage of the 2026-08-07 and 2026-09-18 runs
       
     </span>
   </a>
@@ -3254,10 +3254,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#coverage-of-the-2026-08-07-runs" class="md-nav__link">
+  <a href="#coverage-of-the-2026-08-07-and-2026-09-18-runs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Coverage of the 2026-08-07 runs
+        Coverage of the 2026-08-07 and 2026-09-18 runs
       
     </span>
   </a>
@@ -3629,9 +3629,11 @@ path now classifies each query by shape and picks a weight regime
 any caller outside <code>ContextAssembler</code>) is byte-for-byte identical to the
 original unweighted RRF. The weights are experimental in-code tuning
 constants (not user config), fully in-process and Valkey-safe. Post-fix
-confirmation numbers are in the tables below: full-500 on LongMemEval-S,
-and a labelled 250-question stratified sample on LoCoMo, where a full hybrid
-pass costs ~5.2 hours of CPU embedding.</p>
+confirmation numbers are in the tables below: full-500 on LongMemEval-S
+and, since <a href="https://github.com/tomcounsell/popoto/issues/569">#569</a>, the
+full 1986 questions on LoCoMo. A full LoCoMo hybrid pass costs ~5.2 hours
+of CPU embedding, which is why the first post-fix LoCoMo confirmation was
+a 250-question stratified sample; the full run replaced it on 2026-09-18.</p>
 </div>
 <p><code>vector</code> is a <strong>harness-local diagnostic</strong>: it bypasses
 <code>ContextAssembler</code> entirely — auto-mode would resolve an embedding-only model to the
@@ -3747,24 +3749,35 @@ run stays committed as <code>locomo_20260708.json</code>. As of the
 <a href="https://github.com/tomcounsell/popoto/issues/530">#530</a> refresh the
 <strong>hybrid</strong>, <strong>graph</strong>, and <strong>judged</strong> arms have also been re-measured under
 gold-blind scoring. Their coverage is not uniform and every table below
-states it: hybrid is a <strong>250-question stratified sample</strong>, graph is the
-<strong>full 282-question multi-hop slice</strong>, judged is <strong>100 questions from a
-2-dialogue subset</strong>, and only lexical is the full 1986.</p>
+states it: lexical and hybrid are the <strong>full 1986</strong> (hybrid since the
+<a href="https://github.com/tomcounsell/popoto/issues/569">#569</a> refresh on
+2026-09-18), graph is the <strong>full 282-question multi-hop slice</strong>, and
+judged is <strong>100 questions from a 2-dialogue subset</strong>.</p>
 </div>
-<div class="admonition warning">
-<p class="admonition-title">The corrected hybrid run is a 250-question sample, not a full run</p>
+<div class="admonition note">
+<p class="admonition-title">The corrected hybrid run was a 250-question sample until 2026-09-18</p>
 <p>A full LoCoMo hybrid pass re-embeds ~1.19M records and measured <strong>~5.2
 hours</strong> on the reference machine (10-core Apple silicon, all-MiniLM-L6-v2 on
 CPU). Rather than leave the superseded full run standing as the published
 hybrid number, #530 re-ran it as a <strong>250-question stratified sample, seed
-0</strong> (every category represented) under gold-blind scoring. That number
-carries sampling error a full run does not. A full-1986 hybrid refresh
-remains outstanding.</p>
+0</strong> (every category represented) under gold-blind scoring, and this page
+warned that the number carried sampling error a full run does not. #569
+then ran the full corpus: <code>locomo_20260918_hybrid.json</code>, 1986 of 1986
+questions, zero errors, and <code>locomo_latest_hybrid</code> now points at it. The
+sample stays committed as <code>locomo_20260807_hybrid.json</code>.</p>
+<p>The warning was warranted. At full scale, Recall@1 and MRR came in
+<strong>below</strong> the sample's figures (Recall@1 0.2966 against the sample's
+0.3400; MRR 0.3996 against 0.4172), while Recall@5 and Recall@10 moved up
+slightly (0.5292 against 0.5120; 0.6037 against 0.5880). The sample's
+category mix matched the full corpus to within half a point, so the gap
+is within-category sampling variance rather than stratification: the
+largest single move is category 5, Recall@1 0.4643 on the sample's 56
+questions against 0.3341 on the full 446.</p>
 </div>
-<h4 id="coverage-of-the-2026-08-07-runs">Coverage of the 2026-08-07 runs<a class="headerlink" href="#coverage-of-the-2026-08-07-runs" title="Permanent link">&para;</a></h4>
-<p>Coverage is deliberately uneven, because a full hybrid pass costs hours of CPU
-embedding. Read this table before reading any two rows of this page against each
-other.</p>
+<h4 id="coverage-of-the-2026-08-07-and-2026-09-18-runs">Coverage of the 2026-08-07 and 2026-09-18 runs<a class="headerlink" href="#coverage-of-the-2026-08-07-and-2026-09-18-runs" title="Permanent link">&para;</a></h4>
+<p>Coverage is still uneven: both LoCoMo retrieval arms are now the full corpus,
+but graph is a category slice and judged is a dialogue subset. Read this table
+before reading any two rows of this page against each other.</p>
 <table>
 <thead>
 <tr>
@@ -3791,8 +3804,8 @@ other.</p>
 </tr>
 <tr>
 <td>LoCoMo <code>hybrid</code></td>
-<td>250 of 1986, stratified, seed 0</td>
-<td><strong>Sampled</strong></td>
+<td>1986 of 1986 questions (2026-09-18)</td>
+<td><strong>Full</strong></td>
 </tr>
 <tr>
 <td>LoCoMo <code>graph</code> (cat-1 slice)</td>
@@ -3833,6 +3846,12 @@ the full dataset directly. The 2026-08-06 judged run and the four
 <code>--extraction</code> arms below also used <code>--fixture</code> — the same derived
 conv-26,conv-30 subset — but their artifacts record it as a descriptive label
 rather than a path, so no path was ever lost in the first place.</p>
+<p><strong>Environment for the 2026-09-18 hybrid run.</strong> Python 3.12.14,
+macOS-26.6.2-arm64 (10-core Apple silicon), all-MiniLM-L6-v2 on CPU in-process,
+weighted RRF with k=60, stride sampling with no limit (<code>sampling.limit</code> is
+<code>null</code>). Those are the fields <code>locomo_20260918_hybrid.json</code> records about
+itself; it does not record the Redis, redis-py, or sentence-transformers
+versions, so this page does not restate them for that run.</p>
 <p><strong>LoCoMo lexical, full 1986 questions (any-hit Recall):</strong></p>
 <table>
 <thead>
@@ -3864,8 +3883,7 @@ rather than a path, so no path was ever lost in the first place.</p>
 </tr>
 </tbody>
 </table>
-<p><strong>LoCoMo hybrid vs lexical, corrected scoring, on the identical 250-question
-stratified sample (seed 0). SAMPLE, not a full run:</strong></p>
+<p><strong>LoCoMo hybrid vs lexical, corrected scoring, full 1986 questions:</strong></p>
 <table>
 <thead>
 <tr>
@@ -3880,37 +3898,113 @@ stratified sample (seed 0). SAMPLE, not a full run:</strong></p>
 </thead>
 <tbody>
 <tr>
-<td><code>lexical</code> (BM25)</td>
-<td style="text-align: right;">250</td>
-<td style="text-align: right;">0.3400</td>
-<td style="text-align: right;">0.5120</td>
-<td style="text-align: right;">0.5840</td>
-<td style="text-align: right;">0.4178</td>
-<td style="text-align: right;">6.92</td>
+<td><code>lexical</code> (BM25), 2026-08-07</td>
+<td style="text-align: right;">1986</td>
+<td style="text-align: right;">0.2981</td>
+<td style="text-align: right;">0.5302</td>
+<td style="text-align: right;">0.6017</td>
+<td style="text-align: right;">0.4005</td>
+<td style="text-align: right;">7.01</td>
 </tr>
 <tr>
-<td><code>hybrid</code> (weighted RRF)</td>
-<td style="text-align: right;">250</td>
-<td style="text-align: right;">0.3400</td>
-<td style="text-align: right;">0.5120</td>
-<td style="text-align: right;">0.5880</td>
-<td style="text-align: right;">0.4172</td>
-<td style="text-align: right;">61.78</td>
+<td><code>hybrid</code> (weighted RRF), 2026-09-18</td>
+<td style="text-align: right;">1986</td>
+<td style="text-align: right;">0.2966</td>
+<td style="text-align: right;">0.5292</td>
+<td style="text-align: right;">0.6037</td>
+<td style="text-align: right;">0.3996</td>
+<td style="text-align: right;">63.21</td>
 </tr>
 </tbody>
 </table>
-<p>The hybrid row is the committed
-<code>tests/benchmarks/results/external/locomo_latest_hybrid.json</code> (250/250
-questions, zero errors). The lexical row is the same 250 item IDs re-aggregated
-out of the committed full-1986 <code>locomo_latest.json</code>, so the two rows are exactly
-the same questions scored exactly the same way: a like-for-like pair with no
-sampling difference between them.</p>
-<p>The two are indistinguishable except for one question at rank 10 and a rounding
-difference in MRR. The query-shape discriminator routes LoCoMo's
-name/date-anchored queries to the keyword-lean regime (vector weight 0), so the
-fused ranking converges on the lexical ranking; with the dense arm zeroed, the
-fused order <em>is</em> the lexical order, and the near-exact match is the expected
-signature of that mechanism rather than a coincidence.</p>
+<p>Both rows are committed full-corpus runs —
+<code>tests/benchmarks/results/external/locomo_latest.json</code> and
+<code>locomo_latest_hybrid.json</code>, 1986/1986 questions and zero errors each — scored
+the same gold-blind way, so this is a like-for-like pair with no sampling
+difference between them. Per category, from each artifact's
+<code>by_question_type</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th style="text-align: right;">n</th>
+<th style="text-align: right;"><code>lexical</code> R@1</th>
+<th style="text-align: right;"><code>hybrid</code> R@1</th>
+<th style="text-align: right;"><code>lexical</code> R@10</th>
+<th style="text-align: right;"><code>hybrid</code> R@10</th>
+<th style="text-align: right;"><code>lexical</code> MRR</th>
+<th style="text-align: right;"><code>hybrid</code> MRR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 (multi-hop)</td>
+<td style="text-align: right;">282</td>
+<td style="text-align: right;">0.1312</td>
+<td style="text-align: right;">0.1312</td>
+<td style="text-align: right;">0.4220</td>
+<td style="text-align: right;">0.4255</td>
+<td style="text-align: right;">0.2175</td>
+<td style="text-align: right;">0.2180</td>
+</tr>
+<tr>
+<td>2</td>
+<td style="text-align: right;">321</td>
+<td style="text-align: right;">0.3489</td>
+<td style="text-align: right;">0.3458</td>
+<td style="text-align: right;">0.6729</td>
+<td style="text-align: right;">0.6729</td>
+<td style="text-align: right;">0.4588</td>
+<td style="text-align: right;">0.4570</td>
+</tr>
+<tr>
+<td>3</td>
+<td style="text-align: right;">96</td>
+<td style="text-align: right;">0.1042</td>
+<td style="text-align: right;">0.0938</td>
+<td style="text-align: right;">0.3333</td>
+<td style="text-align: right;">0.3438</td>
+<td style="text-align: right;">0.1818</td>
+<td style="text-align: right;">0.1728</td>
+</tr>
+<tr>
+<td>4</td>
+<td style="text-align: right;">841</td>
+<td style="text-align: right;">0.3377</td>
+<td style="text-align: right;">0.3365</td>
+<td style="text-align: right;">0.6397</td>
+<td style="text-align: right;">0.6409</td>
+<td style="text-align: right;">0.4408</td>
+<td style="text-align: right;">0.4402</td>
+</tr>
+<tr>
+<td>5 (see audit below)</td>
+<td style="text-align: right;">446</td>
+<td style="text-align: right;">0.3341</td>
+<td style="text-align: right;">0.3341</td>
+<td style="text-align: right;">0.6502</td>
+<td style="text-align: right;">0.6525</td>
+<td style="text-align: right;">0.4453</td>
+<td style="text-align: right;">0.4455</td>
+</tr>
+</tbody>
+</table>
+<p>The two arms land within 0.0020 of each other on every aggregate metric
+(hybrid is −0.0015 at Recall@1, −0.0010 at Recall@5, +0.0020 at Recall@10 and
+−0.0009 on MRR — two to four questions out of 1986 on each recall metric) and
+within 0.0105 on every per-category metric (one question of 96 in category 3).
+The query-shape discriminator routes LoCoMo's name/date-anchored queries to the
+keyword-lean regime (vector weight 0), so the fused ranking converges on the
+lexical ranking; with the dense arm zeroed, the fused order <em>is</em> the lexical
+order, and the near-match is the expected signature of that mechanism rather
+than a coincidence. The residual differences are small but not zero, and this
+page does not attribute them: the two rows come from separate ingests six weeks
+apart on different Python (3.12.13 vs 3.12.14) and macOS (26.5.2 vs 26.6.2)
+point releases.</p>
+<p>The 250-question stratified sample that stood in for this comparison between</p>
+<h1 id="530-and-569-locomo_20260807_hybridjson-hybrid-03400-05120-05880">530 and #569 (<code>locomo_20260807_hybrid.json</code>: hybrid 0.3400 / 0.5120 / 0.5880<a class="headerlink" href="#530-and-569-locomo_20260807_hybridjson-hybrid-03400-05120-05880" title="Permanent link">&para;</a></h1>
+<p>/ 0.4172 against lexical 0.3400 / 0.5120 / 0.5840 / 0.4178 on the same 250
+item IDs) reached the same conclusion and is kept as a historical artifact.</p>
 <p>That resolves the earlier finding that hybrid <strong>underperformed</strong> lexical on
 LoCoMo. Under unweighted RRF and pre-#514 scoring, hybrid scored Recall@1 0.1667
 / Recall@5 0.4235 / Recall@10 0.5403 / MRR 0.2835 across the full 1986
@@ -3918,10 +4012,12 @@ LoCoMo. Under unweighted RRF and pre-#514 scoring, hybrid scored Recall@1 0.1667
 equal say on every query. Two things changed between that artifact and the table
 above (gold-blind scoring <strong>and</strong> the <a href="https://github.com/tomcounsell/popoto/issues/457">#457</a>
 weighted/query-adaptive fusion), so the movement cannot be attributed to either
-one alone, and the two runs also differ in coverage (1986 vs 250). What the
-250-question pair does establish, because both of its rows are the same
-questions under the same scoring, is that hybrid no longer costs anything
-relative to lexical on this dataset.</p>
+one alone. What the full-corpus pair does establish, because both rows are the
+same 1986 questions under the same scoring, is that hybrid no longer costs
+anything measurable relative to lexical on this dataset — and, equally, that it
+buys nothing here, because the vector arm is zero-weighted on this query shape
+by design. The ~9× p50 latency is paid for an arm that then contributes nothing
+to the ranking.</p>
 <p>The paraphrastic side is preserved: LongMemEval-S <code>hybrid</code> is unaffected by the</p>
 <h1 id="514-correction-its-ground-truth-is-session-ids-and-its-full-500-confirmation">514 correction (its ground truth is session IDs) and its full-500 confirmation<a class="headerlink" href="#514-correction-its-ground-truth-is-session-ids-and-its-full-500-confirmation" title="Permanent link">&para;</a></h1>
 <p>is in the table at the top of this section.</p>
@@ -4005,20 +4101,20 @@ a <code>leaderboard_parity</code> block:</p>
 <td style="text-align: right;">0.3875</td>
 </tr>
 <tr>
-<td><code>hybrid</code>, full 5-category (corrected, <strong>250-question SAMPLE</strong>)</td>
-<td style="text-align: right;">250</td>
-<td style="text-align: right;">0.3400</td>
-<td style="text-align: right;">0.5120</td>
-<td style="text-align: right;">0.5880</td>
-<td style="text-align: right;">0.4172</td>
+<td><code>hybrid</code>, full 5-category (corrected)</td>
+<td style="text-align: right;">1986</td>
+<td style="text-align: right;">0.2966</td>
+<td style="text-align: right;">0.5292</td>
+<td style="text-align: right;">0.6037</td>
+<td style="text-align: right;">0.3996</td>
 </tr>
 <tr>
-<td><code>hybrid</code>, 4-category parity (corrected, <strong>SAMPLE</strong>)</td>
-<td style="text-align: right;">194</td>
-<td style="text-align: right;">0.3041</td>
-<td style="text-align: right;">0.4846</td>
-<td style="text-align: right;">0.5619</td>
-<td style="text-align: right;">0.3836</td>
+<td><code>hybrid</code>, 4-category parity (corrected)</td>
+<td style="text-align: right;">1540</td>
+<td style="text-align: right;">0.2857</td>
+<td style="text-align: right;">0.5117</td>
+<td style="text-align: right;">0.5896</td>
+<td style="text-align: right;">0.3863</td>
 </tr>
 <tr>
 <td><code>lexical</code>, full 5-category (pre-#514, superseded)</td>
@@ -4054,10 +4150,12 @@ a <code>leaderboard_parity</code> block:</p>
 </tr>
 </tbody>
 </table>
-<p>Only the <code>lexical</code> corrected rows are the exact 1540-question leaderboard
-variant. The corrected <code>hybrid</code> rows are a 250-question stratified sample, whose
-parity slice is 194 questions, not 1540. They are shown here for the
-category-5 comparison, <strong>not</strong> as a leaderboard-parity claim.</p>
+<p>Both corrected arms are the exact 1540-question leaderboard variant — hybrid
+since the 2026-09-18 full run. Between #530 and #569 the corrected <code>hybrid</code>
+rows were a 250-question stratified sample whose parity slice was 194
+questions (0.3041 / 0.4846 / 0.5619 / 0.3836), shown for the category-5
+comparison and not as a leaderboard-parity claim; <code>locomo_20260807_hybrid.json</code>
+still carries them.</p>
 <p>Category 5 sits near the mean, so excluding it barely moves the numbers —
 further evidence it is neither anomalously easy nor a scoring artifact. (The
 slice re-aggregates 4-decimal per-category means, so it can differ from a raw

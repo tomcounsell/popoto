@@ -12131,9 +12131,11 @@ no `FT.*` / `BF.*` commands. The vector signal uses the local
     any caller outside `ContextAssembler`) is byte-for-byte identical to the
     original unweighted RRF. The weights are experimental in-code tuning
     constants (not user config), fully in-process and Valkey-safe. Post-fix
-    confirmation numbers are in the tables below: full-500 on LongMemEval-S,
-    and a labelled 250-question stratified sample on LoCoMo, where a full hybrid
-    pass costs ~5.2 hours of CPU embedding.
+    confirmation numbers are in the tables below: full-500 on LongMemEval-S
+    and, since [#569](https://github.com/tomcounsell/popoto/issues/569), the
+    full 1986 questions on LoCoMo. A full LoCoMo hybrid pass costs ~5.2 hours
+    of CPU embedding, which is why the first post-fix LoCoMo confirmation was
+    a 250-question stratified sample; the full run replaced it on 2026-09-18.
 
 `vector` is a **harness-local diagnostic**: it bypasses
 `ContextAssembler` entirely — auto-mode would resolve an embedding-only model to the
@@ -12222,31 +12224,43 @@ is in the committed artifact
     [#530](https://github.com/tomcounsell/popoto/issues/530) refresh the
     **hybrid**, **graph**, and **judged** arms have also been re-measured under
     gold-blind scoring. Their coverage is not uniform and every table below
-    states it: hybrid is a **250-question stratified sample**, graph is the
-    **full 282-question multi-hop slice**, judged is **100 questions from a
-    2-dialogue subset**, and only lexical is the full 1986.
+    states it: lexical and hybrid are the **full 1986** (hybrid since the
+    [#569](https://github.com/tomcounsell/popoto/issues/569) refresh on
+    2026-09-18), graph is the **full 282-question multi-hop slice**, and
+    judged is **100 questions from a 2-dialogue subset**.
 
-!!! warning "The corrected hybrid run is a 250-question sample, not a full run"
+!!! note "The corrected hybrid run was a 250-question sample until 2026-09-18"
     A full LoCoMo hybrid pass re-embeds ~1.19M records and measured **~5.2
     hours** on the reference machine (10-core Apple silicon, all-MiniLM-L6-v2 on
     CPU). Rather than leave the superseded full run standing as the published
     hybrid number, #530 re-ran it as a **250-question stratified sample, seed
-    0** (every category represented) under gold-blind scoring. That number
-    carries sampling error a full run does not. A full-1986 hybrid refresh
-    remains outstanding.
+    0** (every category represented) under gold-blind scoring, and this page
+    warned that the number carried sampling error a full run does not. #569
+    then ran the full corpus: `locomo_20260918_hybrid.json`, 1986 of 1986
+    questions, zero errors, and `locomo_latest_hybrid` now points at it. The
+    sample stays committed as `locomo_20260807_hybrid.json`.
 
-#### Coverage of the 2026-08-07 runs
+    The warning was warranted. At full scale, Recall@1 and MRR came in
+    **below** the sample's figures (Recall@1 0.2966 against the sample's
+    0.3400; MRR 0.3996 against 0.4172), while Recall@5 and Recall@10 moved up
+    slightly (0.5292 against 0.5120; 0.6037 against 0.5880). The sample's
+    category mix matched the full corpus to within half a point, so the gap
+    is within-category sampling variance rather than stratification: the
+    largest single move is category 5, Recall@1 0.4643 on the sample's 56
+    questions against 0.3341 on the full 446.
 
-Coverage is deliberately uneven, because a full hybrid pass costs hours of CPU
-embedding. Read this table before reading any two rows of this page against each
-other.
+#### Coverage of the 2026-08-07 and 2026-09-18 runs
+
+Coverage is still uneven: both LoCoMo retrieval arms are now the full corpus,
+but graph is a category slice and judged is a dialogue subset. Read this table
+before reading any two rows of this page against each other.
 
 | Arm | Coverage | Full or sampled |
 |---|---|---|
 | LongMemEval-S `hybrid` | 500 of 500 questions | **Full** |
 | LongMemEval-S `lexical` | 500 of 500 questions | **Full** |
 | LoCoMo `lexical` | 1986 of 1986 questions | **Full** |
-| LoCoMo `hybrid` | 250 of 1986, stratified, seed 0 | **Sampled** |
+| LoCoMo `hybrid` | 1986 of 1986 questions (2026-09-18) | **Full** |
 | LoCoMo `graph` (cat-1 slice) | 282 of 282 cat-1 questions | **Full slice** |
 | LoCoMo `lexical`/`hybrid` (cat-1 slice) | 282 of 282 cat-1 questions | **Full slice** |
 | LoCoMo judged | 100 of 304 QA from a 2-dialogue subset | **Sampled** |
@@ -12270,6 +12284,13 @@ the full dataset directly. The 2026-08-06 judged run and the four
 conv-26,conv-30 subset — but their artifacts record it as a descriptive label
 rather than a path, so no path was ever lost in the first place.
 
+**Environment for the 2026-09-18 hybrid run.** Python 3.12.14,
+macOS-26.6.2-arm64 (10-core Apple silicon), all-MiniLM-L6-v2 on CPU in-process,
+weighted RRF with k=60, stride sampling with no limit (`sampling.limit` is
+`null`). Those are the fields `locomo_20260918_hybrid.json` records about
+itself; it does not record the Redis, redis-py, or sentence-transformers
+versions, so this page does not restate them for that run.
+
 **LoCoMo lexical, full 1986 questions (any-hit Recall):**
 
 | Mode | n | Recall@1 | Recall@5 | Recall@10 | MRR |
@@ -12277,27 +12298,45 @@ rather than a path, so no path was ever lost in the first place.
 | `lexical` (BM25), corrected scoring | 1986 | 0.2981 | 0.5302 | 0.6017 | 0.4005 |
 | `lexical` (BM25), pre-#514 scoring (superseded) | 1986 | 0.2986 | 0.5534 | 0.6400 | 0.4124 |
 
-**LoCoMo hybrid vs lexical, corrected scoring, on the identical 250-question
-stratified sample (seed 0). SAMPLE, not a full run:**
+**LoCoMo hybrid vs lexical, corrected scoring, full 1986 questions:**
 
 | Mode | n | Recall@1 | Recall@5 | Recall@10 | MRR | p50 (ms) |
 |------|--:|---------:|---------:|----------:|----:|---------:|
-| `lexical` (BM25) | 250 | 0.3400 | 0.5120 | 0.5840 | 0.4178 | 6.92 |
-| `hybrid` (weighted RRF) | 250 | 0.3400 | 0.5120 | 0.5880 | 0.4172 | 61.78 |
+| `lexical` (BM25), 2026-08-07 | 1986 | 0.2981 | 0.5302 | 0.6017 | 0.4005 | 7.01 |
+| `hybrid` (weighted RRF), 2026-09-18 | 1986 | 0.2966 | 0.5292 | 0.6037 | 0.3996 | 63.21 |
 
-The hybrid row is the committed
-`tests/benchmarks/results/external/locomo_latest_hybrid.json` (250/250
-questions, zero errors). The lexical row is the same 250 item IDs re-aggregated
-out of the committed full-1986 `locomo_latest.json`, so the two rows are exactly
-the same questions scored exactly the same way: a like-for-like pair with no
-sampling difference between them.
+Both rows are committed full-corpus runs —
+`tests/benchmarks/results/external/locomo_latest.json` and
+`locomo_latest_hybrid.json`, 1986/1986 questions and zero errors each — scored
+the same gold-blind way, so this is a like-for-like pair with no sampling
+difference between them. Per category, from each artifact's
+`by_question_type`:
 
-The two are indistinguishable except for one question at rank 10 and a rounding
-difference in MRR. The query-shape discriminator routes LoCoMo's
-name/date-anchored queries to the keyword-lean regime (vector weight 0), so the
-fused ranking converges on the lexical ranking; with the dense arm zeroed, the
-fused order *is* the lexical order, and the near-exact match is the expected
-signature of that mechanism rather than a coincidence.
+| Category | n | `lexical` R@1 | `hybrid` R@1 | `lexical` R@10 | `hybrid` R@10 | `lexical` MRR | `hybrid` MRR |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| 1 (multi-hop) | 282 | 0.1312 | 0.1312 | 0.4220 | 0.4255 | 0.2175 | 0.2180 |
+| 2 | 321 | 0.3489 | 0.3458 | 0.6729 | 0.6729 | 0.4588 | 0.4570 |
+| 3 | 96 | 0.1042 | 0.0938 | 0.3333 | 0.3438 | 0.1818 | 0.1728 |
+| 4 | 841 | 0.3377 | 0.3365 | 0.6397 | 0.6409 | 0.4408 | 0.4402 |
+| 5 (see audit below) | 446 | 0.3341 | 0.3341 | 0.6502 | 0.6525 | 0.4453 | 0.4455 |
+
+The two arms land within 0.0020 of each other on every aggregate metric
+(hybrid is −0.0015 at Recall@1, −0.0010 at Recall@5, +0.0020 at Recall@10 and
+−0.0009 on MRR — two to four questions out of 1986 on each recall metric) and
+within 0.0105 on every per-category metric (one question of 96 in category 3).
+The query-shape discriminator routes LoCoMo's name/date-anchored queries to the
+keyword-lean regime (vector weight 0), so the fused ranking converges on the
+lexical ranking; with the dense arm zeroed, the fused order *is* the lexical
+order, and the near-match is the expected signature of that mechanism rather
+than a coincidence. The residual differences are small but not zero, and this
+page does not attribute them: the two rows come from separate ingests six weeks
+apart on different Python (3.12.13 vs 3.12.14) and macOS (26.5.2 vs 26.6.2)
+point releases.
+
+The 250-question stratified sample that stood in for this comparison between
+#530 and #569 (`locomo_20260807_hybrid.json`: hybrid 0.3400 / 0.5120 / 0.5880
+/ 0.4172 against lexical 0.3400 / 0.5120 / 0.5840 / 0.4178 on the same 250
+item IDs) reached the same conclusion and is kept as a historical artifact.
 
 That resolves the earlier finding that hybrid **underperformed** lexical on
 LoCoMo. Under unweighted RRF and pre-#514 scoring, hybrid scored Recall@1 0.1667
@@ -12306,10 +12345,12 @@ LoCoMo. Under unweighted RRF and pre-#514 scoring, hybrid scored Recall@1 0.1667
 equal say on every query. Two things changed between that artifact and the table
 above (gold-blind scoring **and** the [#457](https://github.com/tomcounsell/popoto/issues/457)
 weighted/query-adaptive fusion), so the movement cannot be attributed to either
-one alone, and the two runs also differ in coverage (1986 vs 250). What the
-250-question pair does establish, because both of its rows are the same
-questions under the same scoring, is that hybrid no longer costs anything
-relative to lexical on this dataset.
+one alone. What the full-corpus pair does establish, because both rows are the
+same 1986 questions under the same scoring, is that hybrid no longer costs
+anything measurable relative to lexical on this dataset — and, equally, that it
+buys nothing here, because the vector arm is zero-weighted on this query shape
+by design. The ~9× p50 latency is paid for an arm that then contributes nothing
+to the ranking.
 
 The paraphrastic side is preserved: LongMemEval-S `hybrid` is unaffected by the
 #514 correction (its ground truth is session IDs) and its full-500 confirmation
@@ -12374,17 +12415,19 @@ a `leaderboard_parity` block:
 |------|--:|---------:|---------:|----------:|----:|
 | `lexical`, full 5-category (corrected) | 1986 | 0.2981 | 0.5302 | 0.6017 | 0.4005 |
 | `lexical`, 4-category parity (corrected) | 1540 | 0.2877 | 0.5130 | 0.5877 | 0.3875 |
-| `hybrid`, full 5-category (corrected, **250-question SAMPLE**) | 250 | 0.3400 | 0.5120 | 0.5880 | 0.4172 |
-| `hybrid`, 4-category parity (corrected, **SAMPLE**) | 194 | 0.3041 | 0.4846 | 0.5619 | 0.3836 |
+| `hybrid`, full 5-category (corrected) | 1986 | 0.2966 | 0.5292 | 0.6037 | 0.3996 |
+| `hybrid`, 4-category parity (corrected) | 1540 | 0.2857 | 0.5117 | 0.5896 | 0.3863 |
 | `lexical`, full 5-category (pre-#514, superseded) | 1986 | 0.2986 | 0.5534 | 0.6400 | 0.4124 |
 | `lexical`, 4-category parity (pre-#514, superseded) | 1540 | 0.2883 | 0.5390 | 0.6260 | 0.3991 |
 | `hybrid`, full 5-category (pre-#514, superseded) | 1986 | 0.1667 | 0.4235 | 0.5403 | 0.2835 |
 | `hybrid`, 4-category parity (pre-#514, superseded) | 1540 | 0.1552 | 0.4065 | 0.5181 | 0.2686 |
 
-Only the `lexical` corrected rows are the exact 1540-question leaderboard
-variant. The corrected `hybrid` rows are a 250-question stratified sample, whose
-parity slice is 194 questions, not 1540. They are shown here for the
-category-5 comparison, **not** as a leaderboard-parity claim.
+Both corrected arms are the exact 1540-question leaderboard variant — hybrid
+since the 2026-09-18 full run. Between #530 and #569 the corrected `hybrid`
+rows were a 250-question stratified sample whose parity slice was 194
+questions (0.3041 / 0.4846 / 0.5619 / 0.3836), shown for the category-5
+comparison and not as a leaderboard-parity claim; `locomo_20260807_hybrid.json`
+still carries them.
 
 Category 5 sits near the mean, so excluding it barely moves the numbers —
 further evidence it is neither anomalously easy nor a scoring artifact. (The
