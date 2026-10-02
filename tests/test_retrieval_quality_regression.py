@@ -33,6 +33,19 @@ from src.popoto.fields.field import Field  # noqa: E402
 from src.popoto.recipes.context_assembler import ContextAssembler  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
+# #631 WS3d integration proof: this file passes unchanged on both storage
+# backends -- the records go through the backend under test, the BM25 index
+# stays on Redis (out of the seam's scope) -- so it runs as a conformance
+# file. ``_backend`` makes every test request the parametrised ``backend``
+# fixture; without ``POSTGRES_URL`` that is the one Redis leg it always ran.
+pytestmark = pytest.mark.conformance
+
+
+@pytest.fixture(autouse=True)
+def _backend(backend):
+    yield
+
+
 # ---------------------------------------------------------------------------
 # Fixture path and loader
 # ---------------------------------------------------------------------------
