@@ -1347,6 +1347,10 @@ class ContextAssembler:
             the model to declare a ``ConfidenceField``. Default ``None``
             (gate disabled; no shipped default — see
             ``EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`` and issue #463).
+            When the gate was applied and gated (either mode), the additive
+            key ``metadata["gate"]["refused_keys"]`` lists the pull-path
+            candidates' Redis keys, rank 0 first (read by
+            ``question_queue.propose_from_gate``); it is absent otherwise.
         confidence_gate_mode: ``"refuse"`` (default) or ``"flag"``. Only
             meaningful when ``confidence_gate_threshold`` is not ``None``.
         graph_traversal_relationship_fields: Optional list of
@@ -1961,7 +1965,7 @@ class ContextAssembler:
         # replaced (never mutated in place), so all_pull_candidates itself is
         # never touched here.
         suppression_candidates = all_pull_candidates
-        gate_meta = None
+        gate_meta: dict[str, Any] | None = None
         if self.confidence_gate_threshold is not None:
             if not pull_records:
                 gate_meta = {
@@ -2015,6 +2019,16 @@ class ContextAssembler:
                         "mode": self.confidence_gate_mode,
                         "gated": gated,
                     }
+                    if gated:
+                        # Additive (#566): expose WHAT the gate judged below
+                        # threshold, in rank order, so a host can hand it to
+                        # question_queue.propose_from_gate(). Read from
+                        # all_pull_candidates -- pull_records is [] on a
+                        # refusal. Present only on this applied-and-gated
+                        # branch; consumers must tolerate its absence.
+                        gate_meta["refused_keys"] = [
+                            _get_key(c) for c in all_pull_candidates
+                        ]
 
         # --- Push path ---
         if self._cyclic_decay_field_name is not None:

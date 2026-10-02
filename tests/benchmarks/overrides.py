@@ -28,6 +28,7 @@ import src.popoto.fields.observation as observation_mod
 import src.popoto.recipes.policy_cache as policy_cache_mod
 import src.popoto.recipes.context_assembler as context_assembler_mod
 import src.popoto.recipes.reconciliation as reconciliation_mod
+import src.popoto.recipes.question_queue as question_queue_mod
 from src.popoto.fields.prediction_ledger import PredictionLedgerMixin
 from src.popoto.fields.write_filter import WriteFilterMixin
 
@@ -97,6 +98,14 @@ MODULE_CONSTANTS = {
         reconciliation_mod,
         "MEGA_CLASS_VELOCITY_ALERT",
     ),
+    # Question queue (question_queue.py, #566)
+    "QUESTION_BUDGET_TURNS": (question_queue_mod, "QUESTION_BUDGET_TURNS"),
+    "QUESTION_EXPIRY_TURNS": (question_queue_mod, "QUESTION_EXPIRY_TURNS"),
+    "QUESTION_RECENT_USE_TURNS": (question_queue_mod, "QUESTION_RECENT_USE_TURNS"),
+    "QUESTION_ANSWER_WEIGHT": (question_queue_mod, "QUESTION_ANSWER_WEIGHT"),
+    "QUESTION_RETENTION_TURNS": (question_queue_mod, "QUESTION_RETENTION_TURNS"),
+    "QUESTION_COOLDOWN_TURNS": (question_queue_mod, "QUESTION_COOLDOWN_TURNS"),
+    "QUESTION_BUCKET_TTL_SECONDS": (question_queue_mod, "QUESTION_BUCKET_TTL_SECONDS"),
 }
 
 # Registry mapping override names to the Defaults.* attribute they patch.

@@ -123,6 +123,29 @@ def _read_tombstone_prior_switch() -> bool:
     return value not in _TRUTHY
 
 
+def question_queue_enabled() -> bool:
+    """Read ``POPOTO_QUESTION_QUEUE_DISABLE`` from the environment (#566).
+
+    Returns True when the M7 question queue is ENABLED — i.e. when producers
+    may write ``QuestionCandidate`` records and ``next_question()`` evaluates
+    the value-of-information gate. The env var is phrased as a *disable* so
+    the default-on doctrine holds when it is unset: a PyPI adopter who cannot
+    edit model code still gets a deploy-level escape hatch.
+
+    What defaults ON is the *queue*, not delivery: the module's contract ends
+    at ``next_question()``, and whether a question ever reaches a person is
+    the host application's call.
+
+    This is a call-time function and deliberately **not** a ``Defaults`` class
+    attribute (there is no ``Defaults.QUESTION_QUEUE_ENABLED``), for the same
+    reason :func:`_read_decode_quarantine_switch` documents: the class body is
+    evaluated at import, which would bind the value once and make a
+    deploy-time flip (or a ``monkeypatch.setenv``) a no-op.
+    """
+    value = os.environ.get("POPOTO_QUESTION_QUEUE_DISABLE", "").strip().lower()
+    return value not in _TRUTHY
+
+
 def _read_default_memory_max_records() -> int | None:
     """Cap on records **per ``agent_id``** kept by ``DefaultMemory``;
     ``0``/``off`` disables eviction.
@@ -667,6 +690,43 @@ class Defaults:
     # (Risk 1): a legitimately large class must not be blocked, so this
     # threshold reports and never refuses.
     MEGA_CLASS_VELOCITY_ALERT = 5
+
+    # --- Question queue (recipes/question_queue.py, #566) ---
+    # All counted in host-supplied turns: the library owns no turn counter.
+    # The deploy-level kill switch is the call-time env reader
+    # ``question_queue_enabled()`` above, deliberately not an attribute here.
+    #
+    # K: at most one question delivered per this many turns, per agent. The
+    # token bucket's Lua grants only when ``turn >= last_ask_turn + K``, so the
+    # ration is enforced by the data structure, not by callers remembering.
+    QUESTION_BUDGET_TURNS = 5
+    # N: a pending candidate not delivered within this many turns of its
+    # proposal expires silently (status "expired", retained, never deleted
+    # here — deletion is ``prune()``'s job).
+    QUESTION_EXPIRY_TURNS = 20
+    # The VOI gate's impact factor: a candidate is "recently used" when
+    # ``turn - last_seen_turn`` is at most this. ``last_seen_turn`` is bumped
+    # by a producer re-observing the ambiguity or by ``note_use()``.
+    QUESTION_RECENT_USE_TURNS = 5
+    # W: total confidence observations an ``answered`` reply writes per target
+    # that declares a ConfidenceField — the one from the acted/contradicted
+    # outcome applier plus W - 1 extra ``update_confidence`` calls. Stands in
+    # for a weight parameter ``update_confidence`` does not have. Past
+    # ``evidence_cap`` each call has gain 1/(cap+1), so a later contradiction
+    # keeps its full gain: "W strong observations", never an overwrite.
+    QUESTION_ANSWER_WEIGHT = 3
+    # Non-pending candidates (answered, expired, cooled, delivered) older than
+    # this many turns are deleted by ``prune()``. Also bounds how long an
+    # answered candidate suppresses a duplicate proposal. Privacy-adjacent: a
+    # question's text can echo sensitive content, so retention is bounded.
+    QUESTION_RETENTION_TURNS = 500
+    # Re-ask cooldown after a deflected or unrecognized reply: the candidate is
+    # not deliverable again until ``turn >= cooldown_until``.
+    QUESTION_COOLDOWN_TURNS = 10
+    # Wall-clock TTL backstop on the per-agent token-bucket key. A host whose
+    # turn counter reset after a restart is locked out (regressed turns never
+    # grant and never rewind the bucket) for at most this long, never forever.
+    QUESTION_BUCKET_TTL_SECONDS = 604800
 
 
 class TemporalPeriod:

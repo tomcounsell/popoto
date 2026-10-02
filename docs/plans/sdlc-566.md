@@ -1,5 +1,5 @@
 ---
-status: Ready
+status: Ready (revised after critique 1)
 type: feature
 appetite: Large
 owner: valorengels
@@ -17,10 +17,12 @@ about it except refuse.
 **Current behavior (verified on `origin/main` at `5955d141`):**
 
 - The confidence gate (`src/popoto/recipes/context_assembler.py`, the
-  `gate_meta` block) emits five scalar metadata keys — `gated`, `gate_score`,
-  `threshold`, `mode`, and a count — and discards the surviving candidate list.
-  That list is the exact raw material a clarifying question would need, and it
-  is dropped a few lines after being computed.
+  `gate_meta` block) emits five scalar metadata keys — `applied`, `gate_score`,
+  `threshold`, `mode`, `gated` — on all three of its branches. On a refusal
+  `pull_records` is emptied, but the refused candidates survive in
+  `all_pull_candidates` (kept deliberately for the FoK score); they are simply
+  never exposed in the metadata, so a caller cannot see *what* was refused.
+  That list is the exact raw material a clarifying question would need.
 - `RecallProposal` (`src/popoto/fields/observation.py:579`) is a payload-free,
   short-TTL ZSET tracking whether injected memories were adjudicated. It is not
   a question queue and recon confirmed it cannot be retrofitted into one: no
@@ -365,38 +367,50 @@ integrator does not build a second, unrationed path around it.
 
 ## Success Criteria
 
-- [ ] All question sources write `QuestionCandidate` records; a test asserts no
+- [x] All question sources write `QuestionCandidate` records; a test asserts no
       module in `src/` addresses the person directly (grep-shaped assertion
       over the diff's new surface, in the `test_type_checking_guard.py` idiom).
-- [ ] At most one question per K turns is delivered, enforced structurally by a
+- [x] At most one question per K turns is delivered, enforced structurally by a
       Lua check-and-decrement, verified by a concurrent hammer test — not by a
       sequential one, which cannot detect a racy bucket.
-- [ ] A question is askable only when **both** gate factors hold; each delivered
+- [x] A question is askable only when **both** gate factors hold; each delivered
       question is traceable to the stored ambiguity signal and the stored
       recent-use evidence.
 - [ ] `ambiguity_signal` is a closed enum that distinguishes M5 judge
       abstention from M5 precedence tie from confidence-gate refusal (Q1).
-- [ ] An answer updates target-fact confidence as high-weight defeasible
+      *Not ticked: superseded by Revision 2. There is no judge-abstention
+      value; the enum is `("disjunction", "gate_refusal", "evidence_gap")`.
+      Its closedness is asserted by `test_invalid_input_raises` and
+      `test_all_enum_signals_pass_uniformly`.*
+- [x] An answer updates target-fact confidence as high-weight defeasible
       evidence, and a later contradiction still moves it — both asserted.
-- [ ] A `deflected` or `unrecognized` answer leaves stored confidence
+- [x] A `deflected` or `unrecognized` answer leaves stored confidence
       bit-identical.
-- [ ] Unasked candidates expire after N turns and are not delivered afterward.
-- [ ] K and N live in `Defaults` and are registered in
+- [x] Unasked candidates expire after N turns and are not delivered afterward.
+- [x] K and N live in `Defaults` and are registered in
       `tests/benchmarks/overrides.py`'s `MODULE_CONSTANTS`.
-- [ ] The queue functions with each producer absent, asserted per-producer.
-- [ ] A retracted M5 disjoin expires its candidate instead of asking.
+- [x] The queue functions with each producer absent, asserted per-producer.
+- [x] A retracted M5 disjoin expires its candidate instead of asking.
 - [ ] Dedup degrades to normalized-text matching with no embedding provider.
-- [ ] Redis unavailable → no question, no raise into the retrieval path.
-- [ ] The five existing confidence-gate metadata keys are unchanged; new keys
+      *Not ticked: dropped in Revision 1 (embedding dedup is a No-Go). The
+      v1 rule is key intersection plus normalized text, asserted by
+      `test_dedup_by_key_intersection_touches_pending` and
+      `test_dedup_by_normalized_text`.*
+- [x] Redis unavailable → no question, no raise into the retrieval path.
+- [x] The five existing confidence-gate metadata keys are unchanged; new keys
       are additive — asserted.
-- [ ] `VALID_OUTCOMES` is unchanged — asserted by test.
+- [x] `VALID_OUTCOMES` is unchanged — asserted by test.
 - [ ] `Defaults.QUESTION_QUEUE_ENABLED` disables proposal and gating at deploy
       level without a model-code edit.
-- [ ] Valkey-safe: core types + Lua only. Passes the Valkey CI job.
-- [ ] New code binds via `get_REDIS_DB()`; no plain `POPOTO_REDIS_DB` import.
-- [ ] `tests/test_question_queue.py` present; `docs/features/question-queue.md`
+      *Not ticked: superseded by Revision 2. The kill switch is the env var
+      `POPOTO_QUESTION_QUEUE_DISABLE`, read at call time; asserted by
+      `test_kill_switch_disables_propose_and_gating` and
+      `test_producers_honour_the_kill_switch`.*
+- [x] Valkey-safe: core types + Lua only. Passes the Valkey CI job.
+- [x] New code binds via `get_REDIS_DB()`; no plain `POPOTO_REDIS_DB` import.
+- [x] `tests/test_question_queue.py` present; `docs/features/question-queue.md`
       published; `mkdocs build --strict` passes.
-- [ ] `ruff check src/`, `black --check src/ tests/`,
+- [x] `ruff check src/`, `black --check src/ tests/`,
       `scripts/mypy_ratchet.py` pass.
 
 ## Step by Step Tasks
@@ -500,3 +514,236 @@ Full gate run, including the Valkey job.
    the same K-turn budget. Building the bucket now without knowing M8's demand
    risks a budget that M8 immediately renders inadequate. **The plan proceeds
    on:** build now; M8's tie-breaker is an `[ORDERED]` No-Go and a follow-up.
+
+## Revision 1 — critique findings embedded (2026-10-02)
+
+Critique 1 (FULL roster: Risk & Robustness, Scope & Value, History &
+Consistency) returned **NEEDS REVISION** with two blockers. This section is
+authoritative where it conflicts with anything above; the builder reads it
+last and follows it.
+
+### Architect questions — resolved on the plan's stated defaults
+
+No principal input was available for this dispatch, so each question is
+settled on the "plan proceeds on" default above, narrowed by what critique 1
+verified in the code. Each is reversible without a model migration.
+
+- **Q1 (ambiguity signal).** The closed enum is what producers can actually
+  observe, not what the plan hoped for. A plain M5 judge *abstention* writes
+  nothing (`reconciliation.py` — `if verdict.abstained: continue`, no
+  annotation), and both precedence ties and probe splits reach the log through
+  the same `_store_disjunction(...)` with `rationale="disjoined"` — the payload
+  cannot tell them apart. So the enum is
+  `AMBIGUITY_SIGNALS = ("disjunction", "gate_refusal", "evidence_gap")`.
+  "Judge abstention" is dropped (no producer; adding one is an M5 change, a
+  No-Go). The gate treats all three uniformly.
+- **Q2 (history).** Answered/expired/deflected candidates are status-marked
+  and retained; `prune(agent_id, current_turn)` deletes non-pending
+  candidates older than `Defaults.QUESTION_RETENTION_TURNS`. The free-text
+  answer is **never stored** — only the matched option index — because a
+  reply can echo sensitive content.
+- **Q3 (turns).** Host-supplied monotonic `turn: int` on every public call.
+  The library owns no counter.
+- **Q4 (answer recognition).** Deterministic option-matcher only. LLM
+  classification is a new `[SEPARATE-SLUG]` No-Go.
+- **Q5 (default ON).** Queue + gate default ON; delivery is the host's call.
+  Kill switch is the env var `POPOTO_QUESTION_QUEUE_DISABLE`, read at **call
+  time** (the `_read_decode_quarantine_switch` pattern, not a class-body
+  `Defaults` attribute, so a deploy flip or `monkeypatch.setenv` takes effect
+  without re-import).
+- **Q6 (M8).** Build now; unchanged.
+
+### Blocker 1 — "high weight" had no knob (`ConfidenceField.update_confidence` takes one signal)
+
+`update_confidence(model_instance, field_name, signal, pipeline=None)` is one
+observation in a capped running mean; it has no weight argument. Resolution,
+with **no change to `confidence_field.py`**:
+
+- An `answered` reply builds an `outcome_map` — the chosen option's target
+  keys → `"acted"`, every other option's target keys → `"contradicted"` — and
+  calls `ObservationProtocol.on_context_used(instances, outcome_map)`. That is
+  the literal "map onto `VALID_OUTCOMES`" path, and it brings the decay/cycle
+  effects with it. `_superseded_by` is **never** set: a human answer must not
+  close a validity interval (that would be the hard overwrite this module
+  forbids).
+- Weight = `Defaults.QUESTION_ANSWER_WEIGHT` total observations (pinned magic
+  number, default 3): the one from `_apply_acted`/`_apply_contradicted` plus
+  `WEIGHT - 1` further `update_confidence` calls at `ACTED_CONFIDENCE_SIGNAL` /
+  `CONTRADICTED_CONFIDENCE_SIGNAL` on every target that declares a
+  `ConfidenceField`. Past `evidence_cap` each call has gain `1/(cap+1)`, so the
+  evidence count stays capped and a later contradiction keeps its full gain —
+  defeasibility holds by construction. The claim is "W strong observations",
+  never "dominates".
+- Targets without a `ConfidenceField` (notably `JournalEntry`, the M5
+  disjunction sides) receive the outcome effects they support and nothing
+  else; the answer is recorded on the candidate (`answer_option`). Feeding the
+  answer back into M1/M5 so a disjunction actually resolves is a
+  `[SEPARATE-SLUG]` No-Go.
+- **Tests:** the defeasibility test runs both on a fresh record and on one
+  already at `evidence_cap`; after the answer, one contradicting signal must
+  strictly move confidence.
+
+### Blocker 2 — wrong gate-metadata key list
+
+Corrected in Problem above. The additive-extension test pins
+`{"applied", "gate_score", "threshold", "mode", "gated"}` on all three
+branches (`not pull_records`, `gate_score is None`, applied). The new key —
+`gate_meta["refused_keys"]`, the Redis keys of `all_pull_candidates` (never
+`pull_records`, which is `[]` on refusal) — is added **only** in the
+applied-and-gated branch. Consumers must tolerate its absence.
+
+### Concerns embedded
+
+- **The assembler never calls `propose()`.** The confidence-gate extension is
+  metadata only. The gate-refusal producer is a separate function,
+  `propose_from_gate(agent_id, metadata, turn, query_text)`, that a host calls
+  with `assemble()`'s metadata. So `assemble()`'s outage contract
+  (`except OUTAGE_ERRORS: raise` before the fault-tolerant `except Exception`)
+  is untouched. Fail-closed applies to `propose*`, `next_question`, and
+  `record_answer` only: on any Redis error they log and return
+  `None` / `False`, and they never raise into the caller.
+- **The gate-refusal producer is dormant unless `confidence_gate_threshold`
+  is set.** That is stated in the docs, not hidden; default ON applies to the
+  queue, and that producer only has input when the host configures the gate.
+- **Turn regression.** The bucket Lua grants only when
+  `turn >= last_ask_turn + K`. A `turn < last_ask_turn` is no grant (fail
+  closed), and `last_ask_turn` is never rewound. The bucket key carries a
+  wall-clock TTL backstop, `Defaults.QUESTION_BUCKET_TTL_SECONDS` (default
+  7 days), so a host whose counter reset after a restart is locked out for at
+  most that long, never forever. The hammer test includes a regressed-turn
+  case.
+- **Dedup without embeddings.** v1 dedup: an incoming proposal is a duplicate
+  of an existing candidate with status `pending`, or `answered` within
+  retention, when `kind` matches and the `target_keys` sets intersect,
+  **or** when normalized question text matches exactly. A duplicate is not
+  re-created. A pending duplicate is *touched* instead: `last_seen_turn` is
+  bumped, which feeds the impact factor below. Embedding similarity is
+  dropped, along with the "no embedding provider" criterion.
+- **Impact factor ("recently used"), defined.** The candidate stores
+  `last_seen_turn`. It is set on proposal and bumped whenever a producer
+  re-observes the same ambiguity, or when the host calls
+  `note_use(agent_id, keys, turn)` with the keys it just injected (from
+  `assemble()` metadata). It is recently used when
+  `turn - last_seen_turn <= Defaults.QUESTION_RECENT_USE_TURNS`. The gate is
+  `ambiguity_signal in AMBIGUITY_SIGNALS and recently_used`.
+- **Relevance timing.** Candidates store `cue_tokens`: lowercased word tokens
+  of length 3 or more from the question and option labels, minus a small
+  stopword set. With `query_cues` given, a candidate is deliverable only if at
+  least one token overlaps. `query_cues=None` disables timing; the host has
+  opted out.
+- **Producers in v1.** All three, each a thin adapter that can be disabled on
+  its own: `propose_from_disjunctions(agent_id, turn)`, which reads
+  `merge_log_entries` filtered to `kind="disjoin"`;
+  `propose_from_gate(...)`; and `propose_from_resolution(record, turn)`, which
+  reads `evidence_gap` references from a `ResolutionRecord`'s
+  `references_json` and already carries a clarifying `question` and
+  `candidates`. Retraction: `expire_stale(agent_id, turn)` expires a
+  `disjunction` candidate whose `disjunction_id` no longer appears among the
+  live disjoins. `next_question` runs this check before delivering a
+  disjunction candidate.
+- **End-to-end criterion added.** An M5 disjoin and a gate refusal each go
+  `propose → next_question → record_answer`. Each yields exactly one delivery
+  within K turns, and the target's confidence moves.
+
+### New and changed `Defaults` (all registered for the sync test)
+
+`QUESTION_BUDGET_TURNS` (K=5), `QUESTION_EXPIRY_TURNS` (N=20),
+`QUESTION_RECENT_USE_TURNS` (5), `QUESTION_ANSWER_WEIGHT` (3),
+`QUESTION_RETENTION_TURNS` (500), `QUESTION_COOLDOWN_TURNS` (10, re-ask
+cooldown after a deflected/unrecognized reply),
+`QUESTION_BUCKET_TTL_SECONDS` (604800). The module aliases each one at module
+level, so they go in `MODULE_CONSTANTS`. `tests/benchmarks/test_defaults_sync.py`
+fails otherwise.
+
+### Docs references corrected
+
+`docs/features/confidence-gated-retrieval.md` does not exist. The
+cross-reference goes in `docs/features/context-assembler.md` (gate section)
+and `docs/features/confidence-field.md`. `docs/plans/sdlc-568.md` is on PR
+#715's branch, not on `main`, so the hazard statement is cited by PR.
+
+### Added No-Gos
+
+- [SEPARATE-SLUG] LLM answer classification.
+- [SEPARATE-SLUG] Feeding answers back into M1/M5 so a disjunction resolves.
+- [SEPARATE-SLUG] Embedding-similarity dedup.
+
+## Revision 2 — round-2 concerns embedded (2026-10-02)
+
+Critique 2 (FULL roster, same three lenses) found **no blockers**, so the
+verdict is READY TO BUILD (with concerns). Its concerns are embedded below
+and the build proceeds on them. This section overrides Revision 1 and
+everything above it.
+
+### Superseded criteria — read these in place of the originals
+
+- `ambiguity_signal` enum = `("disjunction", "gate_refusal", "evidence_gap")`.
+  There is no judge-abstention value. Ties, `probe_split` and
+  `probe_abstained` all land as `rationale="disjoined"` and cannot be told
+  apart (`reconciliation.py` — the `abstained` branch `continue`s; the probe
+  branch calls `_store_disjunction`).
+- Kill switch = env var `POPOTO_QUESTION_QUEUE_DISABLE`, read at call time by
+  `question_queue_enabled()` in `fields/constants.py`. There is **no**
+  `Defaults.QUESTION_QUEUE_ENABLED` attribute; the original criterion and the
+  Technical Approach mention are superseded.
+- Dedup = key intersection plus normalized text only. The "no embedding
+  provider" criterion is dropped, and so is the embedding step in the Data
+  Flow and Technical Approach.
+- Tasks 2 and 3 are closed: Q1 to Q6 are resolved in Revision 1.
+- **Deflection rule (deterministic).** After normalization (lowercase, strip
+  punctuation, collapse whitespace), the reply is checked in this order:
+  1. In the closed `DEFLECTION_PHRASES` set ("skip", "pass", "not sure",
+     "no idea", "i don't know", "rather not say", and the like): `deflected`.
+  2. Equal to exactly one option's normalized label, or its 1-based index:
+     `answered`.
+  3. Anything else: `unrecognized`.
+- End-to-end criterion, split. The **gate-refusal** path uses a model with a
+  `ConfidenceField` and asserts that confidence moves. The **disjunction**
+  path asserts that `answer_option` is recorded and that the
+  `JournalEntry` sides are untouched. No criterion expects a disjunction
+  target's confidence to move: M1/M5 write-back is `[SEPARATE-SLUG]`, and a
+  follow-up issue is filed for it.
+
+### Options carry their own effects (replaces "every other option → contradicted")
+
+Marking every unchosen option `contradicted` is only right for mutually
+exclusive options. So each option is stored explicitly:
+`{"label": str, "acted": [keys], "contradicted": [keys]}`. The answer applies
+exactly the chosen option's lists.
+
+| Producer | Options |
+|---|---|
+| disjunction | A = `acted:[a], contradicted:[b]`; B = the mirror (exclusive by construction) |
+| gate refusal | "yes" = `acted:[k]`; "no" = `contradicted:[k]`, where `k` is the top refused key |
+| evidence gap | One option per candidate referent, each with empty lists (recorded only) |
+
+A key in both lists of one option is a producer bug, and `propose()` raises
+`ValueError` on it.
+
+### `record_answer` atomicity — prefer losing an answer to double-applying it
+
+`_apply_acted` calls `update_confidence` without the pipeline, so the evidence
+writes cannot share one MULTI. The ordering is therefore:
+
+1. **Claim.** A Lua compare-and-set flips the candidate's status hash field
+   from `delivered` (or `pending`) to `answered` and writes `answer_option`.
+   If the status was anything else, `record_answer` is a no-op and returns
+   `AnswerResult(applied=False, reason="not_open")`.
+2. **Apply.** The chosen option's outcome effects run, plus the
+   `WEIGHT - 1` extra observations.
+
+A crash between steps 1 and 2 loses that answer's evidence; it never
+double-counts it, because a second `record_answer` fails the claim. Tests
+cover a second call on an answered candidate (a no-op, confidence
+bit-identical) and a fault injected after the claim (no evidence, and the
+status is still `answered`). `deflected`/`unrecognized` set the status
+`cooled` with `cooldown_until = turn + QUESTION_COOLDOWN_TURNS` and write no
+evidence.
+
+### Scope note
+
+`propose_from_resolution` (M4) stays in, as the thinnest adapter. It reads
+`references_json` entries whose `status == "evidence_gap"` and uses their
+`question` and `candidates` keys (shape: `_serialise_reference` in
+`extraction/resolution_log.py`). `W=3` stands in for a weight parameter
+`update_confidence` does not have; that is recorded, not hidden.

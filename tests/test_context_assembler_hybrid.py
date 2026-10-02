@@ -821,4 +821,6 @@ class TestConfidenceGateModeAgnostic:
             "threshold": 0.9,
             "mode": "refuse",
             "gated": True,
+            # Additive (#566): the refused candidates, from all_pull_candidates.
+            "refused_keys": [record.db_key.redis_key],
         }

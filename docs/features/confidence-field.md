@@ -101,6 +101,10 @@ When used with `ObservationProtocol`, confidence is automatically updated based 
 | `deferred` | No change |
 | `contradicted` | Contradict (signal=0.1) |
 
+### Answers to clarifying questions
+
+A person's answer to a [Question Queue](question-queue.md) question is applied through this same path as defeasible evidence: the chosen option's keys map to `acted` or `contradicted`, plus `QUESTION_ANSWER_WEIGHT - 1` extra `update_confidence` observations. It is never an overwrite and never sets `_superseded_by`, so a later contradiction still moves confidence.
+
 ### Auto-discharge
 
 When confidence drops strictly below `AUTO_DISCHARGE_CONFIDENCE_THRESHOLD` (0.1), homeostatic pressure on any `CyclicDecayField` is automatically resolved (discharged). This prevents low-confidence memories from building urgency.

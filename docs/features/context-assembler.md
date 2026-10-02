@@ -447,7 +447,8 @@ assembler = ContextAssembler(
 
 result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
 print(result.metadata["gate"])
-# {"applied": True, "gate_score": 0.42, "threshold": 0.5, "mode": "refuse", "gated": True}
+# {"applied": True, "gate_score": 0.42, "threshold": 0.5, "mode": "refuse",
+#  "gated": True, "refused_keys": ["Memory:deploy-target", "Memory:deploy-host"]}
 ```
 
 The gate reads the rank-0 pull-path candidate's `ConfidenceField` value (via
@@ -458,6 +459,19 @@ annotates the decision. Enabling the gate on a model without a
 `ConfidenceField`, or with an invalid `confidence_gate_mode`, raises
 `QueryException` at construction.
 
+A refusal is no longer a dead end. Whenever the gate is applied and gates a
+query, in either mode, the metadata gains one additive key,
+`gate["refused_keys"]`: the Redis keys of all the pull-path candidates, in rank
+order. Only the rank-0 key is the one actually judged below threshold; the rest
+are listed because they were withheld with it (`"refuse"`) or injected under
+the same flag (`"flag"`). It is present **only** on the applied-and-gated
+branch, so consumers must tolerate its absence (the other branches carry only
+`applied`, `gate_score`, `threshold`, `mode` and `gated`). A host can pass the metadata to
+`question_queue.propose_from_gate()`, which turns a `"refuse"`-mode refusal
+into a clarifying question about the rank-0 key (it ignores `"flag"` mode,
+where nothing was withheld); the answer then feeds back as defeasible confidence evidence. The
+assembler itself never proposes a question. See [Question Queue](question-queue.md).
+
 See [Confidence Gate](#confidence-gate)
 for the full `metadata["gate"]` shape, the fault-tolerant `get_confidence()`
 failure path, and the no-default policy on `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`.
@@ -467,6 +481,7 @@ failure path, and the no-default policy on `EXPERIMENTAL_CONFIDENCE_GATE_THRESHO
 - [Metacognitive Layer](metacognitive-layer.md) — retrieval quality scoring, FOK, and adaptive weight tuning
 - [Belief-Sheet View](belief-sheet-view.md) — read-path claim resolver wrapping `assemble()` with a fail-closed reader gate (`record_gate` seam)
 - [ConfidenceField](confidence-field.md) — the field the confidence gate reads via `get_confidence()`
+- [Question Queue](question-queue.md) — repair path for gate refusals: a rationed clarifying question whose answer feeds confidence
 - [PolicyCache](policy-cache.md) — learned action selection (uses ContextAssembler for retrieval)
 - [ValidityField and SupersessionProtocol](validity-and-supersession.md) — `assemble(as_of=t)` for point-in-time reconstruction, and how superseded records are excluded from default retrieval
 - [Hybrid Retrieval](hybrid-retrieval.md) — BM25Field, EmbeddingField, and RRF fusion primitives
