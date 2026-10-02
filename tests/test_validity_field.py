@@ -1217,7 +1217,7 @@ class TestGateDisabledParity:
         assert b"ValidFact:v0" not in gated
 
     @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
     )
     def test_kill_switch_restores_ungated_retrieval(self):
         old = _save(ValidFact, name="old")
@@ -1264,9 +1264,6 @@ class TestGateDisabledParity:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-)
 class TestCompositeValidityMask:
     def _superseded_with_a_strong_confidence_arm(self):
         """Close ``old`` while leaving it strongly scored by the certainty arm."""
@@ -1278,6 +1275,9 @@ class TestCompositeValidityMask:
         SupersessionProtocol.invalidate(old, superseded_by=new)
         return old, new
 
+    @pytest.mark.redis_only(
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
+    )
     def test_superseded_member_does_not_leak_through_the_union(self):
         self._superseded_with_a_strong_confidence_arm()
         results = ValidFact.query.composite_score(
@@ -1285,6 +1285,9 @@ class TestCompositeValidityMask:
         )
         assert _names(results) == ["new"]
 
+    @pytest.mark.redis_only(
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
+    )
     def test_control_the_leak_reproduces_without_the_mask(self, monkeypatch):
         """CONTROL: with only the decay gate, the closed member DOES surface.
 
@@ -1303,6 +1306,9 @@ class TestCompositeValidityMask:
             "disabled, so the mask test proves nothing"
         )
 
+    @pytest.mark.redis_only(
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
+    )
     def test_single_index_decay_path_is_gated_by_the_lua_alone(self):
         old, _ = self._superseded_with_a_strong_confidence_arm()
         results = ValidFact.query.composite_score(indexes={"relevance": 1.0}, limit=10)
@@ -1312,6 +1318,9 @@ class TestCompositeValidityMask:
         self._superseded_with_a_strong_confidence_arm()
         assert _names(ValidFact.query.top_by_decay("relevance", n=10)) == ["new"]
 
+    @pytest.mark.redis_only(
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
+    )
     def test_composite_as_of_reconstructs_the_historical_view(self):
         identity = SupersessionProtocol.identity_key("user_42", "plan")
         old = _save(ValidFact, name="old")
@@ -1374,9 +1383,6 @@ class TestUnmanagedRecords:
         assert _names(ValidFact.query.filter(name="legacy")) == ["legacy"]
         assert _names(ValidFact.query.all()) == ["legacy", "managed"]
 
-    @pytest.mark.redis_only(
-        reason="plants the unmanaged record through the raw Redis client; the ranking paths are family H (decayed_rank, a WS3d stub on Postgres)"
-    )
     def test_unmanaged_record_survives_top_by_decay(self):
         self._unmanaged_plus_managed()
         assert _names(ValidFact.query.top_by_decay("relevance", n=10)) == [
@@ -1385,7 +1391,7 @@ class TestUnmanagedRecords:
         ]
 
     @pytest.mark.redis_only(
-        reason="plants the unmanaged record through the raw Redis client; the ranking paths are family H (decayed_rank, a WS3d stub on Postgres)"
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
     )
     def test_unmanaged_record_survives_composite_score(self):
         self._unmanaged_plus_managed()
@@ -1396,7 +1402,7 @@ class TestUnmanagedRecords:
         ) == ["legacy", "managed"]
 
     @pytest.mark.redis_only(
-        reason="plants the unmanaged record through the raw Redis client; the ranking paths are family H (decayed_rank, a WS3d stub on Postgres)"
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
     )
     def test_unmanaged_record_survives_the_assembler(self):
         _save(
@@ -1416,7 +1422,7 @@ class TestUnmanagedRecords:
         assert "legacy" in contents
 
     @pytest.mark.redis_only(
-        reason="plants the unmanaged record through the raw Redis client; the ranking paths are family H (decayed_rank, a WS3d stub on Postgres)"
+        reason="plants/reads state through the raw Redis client (_unmanaged_plus_managed plants the unmanaged record via get_REDIS_DB())"
     )
     def test_unmanaged_record_is_absent_from_a_deliberate_current_filter(self):
         """Consistent with the other half: ``__current`` is a *positive* claim.
@@ -1449,7 +1455,7 @@ class TestAssemblerValidity:
         assert self._assembler(PlainMemory)._validity_field_name is None
 
     @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
     )
     def test_invalidated_record_is_absent_from_assemble(self):
         old = _save(ValidMemory, agent_id="a1", content="stale")
@@ -1476,7 +1482,7 @@ class TestAssemblerValidity:
         assert "fresh" in after
 
     @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
     )
     def test_assemble_as_of_reconstructs_the_historical_view(self):
         old = _save(ValidMemory, agent_id="a1", content="stale")
@@ -1498,7 +1504,7 @@ class TestAssemblerValidity:
         assert "fresh" not in contents
 
     @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
     )
     def test_kill_switch_restores_ungated_assembly(self):
         old = _save(ValidMemory, agent_id="a1", content="stale")
@@ -1540,7 +1546,7 @@ class TestAssemblerValidity:
         assert baseline.metadata["pull_count"] == with_as_of.metadata["pull_count"]
 
     @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
     )
     def test_heavily_superseded_partition_still_fills_max_items(self):
         """Plan Risk 3: gating must not shrink assembly below ``max_items``."""
@@ -1676,7 +1682,7 @@ class TestFailurePaths:
         assert SupersessionProtocol.invalidate(plain) is None
 
     @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+        reason="the assembler / composite-score path goes through native(), which is Redis-only in the POC (context_assembler.py:2333 swallows it; query.py composite_score raises NotImplementedError)"
     )
     def test_assemble_as_of_on_a_model_without_a_validity_field_passes_through(self):
         _save(PlainMemory, agent_id="a1", content="only")
@@ -2459,9 +2465,6 @@ class TestMembershipGuardInLua:
         )
 
 
-@pytest.mark.redis_only(
-    reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-)
 class TestContradictedSupersessionWiring:
     """``_apply_contradicted`` -> ``_apply_supersession`` (plan Failure Paths).
 
@@ -2474,6 +2477,9 @@ class TestContradictedSupersessionWiring:
     takes.
     """
 
+    @pytest.mark.redis_only(
+        reason="plants/reads state through the raw Redis client (the _interval helper reads the validity sorted set via get_REDIS_DB().zscore)"
+    )
     def test_contradicted_with_a_successor_closes_and_chains(self):
         old = _save(ObservedFact, name="old")
         new = _save(ObservedFact, name="new")
@@ -2494,6 +2500,9 @@ class TestContradictedSupersessionWiring:
         assert SupersessionProtocol.supersedes(new).name == "old"
         assert _names(ObservedFact.query.filter(validity__current=True)) == ["new"]
 
+    @pytest.mark.redis_only(
+        reason="plants/reads state through the raw Redis client (the _interval helper reads the validity sorted set via get_REDIS_DB().zscore)"
+    )
     def test_contradicted_leaves_the_successor_open(self):
         """The correction must not be closed by its own arrival."""
         old = _save(ObservedFact, name="old")
@@ -2529,6 +2538,9 @@ class TestContradictedSupersessionWiring:
         assert _cycle_amplitudes(signalled) == _cycle_amplitudes(control)
         assert _cycle_amplitudes(signalled) < [c[1] for c in OBSERVED_CYCLES]
 
+    @pytest.mark.redis_only(
+        reason="plants/reads state through the raw Redis client (the _interval helper reads the validity sorted set via get_REDIS_DB().zscore)"
+    )
     def test_no_successor_signalled_is_a_no_op(self):
         """A ValidityField alone is not enough — the correction must be known."""
         old = _save(ObservedFact, name="old")
@@ -2544,6 +2556,9 @@ class TestContradictedSupersessionWiring:
         # The scalar effects still ran.
         assert ConfidenceField.get_confidence(old, "certainty") < 0.5
 
+    @pytest.mark.redis_only(
+        reason="plants/reads state through the raw Redis client (the _interval helper reads the validity sorted set via get_REDIS_DB().zscore)"
+    )
     def test_unsaved_successor_degrades_with_no_partial_state(self):
         """An unsaved correction must not close the incumbent into a dangling
         chain: the whole supersession degrades, incumbent left open."""
@@ -2558,6 +2573,9 @@ class TestContradictedSupersessionWiring:
         assert get_REDIS_DB().hlen(keys["chain_rev"]) == 0
         assert _names(ObservedFact.query.filter(validity__current=True)) == ["old"]
 
+    @pytest.mark.redis_only(
+        reason="plants/reads state through the raw Redis client (the _interval helper reads the validity sorted set via get_REDIS_DB().zscore)"
+    )
     def test_the_degradation_is_logged_rather_than_merely_silent(self, caplog):
         """#588 D7: "silently degraded" is observable, not asserted-by-absence.
 
@@ -2579,6 +2597,9 @@ class TestContradictedSupersessionWiring:
         ), [r.message for r in caplog.records]
         assert _interval(ObservedFact, "validity", old)[1] == float("inf")
 
+    @pytest.mark.redis_only(
+        reason="plants/reads state through the raw Redis client (the _interval helper reads the validity sorted set via get_REDIS_DB().zscore)"
+    )
     def test_unsaved_contradicted_instance_degrades_with_no_partial_state(self):
         """The reported instance itself is unsaved: silent, and no index state.
 
@@ -2609,6 +2630,9 @@ class TestContradictedSupersessionWiring:
         assert _validity_keyspace() == before_keys
         assert SupersessionProtocol.chain(unsaved) == []
 
+    @pytest.mark.redis_only(
+        reason="plants/reads state through the raw Redis client (the _interval helper reads the validity sorted set via get_REDIS_DB().zscore)"
+    )
     def test_a_non_contradicted_outcome_never_supersedes(self):
         """Only ``contradicted`` routes to ``_apply_supersession``."""
         old = _save(ObservedFact, name="old")
@@ -2664,9 +2688,6 @@ class TestCyclicDecayGatingGap:
             "old",
         ]
 
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_the_plain_decay_field_contrast_is_gated(self):
         """CONTROL: the same call on a plain ``DecayingSortedField`` IS gated.
 
@@ -2950,9 +2971,6 @@ def _p50(fn):
 @pytest.mark.slow
 @pytest.mark.benchmark
 class TestValidityBenchmark:
-    @pytest.mark.redis_only(
-        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
-    )
     def test_p50_gated_retrieval_overhead_at_20k(self):
         """Gated vs ungated p50 for a 20k-record ``top_by_decay``.
 
