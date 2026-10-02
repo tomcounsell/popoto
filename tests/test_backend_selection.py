@@ -98,11 +98,13 @@ def test_postgres_url_with_psycopg_selects_the_stub(monkeypatch):
 
 def test_the_stub_names_the_method_it_refuses(monkeypatch):
     stub = PostgresBackend("postgresql://localhost/x")
-    # ``swap_index`` is WS3c's; the record family (WS3a) and the index
-    # families (WS3b) are implemented and would dial the URL instead of
-    # refusing.
-    with pytest.raises(NotImplementedError, match=r"PostgresBackend\.swap_index"):
-        stub.swap_index("Memory:1", "f", "Memory:_f:x", b"v", unique=False)
+    # ``decayed_rank`` is WS3d's; the record family (WS3a), the index
+    # families (WS3b) and the swaps (WS3c) are implemented and would dial the
+    # URL instead of refusing.
+    with pytest.raises(NotImplementedError, match=r"PostgresBackend\.decayed_rank"):
+        stub.decayed_rank(
+            "Memory:_score", now=0.0, decay_rate=0.1, limit=None, pretrim_max_ratio=1.0
+        )
     with pytest.raises(NotImplementedError, match="Redis-only"):
         stub.native()
 

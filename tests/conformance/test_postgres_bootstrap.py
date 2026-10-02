@@ -42,6 +42,7 @@ EXPECTED_TABLES = {
     "popoto_sorted",
     "popoto_map",
     "popoto_open_ptr",
+    "popoto_pointer",
 }
 EXPECTED_INDEXES = ["popoto_open_ptr_prefix_member", "popoto_sorted_idx_score"]
 
