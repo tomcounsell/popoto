@@ -892,12 +892,11 @@ class TestConcurrentUniqueClaim:
 # -- Still stubbed ---------------------------------------------------------------
 
 
-def test_only_families_h_and_i_still_raise_on_postgres(backend, backend_is_redis):
+def test_only_family_h_still_raises_on_postgres(backend, backend_is_redis):
+    # Family I is WS3e's (see ``test_validity.py``); H still raises.
     if backend_is_redis:
         pytest.skip("Postgres-leg assertion")
     with pytest.raises(NotImplementedError, match=r"PostgresBackend\.decayed_rank"):
         backend.decayed_rank(
             idx("z"), now=0.0, decay_rate=0.1, limit=None, pretrim_max_ratio=1.0
         )
-    with pytest.raises(NotImplementedError, match=r"PostgresBackend\.interval_of"):
-        backend.interval_of(idx("v"), idx("i"), key(1))
