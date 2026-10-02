@@ -33,6 +33,7 @@ import os
 import subprocess
 import sys
 import textwrap
+from types import SimpleNamespace
 from pathlib import Path
 
 import msgpack
@@ -77,11 +78,20 @@ def test_backend_is_bound_process_wide(backend):
     assert isinstance(backend, (RedisBackend, PostgresBackend))
 
 
-@pytest.mark.conformance
-def test_backend_is_reset_after_each_test():
-    """Ordered after the test above: its teardown ran ``set_backend(None)``,
-    so this unparametrised neighbour starts from an empty cache."""
-    assert backends._BACKEND is None
+def test_backend_fixture_resets_the_process_wide_backend_on_teardown():
+    """Self-contained (order-free): drive the ``backend`` fixture's own
+    generator, observe it bound, then finish it and observe the reset."""
+    fixture = pytest_plugin.backend
+    fn = getattr(fixture, "_get_wrapped_function", lambda: fixture)()
+    backends.set_backend(None)
+    gen = fn(SimpleNamespace(param="redis"))
+    impl = next(gen)
+    try:
+        assert backends._BACKEND is impl, "the fixture must bind its backend"
+    finally:
+        with pytest.raises(StopIteration):
+            next(gen)
+    assert backends._BACKEND is None, "teardown must run set_backend(None)"
 
 
 @pytest.mark.conformance
@@ -183,14 +193,38 @@ def test_public_schema_is_refused_before_any_statement(backend, postgres_leg):
 # -- Refusals and resolution, no server needed (unmarked) ---------------------
 
 
-@pytest.mark.parametrize("name", ["public", "pg_catalog", "mine", "popoto_test_"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "public",
+        "pg_catalog",
+        "mine",
+        "popoto_test_",
+        "popoto_test_prod",
+        "popoto_test_" + "A" * 32,
+        "popoto_test_" + "a" * 31,
+        "popoto_test_" + "a" * 33,
+    ],
+)
 def test_check_schema_name_refuses_names_the_harness_did_not_generate(name):
     with pytest.raises(PostgresIsolationRefusedError):
         pytest_plugin._check_schema_name(name)
 
 
+@pytest.mark.parametrize("action", ["create", "truncate_all", "drop"])
+def test_popoto_test_prod_is_refused_before_any_connection(action):
+    """No server needed: the guard fires before ``connect()``, so a bogus
+    host is never dialled and ``_conn`` stays ``None``."""
+    rogue = PostgresTestSchema(
+        name="popoto_test_prod", url="postgresql://no-such-host.invalid/db"
+    )
+    with pytest.raises(PostgresIsolationRefusedError, match="popoto_test_prod"):
+        getattr(rogue, action)()
+    assert rogue._conn is None
+
+
 def test_check_schema_name_accepts_a_generated_name():
-    name = f"{POSTGRES_TEST_SCHEMA_PREFIX}0123abcd"
+    name = f"{POSTGRES_TEST_SCHEMA_PREFIX}{'0123abcd' * 4}"
     assert pytest_plugin._check_schema_name(name) == name
 
 

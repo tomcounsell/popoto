@@ -561,7 +561,7 @@ POSTGRES_TEST_SCHEMA_PREFIX = "popoto_test_"
 """Every schema the harness creates, truncates or drops carries this prefix."""
 
 _POSTGRES_TEST_SCHEMA = re.compile(
-    rf"^{re.escape(POSTGRES_TEST_SCHEMA_PREFIX)}[a-z0-9_]+$"
+    rf"^{re.escape(POSTGRES_TEST_SCHEMA_PREFIX)}[0-9a-f]{{32}}$"
 )
 
 
@@ -647,8 +647,8 @@ def _check_schema_name(name: str) -> str:
     """Refuse any schema the harness did not generate -- before any SQL.
 
     ``public`` is the documented refusal (plan decision 4); requiring the
-    ``popoto_test_`` prefix plus a non-empty lowercase suffix is the same
-    guard stated positively, so a ``DROP SCHEMA ... CASCADE`` can never reach
+    ``popoto_test_`` prefix plus exactly 32 lowercase hex characters (what
+    ``uuid4().hex`` generates) is the same guard stated positively, so a ``DROP SCHEMA ... CASCADE`` can never reach
     a namespace with someone else's tables in it. The name is interpolated
     through ``psycopg.sql.Identifier`` anyway; pinning it to a plain
     identifier keeps a quoted schema name from ever being a surprise.
@@ -657,7 +657,8 @@ def _check_schema_name(name: str) -> str:
         raise PostgresIsolationRefusedError(
             f"refusing to use Postgres schema {name!r} for tests: the "
             f"conformance harness only touches schemas named "
-            f"{POSTGRES_TEST_SCHEMA_PREFIX}<hex> that it created itself "
+            f"{POSTGRES_TEST_SCHEMA_PREFIX}<32 lowercase hex characters> that it "
+            "generated itself "
             "(schema 'public' is refused outright, mirroring the DB-0 refusal)"
         )
     return name
@@ -759,10 +760,13 @@ class PostgresTestSchema:
         from psycopg import sql
 
         _check_schema_name(self.name)
-        self._conn = self.connect()
-        self._conn.execute(
-            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(self.name))
-        )
+        conn = self.connect()
+        try:
+            conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(self.name)))
+        except BaseException:
+            conn.close()
+            raise
+        self._conn = conn
 
     def truncate_all(self) -> list[str]:
         """``TRUNCATE`` every table in the schema (the per-test FLUSHDB
@@ -779,7 +783,7 @@ class PostgresTestSchema:
         tables = [row[0] for row in rows]
         if tables:
             self._conn.execute(
-                sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE").format(
+                sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY").format(
                     sql.SQL(", ").join(
                         sql.Identifier(self.name, table) for table in tables
                     )

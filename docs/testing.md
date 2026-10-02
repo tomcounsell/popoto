@@ -109,10 +109,11 @@ installed or `POSTGRES_URL` unset, each `[postgres]` parameter reports
 conditions are *refused* instead, raising `PostgresIsolationRefusedError`
 before any statement reaches the server, mirroring the DB-0 refusal on the
 Redis side: a `POSTGRES_URL` that names no database (libpq would resolve it to
-the connecting role's default), and any attempt to use schema `public`.
+the connecting role's default), and any attempt to use a schema other than `popoto_test_` plus exactly 32
+lowercase hex characters (so `public` and `popoto_test_prod` are refused).
 
 **Isolation** is one schema per session: the harness runs
-`CREATE SCHEMA popoto_test_<hex>` at first use, truncates every table in it
+`CREATE SCHEMA popoto_test_<32 hex>` at first use, truncates every table in it
 before each test (the `FLUSHDB` mirror), and `DROP SCHEMA ... CASCADE`s it at
 session end. The schema reaches `PostgresBackend` through the URL it is built
 with (`options=-c search_path=<schema>`), so every connection the backend opens
