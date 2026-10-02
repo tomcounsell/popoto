@@ -175,17 +175,20 @@ def test_protocol_enumerates_the_planned_methods():
     """The plan's count, pinned so a silent addition or removal shows up.
 
     WS0 froze the protocol at the plan's 42; ``feature/backend-seam-protocol-1``
-    added ``records_exist`` and ``drop_index`` for WS1a's maintenance paths. A
-    later protocol PR bumps this number and names itself here, the way the
-    plan's freeze rule requires -- bundling a method into a WS1 PR does not.
+    added ``records_exist`` and ``drop_index`` for WS1a's maintenance paths;
+    ``feature/backend-seam-protocol-2`` added ``set_expiry`` so WS1a's partial
+    save can queue the TTL after the field hooks (#735 review B2). A later
+    protocol PR bumps this number and names itself here, the way the plan's
+    freeze rule requires -- bundling a method into a WS1 PR does not.
     """
     methods = sorted(
         name
         for name, value in vars(backends.Backend).items()
         if not name.startswith("_") and callable(value)
     )
-    assert len(methods) == 44, methods
+    assert len(methods) == 45, methods
     assert {"records_exist", "drop_index"} <= set(methods)  # protocol-1
+    assert "set_expiry" in methods  # protocol-2
     for impl in (RedisBackend, PostgresBackend):
         missing = [m for m in methods if not callable(getattr(impl, m, None))]
         assert not missing, f"{impl.__name__} lacks {missing}"

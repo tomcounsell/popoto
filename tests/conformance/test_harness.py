@@ -11,7 +11,8 @@ mark" -- the flip is the signal, not a silent pass.
 Three layers:
 
 1. **Parametrisation and binding** (both legs): ``backend`` is the
-   process-wide ``get_backend()`` for the test and is reset afterwards; the
+   process-wide ``get_backend()`` for the test, and afterwards the previous
+   binding -- the plugin's session-wide Redis pin -- is restored; the
    Postgres leg carries the per-session schema in its URL.
 2. **Postgres isolation** (Postgres leg only): the schema exists, is named
    ``popoto_test_<hex>``, is reachable through the backend URL's
@@ -78,20 +79,51 @@ def test_backend_is_bound_process_wide(backend):
     assert isinstance(backend, (RedisBackend, PostgresBackend))
 
 
-def test_backend_fixture_resets_the_process_wide_backend_on_teardown():
+def test_backend_fixture_restores_the_previously_bound_backend_on_teardown():
     """Self-contained (order-free): drive the ``backend`` fixture's own
-    generator, observe it bound, then finish it and observe the reset."""
+    generator, observe it bound, then finish it and observe the *previous*
+    binding back in place.
+
+    The previous binding is a sentinel instance, not ``None``: a teardown that
+    ran ``set_backend(None)`` would also leave the cache empty after driving
+    the generator from an empty cache, so starting from ``None`` cannot tell
+    "restored" from "reset". Reset is the bug this guards against -- in a
+    ``POSTGRES_URL`` session the next ``get_backend()`` would re-select the
+    Postgres stub for an unmarked test.
+    """
+
+    class Sentinel(RedisBackend):
+        pass
+
     fixture = pytest_plugin.backend
     fn = getattr(fixture, "_get_wrapped_function", lambda: fixture)()
-    backends.set_backend(None)
-    gen = fn(SimpleNamespace(param="redis"))
-    impl = next(gen)
+    saved = backends._BACKEND
+    sentinel = Sentinel()
+    backends.set_backend(sentinel)
     try:
-        assert backends._BACKEND is impl, "the fixture must bind its backend"
+        gen = fn(SimpleNamespace(param="redis"))
+        impl = next(gen)
+        try:
+            assert backends._BACKEND is impl, "the fixture must bind its backend"
+            assert impl is not sentinel
+        finally:
+            with pytest.raises(StopIteration):
+                next(gen)
+        assert backends._BACKEND is sentinel, (
+            "teardown must restore the previously bound backend, never "
+            "set_backend(None)"
+        )
     finally:
-        with pytest.raises(StopIteration):
-            next(gen)
-    assert backends._BACKEND is None, "teardown must run set_backend(None)"
+        backends.set_backend(saved)
+
+
+def test_session_default_backend_is_the_plugins_redis_pin():
+    """This session opted in (``popoto_test_db`` in ``pyproject.toml``), so
+    the plugin pinned a ``RedisBackend`` before collection and nothing since
+    has left a different binding behind. Order-sensitive on purpose: a test
+    that leaks a backend binding fails here, which is the signal."""
+    assert isinstance(backends._BACKEND, RedisBackend), backends._BACKEND
+    assert backends.get_backend() is backends._BACKEND
 
 
 @pytest.mark.conformance
@@ -426,6 +458,44 @@ def test_unmarked_tests_stay_on_redis_when_postgres_is_configured(tmp_path):
             "PYTHONPATH": str(shim),
         },
         probe_source=_UNMARKED_PROBE,
+    )
+    assert "test_probe PASSED" in out, out
+    assert "1 passed" in out, out
+
+
+_NOT_OPTED_IN_PROBE = textwrap.dedent("""
+    from popoto import backends
+    from popoto.backends.postgres import PostgresBackend
+
+    def test_probe():
+        # Nothing bound before the first call: the plugin did not pin, so
+        # this session gets the runtime selection, which is the stub here.
+        assert backends._BACKEND is None, backends._BACKEND
+        assert isinstance(backends.get_backend(), PostgresBackend)
+    """)
+
+
+def test_session_that_never_opted_in_is_not_pinned(tmp_path):
+    """The downstream shape of the pin: it rides on the same opt-in as the DB
+    swap. With neither ``popoto_test_db`` nor ``POPOTO_TEST_DB`` set, the
+    plugin leaves ``get_backend()`` to select from the environment exactly as
+    ``import popoto`` would at runtime -- here ``POSTGRES_URL`` plus a shimmed
+    ``psycopg`` select the stub -- and binds nothing before collection.
+
+    The probe issues no Redis command, so the un-isolated session writes
+    nowhere: ``REDIS_URL`` still names this session's test DB, and the only
+    DB-0 traffic is the plugin's own idle-check ``DBSIZE``."""
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "psycopg.py").write_text("# importable stand-in for the real driver\n")
+    out = _run_probe(
+        tmp_path,
+        {
+            "POPOTO_TEST_DB": None,
+            "POSTGRES_URL": "postgresql://localhost:5432/postgres",
+            "PYTHONPATH": str(shim),
+        },
+        probe_source=_NOT_OPTED_IN_PROBE,
     )
     assert "test_probe PASSED" in out, out
     assert "1 passed" in out, out
