@@ -2950,6 +2950,9 @@ def _p50(fn):
 @pytest.mark.slow
 @pytest.mark.benchmark
 class TestValidityBenchmark:
+    @pytest.mark.redis_only(
+        reason="family H: decayed_rank / confidence_update are WS3d stubs on Postgres"
+    )
     def test_p50_gated_retrieval_overhead_at_20k(self):
         """Gated vs ungated p50 for a 20k-record ``top_by_decay``.
 
