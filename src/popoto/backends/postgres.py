@@ -3,8 +3,9 @@
 WS3a implements family B (records), C (atomic increment) and J's
 ``purge_orphan``, plus the unit of work they need. WS3b implements D (side
 maps), E (set indexes), F (sorted indexes) and the rest of J
-(``scan_index_members``, ``drop_index``). Every other method still raises
-:class:`NotImplementedError` naming itself; WS3c-e fill them in family by
+(``scan_index_members``, ``drop_index``). WS3c implements G (the atomic
+index and tag swaps). Every other method still raises
+:class:`NotImplementedError` naming itself; WS3d-e fill them in family by
 family behind the WS2 conformance harness.
 
 ``psycopg`` is deliberately **not** imported at module scope: selection in
@@ -54,6 +55,48 @@ closed before the error propagates, so the next call retries from scratch.
 * ``popoto_map(idx, member, value bytea)`` -- the side maps (family D):
   composite unique indexes, confidence payloads and supersession chain links,
   one table for all three as the plan says.
+* ``popoto_pointer(key, field, idx)`` -- which set index(es) a record is in
+  for one field (family G): one row for an indexed/unique field, one per tag
+  for a tag field. See "Atomic swaps".
+
+Atomic swaps
+------------
+``INDEX_SWAP_LUA`` and ``TAG_SWAP_LUA`` each need to know which index a
+record *was* in for a field before they can move it, and on Redis that is the
+``$IdxPtr:`` / ``$TagPtr:`` side key. The plan's "the index row is the
+pointer" holds only in reverse: ``popoto_set(idx, member)`` answers "who is
+in this index", not "which index is this record in for this field", and an
+index name is opaque to the protocol, so the reverse lookup needs a row of
+its own -- ``popoto_pointer``, keyed ``(key, field)``. It is the side key as
+a table, nothing more: never a field of ``popoto_record`` (the pre-#476
+in-hash scheme the Lua scrubs), so :meth:`load_record` returns exactly what
+``HGETALL`` does. Of the Lua's two migration fallbacks only the second has a
+Postgres shape: no record written by this backend can carry a pre-#540 side
+key, but a record *imported* with the pre-#476 ``{field}\\x00idxset`` field
+can, so :meth:`swap_index` adopts and scrubs it as the script does.
+
+Each swap is one transaction whose statements follow the script's phases.
+*Validation* -- the pointer read, the idempotent re-save check and the
+uniqueness check -- is reads only, and a conflict raises ``ModelException``
+with the Redis backend's exact wording before any write, so the transaction
+(on the ``uow=`` path, the whole queue) rolls back untouched: the "validation
+phase then mutation phase" comment in the Lua is a real rollback here.
+*Mutation* -- leave the old index, join the new, repoint, write the field
+bytes -- is all-or-nothing. The one visible difference is the migration
+scrub: the Lua ``HDEL``\\s the adopted in-hash pointer before it checks
+uniqueness, so on Redis a conflicting save still scrubs it, and here the
+rollback keeps it for the next save to scrub.
+
+A uniqueness check is a read-modify-write on rows that may not exist yet --
+two instances claiming one value for two *different* records each read an
+empty index, and ``FOR UPDATE`` has nothing to lock -- so :meth:`swap_index`
+with ``unique=True`` takes the advisory lock on the target index as well as
+on the record key (both through :func:`_lock_record_keys`, so in one global
+order). The second claimant then waits, re-reads under the lock, sees the
+first's committed row and raises: exactly one success and one conflict, as
+Redis's single thread guarantees. The remaining swaps lock the record key
+only, which serialises them against :meth:`save_record` / :meth:`delete_record`
+on the same record.
 
 Sorted-set semantics on a table
 -------------------------------
@@ -145,6 +188,7 @@ from typing import Any, Callable, Iterator, Literal, Mapping, Sequence
 
 import msgpack
 
+from ..exceptions import ModelException
 from ..redis_db import ENCODING
 from . import UnitOfWork
 
@@ -199,6 +243,19 @@ SCHEMA_DDL: tuple[str, ...] = (
         member text  NOT NULL,
         value  bytea NOT NULL,
         PRIMARY KEY (idx, member)
+    )
+    """,
+    # -- WS3c (family G, atomic swaps): the index pointer ----------------------
+    # Which set index(es) a record currently belongs to for one field: one row
+    # per (record, field) for an indexed/unique field, one per tag for a tag
+    # field. The Postgres shape of the ``$IdxPtr:`` / ``$TagPtr:`` side keys
+    # (see "Atomic swaps" in the module docstring).
+    """
+    CREATE TABLE IF NOT EXISTS popoto_pointer (
+        key   text NOT NULL,
+        field text NOT NULL,
+        idx   text NOT NULL,
+        PRIMARY KEY (key, field, idx)
     )
     """,
 )
@@ -349,6 +406,116 @@ def _lock_record_keys(cur: Any, keys: Sequence[str]) -> None:
     )
 
 
+# -- Swap helpers (family G) ---------------------------------------------------
+# Each is one statement on the cursor of the swap's transaction. They mirror
+# the Redis commands INDEX_SWAP_LUA / TAG_SWAP_LUA issue (SISMEMBER, SMEMBERS,
+# SREM, SADD, SET/DEL of the pointer, HSET/HDEL of the field) one for one, so
+# the swap bodies read like the scripts.
+
+
+def _legacy_pointer_field(field: str) -> bytes:
+    """The pre-#476 in-hash pointer field, ``{field}\\x00idxset``, as the
+    ``bytea`` field name ``popoto_record`` stores it under."""
+    return _field_bytes(f"{field}\x00idxset")
+
+
+def _unique_conflict_message(record_key: str, field: str, new_idx: str) -> str:
+    """Byte-identical to ``RedisBackend.swap_index``'s wording for the
+    ``POPOTO_UNIQUE_CONFLICT`` reply, so the field layer's re-wrap (WS1c,
+    deviation 6) sees the same object on both backends."""
+    return (
+        f"Uniqueness violation on {record_key}.{field}: the value "
+        f"indexed at {new_idx!r} is already taken by another instance"
+    )
+
+
+def _pointer_one(cur: Any, record_key: str, field: str) -> str | None:
+    """``GET $IdxPtr:...``: the one index the record is in for ``field``."""
+    cur.execute(
+        "SELECT idx FROM popoto_pointer WHERE key = %s AND field = %s "
+        'ORDER BY idx COLLATE "C" LIMIT 1',
+        (record_key, field),
+    )
+    row = cur.fetchone()
+    return None if row is None else row[0]
+
+
+def _pointer_all(cur: Any, record_key: str, field: str) -> set[str]:
+    """``SMEMBERS $TagPtr:...``: every index the record is in for ``field``."""
+    cur.execute(
+        "SELECT idx FROM popoto_pointer WHERE key = %s AND field = %s",
+        (record_key, field),
+    )
+    return {idx for (idx,) in cur.fetchall()}
+
+
+def _set_pointer(cur: Any, record_key: str, field: str, idxs: Sequence[str]) -> None:
+    """``SET`` (one index) / ``DEL`` + ``SADD`` each (tags): the pointer now
+    names exactly ``idxs``."""
+    cur.execute(
+        "DELETE FROM popoto_pointer WHERE key = %s AND field = %s "
+        "AND NOT (idx = ANY(%s))",
+        (record_key, field, list(idxs)),
+    )
+    if idxs:
+        cur.execute(
+            "INSERT INTO popoto_pointer (key, field, idx) "
+            "SELECT %s, %s, unnest(%s::text[]) ON CONFLICT DO NOTHING",
+            (record_key, field, list(idxs)),
+        )
+
+
+def _clear_pointer(cur: Any, record_key: str, field: str) -> int:
+    """``DEL ptr_key, old_ptr_key``: 1 when the pointer existed, else 0."""
+    cur.execute(
+        "DELETE FROM popoto_pointer WHERE key = %s AND field = %s",
+        (record_key, field),
+    )
+    return 1 if cur.rowcount > 0 else 0
+
+
+def _is_member(cur: Any, idx: str, member: str) -> bool:
+    """``SISMEMBER``."""
+    cur.execute(
+        "SELECT 1 FROM popoto_set WHERE idx = %s AND member = %s", (idx, member)
+    )
+    return cur.fetchone() is not None
+
+
+def _add_member(cur: Any, idx: str, member: str) -> int:
+    """``SADD``: 1 when added, 0 when already present."""
+    cur.execute(
+        "INSERT INTO popoto_set (idx, member) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+        (idx, member),
+    )
+    return 1 if cur.rowcount > 0 else 0
+
+
+def _remove_member(cur: Any, idx: str, member: str) -> int:
+    """``SREM``: 1 when removed, 0 when it was not a member."""
+    cur.execute("DELETE FROM popoto_set WHERE idx = %s AND member = %s", (idx, member))
+    return 1 if cur.rowcount > 0 else 0
+
+
+def _upsert_field(cur: Any, record_key: str, field: str, value: bytes) -> None:
+    """``HSET model_key field new_bytes``: the field layer's packed value,
+    byte for byte, creating the record when it does not exist yet (as the
+    Lua's HSET does)."""
+    cur.execute(
+        "INSERT INTO popoto_record (key, field, value) VALUES (%s, %s, %s) "
+        "ON CONFLICT (key, field) DO UPDATE SET value = EXCLUDED.value",
+        (record_key, _field_bytes(field), value),
+    )
+
+
+def _scrub_legacy_pointer(cur: Any, record_key: str, legacy_field: bytes) -> None:
+    """``HDEL model_key {field}\\x00idxset``: the adopted pre-#476 pointer."""
+    cur.execute(
+        "DELETE FROM popoto_record WHERE key = %s AND field = %s",
+        (record_key, legacy_field),
+    )
+
+
 # -- Lua parity helpers for increment_field ------------------------------------
 
 
@@ -479,8 +646,8 @@ class PostgresUnitOfWork:
 
 class PostgresBackend:
     """The Postgres :class:`~popoto.backends.Backend`; see the module
-    docstring for the schema, the connection policy, the increment envelope
-    and the sorted-set semantics. Families G-I
+    docstring for the schema, the connection policy, the increment envelope,
+    the sorted-set semantics and the atomic swaps. Families H and I
     still raise :class:`NotImplementedError`."""
 
     def __init__(self, url: str) -> None:
@@ -1092,7 +1259,72 @@ class PostgresBackend:
         legacy_old_idx: str = "",
         uow: UnitOfWork | None = None,
     ) -> Any:
-        raise _todo("swap_index")
+        legacy_ptr_field = _legacy_pointer_field(field)
+        new_bytes = bytes(value)
+        # The record key, plus the target index when the value must be unique:
+        # the check-then-claim below is a read-modify-write on *rows that may
+        # not exist*, which ``FOR UPDATE`` cannot lock, so two instances
+        # claiming one value for two records serialise on the index's advisory
+        # lock and the second sees the first's row (see "Atomic swaps").
+        locked = [record_key, new_idx] if unique else [record_key]
+
+        def op(cur: Any) -> Any:
+            _lock_record_keys(cur, locked)
+
+            # -- validation phase: reads only, in INDEX_SWAP_LUA's order -----
+            # 1. The pointer. The Lua reads the side key, then the pre-#540
+            #    side key (no Postgres shape: nothing predates this backend),
+            #    then the pre-#476 in-hash field, which can exist here when a
+            #    record was imported with it, so it is honoured and scrubbed.
+            old_idx = _pointer_one(cur, record_key, field)
+            scrub_legacy = False
+            if old_idx is None:
+                legacy = cur.execute(
+                    "SELECT value FROM popoto_record WHERE key = %s AND field = %s",
+                    (record_key, legacy_ptr_field),
+                ).fetchone()
+                if legacy is not None:
+                    old_idx = bytes(legacy[0]).decode(ENCODING)
+                    scrub_legacy = True
+
+            # 2. Idempotent re-save: pointer already names the new index and
+            #    the member is in it -- rewrite the field bytes and stop.
+            if old_idx == new_idx and _is_member(cur, new_idx, record_key):
+                if scrub_legacy:
+                    _scrub_legacy_pointer(cur, record_key, legacy_ptr_field)
+                _upsert_field(cur, record_key, field, new_bytes)
+                return 1
+
+            # 3. Uniqueness: any member of the new index other than self is a
+            #    conflict. Raised before any write, so the transaction -- and
+            #    on the uow path the whole queue -- rolls back untouched.
+            if unique:
+                cur.execute(
+                    "SELECT 1 FROM popoto_set WHERE idx = %s AND member <> %s LIMIT 1",
+                    (new_idx, record_key),
+                )
+                if cur.fetchone() is not None:
+                    raise ModelException(
+                        _unique_conflict_message(record_key, field, new_idx)
+                    )
+
+            # -- mutation phase, all-or-nothing --------------------------------
+            if scrub_legacy:
+                _scrub_legacy_pointer(cur, record_key, legacy_ptr_field)
+            # 4. Leave the old index: the pointer's if it named one, else the
+            #    field layer's legacy hint for records that predate pointers.
+            if old_idx:
+                if old_idx != new_idx:
+                    _remove_member(cur, old_idx, record_key)
+            elif legacy_old_idx and legacy_old_idx != new_idx:
+                _remove_member(cur, legacy_old_idx, record_key)
+            # 5. Join the new index, repoint, write the field bytes.
+            _add_member(cur, new_idx, record_key)
+            _set_pointer(cur, record_key, field, [new_idx])
+            _upsert_field(cur, record_key, field, new_bytes)
+            return 1
+
+        return self._run(op, uow)
 
     def drop_index_entry(
         self,
@@ -1102,7 +1334,33 @@ class PostgresBackend:
         fallback_idx: str,
         uow: UnitOfWork | None = None,
     ) -> Any:
-        raise _todo("drop_index_entry")
+        legacy_ptr_field = _legacy_pointer_field(field)
+
+        def op(cur: Any) -> Any:
+            # Reads the pointer, so it runs before delete_record in the same
+            # unit of work -- Model.delete queues the hooks first (#476). On
+            # Redis the pointer GET happens when the method is *called* and
+            # only the SREM/DEL are queued; here the read is inside the
+            # transaction, which is the stronger of the two.
+            _lock_record_keys(cur, [record_key])
+            idx = _pointer_one(cur, record_key, field)
+            if idx is None:
+                # Migration fallback: the pre-#476 in-hash pointer field.
+                legacy = cur.execute(
+                    "SELECT value FROM popoto_record WHERE key = %s AND field = %s",
+                    (record_key, legacy_ptr_field),
+                ).fetchone()
+                if legacy is not None:
+                    idx = bytes(legacy[0]).decode(ENCODING) or None
+            if idx is None:
+                # No pointer anywhere: the field-value-derived index.
+                idx = fallback_idx
+            # SREM's reply, then the pointer's DEL.
+            removed = _remove_member(cur, idx, record_key)
+            _clear_pointer(cur, record_key, field)
+            return removed
+
+        return self._run(op, uow)
 
     def swap_tags(
         self,
@@ -1113,7 +1371,25 @@ class PostgresBackend:
         *,
         uow: UnitOfWork | None = None,
     ) -> Any:
-        raise _todo("swap_tags")
+        new_bytes = bytes(value)
+        wanted = list(dict.fromkeys(new_idxs))  # set semantics, first-seen order
+
+        def op(cur: Any) -> Any:
+            _lock_record_keys(cur, [record_key])
+            # TAG_SWAP_LUA: previous membership from the pointer (its pre-#540
+            # fallback has no Postgres shape), then the diff.
+            old = _pointer_all(cur, record_key, field)
+            new = set(wanted)
+            for idx in sorted(old - new):
+                _remove_member(cur, idx, record_key)
+            for idx in wanted:
+                if idx not in old:
+                    _add_member(cur, idx, record_key)
+            _set_pointer(cur, record_key, field, wanted)
+            _upsert_field(cur, record_key, field, new_bytes)
+            return 1
+
+        return self._run(op, uow)
 
     def drop_tag_entries(
         self,
@@ -1123,7 +1399,20 @@ class PostgresBackend:
         fallback_idxs: Sequence[str],
         uow: UnitOfWork | None = None,
     ) -> Any:
-        raise _todo("drop_tag_entries")
+        fallback = list(fallback_idxs)
+
+        def op(cur: Any) -> Any:
+            _lock_record_keys(cur, [record_key])
+            idxs = sorted(_pointer_all(cur, record_key, field))
+            if not idxs and fallback:
+                # No pointer: the field-value-derived indexes.
+                idxs = fallback
+            for idx in idxs:
+                _remove_member(cur, idx, record_key)
+            # DEL's reply for the pointer: 1 when it existed, else 0.
+            return _clear_pointer(cur, record_key, field)
+
+        return self._run(op, uow)
 
     # -- H. Decay and confidence ---------------------------------------------
 
