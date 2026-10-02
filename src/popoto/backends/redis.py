@@ -997,6 +997,16 @@ class RedisBackend:
     def record_exists(self, key: str) -> bool:
         return bool(get_REDIS_DB().exists(key))
 
+    def records_exist(self, keys: Sequence[str]) -> list[bool]:
+        # Moved from ``check_indexes._count_orphans`` /
+        # ``clean_indexes._collect_orphans``: pipeline EXISTS in one batch.
+        if not keys:
+            return []
+        pipe = get_REDIS_DB().pipeline()
+        for key in keys:
+            pipe.exists(key)
+        return [bool(reply) for reply in pipe.execute()]
+
     def delete_record(
         self, key: str, *, class_set: str, uow: UnitOfWork | None = None
     ) -> Any:
@@ -1680,3 +1690,16 @@ class RedisBackend:
                 yield _as_str(member)
             if cursor == 0:
                 break
+
+    def drop_index(
+        self,
+        idx: str,
+        kind: Literal["sorted", "set", "map"],
+        *,
+        uow: UnitOfWork | None = None,
+    ) -> Any:
+        # ``kind`` is for Postgres's per-table layout; on Redis the key is the
+        # index whatever its type, so one DEL covers all three.
+        db: Any = get_REDIS_DB() if uow is None else uow
+        reply = db.delete(idx)
+        return None if uow is not None else reply

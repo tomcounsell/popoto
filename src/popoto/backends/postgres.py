@@ -77,6 +77,9 @@ class PostgresBackend:
     def record_exists(self, key: str) -> bool:
         raise _todo("record_exists")
 
+    def records_exist(self, keys: Sequence[str]) -> list[bool]:
+        raise _todo("records_exist")
+
     def delete_record(
         self, key: str, *, class_set: str, uow: UnitOfWork | None = None
     ) -> Any:
@@ -329,3 +332,12 @@ class PostgresBackend:
         self, idx: str, kind: Literal["sorted", "set"]
     ) -> Iterator[str]:
         raise _todo("scan_index_members")
+
+    def drop_index(
+        self,
+        idx: str,
+        kind: Literal["sorted", "set", "map"],
+        *,
+        uow: UnitOfWork | None = None,
+    ) -> Any:
+        raise _todo("drop_index")

@@ -85,6 +85,18 @@ class TestRecords:
         assert backend.load_records(keys) == direct
         assert backend.load_records([]) == []
 
+    def test_records_exist_matches_a_pipelined_exists(self, backend, client):
+        # protocol-1: the batched form of record_exists, one round trip.
+        keys = [f"{PREFIX}:Record:{i}" for i in range(3)]
+        client.hset(keys[0], mapping={b"a": b"1"})
+        client.hset(keys[2], mapping={b"b": b"2"})
+        pipe = client.pipeline()
+        for key in keys:
+            pipe.exists(key)
+        direct = [bool(r) for r in pipe.execute()]
+        assert backend.records_exist(keys) == direct == [True, False, True]
+        assert backend.records_exist([]) == []
+
     def test_save_and_delete_queue_on_a_unit_of_work(self, backend, client):
         key = f"{PREFIX}:Record:uow"
         class_set = f"$Class:{PREFIX}:Record"
@@ -226,3 +238,21 @@ class TestSwapsAndPurge:
         client.sadd(sidx, "x", "y")
         assert sorted(backend.scan_index_members(zidx, "sorted")) == ["a", "b"]
         assert sorted(backend.scan_index_members(sidx, "set")) == ["x", "y"]
+
+    def test_drop_index_removes_the_whole_index(self, backend, client):
+        # protocol-1: rebuild_indexes step 1, on every index kind.
+        zidx, sidx, midx = f"{PREFIX}:_z", f"{PREFIX}:_s", f"{PREFIX}:_m"
+        client.zadd(zidx, {"a": 1})
+        client.sadd(sidx, "x")
+        client.hset(midx, "h", "k")
+        assert backend.drop_index(zidx, "sorted") == 1
+        assert backend.drop_index(sidx, "set") == 1
+        assert backend.drop_index(midx, "map") == 1
+        assert not client.exists(zidx, sidx, midx)
+        assert backend.drop_index(zidx, "sorted") == 0
+        uow = backend.begin()
+        client.sadd(sidx, "x")
+        assert backend.drop_index(sidx, "set", uow=uow) is None
+        assert client.exists(sidx), "nothing may be dropped before commit()"
+        uow.commit()
+        assert not client.exists(sidx)

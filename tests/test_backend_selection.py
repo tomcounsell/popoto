@@ -171,14 +171,21 @@ def test_backends_module_never_imports_the_client_by_name():
     assert "POPOTO_REDIS_DB" not in vars(backends)
 
 
-def test_protocol_enumerates_the_planned_forty_two_methods():
-    """The plan's count, pinned so a silent addition or removal shows up."""
+def test_protocol_enumerates_the_planned_methods():
+    """The plan's count, pinned so a silent addition or removal shows up.
+
+    WS0 froze the protocol at the plan's 42; ``feature/backend-seam-protocol-1``
+    added ``records_exist`` and ``drop_index`` for WS1a's maintenance paths. A
+    later protocol PR bumps this number and names itself here, the way the
+    plan's freeze rule requires -- bundling a method into a WS1 PR does not.
+    """
     methods = sorted(
         name
         for name, value in vars(backends.Backend).items()
         if not name.startswith("_") and callable(value)
     )
-    assert len(methods) == 42, methods
+    assert len(methods) == 44, methods
+    assert {"records_exist", "drop_index"} <= set(methods)  # protocol-1
     for impl in (RedisBackend, PostgresBackend):
         missing = [m for m in methods if not callable(getattr(impl, m, None))]
         assert not missing, f"{impl.__name__} lacks {missing}"
