@@ -27,8 +27,11 @@ import pathlib
 import re
 import sys
 
+# ``SUPERSEDE_LUA`` moved from ``fields/validity_field.py`` to the Redis
+# backend in #631 WS0; ``validity_field`` re-imports it, but the script *text*
+# -- which is what this checker reads -- lives here.
 SOURCE = pathlib.Path(__file__).resolve().parent.parent / (
-    "src/popoto/fields/validity_field.py"
+    "src/popoto/backends/redis.py"
 )
 
 MARKER = "-- MUTATION PHASE"

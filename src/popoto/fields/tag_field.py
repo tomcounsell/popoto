@@ -92,90 +92,12 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard
 logger = logging.getLogger("POPOTO.TagFieldMixin")
 
 
-# TAG_SWAP_LUA — atomic multi-value tag-index diff.
-#
-# Contract (all Redis keys the script touches are declared as KEYS, per the
-# scripting convention IndexedFieldMixin's INDEX_SWAP_LUA follows — the per-tag
-# Set keys are KEYS, never ARGV):
-#   KEYS[1]   = model hash key (the record's Redis hash)
-#   KEYS[2]   = pointer side key — a standalone Redis SET holding the full
-#               index-Set keys this record currently belongs to for this field.
-#               Server-authoritative source of truth for the previous membership,
-#               so the diff never relies on a stale client snapshot (#476).
-#               Namespaced under "$TagPtr:" — see _tag_pointer_side_key (#540).
-#   KEYS[3]   = pre-#540 pointer side key ({model_hash_key}\x00tagptr\x00{field}),
-#               read-only migration fallback for records written by 1.8.1/1.8.2.
-#               Read only when KEYS[2] is empty, but DEL'd unconditionally on
-#               every save so it stops colliding with the model key glob.
-#   KEYS[4..] = the new per-tag index-Set keys (already DB_key-built + colon-safe;
-#               zero of them means the record is untagged / shared pool).
-#
-#   ARGV[1] = field name (hash field for the packed tag list)
-#   ARGV[2] = member key (the record's redis_key — the Set member)
-#   ARGV[3] = new value bytes, msgpack-packed by Python (the normalized tag list,
-#             written to the model hash — byte-identical to a plain HSET)
-#
-# Logic (single atomic EVAL):
-#   1. Read previous membership from the pointer side key (SMEMBERS).
-#   2. SREM the member from every Set present before but absent now.
-#   3. SADD the member to every Set present now but absent before.
-#   4. Reset the pointer side key to exactly the new Set keys (DEL then SADD).
-#   5. HSET the packed tag list into the model hash.
-#
-# Idempotent re-save is a natural no-op: empty diffs, and the HSET rewrites
-# identical bytes. Untagged save (no KEYS[3..]) removes the member from all prior
-# Sets, clears the pointer, and stores an empty list.
-#
-# Cluster note: like INDEX_SWAP_LUA, the model key, pointer key, and value-Set
-# keys hash to different slots, so this script targets a single-node or
-# proxy-fronted Redis/Valkey (popoto's index model is inherently non-cluster).
-# Declaring the value-Set keys as KEYS (not ARGV) keeps the script honest under
-# the scripting contract regardless.
-TAG_SWAP_LUA = """
-local model_key, ptr_key, old_ptr_key = KEYS[1], KEYS[2], KEYS[3]
-local field, member, new_bytes = ARGV[1], ARGV[2], ARGV[3]
-
-local new_sets = {}
-for i = 4, #KEYS do
-  new_sets[KEYS[i]] = true
-end
-
-local old_members = redis.call('SMEMBERS', ptr_key)
-if #old_members == 0 then
-  -- Migration fallback: 1.8.1/1.8.2 kept this pointer at a key derived by
-  -- suffixing the model hash key, which the model's own glob matches (#540).
-  old_members = redis.call('SMEMBERS', old_ptr_key)
-end
-redis.call('DEL', old_ptr_key)
-local old_sets = {}
-for _, s in ipairs(old_members) do
-  old_sets[s] = true
-end
-
--- remove member from Sets no longer present
-for _, s in ipairs(old_members) do
-  if not new_sets[s] then
-    redis.call('SREM', s, member)
-  end
-end
-
--- add member to newly-present Sets
-for i = 4, #KEYS do
-  local s = KEYS[i]
-  if not old_sets[s] then
-    redis.call('SADD', s, member)
-  end
-end
-
--- reset the pointer side key to the new membership
-redis.call('DEL', ptr_key)
-for i = 4, #KEYS do
-  redis.call('SADD', ptr_key, KEYS[i])
-end
-
-redis.call('HSET', model_key, field, new_bytes)
-return 1
-"""
+# ``TAG_SWAP_LUA`` moved to ``popoto.backends.redis`` (#631 WS0).
+# It is re-imported here under its existing name so every current
+# reader -- this module's own ``run_lua`` sites and the tests that
+# import it from here -- keeps finding it. The script text itself is
+# byte-identical.
+from ..backends.redis import TAG_SWAP_LUA  # noqa: E402,F401
 
 
 class TagFieldMixin(IndexedFieldMixin):

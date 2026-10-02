@@ -72,27 +72,12 @@ from ..exceptions import (
 
 logger = logging.getLogger("POPOTO.model_base")
 
-#: Remove one orphan's index memberships, only if its hash is still gone.
-#: KEYS[1] is the hash, KEYS[2..] the index keys; ARGV[i] is "s" (set) or
-#: "z" (sorted set) for KEYS[i+1]. The EXISTS check inside the script is
-#: what makes the purge safe against a concurrent re-create.
-PURGE_ORPHAN_LUA = """
-if redis.call('EXISTS', KEYS[1]) == 1 then
-    return 0
-end
-local member = KEYS[1]
-local removed = 0
-for i = 2, #KEYS do
-    local kind = ARGV[i - 1]
-    if kind == 'z' then
-        removed = removed + redis.call('ZREM', KEYS[i], member)
-    else
-        removed = removed + redis.call('SREM', KEYS[i], member)
-    end
-end
-return removed
-"""
-
+# ``PURGE_ORPHAN_LUA`` moved to ``popoto.backends.redis`` (#631 WS0).
+# It is re-imported here under its existing name so every current
+# reader -- this module's own ``run_lua`` sites and the tests that
+# import it from here -- keeps finding it. The script text itself is
+# byte-identical.
+from ..backends.redis import PURGE_ORPHAN_LUA  # noqa: E402,F401
 
 global RELATED_MODEL_LOAD_SEQUENCE
 RELATED_MODEL_LOAD_SEQUENCE = set()

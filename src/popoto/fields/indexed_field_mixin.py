@@ -64,123 +64,12 @@ logger = logging.getLogger("POPOTO.IndexedFieldMixin")
 _SENTINEL = object()
 
 
-# INDEX_SWAP_LUA — atomic check-and-swap for indexed/unique field secondary index.
-#
-# Contract:
-#   KEYS[1] = model hash key (the record's Redis hash where field values live)
-#   KEYS[2] = new value Set key (the index Set for the new field value)
-#   KEYS[3] = pointer side key (a standalone STRING key — NOT a field inside
-#             the model hash) recording which Set this record currently
-#             belongs to for this field, so we can atomically remove from the
-#             old Set without relying on a stale client-side snapshot.
-#             Namespaced under "$IdxPtr:" — see _pointer_side_key (#540).
-#   KEYS[4] = pre-#540 pointer side key ({model_hash_key}\x00idxptr\x00{field}),
-#             read-only migration fallback for records written by 1.8.1/1.8.2.
-#             DEL'd unconditionally on every save (not just when its value is
-#             adopted), so records self-heal off the colliding key space even
-#             if an old 1.8.1/1.8.2 node re-writes it after a new node has
-#             already migrated the record onto the KEYS[3] namespaced pointer.
-#
-#   ARGV[1] = field name (hash field name, for reading/writing field value in hash)
-#   ARGV[2] = member key (the record's redis_key — the member stored in the Set)
-#   ARGV[3] = new value, msgpack-packed by Python (written to model hash)
-#   ARGV[4] = unique flag: "1" to enforce uniqueness, "0" to skip check
-#   ARGV[5] = legacy-old-set hint: pre-cleaned old value-Set key from
-#             _saved_field_values (empty string "" if no prior known value)
-#             Used only on the first save after upgrading to the Lua-backed path,
-#             for records that predate the pointer (whether the legacy in-hash
-#             pointer scheme or the current side-key scheme).
-#   ARGV[6] = legacy in-hash pointer field name ({field_name}\x00idxset), kept
-#             ONLY for backward-compatible migration off the pre-fix (#476)
-#             hash-embedded pointer scheme. Read as a migration fallback when
-#             the side key (KEYS[3]) has never been written, and opportunistically
-#             HDEL'd here so records self-heal off the polluted schema on next
-#             write without requiring an offline migration.
-#
-# Logic:
-#   1. Read the pointer from the side key (KEYS[3]). If absent, fall back to
-#      the pre-#540 side key (KEYS[4]) and then to the legacy in-hash pointer
-#      field (ARGV[6]) for records written by the pre-#476 code path. KEYS[4]
-#      is DEL'd unconditionally (whether or not it had a value to adopt) so it
-#      never surfaces to a key glob again, even under interleaving with an old
-#      node; the legacy in-hash field (ARGV[6]) is HDEL'd only when adopted.
-#   2. Idempotent re-save: if pointer already points to the new Set AND member
-#      is already in it, just re-write the field bytes and return 1.
-#   3. Uniqueness check (if ARGV[4]=="1"): scan the new Set for any member
-#      other than self. Return error_reply on conflict — caller maps this to
-#      ModelException.
-#   4. Remove from old Set: use the resolved pointer if present and different
-#      from new Set; else fall back to the legacy-old-set hint.
-#   5. SADD member to new Set, update the pointer side key, write field bytes.
-#
-# Forward-compat rationale (#476): the pointer lives in a side key (a distinct
-# Redis key, SET/GET, plain string) instead of a hash field, so it never
-# appears in redis_hash.items() at all — no decoder-skip logic needed, and
-# pre-1.8.0 (or any future) decoders that iterate the model hash and
-# msgpack.unpackb() every value can never trip over it.
-#
-# Key-space rationale (#540): that side key must also live OUTSIDE the model's
-# own key space, hence the "$IdxPtr:" prefix. See _pointer_side_key.
-#
-# Type-parity rationale: ARGV[3] is msgpack-packed by Python using the same
-# encoder as encode_popoto_model_obj(), so the hash field value is byte-for-byte
-# identical to what a plain HSET would have written.
-INDEX_SWAP_LUA = """
-local model_key, new_set, ptr_key, old_ptr_key =
-  KEYS[1], KEYS[2], KEYS[3], KEYS[4]
-local field, member, new_bytes, is_unique, legacy_old_set, legacy_ptr_field =
-  ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]
-
-local old_set = redis.call('GET', ptr_key)
-if not old_set or old_set == false then
-  -- Migration fallback 1: 1.8.1/1.8.2 wrote the pointer to a side key derived
-  -- by suffixing the model hash key, which collides with the model's own key
-  -- glob (#540). Adopt its value, then remove the colliding key.
-  local prev_ptr = redis.call('GET', old_ptr_key)
-  if prev_ptr and prev_ptr ~= false then
-    old_set = prev_ptr
-  end
-end
--- Unconditional: reclaim the colliding legacy key even when the namespaced
--- ptr_key already exists (e.g. an old 1.8.1/1.8.2 node wrote old_ptr_key
--- again after a new node had already migrated to ptr_key). Otherwise the
--- legacy key survives inside the model key glob for the life of the record.
-redis.call('DEL', old_ptr_key)
-if not old_set or old_set == false then
-  -- Migration fallback 2: pre-#476 records may still carry the pointer as a
-  -- polluting field inside the model hash. Read it once, then scrub it.
-  local legacy_ptr = redis.call('HGET', model_key, legacy_ptr_field)
-  if legacy_ptr and legacy_ptr ~= false then
-    old_set = legacy_ptr
-    redis.call('HDEL', model_key, legacy_ptr_field)
-  end
-end
-
--- idempotent re-save: same set already recorded AND member already present
-if old_set == new_set and redis.call('SISMEMBER', new_set, member) == 1 then
-  redis.call('HSET', model_key, field, new_bytes)
-  return 1
-end
-
-if is_unique == '1' then
-  local members = redis.call('SMEMBERS', new_set)
-  for _, m in ipairs(members) do
-    if m ~= member then return redis.error_reply('POPOTO_UNIQUE_CONFLICT') end
-  end
-end
-
-if old_set and old_set ~= false and old_set ~= '' then
-  if old_set ~= new_set then
-    redis.call('SREM', old_set, member)
-  end
-elseif legacy_old_set ~= '' and legacy_old_set ~= new_set then
-  redis.call('SREM', legacy_old_set, member)
-end
-redis.call('SADD', new_set, member)
-redis.call('SET', ptr_key, new_set)
-redis.call('HSET', model_key, field, new_bytes)
-return 1
-"""
+# ``INDEX_SWAP_LUA`` moved to ``popoto.backends.redis`` (#631 WS0).
+# It is re-imported here under its existing name so every current
+# reader -- this module's own ``run_lua`` sites and the tests that
+# import it from here -- keeps finding it. The script text itself is
+# byte-identical.
+from ..backends.redis import INDEX_SWAP_LUA  # noqa: E402,F401
 
 
 class IndexedFieldMixin:

@@ -50,77 +50,12 @@ from .field import Field
 
 logger = logging.getLogger("POPOTO.ConfidenceField")
 
-# Lua script: atomic capped-evidence update of the confidence companion hash.
-# While n_eff = min(evidence_count + prior_weight, cap) is below the cap, the
-# update is an exact running mean over {prior, signals...} (order-invariant).
-# At the cap, the gain freezes at 1/(cap+1): fixed-gain exponential
-# forgetting with an effective memory window of cap+1 observations.
-# KEYS[1] = companion hash key
-# ARGV[1] = member key (redis_key of the model instance)
-# ARGV[2] = signal (float 0-1)
-# ARGV[3] = initial_confidence (default for missing data)
-# ARGV[4] = evidence_cap
-CAPPED_BAYESIAN_UPDATE_LUA = """
-local hash_key = KEYS[1]
-local member = ARGV[1]
-local signal = tonumber(ARGV[2])
-local initial_confidence = tonumber(ARGV[3])
-
--- KEYS[2] (optional): the member's own hash. When given, an update for a
--- record that no longer exists is a no-op, which lets callers batch many
--- updates into one pipeline without a preceding EXISTS round trip each.
-if KEYS[2] and redis.call('EXISTS', KEYS[2]) == 0 then
-    return nil
-end
-
--- Read existing data
-local raw = redis.call('HGET', hash_key, member)
-local confidence = initial_confidence
-local evidence_count = 0
-local corroborations = 0
-local contradictions = 0
-
-if raw then
-    local ok, data = pcall(cmsgpack.unpack, raw)
-    if ok and type(data) == 'table' then
-        confidence = data['confidence'] or data[1] or initial_confidence
-        evidence_count = data['evidence_count'] or data[2] or 0
-        corroborations = data['corroborations'] or data[3] or 0
-        contradictions = data['contradictions'] or data[4] or 0
-    end
-end
-
--- Capped-evidence update: running mean while effective evidence <= cap,
--- fixed-gain exponential forgetting (window cap+1) beyond it.
--- ARGV[4] = evidence_cap (the only new ARGV)
-local prior_weight = 1  -- internal constant; not user config (issue #407 decision Q2)
-local cap = tonumber(ARGV[4])
-local n_eff = math.min(evidence_count + prior_weight, cap)
-local new_confidence = confidence + (signal - confidence) / (n_eff + 1)
-
--- Clamp to [0, 1]
-new_confidence = math.max(0, math.min(1, new_confidence))
-
--- Update counters
-evidence_count = evidence_count + 1
-if signal >= 0.5 then
-    corroborations = corroborations + 1
-else
-    contradictions = contradictions + 1
-end
-
--- Pack and store
-local updated = {
-    confidence = new_confidence,
-    evidence_count = evidence_count,
-    corroborations = corroborations,
-    contradictions = contradictions
-}
-redis.call('HSET', hash_key, member, cmsgpack.pack(updated))
-
--- Return new values
-return {tostring(new_confidence), tostring(evidence_count), tostring(corroborations), tostring(contradictions)}
-"""
+# ``CAPPED_BAYESIAN_UPDATE_LUA`` moved to ``popoto.backends.redis`` (#631 WS0).
+# It is re-imported here under its existing name so every current
+# reader -- this module's own ``run_lua`` sites and the tests that
+# import it from here -- keeps finding it. The script text itself is
+# byte-identical.
+from ..backends.redis import CAPPED_BAYESIAN_UPDATE_LUA  # noqa: E402,F401
 
 
 class ConfidenceField(Field):
