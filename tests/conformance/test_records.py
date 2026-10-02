@@ -184,6 +184,24 @@ class TestSaveAndLoad:
         assert backend.load_record(key("new")) == {b"a": b"1"}
         assert backend.list_keys(CLASS_SET) == {key("new")}
 
+    def test_no_class_set_leaves_the_set_alone(self, backend):
+        # protocol-2 (#735 review B1): ``class_set=None`` registers nothing and
+        # un-registers nothing; the obsolete record is still removed.
+        backend.save_record(key("old"), {b"a": b"1"}, class_set=CLASS_SET)
+        assert backend.save_record(key("p"), {b"a": b"1"}) == 1
+        assert backend.save_record(key("p"), {b"a": b"1"}) == 0
+        assert backend.save_record(key("p"), {}) == 0
+        assert backend.list_keys(CLASS_SET) == {key("old")}
+        reply = backend.save_record(key("q"), {b"b": b"2"}, obsolete_key=key("old"))
+        assert reply == 1
+        assert backend.load_record(key("old")) is None
+        assert backend.load_record(key("q")) == {b"b": b"2"}
+        assert backend.list_keys(CLASS_SET) == {key("old")}, "SREM skipped too"
+        uow = backend.begin()
+        assert backend.save_record(key("p"), {b"c": b"3"}, uow=uow) is None
+        assert uow.commit() == [1]
+        assert backend.list_keys(CLASS_SET) == {key("old")}
+
     def test_numeric_side_map_is_accepted_and_does_not_change_the_payload(
         self, backend, backend_is_redis
     ):
@@ -558,6 +576,27 @@ class TestScope:
                 key(1), {b"a": b"1"}, class_set=CLASS_SET, expire_at=4102444800.0
             )
         assert backend.load_record(key(1)) is None
+
+    def test_set_expiry_is_honoured_on_redis_and_refused_on_postgres(
+        self, backend, backend_is_redis
+    ):
+        # protocol-2 (#735 review B2). A record without a TTL asks for nothing
+        # on either backend, which is what Model.save's partial path issues
+        # for a Meta without ``ttl``.
+        backend.save_record(key(1), {b"a": b"1"}, class_set=CLASS_SET)
+        assert backend.set_expiry(key(1)) is None
+        uow = backend.begin()
+        assert backend.set_expiry(key(1), uow=uow) is None
+        assert uow.commit() == []
+        if backend_is_redis:
+            assert backend.set_expiry(key(1), ttl=100) is True
+            assert 0 < backend.client.ttl(key(1)) <= 100
+            return
+        with pytest.raises(NotImplementedError, match="TTL"):
+            backend.set_expiry(key(1), ttl=100)
+        with pytest.raises(NotImplementedError, match="TTL"):
+            backend.set_expiry(key(1), expire_at=4102444800.0, uow=backend.begin())
+        assert backend.load_record(key(1)) == {b"a": b"1"}
 
     def test_other_families_still_raise_on_postgres(self, backend, backend_is_redis):
         if backend_is_redis:

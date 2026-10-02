@@ -442,19 +442,26 @@ class PostgresBackend:
                     "ON CONFLICT (key, field) DO UPDATE SET value = EXCLUDED.value",
                     (key, numeric_names, numeric_values),
                 )
-            cur.execute(
-                "INSERT INTO popoto_set (idx, member) VALUES (%s, %s) "
-                "ON CONFLICT DO NOTHING",
-                (class_set, key),
-            )
-            if not names:
-                reply = cur.rowcount
-            if obsolete_key and obsolete_key != key:
+            # protocol-2: ``class_set=None`` leaves the class set untouched --
+            # no membership insert, no obsolete-member delete.
+            if class_set is not None:
                 cur.execute(
-                    "DELETE FROM popoto_set WHERE idx = %s AND member = %s",
-                    (class_set, obsolete_key),
+                    "INSERT INTO popoto_set (idx, member) VALUES (%s, %s) "
+                    "ON CONFLICT DO NOTHING",
+                    (class_set, key),
                 )
+                if not names:
+                    reply = cur.rowcount
+            if obsolete_key and obsolete_key != key:
+                if class_set is not None:
+                    cur.execute(
+                        "DELETE FROM popoto_set WHERE idx = %s AND member = %s",
+                        (class_set, obsolete_key),
+                    )
                 cur.execute("DELETE FROM popoto_record WHERE key = %s", (obsolete_key,))
+                if not names and class_set is None:
+                    # Redis's first queued reply is then the obsolete DEL.
+                    reply = 1 if cur.rowcount > 0 else 0
                 cur.execute(
                     "DELETE FROM popoto_numeric WHERE key = %s", (obsolete_key,)
                 )
@@ -470,7 +477,16 @@ class PostgresBackend:
         expire_at: float | None = None,
         uow: UnitOfWork | None = None,
     ) -> Any:
-        raise _todo("set_expiry")
+        # protocol-2. Same scope line as save_record's ttl=/expire_at=: a
+        # record without a TTL asks for nothing and gets ``None`` (Redis does
+        # the same), so Model.save's partial path works here for Meta without
+        # ``ttl``; one with a TTL is refused before anything is written.
+        if ttl is None and expire_at is None:
+            return None
+        raise NotImplementedError(
+            "record TTL (set_expiry) is not implemented in the backend-seam "
+            "POC: Postgres has no key expiry"
+        )
 
     def load_record(self, key: str) -> dict[Any, bytes] | None:
         rows = self._query(
