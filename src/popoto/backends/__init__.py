@@ -66,13 +66,18 @@ class UnitOfWork(Protocol):
 
 
 class Backend(Protocol):
-    """The 42 storage operations behind the agent-memory field layer.
+    """The 44 storage operations behind the agent-memory field layer.
 
-    Grouped as the plan enumerates them: A unit of work (2), B records (8),
+    Grouped as the plan enumerates them: A unit of work (2), B records (9),
     C atomic increment (1), D side maps (4), E set indexes (7), F sorted
     indexes (7), G atomic swaps (4), H decay and confidence (2), I validity (5),
-    J orphan purge and maintenance (2). Each docstring names the Lua script or
+    J orphan purge and maintenance (3). Each docstring names the Lua script or
     raw commands the method replaces on Redis.
+
+    The plan froze WS0 at 42. Two were added by ``feature/backend-seam-protocol-1``
+    because WS1a could not route ``models/base.py``'s maintenance paths without
+    them: :meth:`records_exist` (B) and :meth:`drop_index` (J). Both are marked
+    ``protocol-1`` in their docstrings.
     """
 
     # -- A. Unit of work ---------------------------------------------------
@@ -142,6 +147,16 @@ class Backend(Protocol):
     def record_exists(self, key: str) -> bool:
         """Replaces ``EXISTS`` (``Model.exists``, ``delete``, ``update_confidence``,
         orphan checks)."""
+        ...
+
+    def records_exist(self, keys: Sequence[str]) -> list[bool]:
+        """Replaces pipelined ``EXISTS`` over a batch of keys (``check_indexes``,
+        ``clean_indexes``, ``_classify_class_set_orphans``): one entry per key,
+        in order. One round trip per batch where a loop of
+        :meth:`record_exists` would be one per key -- the maintenance paths
+        batch 1000 keys at a time, so this is a protocol method and not a
+        convenience. ``protocol-1`` addition.
+        """
         ...
 
     def delete_record(
@@ -502,6 +517,23 @@ class Backend(Protocol):
     ) -> Iterator[str]:
         """Replaces ``SSCAN``/``ZSCAN`` (``check_indexes``, ``clean_indexes``,
         ``rebuild_indexes``)."""
+        ...
+
+    def drop_index(
+        self,
+        idx: str,
+        kind: Literal["sorted", "set", "map"],
+        *,
+        uow: UnitOfWork | None = None,
+    ) -> Any:
+        """Replaces ``DEL idx`` on a whole index (``rebuild_indexes`` step 1,
+        which drops every secondary index -- class set, key-field sets, sorted
+        indexes, composite maps -- before reconstructing it from the records).
+
+        ``kind`` names the table the index lives in on Postgres; Redis ignores
+        it, since the key is the index whatever its type. ``protocol-1``
+        addition.
+        """
         ...
 
 
