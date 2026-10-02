@@ -599,12 +599,20 @@ class TestScope:
         assert backend.load_record(key(1)) == {b"a": b"1"}
 
     def test_other_families_still_raise_on_postgres(self, backend, backend_is_redis):
+        # Families D, E, F and the rest of J are WS3b's and implemented (see
+        # ``test_indexes.py``); G, H, I and B's ``records_exist`` still raise.
         if backend_is_redis:
             pytest.skip("Postgres-leg assertion")
-        with pytest.raises(NotImplementedError, match=r"PostgresBackend\.sorted_add"):
-            backend.sorted_add(ZIDX, key(1), 1.0)
-        with pytest.raises(NotImplementedError, match=r"PostgresBackend\.map_get"):
-            backend.map_get(ZIDX, key(1))
+        with pytest.raises(NotImplementedError, match=r"PostgresBackend\.swap_index"):
+            backend.swap_index(key(1), "f", ZIDX, b"v", unique=False)
+        with pytest.raises(NotImplementedError, match=r"PostgresBackend\.decayed_rank"):
+            backend.decayed_rank(
+                ZIDX, now=0.0, decay_rate=0.1, limit=None, pretrim_max_ratio=1.0
+            )
+        with pytest.raises(
+            NotImplementedError, match=r"PostgresBackend\.records_exist"
+        ):
+            backend.records_exist([key(1)])
         with pytest.raises(NotImplementedError, match=r"PostgresBackend\.supersede"):
             backend.supersede(
                 "$ValidityF:M",
