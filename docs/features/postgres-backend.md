@@ -235,15 +235,29 @@ every digit. Any other error from the function -- a different SQLSTATE --
 propagates untouched.
 
 **Serialisation.** Redis runs the script on one thread. Here the function's
-first statement is `pg_advisory_xact_lock` on the pointer key, the successor
-and the asserted incumbent (the record writers' key space and ordering), so
-two connections writing one identity queue and the second reads the first's
-newcomer as the incumbent, and `SELECT ... FOR UPDATE` on the incumbent's
-`invalid_at` row makes a second closer of the same record wait and then see
-it closed -- the idempotent no-op it is on Redis, with the close instant and
-the chain unmoved. `tests/conformance/test_validity.py::TestConcurrency`
-races two connections both ways and asserts the outcome is one of the serial
-orders on both backends.
+first statement is `pg_advisory_xact_lock(hashtext(prefix))` -- one lock per
+model/field -- so every supersede on one `ValidityField` runs after the
+previous one commits and the order among them is total. Then come the
+per-key locks on the pointer key, the successor and the asserted incumbent
+(the record writers' key space and ordering), which serialise a supersede
+against `save_record` / `delete_record` / `drop_validity` on the same member,
+and `SELECT ... FOR UPDATE` on the incumbent's `invalid_at` row. The prefix
+lock is what closes the fourth writer pairing: an incumbent resolved from
+the pointer *inside* the function is outside the per-key set, so two writers
+whose chains cross (`d1 -> X` superseded by `Y` while `d2 -> Y` is superseded
+by `X`) held disjoint key sets, both entered, and each NX insert on its
+successor's `invalid_at` row waited on the other's uncommitted close:
+`DeadlockDetected` on one of them, a raw error where Redis completes both
+(#750 review B1). `tests/conformance/test_validity.py::TestConcurrency`
+forces that interleaving (both incumbents' rows held from a probe
+connection, both writers observed blocked, then released together, ten
+times) and asserts Redis's outcome, alongside the three pairings it already
+held deterministically. What remains is the cross-*operation* case the
+record family documents as detected, not prevented: a unit of work that
+queued `save_record(K)` ahead of a supersede holds `K` while it waits for
+the prefix, and a concurrent supersede holding the prefix and naming `K`
+explicitly waits for `K`; Postgres raises `DeadlockDetected` on one side and
+persists nothing from it.
 
 **#588 for free.** On the `uow=` path the function runs inside the unit of
 work's transaction, so a successor whose `save_record` is queued ahead of the
@@ -325,6 +339,13 @@ from `execute()`; Postgres raises `ModelException` with the backend's wording
 from `commit()`. The executed-now path raises the identical `ModelException`
 on both. Pinned leg-aware in `test_swaps.py::TestUnitOfWork`.
 
+
+**`popoto_supersede` is re-created on every bootstrap.** `SCHEMA_DDL` runs
+once per new connection under the DDL lock, and `CREATE OR REPLACE FUNCTION`
+is the one statement in it that is not a no-op on a bootstrapped schema: it
+re-installs the function body every time. Idempotent today, and the reason
+a hand-patched function does not survive the next connection; one more
+reason the bootstrap belongs to the operator in production.
 
 **A supersede error inside a unit of work is typed at `commit()`.** On Redis
 the pipeline surfaces the script's reply as a raw

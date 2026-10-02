@@ -191,11 +191,23 @@ the two links, the NX open and the repoint. Each ``error_reply`` token is a
 token line, and the backend hands that line to ``validity_field``'s
 ``map_lua_error`` -- the same function the Redis backend calls -- so the
 typed exception and its text are identical on both backends. Inside the
-function the Redis single thread is ``pg_advisory_xact_lock`` on the pointer
-key, the successor and the asserted incumbent (same key space and order as
-the record locks) plus ``SELECT ... FOR UPDATE`` on the incumbent's
-``invalid_at`` row, so two connections closing one incumbent serialise and
-the second finds it closed, the idempotent no-op it is on Redis. On the
+function the Redis single thread is one ``pg_advisory_xact_lock`` on the
+model/field prefix, taken first, so every supersede on one ``ValidityField``
+runs after the previous one commits and the order among them is total;
+then the per-key locks on the pointer key, the successor and the asserted
+incumbent (same key space and order as the record locks), which serialise
+a supersede against the record writers on the same member; then ``SELECT
+... FOR UPDATE`` on the incumbent's ``invalid_at`` row. The prefix lock is
+not optional: an incumbent resolved from the pointer inside the function
+is outside the per-key set, and two such writers whose chains cross
+(``d1 -> X`` superseded by ``Y`` while ``d2 -> Y`` is superseded by ``X``)
+deadlocked on each other's uncommitted close (#750 review B1). What the
+prefix lock does not buy is an order across *operations*: a unit of work
+that queued ``save_record(K)`` ahead of a supersede holds ``K``'s lock
+while it waits for the prefix, and a concurrent supersede holding the
+prefix and naming ``K`` explicitly waits for ``K`` -- the cross-operation
+deadlock the record family already documents as detected, not prevented
+(``DeadlockDetected`` on one side, nothing persisted on it). On the
 ``uow=`` path the function runs inside the unit of work's transaction, which
 is what makes the same-transaction successor of #588 visible to the guard
 for free; it also means the *typed* exception is raised from ``commit()``
@@ -365,9 +377,18 @@ SCHEMA_DDL: tuple[str, ...] = (
         stored_vf    double precision;
         new_ia       double precision;
     BEGIN
-        -- The Redis single thread: every writer naming the same pointer or
-        -- the same members queues here, locks taken in one global order (the
-        -- same idiom and key space as the record writers' advisory locks).
+        -- The Redis single thread, per model/field: every supersede on this
+        -- prefix queues here, before it reads anything. The per-key locks
+        -- below cannot cover an incumbent resolved from the pointer *inside*
+        -- the function, and two such writers whose chains cross (d1 -> X
+        -- superseded by Y, d2 -> Y superseded by X) held disjoint key sets,
+        -- both entered, and deadlocked on each other's uncommitted close
+        -- (#750 review B1). One lock per prefix, taken first, makes the
+        -- order among supersedes total.
+        PERFORM pg_advisory_xact_lock(hashtext(ptr_prefix));
+        -- Then the keys, in one global order (the record writers' idiom and
+        -- key space), which is what serialises a supersede against a
+        -- save_record / delete_record / drop_validity of the same member.
         PERFORM pg_advisory_xact_lock(h)
           FROM (SELECT DISTINCT hashtext(k) AS h
                   FROM unnest(lock_keys) AS t(k)
@@ -1742,7 +1763,8 @@ class PostgresBackend:
         start = _check_score(clock if valid_from is None else valid_from)
         ingest = _check_score(clock if ingested_at is None else ingested_at)
         close = _check_score(clock if close_at is None else close_at)
-        # Serialise with every writer naming this identity's pointer, this
+        # After the function's prefix lock: serialise with every record writer
+        # naming this identity's pointer, this
         # successor or this (asserted) incumbent; an incumbent resolved from
         # the pointer inside the function is covered by the pointer lock and
         # by the ``FOR UPDATE`` on its interval row.

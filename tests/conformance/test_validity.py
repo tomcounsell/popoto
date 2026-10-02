@@ -1034,3 +1034,84 @@ class TestConcurrency:
         assert links(backend, b) == (None, None)
         assert interval(backend, b) == (52.0, INF)
         assert pointer(backend, "d") == a
+
+    # -- crossing chains (review B1 of #750) -----------------------------------
+    # ``d1 -> X`` superseded by ``Y`` while ``d2 -> Y`` is superseded by ``X``:
+    # two pointer-resolved incumbents, each the other's successor. Redis's
+    # single thread completes both in some order; the first closes its
+    # incumbent and repoints, the second finds its successor already closed
+    # and closes its own incumbent without a repoint. Before the prefix lock
+    # the two writers' advisory sets were disjoint, both entered the function,
+    # and each NX insert on the *successor's* ``invalid_at`` row waited on the
+    # other's uncommitted close: ``DeadlockDetected`` on one of them.
+
+    def _crossing_outcome(self, backend, x, y, results):
+        assert sorted(results, key=str) == sorted([x, y], key=str), results
+        _, x_close = interval(backend, x)
+        _, y_close = interval(backend, y)
+        assert x_close == 51.0 and y_close == 51.0
+        assert links(backend, x) == (y.encode(), y.encode())
+        assert links(backend, y) == (x.encode(), x.encode())
+        # Each writer returns its own incumbent whichever ran first, so the
+        # order shows only in the pointers: the first writer repointed to its
+        # successor, the second found its successor already closed and left
+        # its pointer alone -- both name the first writer's successor.
+        assert pointer(backend, "d1") == pointer(backend, "d2")
+        assert pointer(backend, "d1") in (x, y)
+
+    def _interleave_held(self, backend, held, calls):
+        """Like :meth:`_interleave`, holding every ``invalid_at`` row in ``held``."""
+        import psycopg
+
+        probe = psycopg.connect(backend.url)
+        instances = [second_instance(backend) for _ in calls]
+        results: list[Any] = [None] * len(calls)
+        errors: list[BaseException] = []
+        threads: list[threading.Thread] = []
+        try:
+            for m in held:
+                probe.execute(
+                    "SELECT score FROM popoto_sorted WHERE idx = %s AND member = %s "
+                    "FOR UPDATE",
+                    (IA, m),
+                )
+
+            def run(i: int, kwargs: dict) -> None:
+                try:
+                    results[i] = supersede(instances[i], **kwargs)
+                except BaseException as e:
+                    errors.append(e)
+
+            for i, kwargs in enumerate(calls):
+                thread = threading.Thread(target=run, args=(i, kwargs))
+                threads.append(thread)
+                thread.start()
+                self._wait_for_blocked(probe, i + 1)
+            probe.rollback()
+            for thread in threads:
+                thread.join(timeout=30)
+        finally:
+            probe.close()
+            for instance in instances:
+                release(instance)
+        assert not errors, errors
+        assert not any(t.is_alive() for t in threads)
+        return results
+
+    def test_crossing_pointer_chains_both_complete_without_a_deadlock(
+        self, backend, backend_is_redis
+    ):
+        for i in range(10):
+            x, y = save(backend, f"x{i}", f"y{i}")
+            supersede(backend, new_member=x, valid_from=10.0, pointer_digest="d1")
+            supersede(backend, new_member=y, valid_from=10.0, pointer_digest="d2")
+            calls = [
+                dict(mode="supersede", new_member=y, now=51.0, pointer_digest="d1"),
+                dict(mode="supersede", new_member=x, now=51.0, pointer_digest="d2"),
+            ]
+            if backend_is_redis:
+                # No interleaving to force: the single thread is the oracle.
+                results = self._race(backend, calls)
+            else:
+                results = self._interleave_held(backend, [x, y], calls)
+            self._crossing_outcome(backend, x, y, results)
