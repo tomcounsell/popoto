@@ -94,6 +94,7 @@ class TestEntryPointsReachTheBackend:
         obj.label = "y"
         obj.save(update_fields=["label"])
         assert "save_record" in spy.calls, spy.calls
+        assert "set_expiry" in spy.calls, "partial-save TTL bypassed set_expiry"
 
     def test_save_on_a_caller_pipeline_queues_on_it(self, spy):
         pipe = spy.begin()
@@ -178,8 +179,81 @@ class TestEntryPointsReachTheBackend:
         assert "begin" in spy.calls and "delete_record" in spy.calls
 
 
+class PartialProbe(popoto.Model):
+    name = popoto.KeyField()
+    label = popoto.Field(type=str, default="")
+
+
+class PartialTtlProbe(popoto.Model):
+    name = popoto.KeyField()
+    email = popoto.IndexedField(type=str, default="")
+
+    class Meta:
+        ttl = 600
+
+
+class TestPartialSaveKeepsThePreSeamWireOrder:
+    """The #735 review's two blockers, as the public API sees them.
+
+    Both are the partial-save path on an instance that was never fully saved.
+    No ``src/`` recipe does this, so the suite could not see either; user
+    code can. Each assertion is the pre-seam behaviour, measured on
+    ``poc/backend-seam`` before WS1a.
+    """
+
+    def test_partial_save_of_a_fresh_instance_stays_out_of_the_class_set(self):
+        # B1: the pre-seam partial path SADDed only on key migration. An
+        # unconditional SADD surfaced a hash with no KeyField -- query.all()
+        # returned a row with name=None -- and check_indexes counted it as
+        # healthy membership.
+        PartialProbe(name="fresh", label="q").save(update_fields=["label"])
+        raw = popoto.get_redis().hgetall("PartialProbe:fresh")
+        assert set(raw) == {b"label"}, "hash shape is the pre-seam one"
+        assert PartialProbe.query.count() == 0
+        assert PartialProbe.query.all() == []
+        # Key migration still registers the new key and drops the old one.
+        obj = PartialProbe.create(name="old", label="x")
+        obj.name = "new"
+        obj.save(update_fields=["name"], migrate_key=True)
+        assert {o.name for o in PartialProbe.query.all()} == {"new"}
+
+    def test_partial_save_on_a_caller_pipeline_keeps_meta_ttl(self):
+        # B2: with an external pipeline, an EVAL-only partial save (every
+        # listed field indexed) creates the hash inside the INDEX_SWAP EVAL
+        # that the field hook queues. The EXPIRE must be queued after that
+        # hook; queued before it, EXPIRE hits a missing key and the record
+        # lives forever.
+        with popoto.batch() as pipe:
+            PartialTtlProbe(name="t", email="e@x").save(
+                update_fields=["email"], pipeline=pipe
+            )
+            pipe.execute()
+        client = popoto.get_redis()
+        assert client.exists("PartialTtlProbe:t")
+        assert client.ttl("PartialTtlProbe:t") == 600
+        # The internal path and a non-indexed field on the external path
+        # were never affected; pin them so a later reorder cannot trade one
+        # for the other.
+        PartialTtlProbe(name="u", email="f@x").save(update_fields=["email"])
+        assert client.ttl("PartialTtlProbe:u") == 600
+
+
 class TestSourceShape:
-    """Pin the grep criterion and the ``native()`` ledger on the source."""
+    """Pin the grep criterion and the ``native()`` ledger on the source.
+
+    These are source checks, not seam checks: a site that swaps
+    ``delete_record(..., uow=p)`` for ``p.delete(...); p.srem(...)`` still
+    has no ``get_REDIS_DB()``, ``run_lua(`` or ``native()`` in it. The
+    recording tests above are the real guard, and they cover only the entry
+    points they enumerate; ``test_no_command_is_issued_on_a_unit_of_work``
+    narrows the gap for the command names ``Model`` does not share.
+    """
+
+    REDIS_COMMANDS = frozenset(
+        "hset hget hgetall hdel hmget hincrby hincrbyfloat sadd srem smembers "
+        "scard sismember zadd zrem zincrby zscore zrange expire expireat eval "
+        "evalsha hscan sscan zscan scan_iter".split()
+    )
 
     SOURCE = BASE_PY.read_text()
     TREE = ast.parse(SOURCE)
@@ -231,6 +305,30 @@ class TestSourceShape:
                 f"native() at base.py:{lineno} has no '# native(): <feature>' "
                 "comment within the five lines above it"
             )
+
+    def test_no_command_is_issued_on_a_unit_of_work(self):
+        # Review tech-debt 2: a Redis-command-shaped attribute call (``p.srem``,
+        # ``pipe.hset``) may only live in a function that holds a ledgered
+        # ``native()`` site. ``delete``/``exists``/``type`` are left out of the
+        # set because ``Model`` has methods of those names, so a bypass that
+        # uses only ``p.delete(...)`` is caught by the recording tests alone.
+        natives = self._calls_named("native")
+        functions = [n for n in ast.walk(self.TREE) if isinstance(n, ast.FunctionDef)]
+        offenders = []
+        for node in ast.walk(self.TREE):
+            if not (
+                isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            ):
+                continue
+            if node.func.attr not in self.REDIS_COMMANDS:
+                continue
+            holders = [f for f in functions if f.lineno <= node.lineno <= f.end_lineno]
+            ledgered = any(
+                f.lineno <= ln <= f.end_lineno for f in holders for ln in natives
+            )
+            if not ledgered:
+                offenders.append((node.lineno, node.func.attr))
+        assert offenders == [], offenders
 
     def test_no_isinstance_pipeline_check_remains(self):
         # Architect decision 1: the field layer checks ``uow is not None``.

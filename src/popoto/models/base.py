@@ -1511,22 +1511,29 @@ class Model(metaclass=ModelBase):
                 else None
             )
 
+            # Pre-seam parity on the partial path (#735 review B1/B2), both
+            # arms: the class set is registered only on key migration -- a
+            # never-fully-saved hash has no KeyField and must stay invisible
+            # to query.all() -- and the TTL is queued after the field hooks,
+            # on a hash the INDEX_SWAP EVAL has already created. Hence
+            # class_set=None off the migration path and set_expiry() last.
+            _partial_class_set = (
+                self._meta.db_class_set_key.redis_key if _obsolete_for_backend else None
+            )
+            _expire_at_ts = (
+                self._expire_at.timestamp() if self._expire_at is not None else None
+            )
+
             if pipeline is not None:
                 # Record write first so the caller's results[0] stays the HSET
                 # reply; EVAL-only when hset_mapping is empty (indexed field
                 # EVALs write the hash fields). save_record also queues the
-                # TTL and the obsolete key's SREM/DEL (#631 WS1a).
+                # obsolete key's SREM/DEL (#631 WS1a).
                 get_backend().save_record(
                     new_db_key.redis_key,
                     hset_mapping,
-                    class_set=self._meta.db_class_set_key.redis_key,
+                    class_set=_partial_class_set,
                     obsolete_key=_obsolete_for_backend,
-                    ttl=self._ttl,
-                    expire_at=(
-                        self._expire_at.timestamp()
-                        if self._expire_at is not None
-                        else None
-                    ),
                     uow=pipeline,
                 )
                 # If db_key changed, clean up the obsolete key's index entries
@@ -1555,6 +1562,13 @@ class Model(metaclass=ModelBase):
                         pipeline=pipeline,
                         **kwargs,
                     )
+                # Handle TTL/expire_at -- after the hooks (B2, see above)
+                get_backend().set_expiry(
+                    new_db_key.redis_key,
+                    ttl=self._ttl,
+                    expire_at=_expire_at_ts,
+                    uow=pipeline,
+                )
                 self._redis_key = new_db_key.redis_key
                 # Merge into saved_field_values (preserve existing, update listed)
                 for field_name in update_fields:
@@ -1594,18 +1608,12 @@ class Model(metaclass=ModelBase):
                 internal_pipeline = get_backend().begin()
                 # Record write first (HSET when hset_mapping is non-empty,
                 # else EVAL-only: the indexed field EVALs above wrote the hash
-                # fields), plus TTL and the obsolete key's SREM/DEL.
+                # fields), plus the obsolete key's SREM/DEL.
                 get_backend().save_record(
                     new_db_key.redis_key,
                     hset_mapping,
-                    class_set=self._meta.db_class_set_key.redis_key,
+                    class_set=_partial_class_set,
                     obsolete_key=_obsolete_for_backend,
-                    ttl=self._ttl,
-                    expire_at=(
-                        self._expire_at.timestamp()
-                        if self._expire_at is not None
-                        else None
-                    ),
                     uow=internal_pipeline,
                 )
                 # If db_key changed, clean up the obsolete key's index entries
@@ -1636,10 +1644,18 @@ class Model(metaclass=ModelBase):
                         pipeline=internal_pipeline,
                         **kwargs,
                     )
+                # Handle TTL/expire_at -- after the hooks (B2, see above)
+                get_backend().set_expiry(
+                    new_db_key.redis_key,
+                    ttl=self._ttl,
+                    expire_at=_expire_at_ts,
+                    uow=internal_pipeline,
+                )
                 results = internal_pipeline.commit()
                 # When hset_mapping is non-empty, results[0] is the HSET count.
                 # When EVAL-only (all fields are indexed), hset_mapping is empty so
-                # results[0] is the first queued op result (expire/sadd), still an int.
+                # results[0] is the first queued op result (a hook's write, or
+                # the EXPIRE), still an int -- or 0 when nothing was queued.
                 db_response = results[0] if results else 0
                 self._is_persisted = True
                 self._redis_key = new_db_key.redis_key
@@ -3860,8 +3876,8 @@ class Model(metaclass=ModelBase):
             return list(backend.scan_index_members(zset_key, "sorted"))
 
         def _scan_hash_values(hash_key: str) -> list:
-            """All values of a side map (HSCAN on Redis)."""
-            return list(backend.map_scan(hash_key).values())
+            """All values of a side map (HSCAN COUNT 1000 on Redis)."""
+            return list(backend.map_scan(hash_key, count=1000).values())
 
         result = {
             "class_set": 0,
@@ -4094,8 +4110,8 @@ class Model(metaclass=ModelBase):
             return list(backend.scan_index_members(zset_key, "sorted"))
 
         def _scan_hash_entries(hash_key: str) -> list:
-            """All (member, value) pairs of a side map (HSCAN on Redis)."""
-            return list(backend.map_scan(hash_key).items())
+            """All (member, value) pairs of a side map (HSCAN COUNT 1000 on Redis)."""
+            return list(backend.map_scan(hash_key, count=1000).items())
 
         removed = 0
 
@@ -4310,10 +4326,11 @@ class Model(metaclass=ModelBase):
 
             encoded_mapping[field_name_bytes] = encoded_value
 
-        # native(): raw_update is the documented hook-free migration bypass --
-        # it writes hash fields without registering the key in the class set,
-        # which save_record always does -- and migrations are out of the #631
-        # slice (plan non-goals: ``migrations.py``).
+        # native(): raw_update is the documented hook-free migration bypass
+        # (batched HSETs, no class-set registration); migrations are out of
+        # the #631 slice (plan non-goals: ``migrations.py``). protocol-2's
+        # save_record(class_set=None) could now express it -- moving it off
+        # native() is a ledger change for a later PR, not this one.
         client = get_backend().native()
 
         # Pipeline HSET commands in batches
