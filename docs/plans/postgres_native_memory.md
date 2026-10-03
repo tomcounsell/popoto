@@ -11,7 +11,24 @@ last_comment_id: 5964094115
 # Postgres-native agent memory (#755)
 
 ## Problem
-TBD
+
+Valor runs one memory model, `Memory` in `ai/models/memory.py`, on popoto's Redis memory fields. Every primitive in it is a Redis data structure maintained by Lua: a decay ZSET per project, a confidence companion hash, a BM25 inverted index in hashes and ZSETs, a vector store, a bloom filter, and access-tracker side keys. Each recall assembles a ranking out of temp ZSETs. Two consequences follow.
+
+- Retrieval cannot be expressed as one query, nor inspected, joined, or backed up as ordinary data. Signals are fused across separate Redis structures in Python and Lua.
+- The #631 POC showed that these semantics do run on Postgres. It ran them on a generic `popoto_record(key, field bytea, value bytea)` layout that copies Redis's shape, which pays a PL/pgSQL msgpack decode for every row on every ranking query. Measured costs: decayed rank with confidence ran 5.4× Redis, writes 4.9×, index swaps 7.0×. The same POC showed typed SQL is faster than Redis wherever no decode is needed: plain decay rank 0.2×, validity-gated rank 0.3×.
+
+The maintainer has decided (2026-10-03, #755) that Postgres is the substrate for agent memory, built Postgres-native, and that Redis memory is frozen.
+
+**Current behavior:**
+- Valor's `Memory` lives in Redis DB 0 on this machine.
+- Ranking is Lua over ZSETs, and fusion is Python over several round trips.
+- `poc/backend-seam` carries a 46-method protocol plus a Redis-path refactor across 13 `src/` modules. Both exist to make memory *dual-backend*, a goal now ruled out.
+
+**Desired outcome:**
+- A Postgres-native memory model, `popoto.pg`. A popoto `Model` class body compiles to one typed table per model with pgvector, a BM25 postings table, and typed decay/confidence/access columns.
+- Recall (scope filter, BM25, vector, decay×confidence ranking, and RRF fusion) is a single SQL statement.
+- Store, retrieve, validate and prune all happen inside normal calls, with no cron and no manual curation.
+- Valor's `Memory` can switch by changing its base class and import line, keeping the same declarative fields. Its schema is concrete enough for #756 to migrate into.
 
 ## Freshness Check
 
