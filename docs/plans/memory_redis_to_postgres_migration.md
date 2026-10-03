@@ -255,10 +255,72 @@ The pre-#755 half (snapshot, inventory, extract, transform) is about 60% of the 
 | Postgres with pgvector available for loader tests | `python -c "import os,psycopg; psycopg.connect(os.environ['POSTGRES_TEST_URL']).execute('select extversion from pg_extension where extname=%s',('vector',)).fetchone()[0]"` | Loader and verify tests (skipped when unset) |
 
 ## Solution
-TBD
+
+### Key Elements
+
+- **Snapshot isolation (the safety model)**: the tool cannot reach the live store. It connects only to a throwaway `redis-server` it started itself from a copied RDB, identified by `run_id` in `source.json`. It has no code path that accepts a URL, port or host for the source. That makes "read-only against Redis, never flush" a structural property rather than a discipline. It also neutralizes the popoto read paths that write (spike-2), because those writes land in a disposable process.
+- **Allowlisted client**: every Redis call goes through a wrapper that permits only the read commands listed in Data Flow step 4. Any other command raises `ForbiddenCommand` before it reaches the socket. This is defense in depth on top of isolation, and it sits outside popoto's own DB-0 flush guard. It applies to the inventory and to counter extraction. Transfer export uses popoto's global client, bound by `REDIS_URL` set before `import popoto` (CLAUDE.md, #577) to the throwaway URL. The tool asserts that binding by comparing `run_id` before export starts.
+- **Reused extractor**: `popoto.transfer.export`, run against a mirror `Memory` model. The mirror has the same class name, field names and field types as Valor's model, with `GracefulEmbeddingField` replaced by plain `EmbeddingField`, whose storage is identical (`ai/models/graceful_embedding_field.py` overrides only `on_save`). Using a mirror means the tool never imports Valor's runtime: no `apply_defaults()` and no OpenAI provider configuration. A preflight compares the mirror against Valor's model by AST, read-only.
+- **Pure transform**: JSONL to logical tuples (L1–L25) plus a lossy-case report. It is deterministic, so the same input always yields byte-identical `rows.jsonl`.
+- **Idempotent loader**: one transaction per run.
+  - The PK is `memory_id`.
+  - Every migrated row carries `migrated_from` (hostname, snapshot id, run id).
+  - `ON CONFLICT DO UPDATE` fires only where `target.migrated_from IS NOT NULL`, so a row Valor has since created or edited natively on Postgres is never overwritten. Those rows are reported as `conflict_native`.
+  - A run ledger (`migration_756.runs`) stores the artifact sha256 values. Re-running the same artifact is a verified no-op. Re-running a newer snapshot is the delta mechanism.
+  - `--dry-run` runs the full load and verification inside the transaction, then rolls back.
+- **Three-level verification**:
+  1. Counts.
+  2. A logical checksum over **every** record (not a sample). At a 20k-record scale this costs seconds.
+  3. Retrieval parity on a query sample.
+
+  The tool exits non-zero on any mismatch in levels 1–2. Level 3 is a go/no-go input with pinned thresholds.
+- **Retrieval parity**: there is no real-query log in Valor; analytics records only hit counts (`ai/agent/memory_retrieval.py:443,469`). The sample has two parts:
+  - (a) the 100 most recent `source="human"` memory contents. These are literally the user prompts that `memory_bridge.prefetch` recalls against.
+  - (b) 100 known-item queries from Valor's own `tools/memory_eval/query_set.py:143`.
+
+  The same queries run through Valor's `retrieve_memories` twice: against a *second* throwaway server loaded from the same snapshot, and against the Postgres store, back to back. Metrics:
+  - known-item hit@10, which must not drop by more than `PARITY_HIT_DROP_MAX`;
+  - mean overlap@10, which must be at least `PARITY_OVERLAP_MIN`.
+
+  Exact equality is not expected, because #755 replaces popoto BM25 with a Postgres text-search ranking. The thresholds are pinned constants (magic numbers per CLAUDE.md), starting at 0.02 and 0.6.
+
+### Flow
+
+Operator freezes writers → `BGSAVE` and copy the RDB plus embeddings → `serve-snapshot` → `inventory` (stop if an ASSERT fails) → `extract` → `transform` (report lossy cases) → `load --dry-run` (review the report) → `load` → `verify` (counts plus checksum: must pass) → `parity` (go/no-go) → operator repoints Valor → resume writers → late-write check → optional delta re-run.
+
+### Technical Approach
+
+- **CLI shape**: `python -m tools.memory_migration <stage> --run-dir <dir>`, with stages `serve-snapshot | inventory | extract | transform | load | verify | parity | stop-snapshot`. Each stage reads its predecessor's artifacts from the run directory and refuses to run if they are missing or their sha256 does not match `artifact.json`. That makes stages individually re-runnable, and makes the run directory the complete audit record.
+- **Run directory**: lives in the operator's chosen archive location, never in the repo. It holds `dump.rdb`, `embeddings/`, `source.json`, `inventory.json`, `memory.jsonl`, `counters.jsonl`, `rows.jsonl`, `report.json`, `load.json` and `verify.json`. It is retained after cutover as the cold archive.
+- **Transfer reuse**: call `popoto.transfer.export.export_records` (the library API, not the CLI) for the mirror model, with chunked hydration. Carry the `.npy` bytes through the existing embedding carry. If a gap needs a popoto change (for example, the export path reads `POPOTO_CONTENT_PATH` at import time instead of per call), it is an additive popoto PR with its own tests. The tool sets the environment before importing popoto either way.
+- **Orphan hashes**: `Memory:*` hashes that `SCAN` finds but `$Class:Memory` lacks are decoded by the inventory through `popoto.models.encoding` (a pure function) and appended to `memory.jsonl` with `orphan: true`. They load like any other record, because they are real memories that popoto's index simply lost. Their count is reported.
+- **Loader**:
+  1. `psycopg` 3 binary `COPY` into `migration_756.stage_*`, which is unindexed.
+  2. One `INSERT … SELECT … ON CONFLICT` per target table.
+  3. HNSW and text-search index build or `REINDEX` after the load, with `maintenance_work_mem` raised for the session.
+
+  The staging schema is dropped at the end of a successful non-dry run. It is created and destroyed inside the transaction, so a crash leaves nothing behind.
+- **Encoding compatibility**: Valor writes with popoto 1.9.0 and the tool reads with main. A fixture test encodes records with the 1.9.0 encoder semantics (vendored msgpack fixtures captured on DB 15) and decodes them with main.
+- **What can start before #755** (tasks 1–5): `serve-snapshot`, the allowlisted client, `inventory`, `extract`, `transform`, the report, and the mirror drift preflight. **What waits for #755** (tasks 6–9): `map-physical`, `load`, `verify`, `parity` and the runbook rehearsal.
 
 ## Cutover Runbook
-TBD
+
+This runs once per machine (each machine has its own Redis). The operator is the maintainer. Each step names its rollback.
+
+**T-1 day: rehearsal.** Run the whole pipeline against a fresh snapshot without freezing anything, loading into a scratch Postgres database. Review `report.json` and the parity result. This sizes the downtime window, which is expected to be minutes at 20k records, dominated by index build and parity. Nothing goes live.
+
+**T-0:**
+1. **Drain.** Let `side-effect-drain` empty the `SideEffectJob(kind=memory_extraction)` queue, and let `memory-outcome-resolve` consume the session sidecars. Check the queue is empty from the Valor dashboard (:8500).
+2. **Freeze.** Close every Claude Code session on the machine; the hooks are memory writers. Then stop the bridge, the worker (which runs all memory reflections plus the title daemon's host process) and the memory MCP server, using Valor's service manager. *Rollback: restart them.*
+3. **Snapshot.** Run `redis-cli BGSAVE` and poll `LASTSAVE` until it advances. Record `INFO persistence` → `rdb_changes_since_last_save` (it should read 0 immediately after). Copy `dump.rdb` and `~/.popoto/content/.embeddings/Memory/` (or `$POPOTO_CONTENT_PATH`) into the run directory. These are the only commands issued to the live server, and none of them mutates the dataset. *Rollback: none needed.*
+4. **Migrate.** `serve-snapshot`, then `inventory`, `extract`, `transform`, `load --dry-run`, review, `load`.
+5. **Verify.** `verify` must exit 0. Then run `parity` and make a go/no-go decision against the thresholds. *No-go rollback: restart the writers on Redis unchanged. Postgres rows can be left (they are inert) or truncated by `migrated_from` run id.*
+6. **Repoint.** Switch Valor's memory backend configuration to Postgres. This is a Valor-side change delivered by Valor's adoption of #755; see No-Gos [ORDERED].
+7. **Resume.** Restart the writers. Run `stop-snapshot`.
+8. **Late-write check.** Compare `rdb_changes_since_last_save` on the live server with the value recorded at step 3. It counts *all* DB writes, including non-memory Valor models, so a non-zero value is a prompt, not a verdict. If it is non-zero, take a second snapshot, re-run inventory/extract/transform, and diff `rows.jsonl` against run 1. Any memory record that changed or appeared after the snapshot is loaded by a delta `load`, which the `migrated_from` guard keeps from touching Postgres-native rows. Expected result: zero memory deltas.
+9. **Archive.** Keep the run directory (RDB, embeddings, JSONL, reports). Leave the Redis memory keys in place. Their removal is a separate, later decision.
+
+**After step 7, rollback costs data.** Memories written on Postgres after resume would not exist in Redis. The window between steps 5 and 7 is where the go/no-go belongs, and the runbook does not let the operator skip it.
 
 ## Failure Path Test Strategy
 TBD
