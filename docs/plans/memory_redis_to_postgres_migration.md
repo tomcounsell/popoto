@@ -127,22 +127,132 @@ Each of these was a time-boxed code-read by an Explore agent. All read code only
 - **Impact on plan**: the mapping is written against the logical model. The physical column list is a declared dependency, and every task that touches it is sequenced after #755's schema PR.
 
 ## Source Inventory
-TBD
+
+This inventory was built from code (popoto main at the baseline plus Valor `models/memory.py`), not from live data. `R` means a record key: `Memory:{agent_id}:{memory_id}:{project_key}`. KeyFields are ordered alphabetically, with `:` inside a value escaped as `{&#58;}` (`models/base.py:765`, `models/db_key.py:43`).
+
+Disposition codes:
+- **CARRY**: authoritative state that exists nowhere else, so it must be migrated.
+- **REBUILD**: derived from carried state; the #755 schema or Valor recomputes it.
+- **DROP**: transient, or meaningless outside Redis.
+- **ASSERT**: expected to be empty for Valor. The inventory stops the run if it is not.
+
+### Memory model (popoto-managed, Redis DB 0)
+
+| Structure | Key pattern | Type | Holds | Disposition |
+|---|---|---|---|---|
+| Record hash | `R` | hash, msgpack values | `memory_id`, `agent_id`, `project_key`, `content`, `title`, `importance`, `source`, `reference`, `metadata`, `superseded_by`, `superseded_by_rationale`, `relevance` (last-save Unix ts), `confidence` (mirror), `embedding` (dimension int), `bm25`/`bloom` (placeholders) | **CARRY** (except the mirror, dimension and placeholder attributes) |
+| Confidence companion | `$ConfidencF:Memory:confidence:data`, hash field `R` | hash → msgpack `{confidence, evidence_count, corroborations, contradictions}` | Bayesian evidence | **CARRY.** Authoritative. The hash mirror is ignored. A missing entry maps to `initial_confidence=0.5`, `evidence_count=0`, and is counted in the report. |
+| Access meta | `$AT:Memory:meta:{R}` | hash | `access_count`, `last_accessed` | **CARRY** |
+| Access log | `$AT:Memory:access_log:{R}` | list (capped) | confirmed access timestamps | **CARRY** |
+| Staged reads | `$AT:Memory:staged:{R}` | list, 24h TTL | unconfirmed reads | **DROP.** Lossy by contract, the same as transfer's `partial` policy, and bounded at 24h. Counted in the report. |
+| Embedding vectors | **disk:** `$POPOTO_CONTENT_PATH` (default `~/.popoto/content`) `/.embeddings/Memory/{sha256(R)}.npy` plus `_index.json` | float32 `.npy` | vectors (current provider: OpenAI `text-embedding-3-small`, 1536-d, per `ai/agent/embedding_provider.py`; older records may be 768-d `nomic-embed-text`) | **CARRY** if the dimension matches the #755 column. Otherwise NULL plus re-embed. No provider name is stored, so the dimension is the only provenance. |
+| Class set | `$Class:Memory` | set | every `R` | **REBUILD** (becomes the PK). Cross-checked against a `SCAN Memory:*` in the inventory. |
+| KeyField indexes | `$KeyF:Memory:agent_id:{v}`, `$KeyF:Memory:project_key:{v}` | set | `R` by value | **REBUILD** (SQL indexes) |
+| Decay index | `$DecayingSortF:Memory:relevance:{project_key}` | zset, score = `relevance` ts | ranking | **REBUILD.** Cross-checked: each zset score equals the hash's `relevance`. |
+| BM25 postings | `$BM25:Memory:bm25:{tf:R, inv:term, df, dl, n, avgdl}` | zsets/strings | inverted index over `content` | **REBUILD** (#755's text-search choice) |
+| Bloom | `$EF:Memory:bloom` | string bitmap | content-token bits, never cleared on delete | **REBUILD** or retire, per #755. Not carried: its bits include deleted records. |
+| Write-filter priority | `$WF:Memory:priority` | zset | `R` → filter score at save time | **REBUILD** (a function of `importance`) |
+| Tombstone prior | `$TOMBPRIOR:Memory:{burials,index,stats}` | hash/zset/hash | burial counts | **ASSERT empty.** Only popoto's `recipes/memory_lifecycle.py:868` records burials, and Valor does not use that recipe (grep of `ai/` found no caller). A non-empty value stops the run for a maintainer decision. |
+| Legacy idxset pointers | hash fields containing `\x00`, `$IdxPtr:*` | — | `IndexedField`/`UniqueField` only | **ASSERT absent / DROP.** Memory has no such fields. The decoder already skips `\x00` fields (`models/encoding.py:612`). |
+| Embedding invalidation | pubsub `popoto:embedding:invalidate:Memory` | channel | — | **DROP** (not state) |
+
+### Valor-side Redis state outside the Memory model
+
+| Structure | Key / model | Disposition |
+|---|---|---|
+| Content-gate counters | raw `INCR {project_key}:memory-gate:{reason}`, reasons `ack`/`fragment`/`short`/`fallback_dropped` (`ai/models/memory_gate.py:25-35`) | **CARRY (telemetry)** into a small counters table so the :8500 dashboard stays continuous. Optional; see Open Questions. |
+| Distill-gate counters | raw `INCR {project_key}:memory-distill:{reason}` (`ai/models/memory_distill_gate.py:32-42`) | **CARRY (telemetry)**, same as the row above |
+| `CorpusSizeBaseline` | popoto model (`ai/models/memory_corpus_baseline.py`) | **REBUILD.** A single row that the quality audit regenerates. |
+| `KnowledgeDocument`, `DocumentChunk` | popoto models with their own embeddings | **Out of scope: re-index.** `tools/knowledge/indexer.py` derives them from files. The `source="knowledge"` *Memory* rows are carried as Memory rows. |
+| `SideEffectJob(kind="memory_extraction")` | popoto model | **DRAIN before freeze.** Pending jobs would write Memory after the snapshot. |
+| Session sidecars `data/sessions/{id}/memory_buffer.json` | filesystem | **DRAIN** (the outcome-resolve reflection consumes them) |
 
 ## Logical Field Mapping
-TBD
+
+The **logical** model is the set of facts that must survive. The **physical** column names are set by #755's schema PR and fill the right-hand column at build time (task `map-physical`). Every row below is stated as a fact plus a transformation, so the mapping holds whatever table shape #755 chooses.
+
+| # | Logical fact | Source (Redis) | Transformation | Lossy? | #755 column |
+|---|---|---|---|---|---|
+| L1 | Identity | `memory_id` (uuid4 hex) | Verbatim. It is the PK, unique across machines with overwhelming probability. A collision aborts the load. | no | TBD |
+| L2 | Author/agent scope | `agent_id` | verbatim | no | TBD |
+| L3 | Project scope | `project_key` | Verbatim, including legacy `dm`/`default` values, which the report lists | no | TBD |
+| L4 | Content, title | `content`, `title` | Text. A NUL byte rejects the record; Postgres `text` refuses NUL (POC Q4). | Records with NUL bytes are rejected and reported. The default `--max-rejects 0` aborts the load. | TBD |
+| L5 | Importance | `importance` | float8 | no | TBD |
+| L6 | Source kind | `source` | Text, or an enum if #755 picks one. Any value outside `{human, agent, system, knowledge}` is reported. | no | TBD |
+| L7 | Reference pointer | `reference` (JSON string or `""`) | Becomes jsonb if it parses, NULL if `""`, otherwise kept as raw text (counted) | no | TBD |
+| L8 | Free metadata | `metadata` dict | jsonb, verbatim. Typed promotion of known keys is optional and #755's call (rows L9–L11). | no | TBD |
+| L9 | Tags and category (scoping) | `metadata.tags`, `metadata.category` | Promote to #755's optional tag-scoping column if one exists; otherwise leave in jsonb | no | TBD |
+| L10 | Outcome state | `metadata.dismissal_count`, `metadata.last_outcome` | Typed columns, or kept in jsonb | no | TBD |
+| L11 | Outcome history | `metadata.outcome_history[]` (≤10 entries: `outcome`, `reasoning`, `ts`) | One row per entry if #755 has an outcomes table, otherwise jsonb | History beyond the 10-entry cap was already gone in Redis | TBD |
+| L12 | Distillation status | `metadata.distill_*` (status, attempts, last_attempt_at, model, prompt_version, failed/refused/abandoned) | Kept in jsonb unless #755 promotes it | no | TBD |
+| L13 | Decay anchor | hash `relevance` (last-save ts) | `timestamptz`. The zset score is used only as a cross-check. | no | TBD |
+| L14 | Creation time | **does not exist.** uuid4 ids carry no time and the model has no `created_at`. | Estimate as `min(access_log[0], outcome_history[*].ts, relevance)` and set an `created_at_estimated` provenance flag | **yes, documented** | TBD |
+| L15 | Confidence | companion hash `confidence` | float8 | no | TBD |
+| L16 | Confidence evidence | companion `evidence_count`, `corroborations`, `contradictions` | ints | no | TBD |
+| L17 | Access stats | `$AT meta` `access_count`, `last_accessed` | int, timestamptz | no | TBD |
+| L18 | Access log | `$AT access_log` | Rows, or a `timestamptz[]` array | staged (unconfirmed, <24h) reads are dropped | TBD |
+| L19 | Embedding | `.npy` file | `vector(N)` if the dimension equals N. Otherwise NULL, reported per dimension, and left for Valor's embedding backfill to regenerate. | Re-embed cost only. Wrong-dimension vectors cannot be loaded at all. | TBD |
+| L20 | Supersession: replacement | `superseded_by` when it equals an existing `memory_id` | FK to the replacement row | no | TBD |
+| L21 | Retirement reason | `superseded_by` when it is a sentinel: `dismissal-prune` (`ai/agent/memory_extraction.py:1513`), `decay-prune-tier2` (`ai/reflections/memory/memory_decay_prune.py:146`), `cleanup-junk-extraction` (`ai/reflections/memory/memory_quality_audit.py:60`) | Retirement-reason column or enum. Any other non-id, non-sentinel value (for example a dangling id whose replacement was hard-deleted) is carried as raw text and counted. | no | TBD |
+| L22 | Supersession rationale | `superseded_by_rationale` | text | no | TBD |
+| L23 | Validity interval | **does not exist as a timestamp.** Supersession time was never recorded. | `tstzrange(created_at_est, NULL)` for active records. For superseded records the upper bound is estimated as `relevance` (the timestamp of the last save, which is at or after the supersession save) and flagged. | **yes, documented**: the upper bound is approximate | TBD |
+| L24 | Machine provenance | none (implicit) | `migrated_from` = hostname + snapshot id + run id on every row. This is also the idempotency guard (see Solution). | n/a | TBD |
+| L25 | Gate/distill counters | raw counter keys | `(project_key, gate, reason, count, migrated_at)` | no | TBD |
+
+Lossy cases, all named in the run report and accepted by design:
+- **L4**: content containing NUL bytes is rejected, not silently stripped.
+- **L14, L23**: creation time and supersession time are estimated, and each estimate is flagged.
+- **L18**: staged reads are dropped.
+- **L19**: wrong-dimension vectors are re-embedded.
+- **Bloom bits** are not carried.
+
+The run report exists so these cases are counted, never discovered later.
 
 ## Data Flow
-TBD
+
+1. **Freeze (operator)**: stop Valor's writers on the machine; see the Cutover Runbook.
+2. **Snapshot (operator, EXTERNAL)**: the operator runs `BGSAVE` on the live Redis and waits for `LASTSAVE` to advance, then copies `dump.rdb` and `$POPOTO_CONTENT_PATH/.embeddings/Memory/` into a run directory. This is the only operation ever performed against the live server. It does not mutate the dataset, and it is the operator's command, not the tool's.
+3. **`serve-snapshot` (tool)**: starts a throwaway `redis-server` on an ephemeral port bound to 127.0.0.1, with `--dir <rundir> --dbfilename dump.rdb --save "" --appendonly no`. It records the server's `run_id` and port in `<rundir>/source.json`. Every later stage connects only through this record.
+4. **`inventory` (tool)**: connects through an allowlisted read-only client (`SCAN`, `TYPE`, `SMEMBERS`, `SCARD`, `HGETALL`, `HGET`, `HLEN`, `LRANGE`, `LLEN`, `ZRANGE`, `ZSCORE`, `ZCARD`, `GET`, `STRLEN`, `PTTL`, `INFO`, `DBSIZE`). It counts every key family in the Source Inventory, cross-checks the class set against `SCAN Memory:*` and the decay-zset scores against the hash `relevance` values, and asserts the ASSERT rows. Output: `inventory.json`.
+5. **`extract` (tool)**: runs `popoto.transfer.export` with a mirror `Memory` model against the throwaway server, with `POPOTO_CONTENT_PATH` set to the copied embeddings directory. It also collects any orphan hashes the inventory found, and the counter keys. Output: `memory.jsonl` (manifest plus records) and `counters.jsonl`, each with a sha256 recorded in `artifact.json`. After this the Redis side is finished and the throwaway server is stopped.
+6. **`transform` (tool, pure)**: reads JSONL and applies L1–L25: supersession split, created-at estimate, dimension routing, NUL rejection. Output: `rows.jsonl` (the logical tuples) plus `report.json` (every lossy count). It needs no network or database and can run before #755 lands.
+7. **`load` (tool, after #755)**: in one Postgres transaction, binary-`COPY`s rows into a `migration_756` staging schema, then runs `INSERT … ON CONFLICT (id) DO UPDATE … WHERE target.migrated_from IS NOT NULL` into the #755 tables, records the run in `migration_756.runs`, and commits. In `--dry-run` mode it rolls back instead. Indexes (HNSW, text search) are built or `REINDEX`ed after the load.
+8. **`verify` (tool)**:
+   - (a) row counts per `(project_key, source, active/superseded, vector dimension)` against `report.json`.
+   - (b) a per-record logical checksum over every row: sha256 of the canonical tuple from `rows.jsonl` against the same tuple re-read from Postgres. It must be 100% equal.
+   - (c) N random records printed side by side for human review.
+   - (d) retrieval parity (see Solution).
+9. **Repoint and resume (operator, Valor-side)**.
 
 ## Architectural Impact
-TBD
+
+- **New dependencies**: `psycopg[binary]>=3` and `pgvector` (the Python package) for the loader, in a tool-local optional group. They are not added to popoto's runtime dependencies or published extras. The source side needs a `redis-server` binary, the same one the machine already runs.
+- **Interface changes**: none to popoto's public API. `popoto.transfer.export` is reused unmodified. If the build finds an additive change is needed, such as an explicit `content_path=`, it becomes its own PR with tests and no behaviour change.
+- **Coupling**: the tool depends on the #755 schema (loader only) and on a mirror of Valor's `Memory` field list. A preflight compares the mirror against `ai/models/memory.py` by AST, read-only, so the two cannot drift silently.
+- **Data ownership**: after cutover, Postgres is authoritative for Valor memory on that machine. Redis memory keys are left untouched as a cold archive. Deleting them is a separate decision (No-Gos).
+- **Reversibility**: full until writers resume, because Redis was never written. After resume, rolling back loses the memories written on Postgres since then. A reverse migration is deliberately not built (No-Gos).
+- **Location**: `tools/memory_migration/` at the repo root, outside `src/`. It is never in the wheel. It is also not in the sdist: setuptools' default sdist membership does not pick up an arbitrary top-level directory, and the build verifies this with `scripts/check_sdist_contents.py`. That placement makes the "one-off, not a runtime feature" decision structural.
 
 ## Appetite
-TBD
+
+**Size:** Medium
+
+**Team:** Solo dev (builder plus validator pairs), with the maintainer as operator for the cutover
+
+**Interactions:**
+- PM check-ins: 1–2 (the Open Questions; the go/no-go on the parity threshold)
+- Review rounds: 1 (the loader against #755's schema)
+
+The pre-#755 half (snapshot, inventory, extract, transform) is about 60% of the work and can ship first. The loader, verification and the rehearsal follow once #755's schema PR merges.
 
 ## Prerequisites
-TBD
+
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| `redis-server` binary present (same major as the live server) | `redis-server --version` | Throwaway snapshot server |
+| Test Redis on DB 15 for unit fixtures | `redis-cli -n 15 ping` | Fixture snapshots (tests never touch DB 0) |
+| #755 schema merged (loader, verify, rehearsal only) | `gh pr list --state merged --search "755 schema" --json number -q 'length'` | Physical mapping target |
+| Postgres with pgvector available for loader tests | `python -c "import os,psycopg; psycopg.connect(os.environ['POSTGRES_TEST_URL']).execute('select extversion from pg_extension where extname=%s',('vector',)).fetchone()[0]"` | Loader and verify tests (skipped when unset) |
 
 ## Solution
 TBD
