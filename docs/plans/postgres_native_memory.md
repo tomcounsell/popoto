@@ -80,7 +80,7 @@ The maintainer has decided (2026-10-03, #755) that Postgres is the substrate for
   - **Informs D4:** neither extension BM25 nor `ts_rank`. Popoto's own BM25, held in a plain postings table, keeps the tuned lexical arm and adds no server extension.
 - **pgvector 0.8 iterative scans** (`hnsw.iterative_scan = relaxed_order`, `hnsw.max_scan_tuples` default 20k) fix filtered HNSW queries that return fewer rows than `LIMIT`. With a selective filter, Postgres can also scan the tenant's rows by btree and rank them exactly. Sources: https://github.com/pgvector/pgvector and https://docs.pgedge.com/pgvector/v0-8-1/filtering/.
   - The local server has `vector` 0.8.7 available, checked via `pg_available_extensions`.
-  - **Informs D5:** an exact scan within the scope comes first, and HNSW is added only past a measured threshold (spike-4).
+  - **Informs D5:** an exact scan within the scope comes first, and HNSW is added only past a measured threshold. spike-4 measured it: exact is 2.6 ms at about 1k rows in scope and 37 ms at about 12k rows.
 - **psycopg 3 pools**: one process-global `ConnectionPool`, with one connection per unit of work. Connections can be shared across threads, but sharing them shares the transaction. Call `pool.wait()` at startup to fail fast. Source: https://www.psycopg.org/psycopg3/docs/advanced/pool.html.
   - **Informs TD-3:** the POC's single shared autocommit connection is exactly the shape the docs warn about.
 
@@ -155,9 +155,38 @@ The maintainer has decided (2026-10-03, #755) that Postgres is the substrate for
 ### spike-4: SQL BM25, pgvector and single-statement fusion at Valor's scale (prototype)
 - **Assumption**: "At 20k rows, exact BM25 in plain SQL, an exact (unindexed) vector scan within one project, and a one-statement RRF are all fast enough for a per-turn recall. Neither pg_search nor HNSW is needed yet."
 - **Method**: prototype in a throwaway schema on local PostgreSQL 18.6 with pgvector 0.8.7. No popoto, no Redis.
-- **Finding**: _pending — filled in when the spike returns._
-- **Confidence**: _pending_
-- **Impact on plan**: decides D4 (BM25 storage and stats) and D5 (HNSW threshold).
+- **Setup**:
+  - **Hardware and server**: Apple M4, default `postgresql.conf`, psycopg3 prepared statements over localhost.
+  - **Runs**: 200 timed runs after 20 warm-up runs, after `VACUUM ANALYZE`.
+  - **Data**: 20,000 rows across five projects (59.8% / 20.4% / 9.9% / 5.1% / 4.9%). Docs are 40–80 tokens from a 30k-term Zipf vocabulary, giving 985k postings. Vectors are synthetic 768-d clusters.
+  - **Teardown**: the throwaway `spike755_*` schemas were dropped afterwards. The scripts are kept in the session scratchpad and are not committed.
+- **Finding**: partly true. The scope key has to be part of the postings key, and the largest project needs HNSW.
+
+  | top-50 within one project | 60% project p50 / p95 | 5% project p50 / p95 |
+  |---|---|---|
+  | BM25, postings `(term, id)`, live N/avgdl | 46.1 / 69.6 ms | 46.5 / 62.3 ms |
+  | **BM25, postings `(scope, term, id)`, live per-scope stats** | **21.4 / 38.6 ms** | **1.9 / 3.3 ms** |
+  | BM25, same postings, maintained stats row | 26.0 / 54.7 ms | 1.7 / 5.6 ms |
+  | `tsvector` + GIN, `ts_rank_cd` | 52.4 / 83.2 ms | 6.4 / 10.1 ms |
+  | Exact cosine (btree on scope) | 37.1 / 58.6 ms | **2.6 / 5.6 ms** |
+  | HNSW, `iterative_scan=relaxed_order`, ef_search=40 | **0.9 / 1.2 ms** | 9.3 / 13.2 ms (forced) |
+  | Decay `ORDER BY` computed expression (btree on scope) | 4.2 / 13.6 ms | 0.35 / 0.8 ms |
+  | RRF k=60 over BM25 (scoped postings) + exact vector + decay | 95.5 / 207 ms | 5.8 / 14.2 ms |
+
+  - **HNSW recall@50 against exact**:
+    - Small project: about 0.90, with a worst query of 0.80. The planner already picks the exact path there unless forced.
+    - Large project: mean ≥ 0.99, but one query in 100 returned **0.0** at ef_search=100.
+  - **Write cost**: one memory plus ~50 postings in one transaction is 2.9–3.1 ms p50 (5.9 ms p95) with every index, and 1.4–2.2 ms without HNSW. A maintained stats row added no measurable latency, but it is a single-row hot spot.
+  - **Size at 20k rows**: heap plus vector TOAST 183 MB, postings 96 MB, HNSW 78 MB.
+  - **Not measured**: RRF with HNSW for the large project. It is estimated at 25–30 ms as the sum of its arms.
+- **Confidence**:
+  - High for the relative shapes.
+  - Medium for absolute numbers. Vectors were 768-d synthetic, against Valor's 1536-d real ones, and each configuration ran once.
+- **Impact on plan**:
+  - **D4**: postings are keyed `(scope, term, record_id)`, with live per-scope statistics and no stats row. `tsvector` is rejected.
+  - **D5**: the vector arm chooses exact or HNSW by scope size, and HNSW has a recall guard.
+  - **Recall budget**: set from these numbers (§Success Criteria).
+  - **Build measurement**: the 0.0-recall pathology is re-measured on real 1536-d data before the threshold is pinned (§Rabbit Holes).
 
 ## Data Flow
 
@@ -170,8 +199,8 @@ All three flows below are for a model bound to Postgres by its base class, `popo
 4. One transaction, all rows locked in a fixed global order:
    1. `INSERT … ON CONFLICT (pk) DO UPDATE` on the model row. This writes every typed column. Decay `relevance` is stamped on insert and on full save, matching today's `auto_now`. Confidence columns are set only on insert. `bm25_len`, `created_at` and `updated_at` are set too.
    2. BM25 postings: delete the old terms for this row, then insert the new ones, sorted by term.
-   3. ExistenceFilter vocabulary: refcount upserts, sorted by token.
-5. After commit, piggyback maintenance (§Solution D7) may run one bounded batch: embed a few `NULL`-vector rows and reap expired rows. It never runs inside the caller's transaction.
+   3. ExistenceFilter membership: delete this record's old token rows, then insert the new ones. These rows belong to this record alone, so no row is shared with another writer.
+5. After commit, piggyback maintenance (§Solution D7) may run one bounded batch that embeds a few `NULL`-vector rows. It never runs inside the caller's transaction.
 
 **Recall: `ContextAssembler(Memory).assemble(query_cues={"query": q}, partition_filters={"project_key": pk})`**
 1. `_pull_path_hybrid` sees a pg-bound model and calls `Memory.query.recall(q, scope={"project_key": pk}, limit=5*max_items, weights=…)`.
@@ -215,7 +244,229 @@ All three flows below are for a model bound to Postgres by its base class, `popo
 | Dev extras | `python -c "import psycopg, psycopg_pool, pgvector"` | after `pip install -e '.[dev,embeddings,mcp,postgres]'` |
 
 ## Solution
-TBD
+
+### Key Elements
+
+- **`popoto.pg`**: a new subpackage. A model opts in by subclassing `popoto.pg.Model` instead of `popoto.Model`.
+  - It reuses popoto's existing `Field` classes as *declarations*.
+  - Each supported field type has a **field compiler** that maps the declaration to columns, companion tables, indexes and SQL expressions.
+  - The Redis `Model`, Redis fields, and Redis wire behaviour are untouched.
+- **Engine**: one psycopg 3 connection pool per DSN per process. It handles DDL ownership, transactions, lock ordering and bounded retry.
+- **Recall**: one SQL statement fusing BM25, vector, and optionally decay and confidence arms with RRF. It returns typed `(instance, score)` pairs.
+- **Dispatch seams**: one-line early-outs in the five static entry points Valor calls, and in `ContextAssembler`'s hybrid pull and `assess`. They route pg-bound models to the engine.
+- **Subconscious maintenance**: schema creation, embedding backfill and staged-read expiry ride on normal reads and writes. There are no daemons, cron jobs or required CLI steps.
+
+### D1: The POC branch is archived, not merged
+
+`poc/backend-seam` is tagged `archive/poc-backend-seam-631` and not rebased (spike-3).
+- **Brought to `main` as documentation**: the POC report, `docs/plans/postgres_backend_poc.md`, whose tech-debt register this plan cites.
+- **Dropped**: the report's §8.1 "zero-behaviour-change Redis minor release". It has no consumer now that memory does not need to run on both backends, and it carries the TD-23 wire changes.
+- **Harvested as patterns, re-implemented fresh in the build**:
+  - the schema-per-session test harness, which refuses `public`
+  - the CI `postgres` service job
+  - the `check_lock_imports.py` entry
+  - the benchmark method
+
+### D2: "Protocol v2" is a field-compiler contract, not a storage protocol
+
+The POC's protocol was opaque index names and msgpack bytes. v2 is declarative instead. For each supported `Field` class, resolved by MRO so `GracefulEmbeddingField` inherits `EmbeddingField`'s compiler, a compiler supplies the following:
+
+| Contract member | Purpose |
+|---|---|
+| `columns(field) -> list[ColumnSpec]` | typed columns on the model table |
+| `companions(field, model) -> list[TableSpec]` | side tables (postings, bloom membership), always `ON DELETE CASCADE` |
+| `indexes(field, model) -> list[IndexSpec]` | btree / GIN / HNSW |
+| `to_db(field, value)` / `from_db(field, row)` | value transform. The NUL refusal (Q4) lives here. |
+| `write_sql(field, ctx)` | extra statements run inside the save transaction (postings, bloom membership) |
+| `rank_sql(field, params) -> SqlFragment` | optional ranking expression or CTE used by `recall` |
+
+**v1 supported surface**: exactly spike-1's list.
+- **Fields**: `AutoKeyField`, `KeyField`, `StringField`, `FloatField`, `IntField`, `BooleanField`, `DatetimeField`, `DictField` / `ListField` (as `jsonb`), `DecayingSortedField`, `ConfidenceField`, `BM25Field`, `EmbeddingField` and its subclasses, `ExistenceFilter`.
+- **Mixins**: `WriteFilterMixin` and `AccessTrackerMixin`.
+- **Anything else raises `TypeError` at class creation**, naming the field and the reason. This covers a `Relationship`, a `ValidityField`, `Meta.ttl`, or a field option the compiler does not handle (TD-9: fail at declaration, not at first use).
+
+**Selection is per class, not per process.** Valor keeps Redis models such as `CorpusSizeBaseline` and the gate counters in the same process as a pg `Memory`, so the POC's process-global `POPOTO_BACKEND` / auto-select-on-`POSTGRES_URL` (TD-7) is not carried over.
+- **DSN**: the DSN comes only from `POPOTO_POSTGRES_URL` (or `popoto.pg.configure(url=…)`), and the schema from `POPOTO_POSTGRES_SCHEMA`, default `popoto`.
+- **Missing DSN**: the first use of a pg model with no DSN raises `popoto.pg.ConfigurationError`. It never silently falls back to Redis.
+- **Generic env vars**: a generic `POSTGRES_URL` or `DATABASE_URL` in the environment is never read.
+
+**Popoto owns the DDL.** On first use per process, the engine takes a transaction-scoped advisory lock (`pg_advisory_xact_lock(hashtext('popoto:ddl:'||schema||'.'||table))`) and compares the model's compiled schema fingerprint against `popoto_schema_versions`.
+- **New table**: it is created.
+- **Additive change** (new nullable column, new companion table or index): it is applied automatically. `CREATE INDEX` on an existing table is not concurrent, which is acceptable at Valor's scale.
+- **Destructive or ambiguous change** (dropped or retyped column, changed vector dimension): it raises `SchemaDriftError` with the diff. The operator then runs `python -m popoto.pg migrate <dotted.Model>`, the only manual path.
+- **Lifetime**: the check runs once per process per model. This fixes TD-8's per-connection DDL.
+
+**Behavioural decisions taken Postgres-first** (POC report §9):
+- **Q2 (transactions)**:
+  - Every unit of work is one `READ COMMITTED` transaction.
+  - Multi-row writes lock rows in primary-key order (`SELECT … ORDER BY pk FOR UPDATE`).
+  - `DeadlockDetected` and `SerializationFailure` are retried up to 3 times with jitter, then re-raised.
+  - Deadlock is prevented by ordering and only *also* detected (TD-2).
+- **Q3 (TTL)**: not supported in v1. Valor's `Memory` has no TTL. Declaring one is a class-creation error. See §No-Gos.
+- **Q4 (NUL)**: a `\x00` in any text value raises `ValueError` naming the field before SQL is built. Postgres `text` cannot store it (TD-12).
+- **Q5 (return type)**: new pg-native APIs (`recall`, `top_by_relevance`) return `list[tuple[Model, float]]`. Dispatched *statics* keep their existing Redis return shape, with the primary-key string where the Redis key was, so Valor's call sites only change where they parse Redis keys.
+- **`Defaults` at call time**: pg code paths read `Defaults.*` (decay rate, confidence cap, outcome signals) when called, never at import. That makes Valor's `apply_defaults()` overrides effective on the pg path. The Redis path's import-time copy is frozen with the rest of Redis memory.
+- **Access tracking without writes on read**: a pg hydrate never writes. Reads are staged only by `ObservationProtocol.on_read`, which `ContextAssembler._post_effects` already calls for the memories it injects. Staged reads expire by comparison at confirm time (`staged_at > now() - interval '24 hours'`), so no reaper is needed. `.no_track()` is accepted and is a no-op. The per-record access log (`$AT:…:log`) has no reader in Valor and is not carried over.
+
+### D3: Schema (concrete; the target for #756)
+
+This is the schema `popoto.pg` compiles from Valor's `Memory` *after* the cutover declaration change. That change is a Valor-repo edit, listed in §No-Gos (`[EXTERNAL]`): the base class switches to `popoto.pg.Model`, and `retired_reason = StringField(null=True)` and `superseded_at = DatetimeField(null=True)` are added. `superseded_by` stops carrying the sentinels `dismissal-prune`, `decay-prune-tier2` and `cleanup-junk-extraction`, which move to `retired_reason`. The compiler emits this DDL deterministically, and a test pins it.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;          -- once per database; engine checks, never drops
+CREATE SCHEMA IF NOT EXISTS popoto;
+
+-- engine bookkeeping
+CREATE TABLE popoto.popoto_schema_versions (
+  table_name  text PRIMARY KEY,
+  model       text NOT NULL,                    -- dotted path, e.g. models.memory.Memory
+  fingerprint text NOT NULL,                    -- sha256 of the compiled spec
+  spec        jsonb NOT NULL,
+  applied_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE popoto.memory (
+  -- AutoKeyField / KeyFields
+  memory_id     text PRIMARY KEY CHECK (memory_id ~ '^[0-9a-f]{32}$'),   -- uuid4 hex, unchanged from Redis
+  agent_id      text,
+  project_key   text,
+  -- plain fields (StringField default "" -> NOT NULL DEFAULT '')
+  content       text NOT NULL DEFAULT '',
+  title         text NOT NULL DEFAULT '',
+  source        text NOT NULL DEFAULT 'agent',
+  reference     text NOT NULL DEFAULT '',
+  importance    double precision NOT NULL DEFAULT 1.0,
+  metadata      jsonb NOT NULL DEFAULT '{}'::jsonb,   -- includes outcome_history (<=10), dismissal_count, last_outcome
+  superseded_by text,                                  -- replacement memory_id; soft reference, no FK (see note)
+  superseded_by_rationale text NOT NULL DEFAULT '',
+  retired_reason text,                                 -- 'dismissal-prune' | 'decay-prune-tier2' | 'cleanup-junk-extraction' | NULL
+  superseded_at timestamptz,
+  -- DecayingSortedField(base_score_field="importance", partition_by="project_key")
+  relevance     timestamptz NOT NULL DEFAULT now(),    -- last-touched instant (Redis ZSET score)
+  -- ConfidenceField(initial_confidence=0.5)
+  confidence                double precision NOT NULL DEFAULT 0.5 CHECK (confidence BETWEEN 0 AND 1),
+  confidence_evidence       integer NOT NULL DEFAULT 0,
+  confidence_corroborations integer NOT NULL DEFAULT 0,
+  confidence_contradictions integer NOT NULL DEFAULT 0,
+  -- BM25Field(source="content")
+  bm25_len      integer NOT NULL DEFAULT 0,            -- token count after popoto tokenizer
+  -- EmbeddingField(source="content")   (dimension from the provider at class creation)
+  embedding       vector(1536),                        -- NULL = not yet embedded (graceful default)
+  embedding_model text,                                -- e.g. 'openai:text-embedding-3-small'
+  embedded_hash   text,                                -- md5(content) the vector was computed from
+  -- AccessTrackerMixin
+  access_count     integer NOT NULL DEFAULT 0,
+  last_accessed_at timestamptz,
+  staged_reads     integer NOT NULL DEFAULT 0,
+  staged_at        timestamptz,
+  -- engine-owned (every pg table)
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  estimated_fields text[],          -- columns whose value was inferred on import; engine never clears
+  migrated_from    jsonb            -- import provenance {machine, snapshot, run_id}; engine sets NULL on every native write
+);
+CREATE INDEX memory_project_key_idx ON popoto.memory (project_key);       -- KeyField; scope btree (spike-4)
+CREATE INDEX memory_agent_id_idx    ON popoto.memory (agent_id);          -- KeyField
+CREATE INDEX memory_superseded_idx  ON popoto.memory (superseded_by) WHERE superseded_by IS NOT NULL;
+CREATE INDEX memory_embedding_hnsw  ON popoto.memory USING hnsw (embedding vector_cosine_ops);
+
+-- BM25Field companion: postings keyed by scope first (spike-4)
+CREATE TABLE popoto.memory__bm25 (
+  scope     text NOT NULL,          -- coalesce(project_key, '')
+  term      text NOT NULL,
+  record_id text NOT NULL REFERENCES popoto.memory (memory_id) ON DELETE CASCADE,
+  tf        integer NOT NULL CHECK (tf > 0),
+  PRIMARY KEY (scope, term, record_id)
+);
+CREATE INDEX memory__bm25_record_idx ON popoto.memory__bm25 (record_id);
+
+-- ExistenceFilter companion: exact membership instead of a bloom
+CREATE TABLE popoto.memory__bloom (
+  token     text NOT NULL,
+  record_id text NOT NULL REFERENCES popoto.memory (memory_id) ON DELETE CASCADE,
+  PRIMARY KEY (token, record_id)
+);
+```
+
+**Schema notes for #756 and the build:**
+- **Scope.** The scope column comes from `DecayingSortedField.partition_by` (Valor: `project_key`). That one partition is used for decay ranking, BM25 postings and statistics, and the vector arm's filter. A model can declare `Meta.scope = "<keyfield>"` to set it explicitly. With neither, scope is `''`. Other `KeyField`s, such as `agent_id`, are plain btree filters that compose with the scope in `recall(…, filters={…})`.
+- **No FK on `superseded_by`.** Valor deletes losers in consolidation and pruning. An `ON DELETE SET NULL` foreign key would erase lineage, and `RESTRICT` would block pruning. It is an indexed soft reference instead.
+- **The ranking formula is computed at query time, not stored.** Only its inputs are persisted (`relevance`, `importance`, the confidence columns). A stored score would go stale every second.
+- **`bm25_len`, the postings and the bloom rows are derived from `content`.** #756 does not need to write them. Loading through the engine's save path, or calling `python -m popoto.pg reindex <Model>`, rebuilds them.
+- **Vector dimension and stale vectors.** The dimension is fixed at class creation from the declared provider's `dimensions`. A mismatched vector, such as 768-d legacy data, is written as `NULL` and is re-embedded by D7's backfill.
+- **`migrated_from` contract.** Every engine `INSERT` or `UPDATE` writes `migrated_from = NULL`. A delta re-load guards with `ON CONFLICT (memory_id) DO UPDATE … WHERE popoto.memory.migrated_from IS NOT NULL`, so it can never overwrite a natively touched row.
+- **`estimated_fields`** lets #756 flag `created_at` and `superseded_at` values it inferred, since uuid4 ids carry no time.
+- **Not in this schema**:
+  - **The access log**: there is no reader, so it is dropped.
+  - **The `{pk}:memory-gate:*` / `memory-distill:*` counters**: they are Valor app state, not memory, and stay in Redis (see Open Questions).
+  - **The WriteFilter priority ZSET**: it has no reader. The `WriteFilterMixin` gate still runs. Its priority tier is a no-op on pg.
+
+### D4: Lexical arm = popoto's BM25 in plain SQL over scope-keyed postings
+
+`BM25Field.search` / `recall` compute exactly `idf = ln((N-df+0.5)/(df+0.5)+1)` and `tf·(k1+1)/(tf+k1·(1-b+b·len/avgdl))`, with k1=1.2 and b=0.75, using the same `popoto.fields._tokenizer.tokenize` on the query.
+- **Statistics are live and per scope**: `N = count(*)`, `avgdl = avg(bm25_len)` and `df` are all taken within the scope. They are computed in the statement, with no stats row: spike-4 measured no latency gain and a write hot spot.
+- **This deliberately differs from Redis**, whose N and avgdl are corpus-wide even for a scoped search. Per-scope IDF is the correct statistic for a scoped search. Parity is therefore asserted as ranking overlap on a fixture, not equal scores (§Test Impact).
+- **Unscoped search**, a Valor fallback call site only, uses corpus-wide statistics. It relies on PostgreSQL 18's btree skip scan over the scope-leading key. On 16 and 17 it degrades to a postings scan, which is acceptable for a fallback path.
+- **Rejected alternatives**: `pg_search` (an extension Valor's machines would have to preload) and `ts_rank` / `ts_rank_cd` (no IDF; 52 ms in spike-4, and not BM25). See §Rabbit Holes for the hot-term lever if the large-scope budget is missed.
+
+### D5: Vector arm = pgvector, exact inside small scopes and HNSW past a pinned threshold
+
+The HNSW index always exists, at about 1 ms extra write cost.
+- **Choosing the path**: `recall` reads the scope's row count, which it already computes for BM25's N.
+  - **At or below `Defaults.PG_VECTOR_EXACT_MAX`** (a magic number, initially 5,000, re-pinned from the build's real-data measurement), it forces the exact path with `SET LOCAL enable_indexscan = off` inside the recall transaction. That path measured 2.6 ms at ~1k rows, and the planner already prefers it.
+  - **Above the threshold**, it uses HNSW with `SET LOCAL hnsw.ef_search` and `hnsw.iterative_scan = relaxed_order`.
+- **Recall guard**: if the HNSW arm returns fewer than `min(limit, scope_count)` rows (spike-4's 0.0-recall query returned short), the arm is re-run exactly. This bounds the pathology to a latency cost, never a silent empty arm.
+- **Distance and filter**: distance is `<=>` (cosine), and the arm keeps `1 - distance > 0` to match Redis's positive-cosine filter.
+- **No vector**: when the query embedding fails, the arm is omitted and fusion proceeds with the remaining arms, as in today's hybrid fallback.
+
+### D6: Engine runtime (pool, fork safety, transactions)
+- **Pool**: one `psycopg_pool.ConnectionPool` per (DSN, pid). It opens lazily on first use, uses `min_size=1`, and has `max_size=Defaults.PG_POOL_MAX` (4). The pool is recreated when `os.getpid()` changes, which makes it fork-safe; Valor's workers fork.
+- **Unit of work**: `with pool.connection() as c, c.transaction():`. No connection is ever shared across threads (TD-3).
+- **`popoto.pg.transaction()`**: a context manager that lets several pg operations share one transaction. It is the pg answer to `popoto.batch()` (TD-5), which Valor does not use.
+- **Async**: not provided (TD-6). Valor uses none.
+- **Encoding check**: once per pool, the engine asserts `server_encoding = 'UTF8'` (TD-13) and that the `vector` extension is at least 0.8.
+- **Postgres down**: errors surface as `popoto.pg.UnavailableError`. `safe_save` keeps its never-raise contract because Valor's wrapper catches `Exception`. Recall in `ContextAssembler` returns no memories and logs, so the turn proceeds without memory instead of failing.
+
+### D7: Subconscious maintenance (no daemon, no cron, no required CLI)
+- **Schema**: created or extended on first use (D2).
+- **Embedding backfill** piggybacks on writes. After a save whose own embedding call *succeeded*, which means the provider is healthy, the engine embeds up to `Defaults.PG_BACKFILL_BATCH` (4) rows in the same scope where `embedding IS NULL` or `embedding_model` differs from the current one. It writes each with `UPDATE … WHERE memory_id=$1 AND md5(content)=$hash`, so a concurrent content edit is never overwritten with a stale vector. It runs after commit, outside the caller's transaction, and swallows its own errors. Valor's `memory-embedding-backfill` reflection keeps working and becomes optional.
+- **Garbage collection disappears**: rows cascade to their postings and bloom rows. On a pg model, `EmbeddingField.garbage_collect` and `sweep_stale_tempfiles` return 0.
+- **Staged reads**: expire by comparison at confirm time (D2).
+- **Created time**: `created_at` is engine-owned, which unblocks Valor's decay-prune reflection. It currently reads a nonexistent field.
+
+### D8: Integration seams (the only edits to existing modules)
+
+| Entry point (current file) | pg behaviour |
+|---|---|
+| `ContextAssembler._pull_path_hybrid` (`recipes/context_assembler.py:2406`) | if pg-bound: `recall(query, scope=partition_filters, weights={bm25, vector})` → same candidate list shape; rest of the method unchanged |
+| `ContextAssembler.assess` composite probe (`:2828`) | if pg-bound: decay×confidence weighted sum (0.6/0.3) computed in SQL for the candidate keys |
+| `ContextAssembler._post_effects` (`:2634`) | unchanged Python; its `on_read` and suppression `update_confidence(0.3)` calls dispatch below |
+| `ObservationProtocol.on_read` / `on_context_used` | one transaction of PK-ordered `UPDATE`s (Data Flow, Outcome) |
+| `ConfidenceField.update_confidence` / `get_confidence` | `UPDATE … SET confidence = least(greatest(confidence + ($s-confidence)/(least(confidence_evidence+1,20)+1),0),1), confidence_evidence = confidence_evidence+1, confidence_corroborations = confidence_corroborations + ($s>=0.5)::int, confidence_contradictions = confidence_contradictions + ($s<0.5)::int` / column read |
+| `BM25Field.search` | D4 statement; returns `[(memory_id, score)]` |
+| `ExistenceFilter.might_exist(model, token)` | `EXISTS (SELECT 1 FROM {t}__bloom WHERE token=$1)`: exact, no false positives, forgets on delete |
+| `EmbeddingField.load_embeddings` / `garbage_collect` | read vectors from the column / return 0 |
+| new `Model.top_by_relevance(scope, limit)` | decay expression `sign(i)·abs(i)·greatest(e,0.01)^(-r) · greatest(e,1)^(-(r·2^(2·0.5·(0.5-c)) - r))`, `e` = days since `relevance`; replaces Valor's raw `ZREVRANGE` fallback |
+| new `Model.exists(pk)` | replaces Valor's `POPOTO_REDIS_DB.exists(db_key)` in its `save()` override |
+
+The illustration below shows the cutover declaration Valor will make. It is not code to write in this repo:
+
+```python
+class Memory(WriteFilterMixin, AccessTrackerMixin, popoto.pg.Model):
+    ...  # every existing field unchanged, plus:
+    retired_reason = StringField(null=True)
+    superseded_at = DatetimeField(null=True)
+```
+
+### Flow
+
+Valor's turn → `ContextAssembler.assemble` → `Memory.recall` (one SQL statement) → injected memories → `_post_effects` stages reads → the agent acts or dismisses → `ObservationProtocol.on_context_used` runs one `UPDATE` transaction → the next save piggybacks the backfill.
+
+### Technical Approach
+- Build order is bottom-up, so each layer is testable alone: compiler and DDL → engine (pool, transactions, CRUD, query) → field compilers → recall → seams → parity and benchmark.
+- The pg engine imports field classes. Field modules import the pg engine only lazily inside the dispatched statics, behind `getattr(model_class, "_popoto_pg", False)`, so `import popoto` never requires psycopg.
+- Each SQL statement is built with `psycopg.sql.Identifier` / `Literal`. There is no string interpolation of identifiers.
+- The parity oracle is the existing Redis implementation on DB 15. The same operation sequence runs against both backends and the observable results are compared (§Test Impact).
 
 ## Failure Path Test Strategy
 TBD
