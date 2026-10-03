@@ -469,46 +469,344 @@ Valor's turn → `ContextAssembler.assemble` → `Memory.recall` (one SQL statem
 - The parity oracle is the existing Redis implementation on DB 15. The same operation sequence runs against both backends and the observable results are compared (§Test Impact).
 
 ## Failure Path Test Strategy
-TBD
+
+### Exception Handling Coverage
+- [ ] **Backfill swallows its own errors** (D7). A test makes the provider raise during backfill and asserts three things:
+  - the caller's `save()` returned success
+  - a `logger.warning` was emitted
+  - the row's `embedding` is still `NULL`
+- [ ] **Recall degrades on an outage.** With Postgres unreachable (pool pointed at a closed port), `ContextAssembler.assemble` on a pg model returns an empty result and logs `UnavailableError`. `Memory.safe_save` returns `None`, mirroring Valor's wrapper.
+- [ ] **Bounded retry re-raises.** A forced `DeadlockDetected` is retried exactly 3 times and then re-raised. A test counts the attempts with a fault-injecting connection wrapper.
+- [ ] **No silent passes in new code.** The new modules contain no bare `except Exception: pass`. A grep test over `src/popoto/pg/` enforces it.
+
+### Empty/Invalid Input Handling
+- [ ] **Empty or stopword-only queries.** `recall("")` and a query of only stopwords run no SQL arms, return `[]`, and still let the vector arm run when the embedding exists.
+- [ ] **Empty content.** Saving `content=""` writes `bm25_len=0` and no postings or bloom rows. The embedding is `NULL`, and the provider is not called.
+- [ ] **NUL bytes.** A `\x00` in any text field raises `ValueError` naming the field, and nothing is written.
+- [ ] **Wrong vector dimension.** A provider returning the wrong dimension stores `NULL` and logs it, rather than raising out of `save()`.
+- [ ] **Bad declarations.** An unsupported field, `Meta.ttl`, or a `Relationship` on a pg model raises `TypeError` at class creation.
+
+### Error State Rendering
+- [ ] **Missing DSN.** It raises `ConfigurationError` with a message naming `POPOTO_POSTGRES_URL`. A test asserts the text.
+- [ ] **Schema drift.** `SchemaDriftError` lists every destructive diff entry and the exact `python -m popoto.pg migrate <Model>` command.
 
 ## Test Impact
-TBD
+
+No existing tests are affected. The work is additive: a new `popoto.pg` package, plus early-dispatch branches that are taken only when `model_class._popoto_pg` is true.
+- **Regression guard on the existing suites.** The dispatch branches sit in the Redis-path functions covered by:
+  - `tests/test_context_assembler.py`, `tests/test_context_assembler_hybrid.py` and `tests/test_context_assembler_token_budget.py`
+  - `tests/test_observation_protocol.py`
+  - `tests/test_confidence_field.py`
+  - `tests/test_bm25_field.py`
+  - `tests/test_existence_filter.py`
+  - `tests/test_embedding_field.py` and `tests/test_embedding_field_gc.py`
+
+  These must pass **unchanged**. They are the regression guard for the frozen Redis memory path.
+- **New tests** (all created):
+  - `tests/pg/conftest.py`
+  - `test_pg_compiler.py`, which pins the D3 DDL
+  - `test_pg_engine.py`
+  - `test_pg_fields.py`
+  - `test_pg_recall.py`
+  - `test_pg_observation.py`
+  - `test_pg_parity.py`, which uses the Redis-on-DB-15 oracle
+  - `test_pg_concurrency.py`
+  - `test_pg_failure_paths.py`
+- **Skipping and isolation.** The `tests/pg/` tests skip cleanly when `POPOTO_POSTGRES_URL` is unset, the same rule as the POC. They run in a per-session schema `popoto_test_<hex>`, with `TRUNCATE` per test and a refusal of `public` and `popoto`.
 
 ## Rabbit Holes
-TBD
+
+- **A generic SQL query DSL.** Valor uses equality filters, `.all()`, `.first()` and `.get(pk)`. `order_by`, `values=` and range lookups beyond equality and `__in` are out of scope. Do not port `Query`.
+- **Making Redis and pg scores numerically identical.** D4's per-scope IDF diverges on purpose. Parity is ranking overlap plus exact formula unit tests on a hand-computed fixture, not float equality across backends.
+- **Tuning HNSW on synthetic data.** Pin `PG_VECTOR_EXACT_MAX` and `ef_search` from one real 1536-d measurement: a copy of Valor-shaped data generated via the provider on DB-15-derived fixtures, or #756's rehearsal dump. More sweeps are waste.
+- **Hot-term BM25 pruning.** For example, skipping terms with df/N above some threshold, or WAND. Do this only if the large-scope recall budget (§Success Criteria) is missed after HNSW. It is the next lever spike-4 named, not part of the default build.
+- **`pg_search`, `pg_cron`, PL/pgSQL functions, triggers.** All rejected. Everything is plain SQL issued by the engine, so nothing server-side needs installing beyond `vector`.
+- **Porting the POC seam's Redis refactor.** Rejected by D1.
 
 ## Risks
-TBD
+
+### Risk 1: Large-scope recall latency
+- **Impact:** spike-4 measured the fused query at 96 ms p50 for a 12k-row scope with an exact vector scan. If Valor's biggest project grows there, every turn pays for it.
+- **Mitigation:**
+  - D5 switches to HNSW past the threshold. The estimate is 25–30 ms, and the build measures it.
+  - The budget is a Success Criterion checked by `scripts/bench_pg_recall.py`.
+  - The hot-term lever is held in reserve (§Rabbit Holes).
+
+### Risk 2: HNSW returns short or empty results under filtering
+- **Impact:** spike-4 saw one 0.0-recall query in 100. A silent empty vector arm would degrade retrieval quality invisibly.
+- **Mitigation:** D5's recall guard re-runs the arm exactly when it returns short. A test forces the HNSW path on a tiny scope and asserts the guard fires.
+
+### Risk 3: Connection exhaustion across Valor's processes
+- **Impact:** the bridge, workers and Claude Code hooks each open pools, and `max_connections` (default 100) can be hit.
+- **Mitigation:** `PG_POOL_MAX=4` per process with lazy open. Hooks are short-lived, and their pool is opened only if they touch memory. The figure is documented in the feature doc's deployment notes.
+
+### Risk 4: #756 and this schema drift apart
+- **Impact:** the migration tool targets columns that do not exist.
+- **Mitigation:**
+  - D3 is pinned by `test_pg_compiler.py`, and the DDL above is the contract.
+  - #756's requirements (`migrated_from`, `estimated_fields`, the `retired_reason` split, `superseded_at`, the evidence columns, 1536-d) are already in D3.
+  - Any schema change after merge pings #756.
+
+### Risk 5: Valor's cutover breaks raw-Redis call sites
+- **Impact:** after cutover, the retrieval fallback's `ZREVRANGE` / `HGETALL` silently return nothing, because the keys no longer exist in Redis.
+- **Mitigation:** the cutover checklist (§No-Gos) enumerates every raw call site from spike-1 with its pg replacement (`top_by_relevance`, the `confidence` column, `Model.exists`).
 
 ## Race Conditions
-TBD
+
+### Race 1: Concurrent saves of the same record
+- **Location:** engine save path, `src/popoto/pg/engine.py` (new)
+- **Trigger:** two processes `save()` the same `memory_id`. Their postings delete/insert interleave.
+- **Data prerequisite:** the model row exists or is being inserted.
+- **State prerequisite:** the postings and bloom rows must reflect exactly one version of `content`.
+- **Mitigation:**
+  - The save transaction first runs `INSERT … ON CONFLICT DO UPDATE`, which takes the row lock.
+  - It then rewrites the postings and bloom rows for that `record_id` only.
+  - The second writer blocks on the row lock until the first commits, and its rewrite then fully replaces the first writer's rows.
+  - Companion rows are never shared between records, so there is no cross-record lock.
+
+### Race 2: Backfill vs content edit
+- **Location:** D7 backfill
+- **Trigger:** the backfill embeds content A, and meanwhile a save changes it to B.
+- **Data prerequisite:** the vector must correspond to the current content.
+- **State prerequisite:** `embedded_hash = md5(content)`.
+- **Mitigation:** the backfill updates with `WHERE memory_id=$1 AND md5(content)=$hash_of_A`. The stale write affects 0 rows. B's own save embedded B, or left `NULL` for a later backfill.
+
+### Race 3: Outcome and suppression updates on overlapping keys
+- **Location:** `ObservationProtocol` dispatch, `_post_effects` dispatch
+- **Trigger:** two turns confirm and suppress overlapping memory sets in opposite orders, which can deadlock.
+- **Data prerequisite:** none.
+- **State prerequisite:** confidence updates must be serialisable per row, because they are read-modify-write.
+- **Mitigation:**
+  - Each confidence update is a single `UPDATE` expression, so it is atomic per row.
+  - Multi-row batches lock in PK order, which prevents deadlock.
+  - The bounded retry covers anything residual.
+
+### Race 4: First-use DDL from several processes
+- **Location:** D2 schema check
+- **Trigger:** several Valor processes start at once against an empty schema.
+- **Data prerequisite:** the table exists before the first DML.
+- **State prerequisite:** exactly one DDL application.
+- **Mitigation:** the check-and-apply runs in one transaction under `pg_advisory_xact_lock`, and it re-reads `popoto_schema_versions` after acquiring the lock.
+
+### Race 5: Fork after pool creation
+- **Location:** D6 pool
+- **Trigger:** a Valor worker forks with an open pool, and parent and child then share sockets.
+- **Mitigation:** the pool is keyed by `os.getpid()`. A child creates its own and never touches the inherited one.
 
 ## No-Gos (Out of Scope)
-TBD
+
+- **[SEPARATE-SLUG #756] Moving existing data.** Moving Valor's Redis memories, and the `.npy` embeddings, into the D3 schema belongs to #756's migration tool. This plan only guarantees the schema and the `migrated_from` / `estimated_fields` contract.
+- **[EXTERNAL] Valor-repo cutover.** This repo's instruction is that `/Users/valorengels/src/ai` is read-only for this work. The cutover is a change in the `ai` repo, coordinated with #756's runbook:
+  - Switch `Memory`'s base class to `popoto.pg.Model`.
+  - Add `retired_reason` and `superseded_at`, and stop writing sentinels into `superseded_by`.
+  - Replace `_key_exists`'s `POPOTO_REDIS_DB.exists` with `Memory.exists`.
+  - Replace the raw `ZREVRANGE` / `ZRANGEBYSCORE` / `HGETALL` in `agent/memory_retrieval.py:116-163,514-520` with `Memory.top_by_relevance` and the `confidence` column.
+  - Change the `redis_key`-keyed maps passed to `on_context_used` to primary-key strings.
+  - Set `POPOTO_POSTGRES_URL` on every machine.
+- **[EXTERNAL] Valor defects from spike-1.** `apply_defaults()` is read too late, decay-prune reads a nonexistent `created_at`, and `record.confidence` is stale. They live in the `ai` repo. The pg path removes the root cause of the last two by construction, and D2 handles the first by reading `Defaults` at call time, but the Valor-side code changes are theirs.
+- **[ORDERED] Freezing or deprecating Redis memory in the docs and code.** It waits for Valor's cutover to land (the human-gated #756 runbook). Until then, Redis memory is Valor's live store and must not warn on every call.
+- **Rejected, not deferred: fields and recipes Valor does not use.** Per the 2026-10-03 decision ("memory primitives need NOT run on both backends", "Valor is the only adopter"), these get no pg compiler, and declaring them on a pg model raises:
+  - `ValidityField` / `tstzrange`. The issue names tstzrange as an available tool, but Valor declares no validity window. The compiler table has the slot (`tstzrange` + GiST via `btree_gist`) if one appears.
+  - `CyclicDecayField`, `CoOccurrenceField`, `PredictionLedgerMixin`, `EventStreamMixin`, `FrequencySketch`, `GeoField`, `TagField`, `Relationship`.
+  - TTL.
+  - Async.
+  - The WriteFilter priority tier.
+  - The access log.
+  - The tombstone prior and `memory_lifecycle`.
+  - `question_queue`.
+
+  None of these is tracked as future work. A new adopter need would come in as a new issue.
 
 ## Update System
-TBD
+
+- **Installing.** Valor installs popoto from PyPI, so the new code ships in the next minor release with a `postgres` extra (`psycopg[binary,pool]>=3.2`, `pgvector>=0.3`).
+  - `examples/` is untouched.
+  - `scripts/check_lock_imports.py` gains `psycopg`, `psycopg_pool` and `pgvector`. That omission would otherwise be review-blocking, per CLAUDE.md.
+  - `uv.lock` is regenerated.
+- **Server.** Each machine, or the central server (see Open Questions), needs PostgreSQL ≥ 16 with `vector` ≥ 0.8 available, and `POPOTO_POSTGRES_URL` set.
+- **Schema.** There is no migration step for this package itself. The schema self-creates on first use (D2). Data migration is #756.
+- **CI.** `.github/workflows/tests.yml` gains a `postgres` job: a `pgvector/pgvector:pg17` service plus the existing Redis service. It sets `POPOTO_POSTGRES_URL`, and `REDIS_URL` as `redis://localhost:6379/15`, following #639's pin-where-a-binder-must-exist rule.
 
 ## Agent Integration
-TBD
+
+No agent or MCP integration is required in this repo. The capability is reached through the library API Valor already calls (`ContextAssembler`, `ObservationProtocol`, the `Memory` model). Its integration surface is the D8 dispatch table, and `test_pg_recall.py` exercises it end to end through `ContextAssembler.assemble`. The `popoto` MCP server (`popoto[mcp]`) exposes Redis models only and is unchanged.
 
 ## Documentation
-TBD
+
+### Feature Documentation
+- [ ] Create `docs/features/postgres-memory.md` covering:
+  - how to opt in by base class, and the env vars
+  - the supported fields and what each compiles to (the D3 table)
+  - recall and its weights
+  - subconscious maintenance
+  - the deployment notes: pool sizing, `max_connections`, and pgvector install
+  - the failure modes
+- [ ] Add it to `mkdocs.yml` nav and `docs/features/README.md`, if the index exists.
+- [ ] Bring `docs/plans/postgres_backend_poc.md` to `main` (D1), with a header noting that the branch is archived and which decisions superseded it.
+
+### External Documentation Site
+- [ ] `mkdocs build --strict` passes.
+
+### Inline Documentation
+- [ ] Each field compiler's docstring states the Redis formula it reproduces and the file:line of the Redis original.
+- [ ] `CLAUDE.md` gains a short paragraph covering:
+  - `POPOTO_POSTGRES_URL` binding and test-schema isolation, the Postgres analogue of the DB-15 rule
+  - "never point tests at `public` or `popoto`"
 
 ## Success Criteria
-TBD
+
+- [ ] **Valor's schema compiles.** A `pg.Model` declared with Valor's exact `Memory` fields, plus the two cutover fields, compiles to the D3 DDL byte-for-byte (`test_pg_compiler.py`).
+- [ ] **Valor's entry points behave correctly on pg.** Every spike-1 call shape passes a behaviour test: `filter`, `get`, `first`, `save(update_fields=)`, `delete`, `safe_save`, `BM25Field.search`, `ConfidenceField.get_confidence`, `ExistenceFilter.might_exist`, `ContextAssembler.assemble` (hybrid) and `.assess`, `ObservationProtocol.on_context_used`, `EmbeddingField.load_embeddings` / `garbage_collect`.
+- [ ] **Parity with Redis.** On a shared 500-memory fixture, Redis-on-DB-15 and pg agree on:
+  - confidence after an identical signal sequence, to 1e-9
+  - decay ordering, identical top-20 for a frozen clock
+  - BM25 top-10, with Jaccard ≥ 0.8 under scoped search
+- [ ] **Recall latency.** On a 20k-row, 1536-d corpus, measured by `scripts/bench_pg_recall.py` on the dev machine, with the environment stated:
+  - a 5%-scope recall is ≤ 15 ms p95
+  - a 60%-scope recall is ≤ 60 ms p95
+- [ ] **Fully subconscious.** A fresh empty database plus a first `safe_save` from a new process creates the schema with no CLI step. `NULL` embeddings are backfilled by later saves alone.
+- [ ] **No new failures in the existing suite.** The Redis memory tests listed in §Test Impact pass unchanged. `ruff check src/`, `black --check src/ tests/` and `scripts/mypy_ratchet.py` (which must not rise) all pass.
+- [ ] **`import popoto` works without psycopg** (a subprocess test).
+- [ ] Tests pass (`/do-test`).
+- [ ] Documentation updated (`/do-docs`).
 
 ## Team Orchestration
-TBD
+
+### Team Members
+
+- **Builder (schema compiler + engine)**
+  - Name: pg-engine-builder
+  - Role: `popoto.pg` package: field-compiler contract, DDL ownership, pool, transactions, CRUD, filter/get
+  - Agent Type: builder
+  - Domain: Redis/Popoto data, concurrency
+  - Resume: true
+- **Builder (memory field compilers + recall)**
+  - Name: pg-recall-builder
+  - Role: Decay, Confidence, BM25, Embedding, ExistenceFilter, AccessTracker compilers, plus `recall`
+  - Agent Type: builder
+  - Resume: true
+- **Builder (dispatch seams)**
+  - Name: pg-seams-builder
+  - Role: the D8 early-dispatch branches in existing modules
+  - Agent Type: builder
+  - Resume: true
+- **Test engineer (parity + concurrency + bench)**
+  - Name: pg-test-engineer
+  - Role: the pytest harness, the Redis-oracle parity tests, concurrency tests, the bench script, and the CI job
+  - Agent Type: test-engineer
+  - Resume: true
+- **Validator**
+  - Name: pg-validator
+  - Role: checks every Success Criterion and Verification row
+  - Agent Type: validator
+  - Resume: true
+- **Documentarian**
+  - Name: pg-docs
+  - Role: the §Documentation items
+  - Agent Type: documentarian
+  - Resume: true
 
 ## Step by Step Tasks
-TBD
+
+### 1. Test harness and CI job
+- **Task ID**: build-harness
+- **Depends On**: none
+- **Validates**: tests/pg/conftest.py (create), `.github/workflows/tests.yml`
+- **Informed By**: spike-3 (the POC harness pattern is reusable)
+- **Assigned To**: pg-test-engineer
+- **Agent Type**: test-engineer
+- **Parallel**: true
+- Write the per-session `popoto_test_<hex>` schema fixture. It refuses `public` and `popoto`, `TRUNCATE`s per test, and skips when `POPOTO_POSTGRES_URL` is unset.
+- Add the CI `postgres` job with a pgvector image and Redis on DB 15.
+- Add the `postgres` extra, update `check_lock_imports.py`, and regenerate `uv.lock`.
+
+### 2. Compiler contract and engine
+- **Task ID**: build-engine
+- **Depends On**: build-harness
+- **Validates**: tests/pg/test_pg_compiler.py, tests/pg/test_pg_engine.py, tests/pg/test_pg_failure_paths.py (create)
+- **Informed By**: spike-3 (TD-2/3/7/8/9/12/13 lessons)
+- **Assigned To**: pg-engine-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Build `popoto.pg.Model` and its metaclass, which validates fields at class creation.
+- Add compilers for the plain fields.
+- Write the DDL emitter with fingerprint, advisory-locked first-use apply, the `SchemaDriftError` diff, and `python -m popoto.pg migrate` / `reindex`.
+- Build the pool (pid-keyed), `transaction()`, the bounded retry, `save` / `save(update_fields=)` / `delete` / `exists` / `filter` / `get` / `first` / `all`, the NUL refusal, and the UTF8 and vector-version checks.
+- Make the engine own the `created_at`, `updated_at`, `migrated_from` and `estimated_fields` semantics.
+
+### 3. Memory field compilers and recall
+- **Task ID**: build-recall
+- **Depends On**: build-engine
+- **Validates**: tests/pg/test_pg_fields.py, tests/pg/test_pg_recall.py (create)
+- **Informed By**: spike-2 (exact formulas), spike-4 (scope-keyed postings, exact vs HNSW, recall guard)
+- **Assigned To**: pg-recall-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Add compilers for `DecayingSortedField`, `ConfidenceField`, `BM25Field` (postings plus live per-scope stats), `EmbeddingField` (vector column, graceful `NULL`, `embedded_hash`), `ExistenceFilter` (membership table), and `AccessTrackerMixin` columns.
+- Make `WriteFilterMixin` work on pg, with the priority tier as a no-op.
+- Build `recall()` as one statement with optional arms, the D5 path choice, and the recall guard. Add `top_by_relevance`.
+- Add the D7 backfill.
+
+### 4. Dispatch seams
+- **Task ID**: build-seams
+- **Depends On**: build-recall
+- **Validates**: tests/pg/test_pg_observation.py (create); the existing memory suites listed in §Test Impact (unchanged)
+- **Assigned To**: pg-seams-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Add the D8 branches in `context_assembler.py`, `observation.py`, `confidence_field.py`, `bm25_field.py`, `existence_filter.py` and `embedding_field.py`. Each uses a lazy import, and each pg path reads `Defaults` at call time.
+
+### 5. Parity, concurrency, benchmark
+- **Task ID**: build-parity
+- **Depends On**: build-seams
+- **Validates**: tests/pg/test_pg_parity.py, tests/pg/test_pg_concurrency.py (create), scripts/bench_pg_recall.py (create)
+- **Informed By**: spike-4 (budget numbers, 0.0-recall pathology)
+- **Assigned To**: pg-test-engineer
+- **Agent Type**: test-engineer
+- **Parallel**: false
+- Run the Redis-oracle parity tests on DB 15. Any ad-hoc script sets `REDIS_URL=redis://localhost:6379/15` before importing popoto.
+- Add multi-process save, outcome and DDL race tests.
+- Run the 1536-d benchmark and pin `PG_VECTOR_EXACT_MAX`, `ef_search` and `PG_BACKFILL_BATCH` from the measurement.
+
+### 6. Validate
+- **Task ID**: validate-all
+- **Depends On**: build-parity
+- **Assigned To**: pg-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Check every Success Criterion and Verification row, and report pass/fail with the environment stated.
+
+### 7. Documentation
+- **Task ID**: document-feature
+- **Depends On**: validate-all
+- **Assigned To**: pg-docs
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Complete the §Documentation items, bring the POC report to `main`, and tag the `poc/backend-seam` archive.
 
 ## Verification
-TBD
+
+| Check | Command | Expected |
+|-------|---------|----------|
+| pg tests | `POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/pg -q` | exit code 0 |
+| Redis memory suites unchanged | `pytest tests/test_context_assembler.py tests/test_context_assembler_hybrid.py tests/test_observation_protocol.py tests/test_confidence_field.py tests/test_bm25_field.py tests/test_existence_filter.py tests/test_embedding_field.py -q` | exit code 0 |
+| Full suite | `pytest -q` | exit code 0 |
+| Lint | `ruff check src/` | exit code 0 |
+| Format | `black --check src/ tests/` | exit code 0 |
+| Types (ratchet) | `scripts/mypy_ratchet.py` | exit code 0 |
+| Lock imports | `python scripts/check_lock_imports.py` | exit code 0 |
+| No psycopg needed for import | `python -c "import sys; sys.modules['psycopg']=None; import popoto"` | exit code 0 |
+| No POC seam on main (anti-criterion) | `test -d src/popoto/backends` | exit code 1 |
+| No PL/pgSQL or triggers (anti-criterion) | `grep -rniE 'create (or replace )?(function\|trigger)' src/popoto/pg` | exit code 1 |
+| Generic env var never read (anti-criterion) | `grep -rnE "['\"](POSTGRES_URL\|DATABASE_URL)['\"]" src/popoto/pg` | exit code 1 |
+| Docs build | `mkdocs build --strict` | exit code 0 |
 
 ## Critique Results
-TBD
+
+_Pending /do-plan-critique._
 
 ## Open Questions
-TBD
+
+1. **One central Postgres, or one per machine?** The memory note on Yudame says "central shared Redis with optional scoping", and #756 asks the same question. It changes pool-sizing guidance, and whether `project_key` is enough of a scope or `agent_id` / machine must join it. The engine supports either. Only the deployment differs.
+2. **The `{pk}:memory-gate:*` / `memory-distill:*` counters.** This plan leaves them in Redis as Valor app state, so Valor keeps a Redis dependency after cutover. Should they move to a Postgres counters table too? If so, is that table in popoto's schema or Valor's?
+3. **The minimum Postgres version.** This plan says ≥ 16. The unscoped-BM25 fallback is only fast on 18, which has btree skip scan. Is 18 everywhere Valor runs, so the floor can be 18?
