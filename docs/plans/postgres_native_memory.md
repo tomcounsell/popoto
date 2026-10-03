@@ -100,7 +100,7 @@ The maintainer has decided (2026-10-03, #755) that Postgres is the substrate for
     - `save()`, `save(update_fields=[...])`, `save(migrate_key=True)` (one script), `delete()`, `safe_save()`
   - **Retrieval**: `ContextAssembler(Memory, retrieval_mode="auto").assemble(query_cues={"query": q}, partition_filters={"project_key": pk})`. That resolves to the **hybrid** path: BM25 plus vector, fused with RRF k=60 (`agent/memory_retrieval.py:317`). There is also an optional `ContextAssembler.assess` composite probe (relevance 0.6, confidence 0.3).
   - **Feedback**: `ObservationProtocol.on_context_used`. `acted` touches `relevance`, confirms staged access, and applies a confidence signal of 0.9. `dismissed` and `deferred` discard staged access. `_post_effects` stages reads and applies competitive suppression (`update_confidence(0.3)`).
-  - **Field statics used**: `BM25Field.search`, `ConfidenceField.get_confidence`, `EmbeddingField.load_embeddings` / `garbage_collect`, `ExistenceFilter.might_exist`. The bloom is one global filter, with ≥2 token hits required.
+  - **Field statics used**: `BM25Field.search`, `ConfidenceField.get_confidence`, `EmbeddingField.load_embeddings` / `garbage_collect`, `ExistenceFilter.might_exist`. The bloom is one global filter. Valor calls `might_exist` once per keyword and requires ≥2 hits *in its own code* (`agent/memory_hook.py:187`, `tools/memory_search/__init__.py:123`). Popoto's `might_exist` itself tokenizes its argument and returns true on ANY token hit, falling back to the raw lowercased string when tokenization yields nothing (`existence_filter.py:461-495`).
   - **Raw Redis access in Valor that has to change at cutover:**
     - `EXISTS` (`models/memory.py:68`)
     - `ZREVRANGE` / `ZRANGEBYSCORE` on the relevance ZSET and `HGETALL` on the confidence hash, in the four-signal RRF fallback (`agent/memory_retrieval.py:116-163, 514-520`)
@@ -205,7 +205,7 @@ All three flows below are for a model bound to Postgres by its base class, `popo
 5. After commit, piggyback maintenance (§Solution D7) may run one bounded batch that embeds a few `NULL`-vector rows. It never runs inside the caller's transaction.
 
 **Recall: `ContextAssembler(Memory).assemble(query_cues={"query": q}, partition_filters={"project_key": pk})`**
-1. `_pull_path_hybrid` sees a pg-bound model and calls `Memory.query.recall(q, scope={"project_key": pk}, limit=5*max_items, weights=…)`.
+1. `_pull_path_hybrid` sees a pg-bound model. It splits `partition_filters` into `scope` (only the model's `partition_by` column, here `project_key`) and `filters` (everything else, e.g. `agent_id`). It then calls `Memory.query.recall(q, scope={"project_key": pk}, filters={…}, limit=5*max_items, weights={"bm25": w["keyword"], "vector": w["vector"]})`, where `w = _fusion_weights(query_text)` (`context_assembler.py:271`, `:2583`). The query-adaptive weight regime is therefore identical on both backends. The graph arm is not used by Valor and is not compiled.
 2. `recall` embeds `q` (`input_type="query"`) and issues **one SQL statement** with three CTEs: BM25 top-k over postings joined to the scope, vector top-k by `<=>` within the scope, and RRF `Σ w/(60+rank)`. It returns typed `(instance, rrf_score)` pairs with full rows, so there is no second hydrate round trip.
 3. The assembler's model-agnostic Python is unchanged: dedup, superseded filter, token budget, FOK score, and formatting.
 4. `_post_effects` takes a pg branch *before* it opens its Redis `batch()` pipeline (§D8). Staged reads become one `UPDATE … SET staged_reads = staged_reads + 1, staged_at = now()` over the selected keys. Competitive suppression is one `UPDATE` applying the confidence expression with signal 0.3 to the unselected keys. Both run in PK order in one transaction.
@@ -214,7 +214,7 @@ All three flows below are for a model bound to Postgres by its base class, `popo
 1. `acted` keys, in one statement: set `relevance = now()`, `access_count += staged_reads` (when staged within 24 h), `last_accessed_at = now()`, `staged_reads = 0`, and apply the confidence expression with signal 0.9 (see the D2 note on `Defaults`).
 2. `used` keys: confirm staged reads only, with no confidence or decay effect.
 3. `dismissed` / `deferred` keys: `staged_reads = 0`. `contradicted` keys: `staged_reads = 0` plus the contradicted confidence signal.
-3. Everything is one transaction, with rows locked in PK order.
+4. Everything is one transaction, with rows locked in PK order.
 
 ## Architectural Impact
 
@@ -444,7 +444,7 @@ The HNSW index always exists, at about 1 ms extra write cost.
 
 ### D7: Subconscious maintenance (no daemon, no cron, no required CLI)
 - **Schema**: created or extended on first use (D2).
-- **Embedding backfill** piggybacks on writes. After a save whose own embedding call *succeeded*, which means the provider is healthy, the engine embeds up to `Defaults.PG_BACKFILL_BATCH` (4) rows in the same scope where `embedding IS NULL` or `embedding_model` differs from the current one. It writes each with `UPDATE … WHERE memory_id=$1 AND md5(content)=$hash`, so a concurrent content edit is never overwritten with a stale vector. It runs after commit, outside the caller's transaction, and swallows its own errors. Valor's `memory-embedding-backfill` reflection keeps working and becomes optional.
+- **Embedding backfill** piggybacks on writes. After a save whose own embedding call *succeeded*, which means the provider is healthy, the engine embeds up to `Defaults.PG_BACKFILL_BATCH` (4) rows in the same scope, using one batched provider call where the provider supports it, and stops at a wall-clock budget `Defaults.PG_BACKFILL_BUDGET_S` (1 s), whichever comes first. The budget bounds the latency this adds to `safe_save`. where `embedding IS NULL` or `embedding_model` differs from the current one. It writes each with `UPDATE … WHERE memory_id=$1 AND md5(content)=$hash`, so a concurrent content edit is never overwritten with a stale vector. It runs after commit, outside the caller's transaction, and swallows its own errors. Valor's `memory-embedding-backfill` reflection keeps working. It stays the bulk drain path for a large migrated backlog (#756 writes non-1536-d vectors as `NULL`), because a piggyback at 4 rows per save drains such a backlog slowly. For organic `NULL`s from transient provider failures, the piggyback alone is enough.
 - **Garbage collection disappears**: rows cascade to their postings and bloom rows. On a pg model, `EmbeddingField.garbage_collect` and `sweep_stale_tempfiles` return 0.
 - **Staged reads**: expire by comparison at confirm time (D2).
 - **Created time**: `created_at` is engine-owned, which unblocks Valor's decay-prune reflection. It currently reads a nonexistent field.
@@ -453,7 +453,7 @@ The HNSW index always exists, at about 1 ms extra write cost.
 
 | Entry point (current file) | pg behaviour |
 |---|---|
-| `ContextAssembler._pull_path_hybrid` (`recipes/context_assembler.py:2406`) | If pg-bound: `recall(query, scope=partition_filters, weights={bm25, vector})`, returning the same candidate list shape. **Zero signal**: when both arms return nothing, the Redis path falls back to the query-blind `_pull_path_composite` (`:2530`). The pg branch does the same through `top_by_relevance(scope, limit)`, and a test pins it. **Outage**: `popoto.pg.UnavailableError` is added to `OUTAGE_ERRORS`, so it re-raises like a Redis outage (`:2471-2472`) and is never read as "no memories". |
+| `ContextAssembler._pull_path_hybrid` (`recipes/context_assembler.py:2406`) | If pg-bound: split `partition_filters` into `scope` (the `partition_by` column only) and `filters` (the rest, e.g. `agent_id`, which the Redis path also accepts at `:2444-2447`), then `recall(query, scope=…, filters=…, weights=…)` with weights taken from the existing `_fusion_weights(query_text)` (`:2583`). This returns the same candidate list shape. **Zero signal**: when both arms return nothing, the Redis path falls back to the query-blind `_pull_path_composite` (`:2530`). The pg branch does the same through `top_by_relevance(scope, limit)`, and a test pins it. **Outage**: `popoto.pg.UnavailableError` is added to `OUTAGE_ERRORS`, so it re-raises like a Redis outage (`:2471-2472`) and is never read as "no memories". |
 | `ContextAssembler.assess` composite probe (`:2828`) | if pg-bound: decay×confidence weighted sum (0.6/0.3) computed in SQL for the candidate keys |
 | `ContextAssembler._post_effects` (`:2634`) | **pg branch before `pipeline = batch()` (`:2641`)**, guarded by `getattr(self.model_class, "_popoto_pg", False)`. It collects the selected and unselected keys and makes two bulk calls, `pg.stage_reads(keys)` and `pg.suppress(keys, signal=0.3)`, in **one** PK-ordered transaction. It never runs the per-record `on_read(record, pipeline=…)` loop (`:2644-2646`), and never opens a Redis pipeline. A test patches the Redis client to raise and asserts recall plus post-effects make zero Redis calls. |
 | `ObservationProtocol.on_read` / `on_context_used` | One transaction of PK-ordered `UPDATE`s, grouped by outcome. The rows below cover all five `VALID_OUTCOMES` (`observation.py:57`). Cyclic-decay and prediction effects are absent because those fields are not compiled. |
@@ -464,7 +464,7 @@ The HNSW index always exists, at about 1 ms extra write cost.
 | `ExistenceFilter.definitely_missing` (`:2426`, `:2807`) | covered by dispatching `might_exist`, since it is `return not self.might_exist(…)` (`existence_filter.py:510`). A test asserts that `assemble()` on a populated pg model does not short-circuit to `[]`. |
 | `ConfidenceField.update_confidence` / `get_confidence` | `UPDATE … SET confidence = least(greatest(confidence + ($s-confidence)/(least(confidence_evidence+1,20)+1),0),1), confidence_evidence = confidence_evidence+1, confidence_corroborations = confidence_corroborations + ($s>=0.5)::int, confidence_contradictions = confidence_contradictions + ($s<0.5)::int` / column read |
 | `BM25Field.search` | D4 statement; returns `[(memory_id, score)]` |
-| `ExistenceFilter.might_exist(model, token)` | `EXISTS (SELECT 1 FROM {t}__bloom WHERE token=$1)`: exact, no false positives, forgets on delete |
+| `ExistenceFilter.might_exist(model, fingerprint)` | Same semantics as Redis (`existence_filter.py:461-495`): tokenize the argument with popoto's `tokenize`, then `EXISTS (SELECT 1 FROM {t}__bloom WHERE token = ANY($tokens))`, i.e. true on ANY token hit. If tokenization yields nothing, look up the raw lowercased string, which is also what `on_save` stores as the fallback token. Exact, no false positives, forgets on delete. A parity test pins the short-circuit decision for single-word, multi-word and stopword-only cues, and the "no false short-circuit" test uses a multi-word query. |
 | `EmbeddingField.load_embeddings` / `garbage_collect` | read vectors from the column / return 0 |
 | new `Model.top_by_relevance(scope, limit)` | decay expression `sign(i)·abs(i)·greatest(e,0.01)^(-r) · greatest(e,1)^(-(r·2^(2·0.5·(0.5-c)) - r))`, `e` = days since `relevance`; replaces Valor's raw `ZREVRANGE` fallback |
 | new `Model.exists(pk)` | replaces Valor's `POPOTO_REDIS_DB.exists(db_key)` in its `save()` override |
@@ -692,7 +692,7 @@ No agent or MCP integration is required in this repo. The capability is reached 
 - [ ] **Recall latency.** On a 20k-row, 1536-d corpus, measured by `scripts/bench_pg_recall.py` on the dev machine, with the environment stated:
   - a 5%-scope recall is ≤ 15 ms p95
   - a 60%-scope recall is ≤ 60 ms p95
-- [ ] **Fully subconscious.** A fresh empty database plus a first `safe_save` from a new process creates the schema with no CLI step. `NULL` embeddings are backfilled by later saves alone.
+- [ ] **Fully subconscious.** A fresh empty database plus a first `safe_save` from a new process creates the schema with no CLI step. Organic `NULL` embeddings (from provider failures) are backfilled by later saves alone. A test with a sleeping provider asserts that `save()` returns within `PG_BACKFILL_BUDGET_S` plus a small margin.
 - [ ] **No new failures in the existing suite.** The Redis memory tests listed in §Test Impact pass unchanged. `ruff check src/`, `black --check src/ tests/` and `scripts/mypy_ratchet.py` (which must not rise) all pass.
 - [ ] **`import popoto` works without psycopg** (a subprocess test).
 - [ ] Tests pass (`/do-test`).
@@ -794,7 +794,7 @@ No agent or MCP integration is required in this repo. The capability is reached 
 - **Parallel**: false
 - Run the Redis-oracle parity tests on DB 15. Any ad-hoc script sets `REDIS_URL=redis://localhost:6379/15` before importing popoto.
 - Add multi-process save, outcome and DDL race tests.
-- Run the 1536-d benchmark and pin `PG_VECTOR_EXACT_MAX`, `ef_search` and `PG_BACKFILL_BATCH` from the measurement.
+- Run the 1536-d benchmark and pin `PG_VECTOR_EXACT_MAX`, `ef_search` `PG_BACKFILL_BATCH` and `PG_BACKFILL_BUDGET_S` from the measurement.
 
 ### 6. Validate
 - **Task ID**: validate-all
@@ -817,7 +817,8 @@ No agent or MCP integration is required in this repo. The capability is reached 
 | Check | Command | Expected |
 |-------|---------|----------|
 | pg tests | `POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/pg -q` | exit code 0 |
-| Redis memory suites unchanged | `pytest tests/test_context_assembler.py tests/test_context_assembler_hybrid.py tests/test_observation_protocol.py tests/test_confidence_field.py tests/test_bm25_field.py tests/test_existence_filter.py tests/test_embedding_field.py -q` | exit code 0 |
+| Redis memory suites unchanged | `pytest tests/test_context_assembler.py tests/test_context_assembler_hybrid.py tests/test_observation_protocol.py tests/test_confidence_field.py tests/test_bm25_field.py tests/test_existence_filter.py tests/test_embedding_field.py tests/test_context_assembler_token_budget.py tests/test_embedding_field_gc.py -q` | exit code 0 |
+| Recall latency benchmark | `POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres python scripts/bench_pg_recall.py` | prints p50/p95 within the Success Criteria bounds; exit code 0 |
 | Full suite | `pytest -q` | exit code 0 |
 | Lint | `ruff check src/` | exit code 0 |
 | Format | `black --check src/ tests/` | exit code 0 |
@@ -849,3 +850,14 @@ Full-depth war room run on 2026-10-03, with three independent critics (sonnet): 
 1. **One central Postgres, or one per machine?** The memory note on Yudame says "central shared Redis with optional scoping", and #756 asks the same question. It changes pool-sizing guidance, and whether `project_key` is enough of a scope or `agent_id` / machine must join it. The engine supports either. Only the deployment differs.
 2. **The `{pk}:memory-gate:*` / `memory-distill:*` counters.** This plan leaves them in Redis as Valor app state, so Valor keeps a Redis dependency after cutover. Should they move to a Postgres counters table too? If so, is that table in popoto's schema or Valor's?
 3. **The minimum Postgres version.** This plan says ≥ 16. The unscoped-BM25 fallback is only fast on 18, which has btree skip scan. Is 18 everywhere Valor runs, so the floor can be 18?
+
+### Re-critique (round 2, 2026-10-03)
+
+A consolidated re-critique confirmed that all 8 round-1 resolutions landed and agree with each other. **Verdict: READY TO BUILD (with concerns)**. Its three concerns have been applied:
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 9 | CONCERN | Pg `might_exist` was specified as a single-token `EXISTS`, but `definitely_missing` receives a whole cue string (`context_assembler.py:2424-2428`). A multi-word cue would never match, and `assemble()` would return `[]`. | D8 now mirrors the Redis semantics (`existence_filter.py:461-495`): tokenize, ANY-token hit, and the raw-lowercase fallback. The parity test covers single-word, multi-word and stopword-only cues. The critic's suggested "≥2 hits" threshold was checked and rejected: that rule lives in Valor's own callers, not in popoto. Spike-1's wording was corrected. |
+| 10 | CONCERN | `scope=partition_filters` conflated the scope column with other filters, and the fusion weights ignored `_fusion_weights(query_text)` (`:2583`). | The pg branch splits scope from filters and reuses `_fusion_weights` (Data Flow and D8). |
+| 11 | CONCERN | The piggyback backfill had no latency bound on `safe_save` and no stated drain rate for a migrated backlog. | It now uses a batched provider call and `PG_BACKFILL_BUDGET_S`. Valor's reflection is named as the bulk drain path for backlogs. A sleeping-provider test was added. |
+| — | NIT | Duplicate step number, missing regression suites, no benchmark row in Verification. | Fixed. |
