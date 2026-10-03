@@ -169,42 +169,45 @@ Disposition codes:
 
 ## Logical Field Mapping
 
-The **logical** model is the set of facts that must survive. The **physical** column names are set by #755's schema PR and fill the right-hand column at build time (task `map-physical`). Every row below is stated as a fact plus a transformation, so the mapping holds whatever table shape #755 chooses.
+The **logical** model is the set of facts that must survive. The **physical** columns come from #755's concrete schema: PR #758, `docs/plans/postgres_native_memory.md` §D3, table `popoto.memory`, schema `popoto`, DSN from `POPOTO_POSTGRES_URL`. They were aligned on 2026-10-03, while #758 was still open. Task `map-physical` re-checks this column against the DDL as merged, and the DDL pin test in #755 is the source of truth if the two differ.
 
-| # | Logical fact | Source (Redis) | Transformation | Lossy? | #755 column |
+| # | Logical fact | Source (Redis) | Transformation | Lossy? | `popoto.memory` column (#758 §D3) |
 |---|---|---|---|---|---|
-| L1 | Identity | `memory_id` (uuid4 hex) | Verbatim. It is the PK, unique across machines with overwhelming probability. A collision aborts the load. | no | TBD |
-| L2 | Author/agent scope | `agent_id` | verbatim | no | TBD |
-| L3 | Project scope | `project_key` | Verbatim, including legacy `dm`/`default` values, which the report lists | no | TBD |
-| L4 | Content, title | `content`, `title` | Text. A NUL byte rejects the record; Postgres `text` refuses NUL (POC Q4). | Records with NUL bytes are rejected and reported. The default `--max-rejects 0` aborts the load. | TBD |
-| L5 | Importance | `importance` | float8 | no | TBD |
-| L6 | Source kind | `source` | Text, or an enum if #755 picks one. Any value outside `{human, agent, system, knowledge}` is reported. | no | TBD |
-| L7 | Reference pointer | `reference` (JSON string or `""`) | Becomes jsonb if it parses, NULL if `""`, otherwise kept as raw text (counted) | no | TBD |
-| L8 | Free metadata | `metadata` dict | jsonb, verbatim. Typed promotion of known keys is optional and #755's call (rows L9–L11). | no | TBD |
-| L9 | Tags and category (scoping) | `metadata.tags`, `metadata.category` | Promote to #755's optional tag-scoping column if one exists; otherwise leave in jsonb | no | TBD |
-| L10 | Outcome state | `metadata.dismissal_count`, `metadata.last_outcome` | Typed columns, or kept in jsonb | no | TBD |
-| L11 | Outcome history | `metadata.outcome_history[]` (≤10 entries: `outcome`, `reasoning`, `ts`) | One row per entry if #755 has an outcomes table, otherwise jsonb | History beyond the 10-entry cap was already gone in Redis | TBD |
-| L12 | Distillation status | `metadata.distill_*` (status, attempts, last_attempt_at, model, prompt_version, failed/refused/abandoned) | Kept in jsonb unless #755 promotes it | no | TBD |
-| L13 | Decay anchor | hash `relevance` (last-save ts) | `timestamptz`. The zset score is used only as a cross-check. | no | TBD |
-| L14 | Creation time | **does not exist.** uuid4 ids carry no time and the model has no `created_at`. | Estimate as `min(access_log[0], outcome_history[*].ts, relevance)` and set an `created_at_estimated` provenance flag | **yes, documented** | TBD |
-| L15 | Confidence | companion hash `confidence` | float8 | no | TBD |
-| L16 | Confidence evidence | companion `evidence_count`, `corroborations`, `contradictions` | ints | no | TBD |
-| L17 | Access stats | `$AT meta` `access_count`, `last_accessed` | int, timestamptz | no | TBD |
-| L18 | Access log | `$AT access_log` | Rows, or a `timestamptz[]` array | staged (unconfirmed, <24h) reads are dropped | TBD |
-| L19 | Embedding | `.npy` file | `vector(N)` if the dimension equals N. Otherwise NULL, reported per dimension, and left for Valor's embedding backfill to regenerate. | Re-embed cost only. Wrong-dimension vectors cannot be loaded at all. | TBD |
-| L20 | Supersession: replacement | `superseded_by` when it equals an existing `memory_id` | FK to the replacement row | no | TBD |
-| L21 | Retirement reason | `superseded_by` when it is a sentinel: `dismissal-prune` (`ai/agent/memory_extraction.py:1513`), `decay-prune-tier2` (`ai/reflections/memory/memory_decay_prune.py:146`), `cleanup-junk-extraction` (`ai/reflections/memory/memory_quality_audit.py:60`) | Retirement-reason column or enum. Any other non-id, non-sentinel value (for example a dangling id whose replacement was hard-deleted) is carried as raw text and counted. | no | TBD |
-| L22 | Supersession rationale | `superseded_by_rationale` | text | no | TBD |
-| L23 | Validity interval | **does not exist as a timestamp.** Supersession time was never recorded. | `tstzrange(created_at_est, NULL)` for active records. For superseded records the upper bound is estimated as `relevance` (the timestamp of the last save, which is at or after the supersession save) and flagged. | **yes, documented**: the upper bound is approximate | TBD |
-| L24 | Machine provenance | none (implicit) | `migrated_from` = hostname + snapshot id + run id on every row. This is also the idempotency guard (see Solution). | n/a | TBD |
-| L25 | Gate/distill counters | raw counter keys | `(project_key, gate, reason, count, migrated_at)` | no | TBD |
+| L1 | Identity | `memory_id` (uuid4 hex) | Verbatim. Must match `CHECK ^[0-9a-f]{32}$`; a violation is a reject. A PK collision against another machine's run aborts the load. | no | `memory_id text PK` |
+| L2 | Author/agent scope | `agent_id` | verbatim | no | `agent_id` |
+| L3 | Project scope | `project_key` | Verbatim, including legacy `dm`/`default` values, which the report lists. This is #758's scope column (`partition_by`). | no | `project_key` |
+| L4 | Content, title | `content`, `title` | Text. A NUL byte rejects the record; Postgres `text` refuses NUL (POC Q4). | Records with NUL bytes are rejected and reported. The default `--max-rejects 0` aborts the load. | `content`, `title` |
+| L5 | Importance | `importance` | float8 | no | `importance` |
+| L6 | Source kind | `source` | Text. Any value outside `{human, agent, system, knowledge}` is reported. | no | `source` |
+| L7 | Reference pointer | `reference` (JSON string or `""`) | Verbatim text, because #758 keeps it `text NOT NULL DEFAULT ''` | no | `reference` |
+| L8 | Free metadata | `metadata` dict | jsonb, verbatim. Tagged non-JSON values from the transfer format are converted, or the record is rejected; see Failure Path. | no | `metadata` |
+| L9 | Tags and category | `metadata.tags`, `metadata.category` | Stay in jsonb; #758 promotes neither | no | `metadata` |
+| L10 | Outcome state | `metadata.dismissal_count`, `metadata.last_outcome` | Stay in jsonb | no | `metadata` |
+| L11 | Outcome history | `metadata.outcome_history[]` (≤10 entries) | Stays in jsonb | History beyond the 10-entry cap was already gone in Redis | `metadata` |
+| L12 | Distillation status | `metadata.distill_*` | Stays in jsonb | no | `metadata` |
+| L13 | Decay anchor | hash `relevance` (last-save Unix ts) | `to_timestamp()`. The zset score is used only as a cross-check. | no | `relevance timestamptz` |
+| L14 | Creation time | **does not exist.** uuid4 ids carry no time and the model has no `created_at`. | Estimate as `min(access_log[*], outcome_history[*].ts, relevance)`, and add `created_at` to `estimated_fields` | **yes, flagged** | `created_at` + `estimated_fields` |
+| L15 | Confidence | companion hash `confidence` | float8, within `CHECK 0..1` | no | `confidence` |
+| L16 | Confidence evidence | companion `evidence_count`, `corroborations`, `contradictions` | ints | no | `confidence_evidence`, `confidence_corroborations`, `confidence_contradictions` |
+| L17 | Access stats | `$AT meta` `access_count`, `last_accessed` | int, timestamptz | no | `access_count`, `last_accessed_at` |
+| L18 | Access log | `$AT access_log` | **Not loaded.** #758 drops it because nothing in Valor reads it. It is used only as an input to the L14 estimate, and stays in the run-directory archive. | **yes, by schema decision** | none |
+| L19 | Staged reads | `$AT staged` list | `LLEN` → `staged_reads`, the latest timestamp → `staged_at`. Read by the raw inventory, because transfer export drops staged reads. | no | `staged_reads`, `staged_at` |
+| L20 | Embedding | `.npy` file (1536-d current; 768-d legacy) | If 1536-d: `vector(1536)`, `embedding_model = 'openai:text-embedding-3-small'` (the only 1536-d provider Valor has used; added to `estimated_fields`), and `embedded_hash = md5(content)`. Any other dimension → NULL, which #758's D7 backfill re-embeds. | Re-embed cost only | `embedding`, `embedding_model`, `embedded_hash` |
+| L21 | Supersession: replacement | `superseded_by` when it is a 32-hex id, whether or not the replacement still exists (#758 has no FK, by design) | verbatim | no | `superseded_by` |
+| L22 | Retirement reason | `superseded_by` when it is a sentinel: `dismissal-prune` (`ai/agent/memory_extraction.py:1513`), `decay-prune-tier2` (`ai/reflections/memory/memory_decay_prune.py:146`), `cleanup-junk-extraction` (`ai/reflections/memory/memory_quality_audit.py:60`) | Move to `retired_reason`, set `superseded_by` NULL. Any other non-empty value is a reject that names the value. | no | `retired_reason` |
+| L23 | Supersession rationale | `superseded_by_rationale` | text | no | `superseded_by_rationale` |
+| L24 | Supersession time | **does not exist** | For superseded or retired records: estimate as `relevance` (the timestamp of the last save, which is at or after the supersession save), and add `superseded_at` to `estimated_fields`. NULL for active records. | **yes, flagged** | `superseded_at` + `estimated_fields` |
+| L25 | Machine provenance | none (implicit) | `{machine, snapshot, run_id}`. This is also the delta guard. | n/a | `migrated_from jsonb` |
+| L26 | Derived lexical/bloom state | BM25 postings, bloom bits | **Not loaded.** Rebuilt by `python -m popoto.pg reindex` after the load. | no | `bm25_len`, `popoto.memory__bm25`, `popoto.memory__bloom` |
+| L27 | Gate/distill counters | raw `{pk}:memory-gate:*`, `{pk}:memory-distill:*` | **Not migrated.** #758 classes them as Valor app state that stays in Redis. Counted in the inventory for the record. | no (they stay put) | none |
+| — | Write-filter priority | `$WF:Memory:priority` | **Not loaded.** #758: no reader, and the priority tier is a no-op on pg. | no | none |
 
 Lossy cases, all named in the run report and accepted by design:
-- **L4**: content containing NUL bytes is rejected, not silently stripped.
-- **L14, L23**: creation time and supersession time are estimated, and each estimate is flagged.
-- **L18**: staged reads are dropped.
-- **L19**: wrong-dimension vectors are re-embedded.
-- **Bloom bits** are not carried.
+- **L4**: content with NUL bytes is rejected, not silently stripped.
+- **L14, L24**: creation time and supersession time are estimated and flagged in `estimated_fields`.
+- **L18**: the access log is dropped, by #758's schema decision.
+- **L20**: wrong-dimension vectors are re-embedded.
+- **Bloom bits** are not carried; they are rebuilt from content.
 
 The run report exists so these cases are counted, never discovered later.
 
