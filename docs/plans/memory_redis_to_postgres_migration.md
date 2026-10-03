@@ -6,7 +6,7 @@ owner: valorengels
 created: 2026-10-03
 tracking: https://github.com/tomcounsell/popoto/issues/756
 last_comment_id:
-depends_on: https://github.com/tomcounsell/popoto/issues/755
+depends_on: https://github.com/tomcounsell/popoto/issues/755 (schema: PR #758, docs/plans/postgres_native_memory.md §D3)
 ---
 
 # One-off migration: Valor agent memory, Redis to Postgres
@@ -143,15 +143,15 @@ Disposition codes:
 | Record hash | `R` | hash, msgpack values | `memory_id`, `agent_id`, `project_key`, `content`, `title`, `importance`, `source`, `reference`, `metadata`, `superseded_by`, `superseded_by_rationale`, `relevance` (last-save Unix ts), `confidence` (mirror), `embedding` (dimension int), `bm25`/`bloom` (placeholders) | **CARRY** (except the mirror, dimension and placeholder attributes) |
 | Confidence companion | `$ConfidencF:Memory:confidence:data`, hash field `R` | hash → msgpack `{confidence, evidence_count, corroborations, contradictions}` | Bayesian evidence | **CARRY.** Authoritative. The hash mirror is ignored. A missing entry maps to `initial_confidence=0.5`, `evidence_count=0`, and is counted in the report. |
 | Access meta | `$AT:Memory:meta:{R}` | hash | `access_count`, `last_accessed` | **CARRY** |
-| Access log | `$AT:Memory:access_log:{R}` | list (capped) | confirmed access timestamps | **CARRY** |
-| Staged reads | `$AT:Memory:staged:{R}` | list, 24h TTL | unconfirmed reads | **DROP.** Lossy by contract, the same as transfer's `partial` policy, and bounded at 24h. Counted in the report. |
+| Access log | `$AT:Memory:access_log:{R}` | list (capped) | confirmed access timestamps | **ARCHIVE only.** #758 drops it because nothing reads it. It feeds the L14 `created_at` estimate and is kept in the run directory. |
+| Staged reads | `$AT:Memory:staged:{R}` | list, 24h TTL | unconfirmed reads | **CARRY** as `staged_reads` and `staged_at` (#758 has columns for them). Read by the raw inventory, because transfer export drops them. |
 | Embedding vectors | **disk:** `$POPOTO_CONTENT_PATH` (default `~/.popoto/content`) `/.embeddings/Memory/{sha256(R)}.npy` plus `_index.json` | float32 `.npy` | vectors (current provider: OpenAI `text-embedding-3-small`, 1536-d, per `ai/agent/embedding_provider.py`; older records may be 768-d `nomic-embed-text`) | **CARRY** if the dimension matches the #755 column. Otherwise NULL plus re-embed. No provider name is stored, so the dimension is the only provenance. |
 | Class set | `$Class:Memory` | set | every `R` | **REBUILD** (becomes the PK). Cross-checked against a `SCAN Memory:*` in the inventory. |
 | KeyField indexes | `$KeyF:Memory:agent_id:{v}`, `$KeyF:Memory:project_key:{v}` | set | `R` by value | **REBUILD** (SQL indexes) |
 | Decay index | `$DecayingSortF:Memory:relevance:{project_key}` | zset, score = `relevance` ts | ranking | **REBUILD.** Cross-checked: each zset score equals the hash's `relevance`. |
 | BM25 postings | `$BM25:Memory:bm25:{tf:R, inv:term, df, dl, n, avgdl}` | zsets/strings | inverted index over `content` | **REBUILD** (#755's text-search choice) |
 | Bloom | `$EF:Memory:bloom` | string bitmap | content-token bits, never cleared on delete | **REBUILD** or retire, per #755. Not carried: its bits include deleted records. |
-| Write-filter priority | `$WF:Memory:priority` | zset | `R` → filter score at save time | **REBUILD** (a function of `importance`) |
+| Write-filter priority | `$WF:Memory:priority` | zset | `R` → filter score at save time | **DROP** (#758: no reader; the priority tier is a no-op on pg) |
 | Tombstone prior | `$TOMBPRIOR:Memory:{burials,index,stats}` | hash/zset/hash | burial counts | **ASSERT empty.** Only popoto's `recipes/memory_lifecycle.py:868` records burials, and Valor does not use that recipe (grep of `ai/` found no caller). A non-empty value stops the run for a maintainer decision. |
 | Legacy idxset pointers | hash fields containing `\x00`, `$IdxPtr:*` | — | `IndexedField`/`UniqueField` only | **ASSERT absent / DROP.** Memory has no such fields. The decoder already skips `\x00` fields (`models/encoding.py:612`). |
 | Embedding invalidation | pubsub `popoto:embedding:invalidate:Memory` | channel | — | **DROP** (not state) |
@@ -160,8 +160,8 @@ Disposition codes:
 
 | Structure | Key / model | Disposition |
 |---|---|---|
-| Content-gate counters | raw `INCR {project_key}:memory-gate:{reason}`, reasons `ack`/`fragment`/`short`/`fallback_dropped` (`ai/models/memory_gate.py:25-35`) | **CARRY (telemetry)** into a small counters table so the :8500 dashboard stays continuous. Optional; see Open Questions. |
-| Distill-gate counters | raw `INCR {project_key}:memory-distill:{reason}` (`ai/models/memory_distill_gate.py:32-42`) | **CARRY (telemetry)**, same as the row above |
+| Content-gate counters | raw `INCR {project_key}:memory-gate:{reason}`, reasons `ack`/`fragment`/`short`/`fallback_dropped` (`ai/models/memory_gate.py:25-35`) | **STAYS IN REDIS.** #758 classes it as Valor app state, not memory. Counted in the inventory only. |
+| Distill-gate counters | raw `INCR {project_key}:memory-distill:{reason}` (`ai/models/memory_distill_gate.py:32-42`) | **STAYS IN REDIS**, same as the row above |
 | `CorpusSizeBaseline` | popoto model (`ai/models/memory_corpus_baseline.py`) | **REBUILD.** A single row that the quality audit regenerates. |
 | `KnowledgeDocument`, `DocumentChunk` | popoto models with their own embeddings | **Out of scope: re-index.** `tools/knowledge/indexer.py` derives them from files. The `source="knowledge"` *Memory* rows are carried as Memory rows. |
 | `SideEffectJob(kind="memory_extraction")` | popoto model | **DRAIN before freeze.** Pending jobs would write Memory after the snapshot. |
@@ -219,7 +219,7 @@ The run report exists so these cases are counted, never discovered later.
 4. **`inventory` (tool)**: connects through an allowlisted read-only client (`SCAN`, `TYPE`, `SMEMBERS`, `SCARD`, `HGETALL`, `HGET`, `HLEN`, `LRANGE`, `LLEN`, `ZRANGE`, `ZSCORE`, `ZCARD`, `GET`, `STRLEN`, `PTTL`, `INFO`, `DBSIZE`). It counts every key family in the Source Inventory, cross-checks the class set against `SCAN Memory:*` and the decay-zset scores against the hash `relevance` values, and asserts the ASSERT rows. Output: `inventory.json`.
 5. **`extract` (tool)**: runs `popoto.transfer.export` with a mirror `Memory` model against the throwaway server, with `POPOTO_CONTENT_PATH` set to the copied embeddings directory. It also collects any orphan hashes the inventory found, and the counter keys. Output: `memory.jsonl` (manifest plus records) and `counters.jsonl`, each with a sha256 recorded in `artifact.json`. After this the Redis side is finished and the throwaway server is stopped.
 6. **`transform` (tool, pure)**: reads JSONL and applies L1–L25: supersession split, created-at estimate, dimension routing, NUL rejection. Output: `rows.jsonl` (the logical tuples) plus `report.json` (every lossy count). It needs no network or database and can run before #755 lands.
-7. **`load` (tool, after #755)**: in one Postgres transaction, binary-`COPY`s rows into a `migration_756` staging schema, then runs `INSERT … ON CONFLICT (id) DO UPDATE … WHERE target.migrated_from IS NOT NULL` into the #755 tables, records the run in `migration_756.runs`, and commits. In `--dry-run` mode it rolls back instead. Indexes (HNSW, text search) are built or `REINDEX`ed after the load.
+7. **`load` (tool, after #755)**: in one Postgres transaction against `POPOTO_POSTGRES_URL`, it binary-`COPY`s rows into a `migration_756` staging schema, then runs `INSERT INTO popoto.memory … ON CONFLICT (memory_id) DO UPDATE … WHERE popoto.memory.migrated_from IS NOT NULL`, records the run in `migration_756.runs`, and commits. In `--dry-run` mode it rolls back instead. It deliberately does **not** go through the engine's save path, because that path writes `migrated_from = NULL` and would defeat the delta guard. It writes no derived state. After commit, `python -m popoto.pg reindex <Model>` (#758) rebuilds `bm25_len`, `popoto.memory__bm25` and `popoto.memory__bloom` from `content`.
 8. **`verify` (tool)**:
    - (a) row counts per `(project_key, source, active/superseded, vector dimension)` against `report.json`.
    - (b) a per-record logical checksum over every row: sha256 of the canonical tuple from `rows.jsonl` against the same tuple re-read from Postgres. It must be 100% equal.
@@ -254,7 +254,7 @@ The pre-#755 half (snapshot, inventory, extract, transform) is about 60% of the 
 |-------------|---------------|---------|
 | `redis-server` binary present (same major as the live server) | `redis-server --version` | Throwaway snapshot server |
 | Test Redis on DB 15 for unit fixtures | `redis-cli -n 15 ping` | Fixture snapshots (tests never touch DB 0) |
-| #755 schema merged (loader, verify, rehearsal only) | `gh pr list --state merged --search "755 schema" --json number -q 'length'` | Physical mapping target |
+| #755 schema plan merged and `popoto.pg` (DDL + `reindex`) built (loader, verify, rehearsal only) | `gh pr view 758 --json state -q .state` → `MERGED`; then `python -m popoto.pg reindex --help` | Physical mapping target and derived-state rebuild |
 | Postgres with pgvector available for loader tests | `python -c "import os,psycopg; psycopg.connect(os.environ['POSTGRES_TEST_URL']).execute('select extversion from pg_extension where extname=%s',('vector',)).fetchone()[0]"` | Loader and verify tests (skipped when unset) |
 
 ## Solution
@@ -264,11 +264,11 @@ The pre-#755 half (snapshot, inventory, extract, transform) is about 60% of the 
 - **Snapshot isolation (the safety model)**: the tool cannot reach the live store. It connects only to a throwaway `redis-server` it started itself from a copied RDB, identified by `run_id` in `source.json`. It has no code path that accepts a URL, port or host for the source. That makes "read-only against Redis, never flush" a structural property rather than a discipline. It also neutralizes the popoto read paths that write (spike-2), because those writes land in a disposable process.
 - **Allowlisted client**: every Redis call goes through a wrapper that permits only the read commands listed in Data Flow step 4. Any other command raises `ForbiddenCommand` before it reaches the socket. This is defense in depth on top of isolation, and it sits outside popoto's own DB-0 flush guard. It applies to the inventory and to counter extraction. Transfer export uses popoto's global client, bound by `REDIS_URL` set before `import popoto` (CLAUDE.md, #577) to the throwaway URL. The tool asserts that binding by comparing `run_id` before export starts.
 - **Reused extractor**: `popoto.transfer.export`, run against a mirror `Memory` model. The mirror has the same class name, field names and field types as Valor's model, with `GracefulEmbeddingField` replaced by plain `EmbeddingField`, whose storage is identical (`ai/models/graceful_embedding_field.py` overrides only `on_save`). Using a mirror means the tool never imports Valor's runtime: no `apply_defaults()` and no OpenAI provider configuration. A preflight compares the mirror against Valor's model by AST, read-only.
-- **Pure transform**: JSONL to logical tuples (L1–L25) plus a lossy-case report. It is deterministic, so the same input always yields byte-identical `rows.jsonl`.
+- **Pure transform**: JSONL to logical tuples (L1–L27) plus a lossy-case report. It is deterministic, so the same input always yields byte-identical `rows.jsonl`.
 - **Idempotent loader**: one transaction per run.
   - The PK is `memory_id`.
   - Every migrated row carries `migrated_from` (hostname, snapshot id, run id).
-  - `ON CONFLICT DO UPDATE` fires only where `target.migrated_from IS NOT NULL`, so a row Valor has since created or edited natively on Postgres is never overwritten. Those rows are reported as `conflict_native`.
+  - `ON CONFLICT (memory_id) DO UPDATE` fires only where `popoto.memory.migrated_from IS NOT NULL`. #758's engine sets `migrated_from = NULL` on every native INSERT and UPDATE, so a row Valor has since created or edited natively on Postgres is never overwritten. Those rows are reported as `conflict_native`.
   - A run ledger (`migration_756.runs`) stores the artifact sha256 values. Re-running the same artifact is a verified no-op. Re-running a newer snapshot is the delta mechanism.
   - `--dry-run` runs the full load and verification inside the transaction, then rolls back.
 - **Three-level verification**:
@@ -298,9 +298,9 @@ Operator freezes writers → `BGSAVE` and copy the RDB plus embeddings → `serv
 - **Transfer reuse**: call `popoto.transfer.export.export_records` (the library API, not the CLI) for the mirror model, with chunked hydration. Carry the `.npy` bytes through the existing embedding carry. If a gap needs a popoto change (for example, the export path reads `POPOTO_CONTENT_PATH` at import time instead of per call), it is an additive popoto PR with its own tests. The tool sets the environment before importing popoto either way.
 - **Orphan hashes**: `Memory:*` hashes that `SCAN` finds but `$Class:Memory` lacks are decoded by the inventory through `popoto.models.encoding` (a pure function) and appended to `memory.jsonl` with `orphan: true`. They load like any other record, because they are real memories that popoto's index simply lost. Their count is reported.
 - **Loader**:
-  1. `psycopg` 3 binary `COPY` into `migration_756.stage_*`, which is unindexed.
-  2. One `INSERT … SELECT … ON CONFLICT` per target table.
-  3. HNSW and text-search index build or `REINDEX` after the load, with `maintenance_work_mem` raised for the session.
+  1. `psycopg` 3 binary `COPY` into `migration_756.stage_memory`, which is unindexed.
+  2. One guarded `INSERT … SELECT … ON CONFLICT (memory_id)` into `popoto.memory`. The engine owns the DDL and the HNSW index, and the loader never creates or drops schema objects in `popoto`. At the 20k scale, incremental HNSW maintenance during the insert is acceptable. If the rehearsal shows otherwise, that is a #755 question (a bulk-load mode), not a loader workaround.
+  3. `python -m popoto.pg reindex` for the derived BM25 and bloom tables.
 
   The staging schema is dropped at the end of a successful non-dry run. It is created and destroyed inside the transaction, so a crash leaves nothing behind.
 - **Encoding compatibility**: Valor writes with popoto 1.9.0 and the tool reads with main. A fixture test encodes records with the 1.9.0 encoder semantics (vendored msgpack fixtures captured on DB 15) and decodes them with main.
@@ -366,7 +366,7 @@ If a transfer gap forces an additive popoto change, that PR carries its own test
 
 ### Risk 1: #755's schema shape forces mapping rework
 **Impact:** the loader and parts of the transform are rewritten.
-**Mitigation:** the transform emits *logical* tuples (L1–L25). Only `map-physical` and `load` touch column names, and both are sequenced after #755's schema PR merges. If #755 changes after this plan, only the right-hand column of the mapping table and one module change.
+**Mitigation:** the transform emits *logical* tuples (L1–L27). Only `map-physical` and `load` touch column names. The column side is already aligned to #758 §D3, but it is re-checked against #755's DDL pin test when `map-physical` runs. If #755 changes in review, only the right-hand column of the mapping table and `columns.py` change.
 
 ### Risk 2: a write lands after the snapshot and is lost
 **Impact:** memories written between the snapshot and the repoint never reach Postgres.
@@ -401,7 +401,7 @@ If a transfer gap forces an additive popoto change, that PR carries its own test
 ### Race 3: delta load against rows Valor already modified on Postgres
 **Location:** the `load` stage, delta run
 **Trigger:** Valor updates a migrated row on Postgres (for example, a new outcome), and then a delta load writes the older Redis version over it.
-**Mitigation:** Valor's native writes clear `migrated_from` (or set it to NULL) on update. That is a requirement placed on #755's adoption code and listed in Open Questions. Until #755 confirms it, the loader also compares the row's `updated_at` against `migrated_at` and refuses to overwrite a newer row, reporting it as `conflict_native`.
+**Mitigation:** confirmed by #758 §D3. The engine writes `migrated_from = NULL` on every native INSERT and UPDATE, and the loader's `ON CONFLICT … WHERE popoto.memory.migrated_from IS NOT NULL` therefore skips any natively touched row. A test asserts that a native update between two loads survives the second load. `updated_at` (engine-owned) is recorded in the conflict report for diagnosis, but it is not a guard.
 
 ## No-Gos (Out of Scope)
 
@@ -529,13 +529,13 @@ No agent integration. This is an operator-run, one-off CLI. It deliberately has 
 - Run the Verification anti-criteria rows and the fixture end-to-end through `transform`. Confirm no test or tool code touches DB 0 or port 6379.
 - This half is mergeable on its own, before #755.
 
-### 6. Physical mapping (after #755 schema PR merges)
+### 6. Physical mapping (re-check after #755 schema PR merges)
 - **Task ID**: map-physical
-- **Depends On**: validate-source, plus the merged #755 schema PR
+- **Depends On**: validate-source, plus PR #758 merged and `popoto.pg`'s DDL pin test landed
 - **Assigned To**: sink-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- Fill the "#755 column" side of the Logical Field Mapping table in this plan, and the matching `columns.py` in the tool. Confirm with #755 that native writes clear `migrated_from` (Race 3), or add the `updated_at` guard.
+- Re-check the `popoto.memory` column side of the Logical Field Mapping (already aligned to #758 §D3) against the merged DDL, and write the matching `columns.py`. Add a test that compiles Valor's post-cutover `Memory` declaration via `popoto.pg` and asserts every L-row column exists, so the tool fails loudly if #755's DDL moves.
 
 ### 7. Load and verify
 - **Task ID**: build-load
@@ -545,7 +545,7 @@ No agent integration. This is an operator-run, one-off CLI. It deliberately has 
 - **Assigned To**: sink-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- `load.py`: binary `COPY` into staging, then guarded upsert, run ledger, `--dry-run` rollback, index build afterwards.
+- `load.py`: binary `COPY` into staging, then guarded upsert into `popoto.memory`, run ledger, `--dry-run` rollback, then `popoto.pg reindex` for derived tables. It never uses the engine save path.
 - `verify.py`: counts, the full logical checksum, and side-by-side samples.
 
 ### 8. Parity harness
@@ -602,6 +602,6 @@ No agent integration. This is an operator-run, one-off CLI. It deliberately has 
 
 1. **Target topology across machines.** Each machine has its own Redis today. Do all machines' memories go into **one central Postgres**, which matches the "central shared store with optional agent/project scoping" direction, or does each machine get its own? The plan supports both: `memory_id` is globally unique and every row carries `migrated_from`. But a central target makes the loader's cross-machine PK-collision check and the `project_key` namespace merge real concerns, so I'd like the answer before `map-physical`.
 2. **Yudame.** Valor's repo has no Yudame memory model; "yudame" appears there only as a bot account name and in unrelated tooling. Does Yudame have a Redis memory store somewhere else that this tool must also cover, or is "Valor/Yudame" a single store in practice?
-3. **Telemetry counters (L25).** Should the content-gate and distill-gate counters carry over so the :8500 dashboard stays continuous? They are cheap to carry, but they need a home in #755's schema. If #755 has none, the plan drops them and the dashboard restarts from zero.
-4. **Lossy-estimate policy (L14, L23).** Is a flagged estimate acceptable for `created_at` and for the supersession end time? The alternative is to leave them NULL and let #755's decay and validity logic treat NULL explicitly. Estimates keep decay behaviour closest to today's, because decay uses the last-save timestamp either way.
+3. **Telemetry counters (L27).** #758 keeps the content-gate and distill-gate counters in Redis as Valor app state, so this tool does not migrate them, and #758 carries the question of whether they should move. Agreed with #758; listed here only so the two plans do not answer it differently.
+4. **Lossy-estimate policy (L14, L24).** #758 makes `created_at` NOT NULL and provides `estimated_fields` to flag inferred values, so the plan estimates and flags. Is that acceptable, rather than using the snapshot time for `created_at`? Estimates keep decay behaviour closest to today's, because decay uses the last-save timestamp either way.
 5. **Write-freeze switch.** The runbook freezes by stopping processes and closing Claude Code sessions, because Valor has no global memory-write kill switch. Is that acceptable for a minutes-long window, or should a Valor-side `MEMORY_WRITES=off` flag land in the ai repo first? That would be an ai-repo change, outside this plan.
