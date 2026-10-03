@@ -323,34 +323,121 @@ This runs once per machine (each machine has its own Redis). The operator is the
 **After step 7, rollback costs data.** Memories written on Postgres after resume would not exist in Redis. The window between steps 5 and 7 is where the go/no-go belongs, and the runbook does not let the operator skip it.
 
 ## Failure Path Test Strategy
-TBD
+
+### Exception Handling Coverage
+- [ ] The allowlisted client raises `ForbiddenCommand` for every write and admin command: `SET`, `HSET`, `DEL`, `SREM`, `ZREM`, `FLUSHDB`, `FLUSHALL`, `EXPIRE`, `RPUSH`, `CONFIG`, `SHUTDOWN`, `EVAL`/`EVALSHA`. A parametrized test covers each one, and asserts the command never reached the server by checking `INFO commandstats` on the DB-15 fixture server.
+- [ ] Each stage refuses a missing or checksum-mismatched predecessor artifact, with a named error and non-zero exit. No stage swallows an exception. The tool has no `except Exception: pass`; the build's review checks this.
+- [ ] `extract` aborts when the throwaway server's `run_id` differs from `source.json`. It also aborts when popoto's resolved client is not the throwaway server, which guards against a `REDIS_URL` that was not set before import.
+- [ ] `load` aborts the whole transaction on a PK collision against a row from another machine's run. The report names the colliding `memory_id`.
+
+### Empty/Invalid Input Handling
+- [ ] An empty snapshot (zero Memory records) produces a valid empty artifact. `load` then makes a no-op run ledger entry, and `verify` passes on zero, but only with `--allow-empty`. Without the flag, zero records is an error, because an empty source on a production machine almost certainly means the wrong RDB.
+- [ ] Records with: `content` containing NUL; non-JSON `reference`; `metadata` holding a non-JSON type (the transfer format's tagged bytes or datetime); a missing confidence companion entry; a missing `.npy` file for a record whose hash says it has a vector; a wrong-dimension vector; dangling or sentinel `superseded_by`; and an orphan hash. Each case has a fixture record and an asserted line in the report.
+- [ ] An ASSERT-row violation (a non-empty `$TOMBPRIOR`, or an idxset pointer present) stops `inventory` with a non-zero exit.
+
+### Error State Rendering
+- [ ] `report.json` and the stage's stdout summary both name every non-zero lossy counter. A test asserts the summary text for a fixture snapshot that triggers every lossy case.
+- [ ] `verify` prints the first 20 mismatching `memory_id`s together with the differing logical fields, not just a count.
 
 ## Test Impact
-TBD
+
+No existing tests affected. The tool is additive and lives outside `src/`: it imports `popoto.transfer` and `popoto.models.encoding` read-only and modifies neither. New tests:
+- `tests/test_memory_migration_safety.py`: allowlist, `run_id` binding, the anti-live guards.
+- `tests/test_memory_migration_extract.py`: an inventory and extract round-trip on fixture snapshots built on DB 15, then saved to an RDB and served by `serve-snapshot`.
+- `tests/test_memory_migration_transform.py`: pure tests over L1–L25 and the lossy cases.
+- `tests/test_memory_migration_load.py`: loader idempotency, dry-run rollback, the `migrated_from` guard, verify. Skipped unless `POSTGRES_TEST_URL` is set.
+
+If a transfer gap forces an additive popoto change, that PR carries its own tests in `tests/test_transfer_*.py`.
 
 ## Rabbit Holes
-TBD
+
+- **Making the tool generic** ("migrate any popoto model to any backend"). The maintainer scoped it one-off for Valor's `Memory`. Transfer is already the generic layer, and the mirror model is the only Valor-specific part.
+- **Live-source mode** (reading the live server directly, "just once, carefully"). Snapshot isolation is the safety model. A live mode would reopen every risk spike-2 found.
+- **Dual-write, read-through or reverse migration.** These are ruled out by the 2026-10-03 decision. The pre-resume go/no-go window makes a reverse path unnecessary.
+- **Reconstructing true creation and supersession times** from Valor logs or transcripts. The estimates are flagged and good enough for decay. Log mining is the #493 class of problem (blocked).
+- **Re-embedding inside the tool.** Valor's embedding backfill reflection already regenerates NULL vectors after cutover. The tool only routes and reports them.
+- **Byte-exact retrieval parity.** The ranking implementation changes on purpose. Parity is a regression check with thresholds, not an equality.
+- **Carrying the bloom filter bits.** They include deleted records and are rebuilt or retired by #755.
 
 ## Risks
-TBD
+
+### Risk 1: #755's schema shape forces mapping rework
+**Impact:** the loader and parts of the transform are rewritten.
+**Mitigation:** the transform emits *logical* tuples (L1–L25). Only `map-physical` and `load` touch column names, and both are sequenced after #755's schema PR merges. If #755 changes after this plan, only the right-hand column of the mapping table and one module change.
+
+### Risk 2: a write lands after the snapshot and is lost
+**Impact:** memories written between the snapshot and the repoint never reach Postgres.
+**Mitigation:** the freeze stops every known writer class (spike-3). Runbook step 8 detects late writes, and a delta re-run recovers them through the idempotent loader.
+
+### Risk 3: the extractor accidentally binds the live store
+**Impact:** writes to a live agent store. This is the #577 failure class.
+**Mitigation:** there is no source-URL parameter. `REDIS_URL` is set by the tool from `source.json` before `import popoto`, and the `run_id` is asserted before any read. The allowlist covers raw access. An anti-criterion grep forbids `6379` and `DEFAULT_URL` in the tool source.
+
+### Risk 4: the embedding directory does not match the RDB
+**Impact:** vectors are missing, or come from another time.
+**Mitigation:** copy both while frozen, in the same runbook step. The inventory checks that every hash-declared vector has its `.npy` and that `_index.json` maps to an existing `R`, and reports both directions of mismatch.
+
+### Risk 5: encoding drift between popoto 1.9.0 (Valor) and main (tool)
+**Impact:** values are misdecoded without any error.
+**Mitigation:** the fixture test decodes 1.9.0-encoded records with main. The full-record logical checksum compares JSONL against Postgres, and the transform cross-checks the decoded `relevance` against the zset score, which is an independent encoding path.
 
 ## Race Conditions
-TBD
+
+### Race 1: writers active during snapshot
+**Location:** runbook steps 2–3
+**Trigger:** a Claude Code hook or reflection writes Memory after `BGSAVE` forks.
+**Data prerequisite:** all writers stopped before `BGSAVE`.
+**State prerequisite:** the side-effect queue and sidecars are drained.
+**Mitigation:** the freeze ordering in the runbook, plus the step-8 late-write detection and delta re-run. `BGSAVE` itself is point-in-time (fork copy-on-write), so the snapshot is internally consistent even if the freeze leaks.
+
+### Race 2: RDB and embeddings copied at different moments
+**Location:** runbook step 3
+**Trigger:** the embedding backfill writes `.npy` files after `BGSAVE`.
+**Mitigation:** the worker is stopped first (step 2). The inventory's two-way vector reconciliation (Risk 4) catches any residue.
+
+### Race 3: delta load against rows Valor already modified on Postgres
+**Location:** the `load` stage, delta run
+**Trigger:** Valor updates a migrated row on Postgres (for example, a new outcome), and then a delta load writes the older Redis version over it.
+**Mitigation:** Valor's native writes clear `migrated_from` (or set it to NULL) on update. That is a requirement placed on #755's adoption code and listed in Open Questions. Until #755 confirms it, the loader also compares the row's `updated_at` against `migrated_at` and refuses to overwrite a newer row, reporting it as `conflict_native`.
 
 ## No-Gos (Out of Scope)
-TBD
+
+- [SEPARATE-SLUG #755] The Postgres schema, typed-table DDL, pgvector/text-search retrieval, and the Postgres-side embedding backfill and reflections. This plan consumes them.
+- [ORDERED] Repointing Valor (runbook step 6) waits on Valor's adoption of #755 shipping in the ai repo. The tool can run and verify before that, but cannot finish a cutover.
+- [EXTERNAL] Running the cutover on each real machine (freeze, `BGSAVE`, file copy, repoint). It needs the maintainer, on machines and live services the build agent must not touch.
+- [DESTRUCTIVE] Deleting Valor's Redis memory keys or the run-directory archive after cutover. This is a separate, reviewed decision once Postgres has run cleanly.
+- [ORDERED] Re-indexing `KnowledgeDocument`/`DocumentChunk` on Postgres. This is Valor's indexer, after the repoint.
 
 ## Update System
-TBD
+
+No update-system changes. The tool is run by hand from a popoto checkout, in a venv with the tool's optional dependencies, once per machine. It is not shipped through PyPI, not installed by `/update`, and not part of Valor's deploy.
 
 ## Agent Integration
-TBD
+
+No agent integration. This is an operator-run, one-off CLI. It deliberately has no MCP surface: an agent-callable migration against a live store is exactly the exposure the safety model rules out.
 
 ## Documentation
-TBD
+
+### Feature Documentation
+- [ ] `tools/memory_migration/README.md`: the runbook (copied from this plan and kept current), the stage reference, artifact formats, and the lossy-case glossary.
+- [ ] A short "Migrating Valor memory to Postgres" pointer page in `docs/features/`, linking to the README and #755's feature doc. Add it to the docs index.
+
+### External Documentation Site
+- [ ] `mkdocs build --strict` passes with the new page.
+
+### Inline Documentation
+- [ ] Module docstrings on the allowlisted client and `serve-snapshot` state the safety model and why there is no source-URL parameter.
 
 ## Success Criteria
-TBD
+
+- [ ] The tool's source has no code path that connects to a caller-supplied Redis URL, host or port. The anti-criteria greps pass.
+- [ ] The allowlist test proves each forbidden command never reaches the server.
+- [ ] On a fixture snapshot that exercises every Source Inventory row and every lossy case: inventory, extract, transform, load, verify complete end to end; `verify` reports 100% logical-checksum equality; and `report.json` matches the expected lossy counts exactly.
+- [ ] Re-running `load` with the same artifact changes zero rows. `--dry-run` leaves Postgres byte-identical (same row counts and the same table checksums before and after).
+- [ ] A delta run over a second snapshot updates only the changed records and never a Postgres-native row.
+- [ ] Rehearsal on a real snapshot of the maintainer's machine, loaded into scratch Postgres: verify passes, and the parity result is recorded in the PR.
+- [ ] Tests pass (`/do-test`).
+- [ ] Documentation updated (`/do-docs`).
 
 ## Team Orchestration
 TBD
