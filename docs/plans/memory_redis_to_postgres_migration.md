@@ -440,15 +440,165 @@ No agent integration. This is an operator-run, one-off CLI. It deliberately has 
 - [ ] Documentation updated (`/do-docs`).
 
 ## Team Orchestration
-TBD
+
+### Team Members
+
+- **Builder (source side)**
+  - Name: source-builder
+  - Role: `serve-snapshot`, the allowlisted client, `inventory`, `extract`, the mirror model and its drift preflight
+  - Agent Type: builder (Domain: Redis/Popoto data, and security/untrusted input)
+  - Resume: true
+- **Builder (transform)**
+  - Name: transform-builder
+  - Role: the pure L1–L25 transform and the lossy report
+  - Agent Type: builder
+  - Resume: true
+- **Builder (sink side)**
+  - Name: sink-builder
+  - Role: `map-physical`, `load`, `verify`, `parity` (after #755)
+  - Agent Type: builder
+  - Resume: true
+- **Validator**
+  - Name: migration-validator
+  - Role: safety anti-criteria, fixture end-to-end runs, idempotency
+  - Agent Type: validator
+  - Resume: true
+- **Documentarian**
+  - Name: migration-docs
+  - Role: the README runbook and the feature pointer page
+  - Agent Type: documentarian
+  - Resume: true
 
 ## Step by Step Tasks
-TBD
+
+### 1. Safety core
+- **Task ID**: build-safety
+- **Depends On**: none
+- **Validates**: tests/test_memory_migration_safety.py (create)
+- **Informed By**: spike-2 (popoto reads can write), Research (an RDB is the only point-in-time copy)
+- **Assigned To**: source-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Create `tools/memory_migration/` with `snapshot.py`. `serve-snapshot` spawns `redis-server` on an ephemeral 127.0.0.1 port with `--save "" --appendonly no` from `<rundir>/dump.rdb`, writes `source.json` (port, pid, run_id), and `stop-snapshot` stops it.
+- Create `client.py`: the command-allowlisted wrapper that raises `ForbiddenCommand` pre-send. Its only constructor is `from_source_json(rundir)`.
+- Create `bind.py`: sets `REDIS_URL` from `source.json` before any popoto import, then asserts `popoto.get_redis()` reports the same `run_id`.
+
+### 2. Inventory and mirror model
+- **Task ID**: build-inventory
+- **Depends On**: build-safety
+- **Validates**: tests/test_memory_migration_extract.py (create)
+- **Informed By**: spike-1 (key inventory)
+- **Assigned To**: source-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Write `mirror.py`: a `Memory` with Valor's field list, with plain `EmbeddingField` in place of `GracefulEmbeddingField`.
+- Write `preflight.py`: an AST comparison against a given `models/memory.py` path, read-only.
+- Write `inventory.py`: per-family counts for every Source Inventory row; the class-set vs `SCAN Memory:*` reconciliation; zset score vs hash `relevance`; two-way `.npy` reconciliation; the ASSERT rows; counter keys.
+- Build fixture snapshots on DB 15: populate, `SAVE` to a temp dir via a dedicated fixture server rather than the shared DB-15 server, and serve. Cover every inventory row, including an orphan hash and a missing companion entry.
+
+### 3. Extract
+- **Task ID**: build-extract
+- **Depends On**: build-inventory
+- **Validates**: tests/test_memory_migration_extract.py
+- **Assigned To**: source-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Call `popoto.transfer.export_records` for the mirror against the bound throwaway server, with `POPOTO_CONTENT_PATH` set to `<rundir>/embeddings`. Append orphan records (decoded with `popoto.models.encoding`) and `counters.jsonl`. Write `artifact.json` sha256 values. Use `.part` then `os.replace`.
+- Add the encoding-compatibility fixture (1.9.0-encoded hashes decoded by main).
+- If a transfer gap requires a popoto change, split it into its own additive PR with tests. Do not patch transfer from inside the tool.
+
+### 4. Transform and report
+- **Task ID**: build-transform
+- **Depends On**: build-extract (format only; can start from the JSONL spec in parallel)
+- **Validates**: tests/test_memory_migration_transform.py (create)
+- **Assigned To**: transform-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Write `transform.py`: L1–L25 as pure functions to deterministic `rows.jsonl`. Includes the supersession split (id / sentinel / dangling), the created-at estimate with its flag, the validity estimate with its flag, dimension routing, NUL rejection, and reference parsing.
+- Write `report.json` with every lossy counter, and add the stdout summary.
+
+### 5. Validate pre-#755 half
+- **Task ID**: validate-source
+- **Depends On**: build-safety, build-inventory, build-extract, build-transform
+- **Assigned To**: migration-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run the Verification anti-criteria rows and the fixture end-to-end through `transform`. Confirm no test or tool code touches DB 0 or port 6379.
+- This half is mergeable on its own, before #755.
+
+### 6. Physical mapping (after #755 schema PR merges)
+- **Task ID**: map-physical
+- **Depends On**: validate-source, plus the merged #755 schema PR
+- **Assigned To**: sink-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Fill the "#755 column" side of the Logical Field Mapping table in this plan, and the matching `columns.py` in the tool. Confirm with #755 that native writes clear `migrated_from` (Race 3), or add the `updated_at` guard.
+
+### 7. Load and verify
+- **Task ID**: build-load
+- **Depends On**: map-physical
+- **Validates**: tests/test_memory_migration_load.py (create; skipped without `POSTGRES_TEST_URL`)
+- **Informed By**: Research (binary COPY, index after load)
+- **Assigned To**: sink-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- `load.py`: binary `COPY` into staging, then guarded upsert, run ledger, `--dry-run` rollback, index build afterwards.
+- `verify.py`: counts, the full logical checksum, and side-by-side samples.
+
+### 8. Parity harness
+- **Task ID**: build-parity
+- **Depends On**: build-load, and Valor's #755 adoption being available for the Postgres arm
+- **Assigned To**: sink-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- `parity.py`: builds the query sample (recent human memories plus Valor's known-item generator). A driver runs Valor's `retrieve_memories` in Valor's venv against a second throwaway server and against Postgres. The tool compares hit@10 and overlap@10 against the pinned `PARITY_HIT_DROP_MAX` and `PARITY_OVERLAP_MIN`.
+
+### 9. Validate sink half and rehearse
+- **Task ID**: validate-sink
+- **Depends On**: build-load, build-parity
+- **Assigned To**: migration-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Fixture end-to-end through `verify`. Idempotent re-run (zero rows changed). Dry-run leaves Postgres unchanged. Delta run touches only changed records and never native ones.
+- The maintainer's rehearsal on a real snapshot into scratch Postgres is the [EXTERNAL] operator step. Its report is attached to the PR.
+
+### 10. Documentation
+- **Task ID**: document-feature
+- **Depends On**: validate-source (README skeleton), validate-sink (final)
+- **Assigned To**: migration-docs
+- **Agent Type**: documentarian
+- **Parallel**: false
+- `tools/memory_migration/README.md` (runbook plus stage reference) and the `docs/features/` pointer page with its index entry.
+
+### 11. Final Validation
+- **Task ID**: validate-all
+- **Depends On**: all of the above
+- **Assigned To**: migration-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run all Verification rows and confirm the Success Criteria.
 
 ## Verification
-TBD
+
+| Check | Command | Expected |
+|-------|---------|----------|
+| Migration tests pass | `pytest tests/test_memory_migration_safety.py tests/test_memory_migration_extract.py tests/test_memory_migration_transform.py -q` | exit code 0 |
+| Loader tests pass (with Postgres) | `pytest tests/test_memory_migration_load.py -q` | exit code 0 |
+| Format clean | `black --check tools/memory_migration tests/` | exit code 0 |
+| Lint clean | `ruff check src/ tools/memory_migration` | exit code 0 |
+| No live port in tool | `grep -rn "6379" tools/memory_migration --include=*.py \| wc -l` | match count == 0 |
+| No default URL in tool | `grep -rn "DEFAULT_URL\|redis://localhost" tools/memory_migration --include=*.py \| wc -l` | match count == 0 |
+| No source-URL CLI option | `grep -rnE "add_argument\(.*(url\|host\|port)" tools/memory_migration --include=*.py \| wc -l` | match count == 0 |
+| No flush in tool | `grep -rniE "flushdb\|flushall" tools/memory_migration --include=*.py \| grep -v "FORBIDDEN\|ForbiddenCommand" \| wc -l` | match count == 0 |
+| Tool not in wheel | `python -m build --wheel -o /tmp/w756 >/dev/null 2>&1 && unzip -l /tmp/w756/*.whl \| grep -c memory_migration` | match count == 0 |
+| Sdist check still clean | `python -m build --sdist -o /tmp/s756 >/dev/null 2>&1 && python scripts/check_sdist_contents.py /tmp/s756/*.tar.gz` | exit code 0 |
 
 ## Critique Results
 
 ## Open Questions
-TBD
+
+1. **Target topology across machines.** Each machine has its own Redis today. Do all machines' memories go into **one central Postgres**, which matches the "central shared store with optional agent/project scoping" direction, or does each machine get its own? The plan supports both: `memory_id` is globally unique and every row carries `migrated_from`. But a central target makes the loader's cross-machine PK-collision check and the `project_key` namespace merge real concerns, so I'd like the answer before `map-physical`.
+2. **Yudame.** Valor's repo has no Yudame memory model; "yudame" appears there only as a bot account name and in unrelated tooling. Does Yudame have a Redis memory store somewhere else that this tool must also cover, or is "Valor/Yudame" a single store in practice?
+3. **Telemetry counters (L25).** Should the content-gate and distill-gate counters carry over so the :8500 dashboard stays continuous? They are cheap to carry, but they need a home in #755's schema. If #755 has none, the plan drops them and the dashboard restarts from zero.
+4. **Lossy-estimate policy (L14, L23).** Is a flagged estimate acceptable for `created_at` and for the supersession end time? The alternative is to leave them NULL and let #755's decay and validity logic treat NULL explicitly. Estimates keep decay behaviour closest to today's, because decay uses the last-save timestamp either way.
+5. **Write-freeze switch.** The runbook freezes by stopping processes and closing Claude Code sessions, because Valor has no global memory-write kill switch. Is that acceptable for a minutes-long window, or should a Valor-side `MEMORY_WRITES=off` flag land in the ai repo first? That would be an ai-repo change, outside this plan.
