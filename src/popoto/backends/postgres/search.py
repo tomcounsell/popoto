@@ -64,7 +64,7 @@ from ..types import (
     Scored,
     UnitOfWork,
 )
-from .schema import Column, TableSpec, _bounded, quote_ident
+from .schema import RELATIONSHIP_KINDS, Column, TableSpec, _bounded, quote_ident
 
 __all__ = [
     "SCOPE_SEPARATOR",
@@ -505,6 +505,83 @@ def record_lock_sql(ts: TableSpec, pks: Sequence[str]) -> tuple[str, list[Any]]:
     )
 
 
+#: Column types whose SQL text is exactly ``str()`` of the decoded value, so a
+#: save can render a scope part from the stored row itself.
+_SCOPE_SQL_TEXT: dict[type, str] = {
+    str: "{c}",
+    int: "{c}::text",
+    bool: "CASE WHEN {c} THEN 'True' ELSE 'False' END",
+}
+
+
+def _save_scope(
+    ts: TableSpec, obj: Any, listed: Optional[set[str]], pk: str
+) -> tuple[Optional[str], list[Any], str, list[Any]]:
+    """The scope a save writes its postings, document length and narrow
+    vector row under: ``(cte, cte_params, ref, ref_params)``. ``ref`` (with
+    ``ref_params``) is what each statement names it by: a ``%s`` bound to
+    the instance's scope, or a reference to ``cte``, which then defines it
+    (``None`` otherwise).
+
+    The side tables follow the row that is *stored* after the save (#774
+    review). A scope column the save writes -- every column on a full save,
+    the listed ones on an ``update_fields`` save -- takes the instance's
+    value. One it leaves alone keeps the stored row's value, which may differ
+    from the instance's: an unsaved assignment, or a concurrent writer that
+    moved the record after this instance was loaded. That part is read from
+    the record row in the statement's own snapshot (taken after the
+    record-key lock, so after any concurrent writer of the record
+    committed); a record that has no row yet falls back to the instance."""
+    layout: SearchLayout = ts.search
+    cols = layout.scope_columns
+    instance = scope_text([getattr(obj, c, None) for c in cols])
+    stored = [c for c in cols if listed is not None and c not in listed]
+    if not stored:
+        return None, [], "%s", [instance]
+    existing = _existing_scope_sql(layout)
+    parts: list[str] = []
+    params: list[Any] = []
+    for i, col in enumerate(cols, start=1):
+        if col not in stored:
+            value = getattr(obj, col, None)
+            parts.append("%s::text")
+            params.append("" if value is None else str(value))
+            continue
+        py_type = ts.field_types.get(col)
+        render = _SCOPE_SQL_TEXT.get(py_type) if py_type is not None else None
+        if render is not None and ts.kind(col) not in RELATIONSHIP_KINDS:
+            parts.append(f"COALESCE({render.format(c='t.' + quote_ident(col))}, '')")
+        else:
+            # No exact SQL spelling of str(value) for this type: the side
+            # rows already hold the stored scope (every write keeps them
+            # there), so take this part from them.
+            parts.append(f"COALESCE(split_part({existing}, %s, {i}), %s)")
+            value = getattr(obj, col, None)
+            params += [SCOPE_SEPARATOR, "" if value is None else str(value)]
+    joined = parts[0] if len(parts) == 1 else f"concat_ws(%s, {', '.join(parts)})"
+    if len(parts) > 1:
+        params.insert(0, SCOPE_SEPARATOR)
+    cte = (
+        f'"_scope" AS (SELECT COALESCE((SELECT {joined} FROM {ts.qualified} t '
+        'WHERE t."_pk" = %s), %s) AS "s")'
+    )
+    return cte, params + [pk, instance], '(SELECT "s" FROM "_scope")', []
+
+
+def _existing_scope_sql(layout: SearchLayout) -> str:
+    """The ``scope`` the record's side rows hold now (``t`` is the record
+    row), or ``NULL`` when it has none."""
+    subs: list[str] = []
+    for bm in layout.bm25.values():
+        subs.append(f'(SELECT "scope" FROM {bm.dl} WHERE "_pk" = t."_pk")')
+        subs.append(f'(SELECT "scope" FROM {bm.post} WHERE "_pk" = t."_pk" LIMIT 1)')
+    for emb in layout.embedding.values():
+        subs.append(f'(SELECT "scope" FROM {emb.narrow} WHERE "_pk" = t."_pk")')
+    if not subs:
+        return "NULL::text"
+    return subs[0] if len(subs) == 1 else f"COALESCE({', '.join(subs)})"
+
+
 @dataclass
 class SavePlan:
     """What a save adds to its statement: data-modifying CTEs (run in the
@@ -538,13 +615,20 @@ def prepare_save(
     and naming only a *scope* column moves the postings and the narrow
     vector row to the new scope (Redis's hooks run only for the listed
     field, so its index and vector go stale there).
+
+    The scope those rows are written under is the one the record row holds
+    *after* the save (:func:`_save_scope`): a scope column the save does not
+    write is read from the stored row, never from the instance, so an
+    unsaved assignment to it cannot move the postings away from the row.
     """
     layout: SearchLayout = ts.search
     listed = set(fields) if fields is not None else None
     ctes: list[str] = []
     params: list[Any] = []
     embedded: list[EmbeddingLayout] = []
-    scope = scope_text([getattr(obj, c, None) for c in layout.scope_columns])
+    # The side rows follow the stored row: a scope column this save does not
+    # write keeps the stored value, whatever the instance holds (#774 review).
+    scope_cte, scope_cte_params, sc, sp = _save_scope(ts, obj, listed, pk)
     n = 0
 
     def tag() -> str:
@@ -562,10 +646,10 @@ def prepare_save(
             if moved:
                 # The vector stays; its narrow row follows the record's scope.
                 ctes.append(
-                    f'{tag()} AS (UPDATE {emb.narrow} SET "scope" = %s '
-                    'WHERE "_pk" = %s AND "scope" <> %s)'
+                    f'{tag()} AS (UPDATE {emb.narrow} SET "scope" = {sc} '
+                    f'WHERE "_pk" = %s AND "scope" <> {sc})'
                 )
-                params += [scope, pk, scope]
+                params += [*sp, pk, *sp]
             continue
         vector, dims = made
         literal = _vector_literal(vector)
@@ -577,10 +661,10 @@ def prepare_save(
         embedded.append(emb)
         ctes.append(
             f'{tag()} AS (INSERT INTO {emb.narrow} ("_pk", "scope", "v") '
-            'VALUES (%s, %s, %s::vector) ON CONFLICT ("_pk") DO UPDATE SET '
+            f'VALUES (%s, {sc}, %s::vector) ON CONFLICT ("_pk") DO UPDATE SET '
             '"scope" = EXCLUDED."scope", "v" = EXCLUDED."v")'
         )
-        params += [pk, scope, literal]
+        params += [pk, *sp, literal]
 
     from ...fields._tokenizer import tokenize
 
@@ -593,37 +677,37 @@ def prepare_save(
             terms = list(counts)
             ctes.append(
                 f'{tag()} AS (DELETE FROM {bm.post} WHERE "_pk" = %s AND '
-                f'("scope" <> %s OR NOT ("term" = ANY(%s::text[]))))'
+                f'("scope" <> {sc} OR NOT ("term" = ANY(%s::text[]))))'
             )
-            params += [pk, scope, terms]
+            params += [pk, *sp, terms]
             if terms:
                 ctes.append(
                     f'{tag()} AS (INSERT INTO {bm.post} ("scope", "term", "_pk", '
-                    '"tf") SELECT %s, u.t, %s, u.n FROM unnest(%s::text[], '
+                    f'"tf") SELECT {sc}, u.t, %s, u.n FROM unnest(%s::text[], '
                     "%s::int[]) AS u(t, n) ORDER BY u.t "
                     'ON CONFLICT ("scope", "term", "_pk") DO UPDATE SET '
                     '"tf" = EXCLUDED."tf")'
                 )
-                params += [scope, pk, terms, [counts[t] for t in terms]]
+                params += [*sp, pk, terms, [counts[t] for t in terms]]
                 ctes.append(
                     f'{tag()} AS (INSERT INTO {bm.dl} ("_pk", "scope", "len") '
-                    'VALUES (%s, %s, %s) ON CONFLICT ("_pk") DO UPDATE SET '
+                    f'VALUES (%s, {sc}, %s) ON CONFLICT ("_pk") DO UPDATE SET '
                     '"scope" = EXCLUDED."scope", "len" = EXCLUDED."len")'
                 )
-                params += [pk, scope, len(tokens)]
+                params += [pk, *sp, len(tokens)]
             else:
                 ctes.append(f'{tag()} AS (DELETE FROM {bm.dl} WHERE "_pk" = %s)')
                 params += [pk]
         elif moved:
             ctes.append(
-                f'{tag()} AS (UPDATE {bm.post} SET "scope" = %s '
-                'WHERE "_pk" = %s AND "scope" <> %s)'
+                f'{tag()} AS (UPDATE {bm.post} SET "scope" = {sc} '
+                f'WHERE "_pk" = %s AND "scope" <> {sc})'
             )
-            params += [scope, pk, scope]
+            params += [*sp, pk, *sp]
             ctes.append(
-                f'{tag()} AS (UPDATE {bm.dl} SET "scope" = %s WHERE "_pk" = %s)'
+                f'{tag()} AS (UPDATE {bm.dl} SET "scope" = {sc} WHERE "_pk" = %s)'
             )
-            params += [scope, pk]
+            params += [*sp, pk]
 
     from ...fields.existence_filter import _compute_fingerprint_impl
 
@@ -653,6 +737,10 @@ def prepare_save(
                 'ON CONFLICT ("token") DO UPDATE SET "count" = c."count" + 1)'
             )
             params += [sorted(set(tokens))]
+
+    if scope_cte is not None and any(sc in cte for cte in ctes):
+        ctes.insert(0, scope_cte)
+        params[:0] = scope_cte_params
 
     after = None
     if embedded:

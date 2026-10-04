@@ -143,8 +143,17 @@ class ParityPartComposite(popoto.Model):
     relevance = DecayingSortedField(partition_by="category")
 
 
+class ParityMovable(popoto.Model):
+    """A partition column that is a plain field, so it can change in place."""
+
+    name = popoto.UniqueKeyField()
+    agent = popoto.Field(type=str, default="")
+    relevance = DecayingSortedField(decay_rate=0.5, partition_by="agent")
+
+
 MODELS = [
     ParityDecay,
+    ParityMovable,
     ParityModulated,
     ParityLowPrior,
     ParityPartitioned,
@@ -591,6 +600,23 @@ def test_top_by_decay_scans_only_the_partition(backend):
     assert [r.name for r in results] == ["a-new", "a-old"]
     with pytest.raises(QueryException):
         ParityPartitioned.query.top_by_decay(n=10)
+
+
+def test_a_partial_save_with_an_unsaved_partition_is_a_documented_divergence(
+    backend_is_redis,
+):
+    """``save(update_fields=["relevance"])`` after an unsaved change to the
+    partition column (#774 review). The hash keeps ``agent="A"`` on both.
+    Redis's hook reads the partition from the instance, so the member moves
+    to ``B``'s sorted set, a scope the record does not hold (#771); on
+    Postgres the partition *is* the stored column, so it stays in ``A``."""
+    record = ParityMovable.create(name="m", agent="A")
+    record.agent = "B"  # unsaved, and not listed below
+    record.save(update_fields=["relevance"])
+    assert ParityMovable.query.get(name="m").agent == "A"
+    in_a = [r.name for r in ParityMovable.query.filter(agent="A").top_by_decay()]
+    in_b = [r.name for r in ParityMovable.query.filter(agent="B").top_by_decay()]
+    assert (in_a, in_b) == (([], ["m"]) if backend_is_redis else (["m"], []))
 
 
 def test_touch_moves_the_clock_and_the_ranking(backend):

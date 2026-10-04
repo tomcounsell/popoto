@@ -767,6 +767,17 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     divergence beyond §1.1: Redis runs only the listed field's hook, so its
     index and vector go stale); a scope-only `update_fields` save moves the
     postings and the narrow vector row.
+  - **The side rows follow the stored scope, not the instance's.** A scope
+    column an `update_fields` save does not write is read from the record
+    row inside the save's statement (after the key lock), so
+    `save(update_fields=["text"])` after an unsaved, or concurrently
+    overwritten, change to the scope column re-indexes in the scope the row
+    holds. Before this, the 4-process load (seeds 1-4) ended with r0's
+    postings, document length and narrow row in `p1` under a `p2` row in 2
+    of 4 seeds; after, 0 of 8 runs. Redis has the variant for its
+    partitioned sorted fields: a save listing the field but not the
+    partition column moves the member to the instance's partition (#771,
+    divergence row in `docs/features/postgres-backend.md`).
   - **`top_by_relevance` lives on `Model.query`**, beside `recall()`, and
     returns `[(instance, score)]`.
   - **`ContentField` is a `text` column**, pulled forward from M5 because

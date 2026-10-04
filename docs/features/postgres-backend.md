@@ -242,6 +242,19 @@ postings key. A save that changes a scope column, including
 `save(update_fields=["project_key"])`, moves the record's postings and its
 narrow vector row in the same statement.
 
+The postings, document length and narrow vector row always carry the scope of
+the row that is *stored* after the save. A scope column the save writes (every
+column on a full save, the listed ones with `update_fields`) takes the
+instance's value; one it does not write keeps the stored value, read from the
+record row inside the save's own statement, after the record lock. So
+`save(update_fields=["text"])` on an instance whose `project_key` was changed
+but never saved, or was changed by another writer after this instance was
+loaded, re-indexes the text in the scope the row actually holds. A scope part
+whose type has no exact SQL spelling of `str(value)` (anything but `str`,
+`int` and `bool`) is taken from the record's existing side rows, which already
+hold the stored scope. Pinned: `tests/postgres/test_postgres_search.py::test_a_partial_save_keeps_the_side_tables_in_the_stored_scope`
+and `::test_a_partial_save_takes_each_unwritten_scope_column_from_the_store`.
+
 **Concurrent saves of one record.** The data-modifying CTEs of a save share
 one snapshot, so under `READ COMMITTED` a second save of the same record
 whose statement started before the first one committed could not see the
@@ -684,6 +697,7 @@ cast to the column's type.
 | `FrequencySketch.get_frequency` (M2b) | a count-min sketch: never under, may be over | the exact count of saves (never decremented, like the sketch). Pinned: same class |
 | `ExistenceFilter.fill_ratio` (M2b) | the fraction of set bits | an estimate, `1 - e^(-k·n/m)` for the `n` distinct tokens stored |
 | `save(update_fields=[…])` naming a `BM25Field`'s or `EmbeddingField`'s **source**, or only a **scope** column (M2b) | only the listed fields' hooks run, so the BM25 index keeps the old text or scope, and the vector (and its hash) the old text | re-indexes and re-embeds on the source; moves the postings and the narrow vector row on a scope change. Pinned: `test_update_fields_naming_the_source_reindexes`, `test_update_fields_naming_the_source_re_embeds` |
+| `save(update_fields=[…])` naming a partitioned sorted field (`DecayingSortedField`, `SortedField(partition_by=…)`) but not its partition column, after an unsaved change to that column (M2b, #774 review) | the field's hook reads the partition from the instance, so the member moves to the instance's partition sorted set while the hash keeps the old value: `filter(agent="B").top_by_decay()` finds a record whose `agent` is `"A"` (#771) | the partition is the stored column, so the record stays where the row says; the BM25 postings, document length and narrow vector row follow the stored row too. Pinned: `test_backend_parity_memory.py::test_a_partial_save_with_an_unsaved_partition_is_a_documented_divergence` |
 | `EmbeddingField` storage (M2b) | a `.npy` file per record plus `_index.json`, and an in-process matrix cache | the `vector(d)` column. No file, no cache, and `garbage_collect` / `sweep_stale_tempfiles` return `0`. The tests that assert files are `redis_only` |
 | Vector-arm ties and precision (M2b) | equal similarities come back in directory-listing order; numpy float32 dot products | ties by key, bytewise; pgvector's `<=>`. Both are float32 accumulations in a different order, so similarities differ by an amount that grows with the dimension. Measured maximum absolute difference over 10,000 vector-query pairs per dimension (clustered Gaussian vectors, PostgreSQL 18.6, pgvector 0.8.7): 2.5e-7 at 2-d, 2.3e-7 at 8-d, 5.3e-7 at 64-d, 8.9e-7 at 256-d, 1.2e-6 at 768-d, 1.4e-6 at 1024-d, 1.7e-6 at 1536-d (the #774 review measured 1.56e-6) and 2.3e-6 at 3072-d. So 1e-6 holds only up to about 256 dimensions; above that, near-ties can order differently |
 | `ContentField` (M2b) | a `$CF:` reference in the hash, with the content in a file store | the content itself in a `text` column |

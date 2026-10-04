@@ -322,6 +322,103 @@ def test_update_fields_naming_the_source_reindexes(pg):
     ]
 
 
+def _side_scopes(admin, schema, pk):
+    """The ``scope`` of ``pk``'s postings, document length and narrow vector
+    row, and the stored row's ``project``."""
+    out = {}
+    for name, table in (
+        ("post", "search_doc__content__post"),
+        ("dl", "search_doc__content__dl"),
+        ("narrow", "search_doc__embedding__vec"),
+    ):
+        rows = admin.execute(
+            f'SELECT DISTINCT scope FROM "{schema}".{table} WHERE _pk = %s', (pk,)
+        ).fetchall()
+        out[name] = sorted(r[0] for r in rows)
+    (stored,) = admin.execute(
+        f'SELECT project FROM "{schema}".search_doc WHERE _pk = %s', (pk,)
+    ).fetchone()
+    return out, stored
+
+
+def test_a_partial_save_keeps_the_side_tables_in_the_stored_scope(pg, pg_schema, admin):
+    """#774 review: ``save(update_fields=["text"])`` on an instance whose
+    scope column changed in memory but was never saved re-indexes the text
+    in the *stored* row's scope, not the instance's -- the row keeps
+    ``project='p1'``, so its postings, document length and narrow vector row
+    must too. Then the same with the instance stale the other way: another
+    writer moved the record to ``p2`` after this instance was loaded."""
+    doc = _doc("partial", "alpha beta gamma", project="p1")
+    doc.project = "p2"  # unsaved
+    doc.text = "delta epsilon"
+    doc.save(update_fields=["text"])
+    sides, stored = _side_scopes(admin, pg_schema.name, doc.pk)
+    assert stored == "p1"
+    assert sides == {"post": ["p1"], "dl": ["p1"], "narrow": ["p1"]}
+
+    stale = SearchDoc.query.get(name="partial")  # loaded at p1
+    other = SearchDoc.query.get(name="partial")
+    other.project = "p2"
+    other.save()
+    stale.text = "zeta eta theta"
+    stale.save(update_fields=["text"])  # stale.project is still "p1"
+    sides, stored = _side_scopes(admin, pg_schema.name, doc.pk)
+    assert stored == "p2"
+    assert sides == {"post": ["p2"], "dl": ["p2"], "narrow": ["p2"]}
+    backend = get_backend(SearchDoc)
+    hits = backend.keyword_search(
+        SearchDoc._meta.spec, "content", ["zeta"], limit=5, scope="p2", stats="scope"
+    )
+    assert [r.canonical for r, _s in hits] == [doc.pk]
+
+    # A record with no side rows yet (empty text): the stored scope still
+    # wins, read from the record row itself.
+    bare = _doc("bare", "", project=None)
+    bare.project = "p9"  # unsaved
+    bare.text = "iota kappa"
+    bare.save(update_fields=["text"])
+    sides, stored = _side_scopes(admin, pg_schema.name, bare.pk)
+    assert stored is None
+    assert sides == {"post": [""], "dl": [""], "narrow": [""]}
+
+
+class PairScopeDoc(popoto.Model):
+    """A two-column scope, one of them a float (no exact SQL spelling of
+    ``str()``)."""
+
+    name = popoto.UniqueKeyField()
+    project = popoto.Field(type=str, default="")
+    tier = popoto.Field(type=float, default=0.0)
+    stamp = popoto.SortedField(
+        type=float, default=0.0, partition_by=("project", "tier")
+    )
+    text = popoto.StringField(default="")
+    content = BM25Field(source="text")
+    embedding = EmbeddingField(source="text", provider=PROVIDER)
+
+
+def test_a_partial_save_takes_each_unwritten_scope_column_from_the_store(
+    pg, pg_schema, admin
+):
+    doc = PairScopeDoc(name="pair", project="p1", tier=1.5, text="alpha beta")
+    doc.save()
+    doc.project = "p2"
+    doc.tier = 2.5  # unsaved, and not listed below
+    doc.text = "gamma delta"
+    doc.save(update_fields=["text", "project"])
+    want = search_mod.scope_text(["p2", 1.5])
+    for table in (
+        "pair_scope_doc__content__post",
+        "pair_scope_doc__content__dl",
+        "pair_scope_doc__embedding__vec",
+    ):
+        rows = admin.execute(
+            f'SELECT DISTINCT scope FROM "{pg_schema.name}".{table} WHERE _pk = %s',
+            (doc.pk,),
+        ).fetchall()
+        assert rows == [(want,)], table
+
+
 def test_bm25_scores_match_the_lua_formula(pg):
     texts = {
         "d1": "redis cluster redis sentinel failover",
