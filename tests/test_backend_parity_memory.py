@@ -1065,19 +1065,32 @@ def test_composite_priority_arm_is_a_documented_divergence(backend_is_redis):
             ParityComposite.query.composite_score({"priority": 1.0})
 
 
-def test_composite_similarity_boost_waits_for_the_vector_arm(backend_is_redis):
-    record = ParityComposite.create(name="s", importance=0.6)
-    boost = {record.db_key.redis_key: 0.9}
-    if backend_is_redis:
-        ranked = ParityComposite.query.composite_score(
-            {"certainty": 1.0}, similarity_boost=boost
-        )
-        assert [r.name for r in ranked] == ["s"]
-    else:
-        with pytest.raises(BackendCapabilityError, match="similarity"):
-            ParityComposite.query.composite_score(
-                {"certainty": 1.0}, similarity_boost=boost
-            )
+def test_composite_similarity_boost_is_an_arm(backend):
+    """``semantic_search``'s similarity arm (#759 M3): the caller's {key:
+    score} mapping, weight 1.0, summed after the indexes -- one CTE on
+    Postgres, a temp sorted set on Redis. The same order and scores."""
+    low = ParityComposite.create(name="low", importance=0.6)
+    high = ParityComposite.create(name="high", importance=0.6)
+    plain = ParityComposite.create(name="plain", importance=0.6)
+    ConfidenceField.update_confidence(low, "certainty", 0.9)
+    ConfidenceField.update_confidence(plain, "certainty", 0.1)
+    boost = {low.db_key.redis_key: 0.05, high.db_key.redis_key: 0.9}
+    seen = []
+    ranked = ParityComposite.query.composite_score(
+        {"certainty": 1.0},
+        similarity_boost=boost,
+        post_filter=lambda key, score: seen.append((key, score)) or True,
+    )
+    assert [r.name for r in ranked] == ["high", "low", "plain"]
+    assert [round(score, 12) for _key, score in seen] == [
+        round(0.5 + 0.9, 12),
+        round(0.7 + 0.05, 12),
+        round(0.3, 12),
+    ]
+    only = ParityComposite.query.composite_score(
+        {"certainty": 1.0}, similarity_boost=boost, min_score=1.0
+    )
+    assert [r.name for r in only] == ["high"]
 
 
 def test_composite_scores_agree_with_the_arms(backend):

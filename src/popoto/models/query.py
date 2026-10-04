@@ -986,13 +986,19 @@ class QueryBuilder:
         from ..backends import BackendCapabilityError
         from .encoding import hydrate_decoded_row
 
+        from ..backends import RankTerm
+
         terms = self._composite_terms(model_class, indexes)
-        if co_occurrence_boost or similarity_boost:
+        if co_occurrence_boost:
             raise BackendCapabilityError(
-                "composite_score(co_occurrence_boost=/similarity_boost=) is not "
-                "available on Postgres yet: the similarity arm arrives with the "
-                "#759 M2 vector work, co_occurrence_boost in M4"
+                "composite_score(co_occurrence_boost=) is not available on "
+                "Postgres yet: it arrives with CoOccurrenceField in #759 M4"
             )
+        if similarity_boost:
+            # semantic_search's arm (#759 M3): the caller's {key: score}
+            # mapping, weight 1.0 and added last, as the Redis path ZADDs it
+            # into a temp set after every index.
+            terms.append(RankTerm("similarity", 1.0, scores=dict(similarity_boost)))
         if not terms:
             return []
         backend = get_backend(model_class)

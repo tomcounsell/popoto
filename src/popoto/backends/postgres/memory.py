@@ -664,6 +664,18 @@ class PostgresMemoryOps(PostgresValidityOps):
             assert term.field is not None
             col = f"t.{quote_ident(term.field)}"
             return f"({col} IS NOT NULL AND {domain})", f"{col}::float8", params
+        if term.kind == "similarity" and term.scores is not None:
+            # A caller-supplied {key: score} arm (``semantic_search``'s
+            # similarity_boost, #759 M3): the scores ride in a CTE that
+            # rank_composite names after the arm, so the arm itself carries
+            # no parameters. Keys with no record are not ranked (Redis ranks
+            # them and then hydrates nothing for them).
+            cte = term.options["cte"]
+            return (
+                f't."_pk" IN (SELECT k FROM {cte})',
+                f'(SELECT v.s FROM {cte} AS v WHERE v.k = t."_pk")',
+                [],
+            )
         raise BackendCapabilityError(
             f"composite_score arm {term.kind!r} is not available on Postgres yet "
             "(similarity arrives with the M2 vector work, co_occurrence_boost in "
@@ -698,6 +710,30 @@ class PostgresMemoryOps(PostgresValidityOps):
         ts = self._table(spec)
         kinds = {name: f.kind for name, f in spec.fields.items()}
         now = time.time()
+        ctes: list[str] = []
+        cte_params: list[Any] = []
+        named: list[RankTerm] = []
+        for i, term in enumerate(terms):
+            if term.kind == "similarity" and term.scores is not None:
+                # Each caller-supplied arm is one CTE of (key, score), as the
+                # Redis path ZADDs it into a temp sorted set.
+                cte = f"arm{i}"
+                ctes.append(
+                    f"{cte}(k, s) AS (SELECT * FROM unnest(%s::text[], %s::float8[]))"
+                )
+                items = [(str(k), float(v)) for k, v in term.scores.items()]
+                cte_params.append([k for k, _v in items])
+                cte_params.append([v for _k, v in items])
+                term = RankTerm(
+                    term.kind,
+                    term.weight,
+                    term.field,
+                    term.where,
+                    term.scores,
+                    dict(term.options, cte=cte),
+                )
+            named.append(term)
+        terms = named
         arms = [self._arm(ts, spec, term, kinds, now) for term in terms]
         select = []
         params: list[Any] = []
@@ -752,6 +788,9 @@ class PostgresMemoryOps(PostgresValidityOps):
             f'FROM (SELECT t."_pk", {", ".join(select)} FROM {ts.qualified} AS t '
             f"WHERE {inner_where} OFFSET 0) AS x OFFSET 0) AS w) AS y"
         )
+        if ctes:
+            sql = f"WITH {', '.join(ctes)} {sql}"
+            params = cte_params + params
         if min_score is not None:
             sql += f' WHERE y."_score" >= {_lit(float(min_score))}'
         sql += f' ORDER BY y."_score" DESC, y."_pk" COLLATE "C" DESC LIMIT {int(limit)}'
