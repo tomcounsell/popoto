@@ -12,7 +12,7 @@ Each measured call is the public ``Model.query.recall(q, scope=p,
 limit=10)``: the query embedding (a synthetic provider, so the provider's
 own latency is not in the number), the BM25 and vector arms, RRF fusion and
 the full rows of the fused records (an index-only count, then one statement on the exact path; the HNSW arm is its own statement). The two arms are also
-timed alone (``keyword_search`` with per-scope statistics, the vector arm)
+timed alone (``keyword_search`` with per-scope statistics, ``vector_search``)
 to show where the time goes. ``--runs`` runs of ``--iters`` calls after a
 warm-up; each run's p50 / p95 and the overall p95 are printed.
 
@@ -209,7 +209,9 @@ def main() -> int:
             from popoto.backends.types import Cond, Op
 
             where = Cond("project", Op.EXACT, project)
-            vec = lambda q: backend._vector_arm(  # noqa: E731
+            # The public vector_search: a scope-only where filters the narrow
+            # table on its own scope column, as recall() does.
+            vec = lambda q: backend.vector_search(  # noqa: E731
                 spec, "embedding", qv, limit=50, where=where
             )
             timed(recall, args.warmup)
@@ -220,9 +222,11 @@ def main() -> int:
             every = [x for run in runs for x in run]
             arms = {
                 "bm25 arm": timed(bm25, args.iters),
-                "vector arm": timed(vec, args.iters),
+                "vector_search": timed(vec, args.iters),
             }
-            _scored, info = vec("")
+            _scored, info = backend._vector_arm(
+                spec, "embedding", qv, limit=50, where=where
+            )
             BenchMemory.query.recall(query(), scope=project, limit=10)
             last = backend._last_recall
             print(

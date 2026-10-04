@@ -1068,23 +1068,36 @@ def test_composite_priority_arm_is_a_documented_divergence(backend_is_redis):
 def test_composite_similarity_boost_is_one_more_arm(backend):
     """``similarity_boost`` is one more ZUNIONSTORE input, weight 1.0 and
     last, on both legs (#759 M2b): a record it names scores its arms plus the
-    boost, bit for bit, and a record it does not name keeps its arms alone."""
+    boost, and a record it does not name keeps its arms alone. The order is
+    identical; the scores agree within 2 ulp, not bit for bit, once three
+    arms are summed -- Redis's ``ZUNIONSTORE`` adds the smallest input set
+    first (here the boost), not in argument order, and float addition is not
+    associative (#774 review: 12 of 444 three-term calls differed, by <= 2
+    ulp)."""
     a = ParityComposite.create(name="a", importance=0.6)
     b = ParityComposite.create(name="b", importance=0.6)
     c = ParityComposite.create(name="c", importance=0.6)
-    boost = {a.db_key.redis_key: 0.9, b.db_key.redis_key: 0.25}
+    for record, signal in ((a, 0.7), (b, 0.9), (c, 0.3)):
+        ConfidenceField.update_confidence(record, "certainty", signal)
+        for _ in range(2):
+            record.on_read()
+        record.confirm_access()
+    boost = {a.db_key.redis_key: 0.9, b.db_key.redis_key: 0.1}
     seen = {}
     ranked = ParityComposite.query.composite_score(
-        {"certainty": 0.5},
+        {"certainty": 0.5, "access_count": 0.3},
         similarity_boost=boost,
         limit=10,
         post_filter=lambda key, score: seen.__setitem__(key, score) or True,
     )
     assert [r.name for r in ranked] == ["a", "b", "c"]
-    for record, extra in ((a, 0.9), (b, 0.25), (c, 0.0)):
+    for record, extra in ((a, 0.9), (b, 0.1), (c, None)):
         data = ConfidenceField.get_confidence_data(record, "certainty")
-        expected = 0.5 * data["confidence"] + extra
-        assert seen[record.db_key.redis_key] == expected
+        expected = 0.5 * data["confidence"] + 0.3 * record.access_count
+        if extra is not None:
+            expected += extra
+        got = seen[record.db_key.redis_key]
+        assert abs(got - expected) <= 2 * math.ulp(expected), (got, expected)
 
 
 def test_composite_similarity_boost_alone_ranks_its_keys(backend):

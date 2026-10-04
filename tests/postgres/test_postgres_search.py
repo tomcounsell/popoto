@@ -843,6 +843,49 @@ def test_backfill_never_overwrites_a_concurrent_edit(pg, pg_schema, admin):
     assert vec is None  # ...and the hash guard refused the stale vector
 
 
+def test_backfill_skips_a_row_that_left_the_scope_meanwhile(pg, pg_schema, admin):
+    """The backfill's write re-checks the scope (#774 review): a row moved to
+    another scope while the provider was out keeps no vector and gets no
+    narrow row, so the narrow table never holds a vector under a scope its
+    record left."""
+    field = SearchDoc._meta.fields["embedding"]
+    field._provider = None
+    try:
+        _doc("mover", "moving text", project="p1")
+    finally:
+        field._provider = PROVIDER
+    real_embed = PROVIDER.embed
+    seen = []
+
+    def move_then_embed(texts, input_type=None):
+        seen.append(texts)
+        if texts == ["moving text"]:
+            admin.execute(
+                f'UPDATE "{pg_schema.name}".search_doc SET project = %s '
+                "WHERE name = %s",
+                ("p2", "mover"),
+            )
+        return real_embed(texts, input_type)
+
+    PROVIDER.embed = move_then_embed
+    try:
+        _doc("trigger3", "triggering save", project="p1")
+    finally:
+        del PROVIDER.embed
+    assert ["moving text"] in seen  # the backfill did embed it...
+    (vec,) = admin.execute(
+        f'SELECT embedding__vec FROM "{pg_schema.name}".search_doc WHERE name = %s',
+        ("mover",),
+    ).fetchone()
+    assert vec is None  # ...and the scope re-check refused to write it
+    narrow = admin.execute(
+        f'SELECT scope FROM "{pg_schema.name}".search_doc__embedding__vec '
+        "WHERE _pk = %s",
+        (SearchDoc.query.get(name="mover").db_key.redis_key,),
+    ).fetchall()
+    assert narrow == []
+
+
 def test_backfill_errors_are_swallowed(pg):
     field = SearchDoc._meta.fields["embedding"]
     field._provider = None
@@ -1127,6 +1170,49 @@ def test_exact_path_reads_the_narrow_table_and_agrees_with_hnsw(pg, monkeypatch)
     assert 'n."scope" = %s' in sent[-1]
 
 
+def test_vector_search_on_a_scope_filters_the_narrow_table(pg, monkeypatch):
+    """``vector_search(where=<the scope>)`` filters the narrow table on its
+    own ``scope`` column, as ``recall()`` does (#774 review: the
+    ``_pk IN`` record-table filter cost it p50 9.6 ms at a 5% scope against
+    5.7 ms for all of ``recall``), with the same results as that filter. Any
+    other predicate keeps the record-table filter."""
+    for i in range(24):
+        _doc(f"s{i:02d}", f"scoped words {i}", project=("p1", "p2", "p3")[i % 3])
+    backend = get_backend(SearchDoc)
+    spec = SearchDoc._meta.spec
+    sent = []
+    real_run = backend._run
+
+    def spy(sql, params=(), **kw):
+        sent.append(sql)
+        return real_run(sql, params, **kw)
+
+    monkeypatch.setattr(backend, "_run", spy)
+    q = PROVIDER.embed(["scoped words 4"])[0]
+    p1 = popoto.backends.Cond("project", popoto.backends.Op.EXACT, "p1")
+    narrow = backend.vector_search(spec, "embedding", q, limit=5, where=p1)
+    assert 'n."scope" = %s' in sent[-1] and "IN (SELECT" not in sent[-1]
+    assert {SearchDoc.query.get(redis_key=r.canonical).project for r, _ in narrow} == {
+        "p1"
+    }
+    monkeypatch.setattr(search_mod, "_scope_key_of", lambda ts, where: None)
+    sent.clear()
+    by_record = backend.vector_search(spec, "embedding", q, limit=5, where=p1)
+    assert "IN (SELECT" in sent[-1]
+    assert narrow == by_record
+    monkeypatch.undo()
+    # Not exactly a scope: the record-table filter.
+    for where in (
+        popoto.backends.Cond("owner", popoto.backends.Op.EXACT, "me"),
+        popoto.backends.And(
+            (p1, popoto.backends.Cond("owner", popoto.backends.Op.EXACT, "me"))
+        ),
+        popoto.backends.Cond("project", popoto.backends.Op.EXACT, ""),
+    ):
+        assert search_mod._scope_key_of(backend._table(spec), where) is None
+    assert search_mod._scope_key_of(backend._table(spec), p1) == "p1"
+
+
 def test_update_fields_naming_the_source_re_embeds(pg, pg_schema, admin):
     """Naming the source re-embeds, as it re-indexes BM25 (Redis runs only
     the listed field's hook, so its vector would stay stale); the hash and
@@ -1307,6 +1393,54 @@ def test_recall_decay_arm_weights_and_filters(pg):
     assert [i.pk for i, _s in only] == [r.canonical for r, _s in oracle]
     assert len(only) == 2
     assert only[0][1] == pytest.approx(1 / 61)
+
+
+def test_recall_decay_arm_is_confidence_modulated(pg):
+    """#774 review: the decay arm ranks by ``rank_decayed`` *with* the
+    ``<f>__conf`` modulation. Two records alike in clock and base score
+    differ only in confidence; without modulation they tie and ``_pk``
+    order puts the doubted one first, with it the trusted one leads. (Ten
+    days old: modulation is a power of ``max(age_days, 1)``, so it vanishes
+    at a day or less.)"""
+    now = time.time()
+    doubted = RecallMemory.create(name="a_doubted", project="p1", text="same words")
+    trusted = RecallMemory.create(name="b_trusted", project="p1", text="same words")
+    for _ in range(3):
+        popoto.ConfidenceField.update_confidence(trusted, "certainty", 0.95)
+        popoto.ConfidenceField.update_confidence(doubted, "certainty", 0.05)
+    backend = get_backend(RecallMemory)
+    # A confidence update moves the decay clock; set both clocks after it.
+    for record in (doubted, trusted):
+        backend.touch(
+            RecallMemory._meta.spec,
+            popoto.backends.RecordId.from_key("RecallMemory", record.db_key.redis_key),
+            "relevance",
+            at=now - 10 * DAY,
+        )
+    ranked = RecallMemory.query.recall(
+        "", scope="p1", weights={"bm25": 0, "vector": 0}, limit=2
+    )
+    assert backend._last_recall["decay"] is True
+    assert [i.name for i, _s in ranked] == ["b_trusted", "a_doubted"]
+    # The backend's own default (decay=None: the model's one decay field with
+    # its one confidence field) modulates too.
+    rows = backend.recall(
+        RecallMemory._meta.spec, "", scope="p1", weights={"bm25": 0, "vector": 0}
+    )
+    assert [row["name"] for row, _s in rows] == ["b_trusted", "a_doubted"]
+    # The unmodulated ranking is the tie the assertion above rules out.
+    plain = backend.rank_decayed(
+        RecallMemory._meta.spec,
+        "relevance",
+        now=time.time(),
+        n=2,
+        where=popoto.backends.Cond("project", popoto.backends.Op.EXACT, "p1"),
+        base_score_field="importance",
+    )
+    assert [r.canonical for r, _s in plain] == [
+        doubted.db_key.redis_key,
+        trusted.db_key.redis_key,
+    ]
 
 
 def test_top_by_relevance_is_decay_times_confidence(pg):

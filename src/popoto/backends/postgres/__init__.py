@@ -393,6 +393,23 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
         except psycopg.OperationalError as exc:
             raise self._fail(exc, write=write) from exc
 
+    def _record_locked(
+        self, ts: TableSpec, pks: Sequence[str], sql: str, params: Sequence[Any]
+    ) -> tuple[str, list[Any]]:
+        """``sql`` preceded by the record-key advisory locks of ``pks``
+        (:func:`~.search.record_lock_sql`), in the same message: no extra
+        round trip.
+
+        Every statement that writes (and so row-locks) a record goes through
+        this, so the whole backend has one lock order (plan §6, TD-2): any
+        ``(model, field)`` lock, then the record-key locks in ``_pk`` byte
+        order, then the row locks in ``_pk`` order. A transaction that row-
+        locked a record (``update_confidence``) and then saves it already
+        holds the record's key lock, so it can no longer cross a concurrent
+        save that took the key lock and waits on the row (#774 review)."""
+        lock_sql, lock_params = record_lock_sql(ts, pks)
+        return lock_sql + sql, list(lock_params) + list(params)
+
     def _statement_prefix(self) -> str:
         ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
         return f"SET LOCAL statement_timeout = {ms}; " if ms > 0 else ""
@@ -710,13 +727,12 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
                 + ' SELECT "_ins" FROM "_row"'
             )
             params += search.params
-            # The record-key lock goes first, as a statement of its own, so
-            # the CTEs' snapshot is taken after any concurrent writer of this
-            # record committed (record_lock_sql). The reply is the last
-            # statement's.
-            lock_sql, lock_params = record_lock_sql(ts, [new_key])
-            sql = lock_sql + sql
-            params = lock_params + params
+        # The record-key lock goes first, as a statement of its own: the
+        # search CTEs' snapshot is then taken after any concurrent writer of
+        # this record committed, and every writer of a record takes it before
+        # the row (record_lock_sql: one lock order, plan §6). The reply is the
+        # last statement's.
+        sql, params = self._record_locked(ts, [new_key], sql, params)
         psycopg = _import_psycopg()
         try:
             rows, _ = self._run(sql, params, uow=uow, write=True)
@@ -859,12 +875,13 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
             return 0
         ts = self._table(spec, write=True)
         keys = [rid.canonical for rid in ids]
-        rows, count = self._run(
+        sql, params = self._record_locked(
+            ts,
+            keys,
             f'DELETE FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])',
             [keys],
-            uow=uow,
-            write=True,
         )
+        rows, count = self._run(sql, params, uow=uow, write=True)
         for obj in options.get("objs") or ():
             obj._db_content = dict()
             obj._saved_field_values = dict()
@@ -904,13 +921,14 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
             expr = f"coalesce({col}, 0) + %s::numeric"
         else:
             expr = f"coalesce({col}, 0) + %s"
-        rows, _ = self._run(
+        sql, params = self._record_locked(
+            ts,
+            [id.canonical],
             f'UPDATE {ts.qualified} SET {col} = {expr}, "_updated_at" = now(), "_migrated_from" = NULL '
             f'WHERE "_pk" = %s RETURNING {col}',
             [delta, id.canonical],
-            uow=uow,
-            write=True,
         )
+        rows, _ = self._run(sql, params, uow=uow, write=True)
         if not rows:
             from ...exceptions import ModelException
 
@@ -1067,15 +1085,16 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
         ts = self._table(spec)
         col = quote_ident(field)
         last = max(int(max_length), 1) - 1
-        rows, _ = self._run(
+        sql, params = self._record_locked(
+            ts,
+            [id.canonical],
             f"UPDATE {ts.qualified} SET {col} = jsonb_path_query_array("
             f"jsonb_build_array(%s::jsonb) || coalesce({col}, '[]'::jsonb), "
             f'\'$[0 to {last}]\'), "_updated_at" = now(), "_migrated_from" = NULL '
             f'WHERE "_pk" = %s RETURNING {col}',
             [Jsonb(encode_json_element(value)), id.canonical],
-            uow=uow,
-            write=True,
         )
+        rows, _ = self._run(sql, params, uow=uow, write=True)
         if not rows:
             from ...exceptions import ModelException
 

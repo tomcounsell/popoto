@@ -405,6 +405,7 @@ class PostgresMemoryOps:
     schema: str
     _table: Callable[..., TableSpec]
     _run: Callable[..., Any]
+    _record_locked: Callable[..., tuple[str, list[Any]]]
     transaction: Callable[..., Any]
 
     # -- D. memory state --------------------------------------------------------
@@ -423,13 +424,14 @@ class PostgresMemoryOps:
         (Redis would re-add an orphan member, which ranking then drops)."""
         ts = self._table(spec, write=True)
         col = quote_ident(field)
-        self._run(
+        sql, params = self._record_locked(
+            ts,
+            [id.canonical],
             f'UPDATE {ts.qualified} SET {col} = %s, "_updated_at" = now() '
             f'WHERE "_pk" = %s',
             [float(at), id.canonical],
-            uow=uow,
-            write=True,
         )
+        self._run(sql, params, uow=uow, write=True)
         return float(at)
 
     def update_confidence(
@@ -476,7 +478,8 @@ class PostgresMemoryOps:
             f'"_updated_at" = now() WHERE "_pk" = %s '
             f"RETURNING {conf}, {n}, {corr}, {contra}"
         )
-        rows, _ = self._run(sql, [id.canonical], uow=uow, write=True)
+        sql, params = self._record_locked(ts, [id.canonical], sql, [id.canonical])
+        rows, _ = self._run(sql, params, uow=uow, write=True)
         if not rows:
             return None
         value, evidence, corroborations, contradictions = rows[0]
@@ -699,8 +702,12 @@ class PostgresMemoryOps:
         agg = aggregate.upper()
         named = [f"w.w{i}" for i in range(len(weighted))]
         if agg == "SUM":
-            # ZUNIONSTORE adds the arms one at a time and turns a NaN sum
-            # (inf + -inf) into 0 at each step.
+            # Summed in the arms' order, turning a NaN sum (inf + -inf) into
+            # 0 at each step as ZUNIONSTORE does. ZUNIONSTORE itself adds the
+            # smallest input set first, not in argument order, so with three
+            # or more arms the order is identical and a score can differ from
+            # Redis's by a few ulp (<= 2 in the #774 review's probe), not bit
+            # for bit.
             total = f"coalesce({named[0]}, {_ZERO})"
             for w in named[1:]:
                 step = f"({total} + coalesce({w}, {_ZERO}))"
@@ -825,9 +832,10 @@ class PostgresMemoryOps:
             f'"_staged_at" = {_lit(float(now))} '
             f'FROM locked JOIN v ON v.pk = locked."_pk" WHERE t."_pk" = locked."_pk"'
         )
-        _, count = self._run(
-            sql, [keys, keys, [int(counts[k]) for k in keys]], uow=uow, write=True
+        sql, params = self._record_locked(
+            ts, keys, sql, [keys, keys, [int(counts[k]) for k in keys]]
         )
+        _, count = self._run(sql, params, uow=uow, write=True)
         return int(count or 0)
 
     def _access_confirm(
@@ -856,7 +864,8 @@ class PostgresMemoryOps:
             f'WHERE t."_pk" = %s RETURNING CASE WHEN old."_staged_at" > {cut} '
             f'THEN coalesce(old."_staged_reads", 0) ELSE 0 END'
         )
-        rows, _ = self._run(sql, [id.canonical], uow=uow, write=True)
+        sql, params = self._record_locked(ts, [id.canonical], sql, [id.canonical])
+        rows, _ = self._run(sql, params, uow=uow, write=True)
         if not rows:
             return None
         return int(rows[0][0])
@@ -865,13 +874,14 @@ class PostgresMemoryOps:
         self, spec: ModelSpec, id: RecordId, *, uow: Optional[UnitOfWork] = None
     ) -> None:
         ts = self._table(spec, write=True)
-        self._run(
+        sql, params = self._record_locked(
+            ts,
+            [id.canonical],
             f'UPDATE {ts.qualified} SET "_staged_reads" = NULL, "_staged_at" = NULL '
             f'WHERE "_pk" = %s AND "_staged_at" IS NOT NULL',
             [id.canonical],
-            uow=uow,
-            write=True,
         )
+        self._run(sql, params, uow=uow, write=True)
 
     def _access_state(
         self,
@@ -1015,19 +1025,21 @@ class PostgresMemoryOps:
         *,
         uow: Optional[UnitOfWork] = None,
     ) -> list[str]:
-        """``SELECT … FOR UPDATE`` in ``_pk`` order: the row-lock half of the
-        plan's §6 lock order, taken before any effect writes."""
+        """The record-key locks, then ``SELECT … FOR UPDATE``, both in
+        ``_pk`` order and in one message: the plan's §6 lock order, taken
+        before any effect writes."""
         if not ids:
             return []
         ts = self._table(spec, write=True)
         keys = sorted({rid.canonical for rid in ids}, key=_sort_key)
-        rows, _ = self._run(
+        sql, params = self._record_locked(
+            ts,
+            keys,
             f'SELECT "_pk" FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[]) '
             'ORDER BY "_pk" COLLATE "C" FOR UPDATE',
             [keys],
-            uow=uow,
-            write=True,
         )
+        rows, _ = self._run(sql, params, uow=uow, write=True)
         return [row[0] for row in rows]
 
     def _atomically(

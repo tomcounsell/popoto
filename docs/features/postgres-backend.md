@@ -245,17 +245,30 @@ narrow vector row in the same statement.
 **Concurrent saves of one record.** The data-modifying CTEs of a save share
 one snapshot, so under `READ COMMITTED` a second save of the same record
 whose statement started before the first one committed could not see the
-rows the first one wrote, and would leave them behind. A save that rewrites
-companion rows therefore takes the record's advisory lock first, as its own
-statement in the same message:
+rows the first one wrote, and would leave them behind. A save therefore
+takes the record's advisory lock first, as its own statement in the same
+message:
 `SELECT pg_advisory_xact_lock(hashtextextended('popoto:rec:<table>:<_pk>', 0))`.
 The rewrite then takes its snapshot after any earlier writer of that record
 has committed, which also covers two racing first inserts. The backfill
-takes the same locks, sorted by `_pk`. Record-key locks come after any
-`(model, field)` lock (none exist before M3). Pinned by
+takes the same locks, sorted by `_pk`. Pinned by
 `test_concurrent_saves_of_one_record_leave_no_stale_rows`, which interleaves
 two saves behind a held row lock in 8 runs, and by its control, which shows
 the same interleaving goes stale without the lock.
+
+**One lock order for every writer.** Every statement that writes a record
+row takes that record's advisory lock first, not only a save: `delete`,
+`atomic_increment`, a capped-list push, `touch`, `update_confidence`, the
+access tracker's writes, `on_context_used`'s `FOR UPDATE` and an
+`ExistenceFilter` row. The order is any `(model, field)` lock (none before
+M3), then the record-key locks sorted by `_pk`, then the row locks in `_pk`
+order. A record's key lock is always the first lock taken on it, so a
+transaction that runs `update_confidence(x, pipeline=tx)` and then
+`x.save(pipeline=tx)` queues a concurrent `x.save()` behind it instead of
+deadlocking with it. Transactions that each take several records in
+different orders can still deadlock; that surfaces as
+`BackendRetryableError`. Pinned by
+`test_a_confidence_update_then_save_cannot_deadlock_a_save` and its control.
 
 ### BM25
 
@@ -396,8 +409,11 @@ every partition together. On a Redis-bound model it raises
 
 **`composite_score(similarity_boost=…)`** works on Postgres too (M2b). The
 mapping is one more arm, weight 1.0 and last, as its temporary set is in the
-Redis `ZUNIONSTORE`. `semantic_search(indexes=…)` uses it.
-`co_occurrence_boost` waits for `CoOccurrenceField` (M4).
+Redis `ZUNIONSTORE`. `semantic_search(indexes=…)` uses it. The order is the
+same on both backends; with three or more summed arms a score can differ by
+up to 2 ulp, because `ZUNIONSTORE` adds the smallest input set first while
+Postgres adds the arms in order. `co_occurrence_boost` waits for
+`CoOccurrenceField` (M4).
 
 ## Topology and the outage contract
 

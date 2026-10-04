@@ -483,11 +483,18 @@ def record_lock_sql(ts: TableSpec, pks: Sequence[str]) -> tuple[str, list[Any]]:
     the rewrite a snapshot taken after the previous writer committed (and
     covers two racing first inserts, which have no row to lock yet).
 
-    Lock order (plan §6, TD-2): record-key locks are taken after any
-    ``(model, field)`` lock and sorted, so two writers of overlapping record
-    sets take them in the same order. The key names the schema and table,
+    Lock order (plan §6, TD-2), one for every writer of a record row --
+    save, delete, ``increment``, a capped push, ``touch``,
+    ``update_confidence``, the access-tracker writes, ``on_context_used``'s
+    ``FOR UPDATE`` and the backfill (``PostgresBackend._record_locked``):
+    any ``(model, field)`` lock, then these record-key locks in ``_pk`` byte
+    order, then the row locks in ``_pk`` order. A record's key lock is
+    therefore always its first lock, and a transaction that row-locked a
+    record holds its key lock already. The key names the schema and table,
     so equal ``_pk`` strings in two schemas never contend."""
-    ordered = sorted(set(pks), key=lambda k: k.encode("utf-8"))
+    if not pks:
+        return "", []
+    ordered = sorted(set(pks), key=lambda k: k.encode("utf-8", "surrogateescape"))
     keys = [f"popoto:rec:{ts.qualified}:{pk}" for pk in ordered]
     if len(keys) == 1:
         return "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0)); ", keys
@@ -865,6 +872,37 @@ def _embedded_count(
     return sql, list(cond_params) + list(cond_params)
 
 
+def _scope_key_of(ts: TableSpec, where: Optional[Predicate]) -> Optional[str]:
+    """The ``scope`` text when ``where`` is exactly one scope -- an ``EXACT``
+    on every scope column and nothing else -- so the vector arm can filter
+    the narrow table on its own ``scope`` column instead of ``_pk IN`` the
+    record table (#774 review: ``vector_search(where=scope)`` at a 5% scope
+    measured p50 9.6 ms that way). ``None`` for anything else, which keeps
+    the record-table filter. Only non-empty ``str`` values on ``str``
+    columns qualify: ``scope_text`` is ``str(value)``, and a value of
+    another type need not spell the stored row's scope (``1`` vs ``1.0``)."""
+    layout: Optional[SearchLayout] = ts.search
+    if where is None or layout is None or not layout.scope_columns:
+        return None
+    items = where.items if isinstance(where, And) else (where,)
+    values: dict[str, str] = {}
+    for item in items:
+        if not (
+            isinstance(item, Cond)
+            and item.op is Op.EXACT
+            and item.field in layout.scope_columns
+            and item.field not in values
+            and ts.field_types.get(item.field) is str
+            and isinstance(item.value, str)
+            and item.value != ""
+        ):
+            return None
+        values[item.field] = item.value
+    if set(values) != set(layout.scope_columns):
+        return None
+    return scope_text([values[c] for c in layout.scope_columns])
+
+
 def _exact_sql(
     ts: TableSpec,
     emb: EmbeddingLayout,
@@ -976,6 +1014,7 @@ class SearchMixin:
     # Provided by PostgresBackend.
     _table: Any
     _run: Any
+    _record_locked: Any
     _decode: Any
     _select_cols: Any
 
@@ -1154,7 +1193,15 @@ class SearchMixin:
         (Redis's ``score > 0`` filter), ties by ``_pk`` bytewise. Exact at or
         below ``Defaults.PG_VECTOR_EXACT_MAX`` rows with a vector among those
         ``where`` matches, HNSW above it with the recall guard."""
-        scored, _info = self._vector_arm(spec, field, query, limit=limit, where=where)
+        ts, _layout = self._layout(spec)
+        scored, _info = self._vector_arm(
+            spec,
+            field,
+            query,
+            limit=limit,
+            where=where,
+            scope_key=_scope_key_of(ts, where),
+        )
         if min_score is not None:
             scored = [(rid, s) for rid, s in scored if s >= min_score]
         return scored
@@ -1285,13 +1332,16 @@ class SearchMixin:
                     "membership_add on an ExistenceFilter needs the record id= "
                     "(Postgres keeps exact (token, record) rows)"
                 )
-            self._run(
+            # A companion row of the record (its foreign key share-locks the
+            # record row): the record's key lock first, as every writer does.
+            sql, params = self._record_locked(
+                ts,
+                [id.canonical],
                 f'INSERT INTO {mb.table} ("token", "_pk") SELECT u.t, %s FROM '
                 "unnest(%s::text[]) AS u(t) ON CONFLICT DO NOTHING",
                 [id.canonical, tokens],
-                uow=uow,
-                write=True,
             )
+            self._run(sql, params, uow=uow, write=True)
             return
         self._run(
             f'INSERT INTO {mb.table} AS c ("token", "count") SELECT u.t, 1 FROM '

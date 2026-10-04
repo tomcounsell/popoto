@@ -466,7 +466,8 @@ The pool is mandatory: one `psycopg_pool.ConnectionPool` per (DSN, pid),
 as PgBouncer in transaction mode** and point the DSN at it. That constrains
 popoto:
 
-- **Advisory locks are `pg_advisory_xact_lock` only** (DDL, `supersede`).
+- **Advisory locks are `pg_advisory_xact_lock` only** (DDL, `supersede`, and
+  the record-key lock every record writer takes, M2b).
 - **No session state:** `prepare_threshold=None`, `SET LOCAL`, no temp tables.
 - **`LISTEN`/`NOTIFY` needs a session connection:** M5's `PubSub` bypasses the
   transaction-pooled DSN.
@@ -672,9 +673,10 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     any effect: row locks alone serialize them. Review measurement: 6
     processes × 300 mixed calls on 5 shared rows, 0 lost updates. The
     advisory lock (TD-2) is deferred to M3's `supersede`, the one operation
-    that validates across rows. A cross-transaction deadlock is still
-    possible (a caller's own `transaction()` taking rows in another order);
-    it surfaces as `BackendRetryableError` (§2 `transaction`).
+    that validates across rows. (M2b then put a *record-key* advisory lock
+    in front of every one of these row locks: see the M2b departures.) A
+    cross-transaction deadlock is still possible (a caller's own
+    `transaction()` taking rows in another order); it surfaces as `BackendRetryableError` (§2 `transaction`).
   - **`RecallProposal` is one engine table per schema**,
     `popoto_recall_proposal (model, part, member, surfaced_at)` keyed
     `(model, part, member)`, created on first use under
@@ -706,15 +708,61 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     the HNSW index. Reason: in the record table a 1536-d vector is TOASTed,
     and de-TOASTing a 5% scope's 1,000 vectors put the 5% `recall` p95 at
     13-25 ms against the 15 ms bar (#774 review). Cost: a second copy of
-    each vector.
-  - **Record-key advisory lock on a save that rewrites companion rows.**
+    each vector. `vector_search(where=<exactly the scope>)` filters the
+    narrow table on its own `scope` column too, as `recall()` does (a
+    non-empty `str` `EXACT` on every scope column; anything else keeps the
+    `_pk IN` record-table filter).
+  - **The recall benchmark after the narrow table** (`scripts/bench_recall.py`,
+    20k × 1536, Apple M1 Max, PostgreSQL 18.6, pgvector 0.8.7, a shared
+    machine; bars: 15 ms p95 at 5%, 60 ms p95 at 60%).
+    - #774 patch, six invocations × 3 runs × 200 at load 4.7-7.5: 5% within
+      the bar in **13 of 18** runs (p95 6.5-10.8 ms; the five misses, 16.4-20.2
+      ms, fell in windows where every statement, the index-only count
+      included, doubled); 60% in 18 of 18 (p95 16.8-46.3 ms).
+    - #774 follow-up review, plain bench model, 3 invocations × 3 runs at
+      load 5.6-6.6: **9 of 9** at 5% (p95 6.4-6.7 ms, p50 5.6-5.8 ms) and 9 of
+      9 at 60% (p95 16.9-22.1 ms).
+    - The decay arm (a memory-shaped model with `DecayingSortedField` +
+      `ConfidenceField`, so `recall()` fuses the arm): about **+9 ms p50 at
+      60%** (18 → 28 ms; p95 31-44 ms, under the 60 ms bar); at 5% plain and
+      decay measured the same p50 in one window (~12-13 ms, a slow one), so
+      no cost there was separable from contention. The fused statement runs
+      in 6-11 ms server-side.
+    - The second #774 follow-up, base `2d95561a` and the patch interleaved on
+      one kept corpus (3 invocations each, load 2.2-2.7, a slow window
+      against the review's 5.6-5.8 ms p50 on its own corpus): `recall()` 5% p50
+      12.9-13.5 ms base, 12.1-13.4 ms patch, p95 17.4-18.4 ms on both, so
+      over the bar in this window on both and unchanged by the patch; 60%
+      p95 29-34 ms on both. `vector_search(where=scope)` at 5%: p50
+      11.2-12.5 ms (`_pk IN`, base) → 6.8-9.4 ms (narrow scope), below
+      `recall()`'s 12.1-13.4 ms in the same window (the review measured
+      9.6 ms against `recall()`'s 5.7 ms).
+  - **A record-key advisory lock in front of every record writer.**
     `pg_advisory_xact_lock(hashtextextended('popoto:rec:<table>:<_pk>', 0))`
-    runs as its own statement before the save's CTE statement, so the
-    rewrite's snapshot follows any earlier writer of the record (#758 Race
-    1: two interleaved saves left the first one's postings and token rows
-    behind, 8 of 8 runs, #774 review). The backfill takes the same locks in
-    `_pk` byte order. Record-key locks come after any `(model, field)` lock
-    (TD-2, §6).
+    runs as its own statement, in the same message, before any statement
+    that writes (and so row-locks) a record: `save` (every model, not only
+    those with companion rows), `delete`, `increment`, a capped-list push,
+    `touch`, `update_confidence`, the access-tracker writes (stage, confirm,
+    discard), `on_context_used`'s `FOR UPDATE`, an `ExistenceFilter`
+    membership row, and the backfill. Why: a save that rewrites companion
+    rows needs its snapshot to follow any earlier writer of the record (#758
+    Race 1: two interleaved saves left the first one's postings and token
+    rows behind, 8 of 8 runs, #774 review), and once saves take the key lock
+    every other writer must take it too, before the row. With the lock on
+    saves only, a transaction that ran `update_confidence(x)` (row lock)
+    and then `x.save()` (key lock) crossed a concurrent save of `x` (key
+    lock, then row): 40P01 in 10 of 10 runs each for a plain and a
+    `transaction()` save (#774 review, blocker 2; 0 of 20 with every writer
+    locked).
+    **The lock order, one for the whole backend:** any `(model, field)`
+    advisory lock (M3's `supersede`; none before it), then the record-key
+    advisory locks of the records the statement writes, sorted by `_pk`
+    byte order, then the row locks in `_pk` order (`COLLATE "C"`). A
+    record's key lock is therefore always the first lock taken on it, so two
+    transactions that each touch one record cannot deadlock; transactions
+    that take several records in different orders still can, and surface
+    `BackendRetryableError` (TD-2). Cost: `update_confidence` p50 0.28-0.29
+    ms before and after (2,000 sequential calls × 3, M1 Max, load 4-5).
   - **`save(update_fields=[source])` re-indexes BM25 and re-embeds** (a
     divergence beyond §1.1: Redis runs only the listed field's hook, so its
     index and vector go stale); a scope-only `update_fields` save moves the
@@ -807,7 +855,7 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
 |---|---|---|
 | TD-1, #747 | the phase checker is vacuous | M0(a) |
 | TD-12, TD-15, TD-26, TD-40 | NUL in `text`; UoW rollback; `2**63`; `rank_decayed` raw reply | documented divergences, §1.1 |
-| TD-2, #750 B1 | cross-operation deadlock is detected, not prevented | lock ordering at commit, `_pk`-ordered `FOR UPDATE`, typed retryable error `BackendRetryableError` (M2a, #773: single statements and `on_context_used` retry then raise it; a caller-owned `transaction()` raises it at once); the `(model, field)` lock before row locks is deferred to M3's `supersede` (§5 M2, M2a departures); M2b adds the record-key advisory lock on saves that rewrite companion rows, taken after any `(model, field)` lock and sorted (§5 M2, M2b departures) |
+| TD-2, #750 B1 | cross-operation deadlock is detected, not prevented | lock ordering at commit, `_pk`-ordered `FOR UPDATE`, typed retryable error `BackendRetryableError` (M2a, #773: single statements and `on_context_used` retry then raise it; a caller-owned `transaction()` raises it at once); the `(model, field)` lock before row locks is deferred to M3's `supersede` (§5 M2, M2a departures); M2b puts a record-key advisory lock in front of every record writer, so the order is `(model, field)` lock → record-key locks in `_pk` byte order → row locks in `_pk` order, and two single-record transactions cannot deadlock (§5 M2, M2b departures) |
 | TD-3 | one connection per instance; ten threads hung the harness | `psycopg_pool.ConnectionPool`, a connection per transaction, pid check after fork (M1) |
 | TD-8, #750 TD4 | `CREATE OR REPLACE FUNCTION` ×10 on every connection | `popoto_schema` fingerprint, once per process; no PL/pgSQL required by M1 (§3) |
 | TD-10 | 73 `pipeline if pipeline` sites return `None` on an empty Postgres UoW | `UnitOfWork.__bool__ = True`, so the sites are inert; Postgres never hands a UoW to a Redis hook. The sweep is optional hygiene |
