@@ -262,6 +262,7 @@ def _backend_partition_scores(
                 where=partition_where(dict(part)),
                 base_score_field=f.base_score_field or None,
                 confidence_field=confidence,
+                validity_field=QueryBuilder._validity_gate_field(model_class),
             )
         except OUTAGE_ERRORS:
             raise

@@ -3783,6 +3783,7 @@ class Query:
         limit: int = 10,
         bm25_stats: str = "scope",
         k: int = 60,
+        as_of: Optional[float] = None,
     ) -> list[tuple[Any, float]]:
         """``[PG-only]`` Hybrid recall: BM25, vector and decay arms fused by
         weighted RRF, ``score = Σ weight / (k + rank)``, returning
@@ -3820,6 +3821,11 @@ class Query:
                 decision 3); ``"corpus"`` uses corpus-wide statistics, which
                 is what ``BM25Field.search`` does on both backends.
             k: The RRF constant (60, Cormack et al.).
+            as_of: Epoch seconds to evaluate the model's ``ValidityField``
+                gate at (``None`` = now). On a model with a ``ValidityField``
+                a record closed at or before it, or starting after it, is
+                left out of **every** arm, as ``top_by_decay`` and the
+                assembler leave it out; a model without one is unaffected.
 
         Every scoping argument is optional, and they compose (``AND``).
         """
@@ -3842,6 +3848,8 @@ class Query:
             bm25_stats=bm25_stats,
             k=k,
             decay=self._relevance_arm(),
+            validity_field=QueryBuilder._validity_gate_field(self.model_class),
+            as_of=as_of,
         )
         out = []
         for row, score in rows:
@@ -3880,6 +3888,7 @@ class Query:
         limit: int = 10,
         *,
         field_name: Optional[str] = None,
+        as_of: Optional[float] = None,
     ) -> list[tuple[Any, float]]:
         """``[PG-only]`` The ``limit`` most relevant records -- decay x
         confidence, the ``DECAY_SCORE_LUA`` score ``top_by_decay`` ranks by,
@@ -3898,6 +3907,9 @@ class Query:
             limit: Records returned.
             field_name: The ``DecayingSortedField``; optional when the model
                 has exactly one.
+            as_of: Epoch seconds to evaluate the model's ``ValidityField``
+                gate at (``None`` = now): a record closed at or before it, or
+                starting after it, is not ranked, as in ``top_by_decay``.
 
         Reads are not tracked (no ``AccessTrackerMixin`` staging), as with
         ``recall``.
@@ -3952,8 +3964,10 @@ class Query:
             now=time.time(),
             n=int(limit),
             where=where,
+            as_of=as_of,
             base_score_field=getattr(field, "base_score_field", None) or None,
             confidence_field=confidence,
+            validity_field=QueryBuilder._validity_gate_field(self.model_class),
         )
         if not scored:
             return []

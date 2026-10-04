@@ -419,12 +419,23 @@ modulation when the field resolves a `ConfidenceField`), computed in the
 fused statement itself over the same scope and filters. It adds no round
 trip.
 
-**`Query.top_by_relevance(scope=None, limit=10)`** (`[PG-only]`, #758 D8)
+**`Query.top_by_relevance(scope=None, limit=10, *, as_of=None)`** (`[PG-only]`, #758 D8)
 returns `[(instance, score)]` ranked by decay × confidence in SQL, the score
 `top_by_decay` ranks by. It replaces reading a decay sorted set with a raw
 `ZREVRANGE`. `scope` is the decay field's `partition_by` value; `None` ranks
 every partition together. On a Redis-bound model it raises
 `BackendCapabilityError`; use `top_by_decay` there.
+
+**Both read through the validity gate (M3).** On a model with a
+`ValidityField`, `top_by_relevance` and `recall` leave out a record closed at
+or before `as_of` and one that starts after it, as `top_by_decay`,
+`composite_score` and the assembler do. `as_of` is epoch seconds and defaults
+to now; `Query.recall(..., as_of=)` and `top_by_relevance(..., as_of=)` take
+it, so `as_of` in the past returns the records that were valid then. In
+`recall` the gate is ANDed onto the domain of **every** arm (BM25, vector,
+decay), so a superseded record cannot enter through the lexical arm either.
+`Defaults.VALIDITY_GATING_ENABLED = False` turns it off, and a model without a
+`ValidityField` is unaffected.
 
 **`composite_score(similarity_boost=…)`** works on Postgres too (M2b). The
 mapping is one more arm, weight 1.0 and last, as its temporary set is in the
@@ -454,7 +465,7 @@ What each stage runs on Postgres:
 | Hybrid / lexical pull | the same body as on Redis: `BM25Field.search` (`keyword_search` with **corpus-wide** statistics), the vector arm (`vector_search`), and `fuse` with `_fusion_weights`. The BM25 window is narrowed by the scope's indexed filters from one id-only `SELECT`, as `filter_for_keys_set` narrows it on Redis |
 | Zero-signal fallback, composite pull, `assess` probe | `composite_score`: `rank_composite`, one `SELECT` (M2a) |
 | Tag scoping | one id-only `SELECT` with `&&` (any) / `@>` (all) |
-| Score proxy (`assess_quality`, `emit_trace`, `assess`) | the partition's `rank_decayed` for a decay field, the column for a plain sorted field |
+| Score proxy (`assess_quality`, `emit_trace`, `assess`) | the partition's `rank_decayed` for a decay field, with the model's validity gate at now (M3: a record closed now or not yet started scores `None` and counts as stale, as on Redis, which runs `DECAY_SCORE_LUA` with the gate; pinned two-leg by `test_the_score_proxy_gates_on_validity_at_now`), the column for a plain sorted field |
 | Post-effects | one transaction: the rows of the selected and the suppressed records locked in `_pk` order behind their record-key locks, one staged-read `UPDATE`, one confidence `UPDATE` for every suppressed candidate |
 
 **Why the hybrid path does not call `recall()`.** `recall()` ranks each arm
@@ -779,7 +790,7 @@ cast to the column's type.
 | `update_confidence(…, pipeline=uow)` with a Postgres `transaction()` (M2a) | (a Redis pipeline queues the update and returns `None`) | the update runs inside the transaction, so its value is returned and the attribute synced |
 | A model with a `CyclicDecayField`, `CoOccurrenceField` or `PredictionLedgerMixin` (M2a) | supported | refused at declaration until M5, M4 and M5 respectively, so `ObservationProtocol`'s cycle, auto-discharge and ledger-resolution effects have no Postgres model to act on yet (its supersession effect runs from M3) |
 | `execute_supersede(mode="open")` naming a member with no record (M3) | `ZADD NX` indexes the member anyway | writes nothing: the interval is the record's row. Only a direct `execute_supersede` call can ask for it. Pinned: `tests/postgres/test_postgres_validity.py::test_mode_open_on_a_member_with_no_record_writes_nothing` |
-| An open-claim pointer naming a record that does not exist (M3) | storable (a manual `SET`, or a partial `import_state`); `supersede` reads it as "no incumbent" | unrepresentable: the pointer table's foreign key refuses it (`ForeignKeyViolation`), and deleting a record cascades to its pointers. Pinned: `test_a_pointer_cannot_name_a_record_that_does_not_exist` |
+| An open-claim pointer naming a record that does not exist (M3) | storable (a manual `SET`, or a partial `import_state`); `supersede` reads it as "no incumbent" | unrepresentable: the pointer table's foreign key refuses it, and deleting a record cascades to its pointers. `import_state` for a record that is not stored raises `ValidityMemberAbsentError` (a `ValidityError`, so a `ValueError`) chained from the driver's `ForeignKeyViolation`; Redis's `import_state` never raises there. Pinned: `test_a_pointer_cannot_name_a_record_that_does_not_exist` |
 | `save_and_supersede` / `save_and_invalidate` whose close fails (M3) | `MULTI`/`EXEC` keeps the successor's save, and the typed error's text carries redis-py's `Command # N (...) of pipeline caused error:` prefix | the whole unit rolls back, so the successor is not saved either; same exception type, and the text is the bare reply line |
 | A NaN `valid_from` on save (M3) | the script's `ZADD` refuses it: `ResponseError: … value is not a valid float` from the pipelined `EVALSHA`, after `MULTI`/`EXEC` has written the record's hash, so the record exists with no interval | refused before anything is written: `ModelException("value is not a valid float")` -- the same text, popoto's save error (as row (v) of the query table). Stored, a NaN start would sort above every float and hide the record from every gate. Pinned: `tests/test_validity_parity.py::TestNanInstants::test_a_nan_valid_from_on_save_is_refused` |
 | A NaN instant in `supersede` / `invalidate` / `execute_supersede` (M3) | `ResponseError: value is not a valid float script: …`. With only `valid_from` NaN (a real close instant), `SUPERSEDE_LUA`'s validation phase lets it through and the successor's `ZADD` fails in the mutation phase, after the incumbent was closed and chained, with the pointer still naming it: half-written state, issue #778 | `ValueError("value is not a valid float (<instant> is NaN)")`: the same text, a different class, raised before the first write, so nothing is written. Pinned: `TestNanInstants::test_a_nan_at_is_refused_and_writes_nothing` and `::test_a_nan_valid_from_alone_in_execute_supersede` |

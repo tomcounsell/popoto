@@ -976,4 +976,19 @@ class PostgresValidityOps:
                     write=True,
                 )
 
-        self._atomically(work, uow=uow)
+        import psycopg.errors
+
+        try:
+            self._atomically(work, uow=uow)
+        except psycopg.errors.ForeignKeyViolation as e:
+            # Redis stores a pointer naming a record that is not there (a plain
+            # ``SET``) and reads it later as "no incumbent"; the pointer table's
+            # foreign key refuses it. Typed as the validity layer's "member
+            # absent" error, not a raw driver error (M3 review).
+            from ...fields.validity_field import ValidityMemberAbsentError
+
+            raise ValidityMemberAbsentError(
+                f"import_state: {id.canonical!r} is not stored, so a carried "
+                "open-claim pointer cannot name it (save the record before "
+                "importing its validity state)"
+            ) from e

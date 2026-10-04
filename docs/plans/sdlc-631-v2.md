@@ -904,6 +904,27 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     dropped it at the merge, keeping its validity mask on the arm.
     `semantic_search` (with and without `indexes=`) and `keyword_search` run on
     M2b's columns; `test_semantic_search.py` runs on both legs.
+  - **The gate reaches every Postgres ranking, not only `top_by_decay`.** The
+    assembler's score proxy (`_backend_partition_scores`) passes the model's
+    validity field to `rank_decayed`, so `assess_quality` counts a closed or
+    not-yet-started record as stale exactly as Redis's `DECAY_SCORE_LUA` does
+    (#777 review B1: 0.0/0.0 against Redis's 0.5/1.0 before). The `[PG-only]`
+    `top_by_relevance` and `recall` gate at `as_of` (default now) too; `recall`
+    ANDs it onto every arm's domain. `import_state` for a record that is not
+    stored raises `ValidityMemberAbsentError` (Redis stores the pointer and
+    never raises), not a raw `ForeignKeyViolation`.
+  - **Cost of the owned transaction.** A save that declares `valid_from` on a
+    model with a search field takes its own `BEGIN`/`COMMIT` when no caller
+    transaction is open (inside one it takes a savepoint, and a plain save
+    takes neither). Measured as the p50 of 300 saves, `BM25Field` + decay +
+    `ValidityField` model, PostgreSQL 18.6 on an M1 Max, Postgres on
+    localhost, quiet-machine runs: plain save 0.55-0.62 ms; declared
+    `valid_from` outside a transaction 0.70-0.79 ms (+0.15-0.2 ms, about +25%);
+    declared inside a caller transaction 0.83-1.14 ms (the savepoint).
+    `8e5f22b7` and the fix commit measure the same, as the fix touches no
+    save path (5 interleaved before/after runs); runs while other jobs shared
+    the machine were 2-5x slower on the transactional rows in both. Reproduce
+    with a model of that shape and `time.perf_counter()` around `save()`.
 - **Files (gate b).** `test_validity_field.py` (non-Lua tests),
   `test_partitioned_confidence.py`, `test_semantic_search.py`.
 

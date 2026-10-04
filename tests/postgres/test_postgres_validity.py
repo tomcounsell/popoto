@@ -28,6 +28,7 @@ from popoto import (
 )
 from popoto.backends import BackendRetryableError, RecordId
 from popoto.backends.postgres import validity as pg_validity
+from popoto.fields.bm25_field import BM25Field
 
 psycopg = pytest.importorskip("psycopg")
 
@@ -533,7 +534,7 @@ def test_a_pointer_cannot_name_a_record_that_does_not_exist(pg):
     """The pointer table's foreign key: the dangling-pointer hint Redis reads
     as "no incumbent" cannot be stored here."""
     _save("a")
-    with pytest.raises(psycopg.errors.ForeignKeyViolation):
+    with pytest.raises(ValidityMemberAbsentError, match="never-saved") as err:
         pg.field_call(
             PgFact._meta.spec,
             "validity",
@@ -541,6 +542,8 @@ def test_a_pointer_cannot_name_a_record_that_does_not_exist(pg):
             RecordId.from_key("PgFact", "PgFact:never-saved"),
             {"open_pointers": ["d" * 16]},
         )
+    assert isinstance(err.value, ValueError)
+    assert isinstance(err.value.__cause__, psycopg.errors.ForeignKeyViolation)
 
 
 def test_the_exclusion_sql_is_the_lua_rule():
@@ -549,3 +552,76 @@ def test_the_exclusion_sql_is_the_lua_rule():
     assert '"validity__valid_from" > (5.0::float8)' in rule
     assert pg_validity.included_sql("validity", float("nan")) == "TRUE"
     assert pg_validity.included_sql("validity", None) == "TRUE"
+
+
+# -- recall and top_by_relevance honour the validity gate (M3 review) -----------
+
+
+class PgRecallFact(popoto.Model):
+    """A searchable, decaying, validity-gated model: every ``recall`` arm."""
+
+    name = popoto.UniqueKeyField()
+    text = popoto.Field(type=str, default="deploy runbook")
+    lexical = BM25Field(source="text")
+    relevance = DecayingSortedField()
+    validity = ValidityField()
+
+
+class PgRecallPlain(popoto.Model):
+    name = popoto.UniqueKeyField()
+    text = popoto.Field(type=str, default="deploy runbook")
+    lexical = BM25Field(source="text")
+    relevance = DecayingSortedField()
+
+
+def _gate_fixture():
+    """``old`` (closed 500 s ago), ``cur`` (open), ``fut`` (starts in a
+    million seconds)."""
+    now = time.time()
+    old, cur, _fut = (
+        PgRecallFact(name=n, validity=v)
+        for n, v in (("old", now - 1000), ("cur", now - 1000), ("fut", now + 1e6))
+    )
+    for r in (old, cur, _fut):
+        r.save()
+    SupersessionProtocol.invalidate(old, at=now - 500, superseded_by=cur)
+    return now
+
+
+def _names(hits):
+    return sorted(r.name for r, _score in hits)
+
+
+def test_top_by_relevance_excludes_closed_and_not_yet_valid_records(pg):
+    _gate_fixture()
+    assert _names(PgRecallFact.query.top_by_relevance(limit=10)) == ["cur"]
+
+
+def test_top_by_relevance_as_of_includes_the_then_valid_record(pg):
+    now = _gate_fixture()
+    hits = PgRecallFact.query.top_by_relevance(limit=10, as_of=now - 700)
+    assert _names(hits) == ["cur", "old"]
+    hits = PgRecallFact.query.top_by_relevance(limit=10, as_of=now - 100)
+    assert _names(hits) == ["cur"]
+
+
+def test_recall_excludes_closed_and_not_yet_valid_records_in_every_arm(pg):
+    _gate_fixture()
+    # The BM25 arm matches all three; the decay arm ranks all three.
+    assert _names(PgRecallFact.query.recall("deploy", limit=10)) == ["cur"]
+    only_decay = PgRecallFact.query.recall("zzz", limit=10)
+    assert _names(only_decay) == ["cur"]
+
+
+def test_recall_as_of_includes_the_then_valid_record(pg):
+    now = _gate_fixture()
+    hits = PgRecallFact.query.recall("deploy", limit=10, as_of=now - 700)
+    assert _names(hits) == ["cur", "old"]
+
+
+def test_recall_and_top_by_relevance_are_unchanged_without_a_validity_field(pg):
+    for n in ("a", "b"):
+        PgRecallPlain(name=n).save()
+    assert len(PgRecallPlain.query.top_by_relevance(limit=10)) == 2
+    assert len(PgRecallPlain.query.recall("deploy", limit=10)) == 2
+    assert len(PgRecallPlain.query.recall("deploy", limit=10, as_of=1.0)) == 2
