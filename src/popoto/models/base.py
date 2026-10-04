@@ -47,7 +47,6 @@ if TYPE_CHECKING:
     from redis.client import Pipeline
 
 from .encoding import (
-    encode_popoto_model_obj,
     _decode_field_value,
     decode_lazy_field,
 )
@@ -62,6 +61,16 @@ from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
 from ..redis_db import get_REDIS_DB, run_lua
+from ..backends import (
+    BACKEND_NAMES,
+    ModelSpec,
+    RecordId,
+    UnitOfWork,
+    build_model_spec,
+    get_backend,
+    validate_spec,
+)
+from ..backends.redis import RedisHashRow
 from ..exceptions import (
     CorruptFieldError,
     ModelException,
@@ -214,6 +223,10 @@ class ModelOptions:
         self.order_by = None  # Default ordering for queries
         self.ttl = None  # Default TTL in seconds for all instances
         self.indexes = ()  # Tuple of ((field_names,), is_unique) tuples
+        # Storage backend (#759): "redis" | "postgres", or None for the
+        # process default (POPOTO_BACKEND, else "redis").
+        self.backend: Optional[str] = None
+        self._spec: "Optional[ModelSpec]" = None
 
     def add_field(self, field_name: str, field: Field):
         """Register a field with this model's metadata.
@@ -275,6 +288,18 @@ class ModelOptions:
         self.filter_query_params_by_field[field_name] = field.get_filter_query_params(
             field_name
         )
+        # A field added after class creation (the _auto_key at first
+        # instantiation) changes the spec: rebuild it on next use.
+        self._spec = None
+
+    @property
+    def spec(self) -> "ModelSpec":
+        """This model's backend-neutral :class:`~popoto.backends.ModelSpec`
+        (#759), built on first use and rebuilt after :meth:`add_field`."""
+        spec = self._spec
+        if spec is None:
+            spec = self._spec = build_model_spec(self)
+        return spec
 
     @property
     def fields(self) -> dict:
@@ -503,6 +528,20 @@ class ModelBase(type):
                         raise ModelException(
                             f"Unknown field '{field_name}' in Meta.indexes for {name}"
                         )
+
+        # Storage backend (#759, plan §4). Declaration only: a pure static
+        # check against the backend's capability table, never a connection
+        # (bind() is lazy -- first query or save -- so importing a model
+        # module never dials a database).
+        options.backend = getattr(attr_meta, "backend", None)
+        if options.backend is not None:
+            if options.backend not in BACKEND_NAMES:
+                raise ModelException(
+                    f"Meta.backend must be one of {', '.join(BACKEND_NAMES)}, "
+                    f"got {options.backend!r}"
+                )
+            if not options.abstract:
+                validate_spec(options.spec, options.backend)
 
         options.meta = attr_meta or getattr(new_class, "Meta", None)
         options.base_meta = getattr(new_class, "_meta", None)
@@ -1462,420 +1501,43 @@ class Model(metaclass=ModelBase):
                 **kwargs,
             )
 
-        new_db_key = DB_key(self.db_key)  # todo: why have a new key??
-
-        if update_fields is not None:
-            # Partial save path: only write listed fields to Redis
-            from ..redis_db import ENCODING
-
-            # Detect obsolete key: if any updated field is a KeyField,
-            # the db_key may have changed. We need to clean up the old
-            # key's hash, class set entry, and index entries.
-            obsolete_key = None
-            if self._redis_key != new_db_key.redis_key:
-                obsolete_key = self._redis_key
-
-            # Encode all fields, then filter to only update_fields.
-            # Exclude IndexedFieldMixin fields — EVAL (INDEX_SWAP_LUA) owns their
-            # hash writes atomically, so the plain HSET must not race with them.
-            full_mapping = encode_popoto_model_obj(self)
-            # #573: post-encode, pre-write. The encode above is what creates
-            # the quarantine on a lazy instance, and _validate_names is
-            # update_fields here, so only a poisoned field that this partial
-            # save would actually write blocks it.
-            self._raise_if_quarantine_blocks(_validate_names)
-            update_field_names_bytes = {
-                field_name.encode(ENCODING) for field_name in update_fields
-            }
-            indexed_field_names_bytes = {
-                field_name.encode(ENCODING)
-                for field_name, field in self._meta.fields.items()
-                if isinstance(field, IndexedFieldMixin)
-            }
-            hset_mapping = {
-                k: v
-                for k, v in full_mapping.items()
-                if k in update_field_names_bytes and k not in indexed_field_names_bytes
-            }
-
-            if isinstance(pipeline, redis.client.Pipeline):
-                if hset_mapping:
-                    pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
-                # else: EVAL-only path — indexed field EVALs write the hash fields
-                # If db_key changed, clean up the obsolete key
-                if obsolete_key and obsolete_key != new_db_key.redis_key:
-                    # Remove old index entries using saved field values
-                    for field_name, field in self._meta.fields.items():
-                        field_value = self._saved_field_values.get(
-                            field_name, getattr(self, field_name)
-                        )
-                        pipeline = field.on_delete(
-                            model_instance=self,
-                            field_name=field_name,
-                            field_value=field_value,
-                            pipeline=pipeline,
-                            saved_redis_key=obsolete_key,
-                            **kwargs,
-                        )
-                    # Delete old hash and update class set
-                    pipeline.delete(obsolete_key)
-                    pipeline.srem(self._meta.db_class_set_key.redis_key, obsolete_key)
-                    pipeline.sadd(
-                        self._meta.db_class_set_key.redis_key,
-                        new_db_key.redis_key,
-                    )
-                # Run on_save for listed fields (adds new index entries)
-                for field_name in update_fields:
-                    field = self._meta.fields[field_name]
-                    pipeline = field.on_save(
-                        self,
-                        field_name=field_name,
-                        field_value=getattr(self, field_name),
-                        ignore_errors=ignore_errors,
-                        pipeline=pipeline,
-                        **kwargs,
-                    )
-                # Handle TTL/expire_at
-                if self._ttl is not None:
-                    pipeline = pipeline.expire(new_db_key.redis_key, self._ttl)
-                elif self._expire_at is not None:
-                    pipeline = pipeline.expireat(
-                        new_db_key.redis_key, int(self._expire_at.timestamp())
-                    )
-                self._redis_key = new_db_key.redis_key
-                # Merge into saved_field_values (preserve existing, update listed)
-                for field_name in update_fields:
-                    self._saved_field_values[field_name] = getattr(self, field_name)
-                # WriteFilterMixin: tag priority after successful partial save
-                if isinstance(self, WriteFilterMixin):
-                    self._tag_priority(pipeline=pipeline)
-                # EventStreamMixin: log mutation after successful partial save
-                if isinstance(self, EventStreamMixin):
-                    _op = "create" if _is_create else "update"
-                    self._xadd_mutation(
-                        _op, pipeline=pipeline, update_fields=update_fields
-                    )
-                return pipeline
+        # Storage moved to RedisBackend.save (#759 M1a). What stays here is
+        # above the seam: the gates before it, and the write-filter tag and
+        # event-stream XADD after it, which the moved body used to issue last
+        # on each path -- so they still run at exactly that point.
+        queued = isinstance(pipeline, redis.client.Pipeline)
+        uow = UnitOfWork(pipeline) if pipeline else None
+        previous_key = self._redis_key
+        outcome = get_backend(type(self)).save(
+            self,
+            fields=update_fields,
+            previous_id=(
+                RecordId.from_key(self._meta.model_name, previous_key)
+                if previous_key
+                else None
+            ),
+            uow=uow,
+            ignore_errors=ignore_errors,
+            **kwargs,
+        )
+        result = outcome.result
+        mutation_kwargs = (
+            {"update_fields": update_fields} if update_fields is not None else {}
+        )
+        # WriteFilterMixin: tag priority after successful save
+        if isinstance(self, WriteFilterMixin):
+            if queued:
+                self._tag_priority(pipeline=result)
             else:
-                # Run indexed/unique fields in update_fields EAGERLY (own
-                # atomic EVAL, pipeline=None) before the internal pipeline
-                # for everything else is built and executed — same #476
-                # "unique-conflict window" fix as the full-save path below.
-                _eager_indexed_update_fields = [
-                    field_name
-                    for field_name in update_fields
-                    if isinstance(self._meta.fields[field_name], IndexedFieldMixin)
-                ]
-                for field_name in _eager_indexed_update_fields:
-                    field = self._meta.fields[field_name]
-                    field.on_save(
-                        self,
-                        field_name=field_name,
-                        field_value=getattr(self, field_name),
-                        ignore_errors=ignore_errors,
-                        pipeline=None,
-                        **kwargs,
-                    )
-
-                # Use internal pipeline for atomic execution
-                internal_pipeline = get_REDIS_DB().pipeline()
-                if hset_mapping:
-                    internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
-                # else: EVAL-only path — indexed field EVALs write the hash fields
-                # If db_key changed, clean up the obsolete key
-                if obsolete_key and obsolete_key != new_db_key.redis_key:
-                    # Remove old index entries using saved field values
-                    for field_name, field in self._meta.fields.items():
-                        field_value = self._saved_field_values.get(
-                            field_name, getattr(self, field_name)
-                        )
-                        field.on_delete(
-                            model_instance=self,
-                            field_name=field_name,
-                            field_value=field_value,
-                            pipeline=internal_pipeline,
-                            saved_redis_key=obsolete_key,
-                            **kwargs,
-                        )
-                    # Delete old hash and update class set
-                    internal_pipeline.delete(obsolete_key)
-                    internal_pipeline.srem(
-                        self._meta.db_class_set_key.redis_key, obsolete_key
-                    )
-                    internal_pipeline.sadd(
-                        self._meta.db_class_set_key.redis_key,
-                        new_db_key.redis_key,
-                    )
-                # Run on_save for listed fields (adds new index entries)
-                for field_name in update_fields:
-                    if field_name in _eager_indexed_update_fields:
-                        continue  # already written + indexed atomically above
-                    field = self._meta.fields[field_name]
-                    field.on_save(
-                        self,
-                        field_name=field_name,
-                        field_value=getattr(self, field_name),
-                        ignore_errors=ignore_errors,
-                        pipeline=internal_pipeline,
-                        **kwargs,
-                    )
-                # Handle TTL/expire_at
-                if self._ttl is not None:
-                    internal_pipeline.expire(new_db_key.redis_key, self._ttl)
-                elif self._expire_at is not None:
-                    internal_pipeline.expireat(
-                        new_db_key.redis_key, int(self._expire_at.timestamp())
-                    )
-                results = internal_pipeline.execute()
-                # When hset_mapping is non-empty, results[0] is the HSET count.
-                # When EVAL-only (all fields are indexed), hset_mapping is empty so
-                # results[0] is the first queued pipeline op result (expire/sadd), still an int.
-                db_response = results[0] if results else 0
-                self._is_persisted = True
-                self._redis_key = new_db_key.redis_key
-                # Merge into saved_field_values (preserve existing, update listed)
-                for field_name in update_fields:
-                    self._saved_field_values[field_name] = getattr(self, field_name)
-                # WriteFilterMixin: tag priority after successful partial save
-                if isinstance(self, WriteFilterMixin):
-                    self._tag_priority()
-                # EventStreamMixin: log mutation after successful partial save
-                if isinstance(self, EventStreamMixin):
-                    _op = "create" if _is_create else "update"
-                    self._xadd_mutation(_op, update_fields=update_fields)
-                return db_response
-
-        # Full save path (existing behavior, unchanged)
-        if self._redis_key != new_db_key.redis_key:
-            self.obsolete_redis_key = self._redis_key
-
-        # todo: implement and test tll, expire_at
-        # ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
-
-        """
-        1. save object as hashmap
-        2. optionally set ttl, expire_at
-        3. add to class set
-        4. if obsolete key, delete and run field on_delete methods
-        5. run field on_save methods
-        6. save private version of compiled db key
-        """
-
-        hset_mapping = encode_popoto_model_obj(self)  # 1
-        # #573: post-encode, pre-write. encode_popoto_model_obj's getattr loop
-        # is the first access on a lazy instance, so the quarantine only
-        # exists now; no Redis command has been issued yet.
-        self._raise_if_quarantine_blocks(_validate_names)
-        self._db_content = hset_mapping  # 1
-        # Exclude IndexedFieldMixin fields — EVAL (INDEX_SWAP_LUA) owns their
-        # hash writes atomically, so the plain HSET must not race with them.
-        from ..redis_db import ENCODING as _ENCODING
-
-        _indexed_field_names_bytes = {
-            field_name.encode(_ENCODING)
-            for field_name, field in self._meta.fields.items()
-            if isinstance(field, IndexedFieldMixin)
-        }
-        hset_mapping = {
-            k: v for k, v in hset_mapping.items() if k not in _indexed_field_names_bytes
-        }
-
-        if isinstance(pipeline, redis.client.Pipeline):
-            if hset_mapping:
-                pipeline = pipeline.hset(
-                    new_db_key.redis_key, mapping=hset_mapping
-                )  # 1
-            if self._ttl is not None:
-                pipeline = pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
-            elif self._expire_at is not None:
-                pipeline = pipeline.expireat(
-                    new_db_key.redis_key, int(self._expire_at.timestamp())
-                )  # 2
-            pipeline = pipeline.sadd(
-                self._meta.db_class_set_key.redis_key, new_db_key.redis_key
-            )  # 3
-            if (
-                self.obsolete_redis_key
-                and self.obsolete_redis_key != new_db_key.redis_key
-            ):  # 4
-                for field_name, field in self._meta.fields.items():
-                    # Use saved field values for cleanup to ensure correct Redis keys are removed
-                    field_value = self._saved_field_values.get(
-                        field_name, getattr(self, field_name)
-                    )
-                    pipeline = field.on_delete(  # 4
-                        model_instance=self,
-                        field_name=field_name,
-                        field_value=field_value,
-                        pipeline=pipeline,
-                        saved_redis_key=self.obsolete_redis_key,
-                        **kwargs,
-                    )
-                pipeline = pipeline.srem(
-                    self._meta.db_class_set_key.redis_key,
-                    self.obsolete_redis_key,
-                )  # 4a - remove old key from class set
-                pipeline.delete(self.obsolete_redis_key)  # 4b
-                self.obsolete_redis_key = None
-            for field_name, field in self._meta.fields.items():  # 5
-                pipeline = field.on_save(  # 5
-                    self,
-                    field_name=field_name,
-                    field_value=getattr(self, field_name),
-                    # ttl=ttl, expire_at=expire_at,
-                    ignore_errors=ignore_errors,
-                    pipeline=pipeline,
-                    **kwargs,
-                )
-            # Manage indexes  # 6
-            for field_names, is_unique in self._meta.indexes:
-                field_names_tuple = tuple(field_names)
-                index_key = self._meta.get_index_key(field_names_tuple)
-                # Remove old index entry if indexed fields changed
-                if self._saved_field_values:
-                    old_hash = self._meta.compute_index_hash_from_values(
-                        field_names_tuple, self._saved_field_values
-                    )
-                    if old_hash:
-                        pipeline = pipeline.hdel(index_key, old_hash)
-                # Add new index entry
-                new_hash = self._meta.compute_index_hash(self, field_names_tuple)
-                if new_hash:
-                    pipeline = pipeline.hset(index_key, new_hash, new_db_key.redis_key)
-            self._redis_key = new_db_key.redis_key  # 7
-            # Store field values for proper cleanup on delete  # 8
-            self._saved_field_values = {
-                field_name: getattr(self, field_name)
-                for field_name in self._meta.fields.keys()
-            }
-            # WriteFilterMixin: tag priority after successful save
-            if isinstance(self, WriteFilterMixin):
-                self._tag_priority(pipeline=pipeline)
-            # EventStreamMixin: log mutation after successful save
-            if isinstance(self, EventStreamMixin):
-                _op = "create" if _is_create else "update"
-                self._xadd_mutation(_op, pipeline=pipeline)
-            return pipeline
-
-        else:
-            # Run indexed/unique field on_save() EAGERLY — each as its own
-            # atomic Lua EVAL executed directly against POPOTO_REDIS_DB
-            # (pipeline=None) — BEFORE the internal pipeline below is built
-            # and executed. See #476 ("unique-conflict window"): Redis's
-            # MULTI/EXEC does NOT roll back other queued commands when one
-            # command in the transaction errors, so if these EVAL calls were
-            # instead queued into internal_pipeline (as before), a uniqueness
-            # conflict would still leave the base HSET / class-set SADD /
-            # index bookkeeping committed, orphaning a hash with no index
-            # entry pointing at it. Raising here, before internal_pipeline
-            # even exists, guarantees nothing else for this save is written
-            # when an indexed/unique field genuinely conflicts.
-            _eager_indexed_fields = {
-                field_name: field
-                for field_name, field in self._meta.fields.items()
-                if isinstance(field, IndexedFieldMixin)
-            }
-            for field_name, field in _eager_indexed_fields.items():
-                field.on_save(
-                    self,
-                    field_name=field_name,
-                    field_value=getattr(self, field_name),
-                    ignore_errors=ignore_errors,
-                    pipeline=None,
-                    **kwargs,
-                )
-
-            # Use internal pipeline for atomic execution of everything else
-            internal_pipeline = get_REDIS_DB().pipeline()
-
-            if hset_mapping:
-                internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
-            if self._ttl is not None:
-                internal_pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
-            elif self._expire_at is not None:
-                internal_pipeline.expireat(
-                    new_db_key.redis_key, int(self._expire_at.timestamp())
-                )  # 2
-            internal_pipeline.sadd(
-                self._meta.db_class_set_key.redis_key, new_db_key.redis_key
-            )  # 3
-
-            if (
-                self.obsolete_redis_key
-                and self.obsolete_redis_key != new_db_key.redis_key
-            ):  # 4
-                for field_name, field in self._meta.fields.items():
-                    # Use saved field values for cleanup to ensure correct Redis keys are removed
-                    field_value = self._saved_field_values.get(
-                        field_name, getattr(self, field_name)
-                    )
-                    field.on_delete(  # 4
-                        model_instance=self,
-                        field_name=field_name,
-                        field_value=field_value,
-                        pipeline=internal_pipeline,
-                        saved_redis_key=self.obsolete_redis_key,
-                        **kwargs,
-                    )
-                internal_pipeline.srem(
-                    self._meta.db_class_set_key.redis_key,
-                    self.obsolete_redis_key,
-                )  # 4a - remove old key from class set
-                internal_pipeline.delete(self.obsolete_redis_key)  # 4b
-                self.obsolete_redis_key = None
-
-            for field_name, field in self._meta.fields.items():  # 5
-                if field_name in _eager_indexed_fields:
-                    continue  # already written + indexed atomically above
-                field.on_save(  # 5
-                    self,
-                    field_name=field_name,
-                    field_value=getattr(self, field_name),
-                    # ttl=ttl, expire_at=expire_at,
-                    ignore_errors=ignore_errors,
-                    pipeline=internal_pipeline,
-                    **kwargs,
-                )
-
-            # Manage indexes  # 6
-            for field_names, is_unique in self._meta.indexes:
-                field_names_tuple = tuple(field_names)
-                index_key = self._meta.get_index_key(field_names_tuple)
-                # Remove old index entry if indexed fields changed
-                if self._saved_field_values:
-                    old_hash = self._meta.compute_index_hash_from_values(
-                        field_names_tuple, self._saved_field_values
-                    )
-                    if old_hash:
-                        internal_pipeline.hdel(index_key, old_hash)
-                # Add new index entry
-                new_hash = self._meta.compute_index_hash(self, field_names_tuple)
-                if new_hash:
-                    internal_pipeline.hset(index_key, new_hash, new_db_key.redis_key)
-
-            # pipeline.execute() is synchronous in redis-py: it blocks until
-            # all responses are received, guaranteeing write visibility after return
-            results = internal_pipeline.execute()
-            # When hset_mapping is non-empty, results[0] is the HSET count.
-            # When EVAL-only (all fields are indexed), hset_mapping is empty so
-            # results[0] is the first queued pipeline op result (expire/sadd), still an int.
-            db_response = results[0] if results else 0  # HSET result (backward compat)
-
-            self._is_persisted = True
-            self._redis_key = new_db_key.redis_key  # 7
-            # Store field values for proper cleanup on delete  # 8
-            self._saved_field_values = {
-                field_name: getattr(self, field_name)
-                for field_name in self._meta.fields.keys()
-            }
-            # WriteFilterMixin: tag priority after successful save
-            if isinstance(self, WriteFilterMixin):
                 self._tag_priority()
-            # EventStreamMixin: log mutation after successful save
-            if isinstance(self, EventStreamMixin):
-                _op = "create" if _is_create else "update"
-                self._xadd_mutation(_op)
-            return db_response
+        # EventStreamMixin: log mutation after successful save
+        if isinstance(self, EventStreamMixin):
+            _op = "create" if _is_create else "update"
+            if queued:
+                self._xadd_mutation(_op, pipeline=result, **mutation_kwargs)
+            else:
+                self._xadd_mutation(_op, **mutation_kwargs)
+        return result
 
     @classmethod
     def create(
@@ -2063,7 +1725,10 @@ class Model(metaclass=ModelBase):
             else:
                 resolved: DB_key = db_key if db_key else cls(**kwargs).db_key
                 key = resolved.redis_key
-        return bool(get_REDIS_DB().exists(key))
+        (found,) = get_backend(cls).exists(
+            cls._meta.spec, [RecordId.from_key(cls._meta.model_name, key)]
+        )
+        return found
 
     @classmethod
     def idle_seconds(
@@ -2167,10 +1832,14 @@ class Model(metaclass=ModelBase):
         # Always emitting HMGET here -- even for one name -- would change the
         # wire trace and break the byte-identical-behavior contract this PR
         # is gated on. Do not "simplify" this to always-HMGET.
-        if len(names) == 1:
-            raw_values: Iterable[Any] = [get_REDIS_DB().hget(redis_key, names[0])]
-        else:
-            raw_values = get_REDIS_DB().hmget(redis_key, list(names))
+        (row,) = get_backend(cls).load(
+            cls._meta.spec,
+            [RecordId.from_key(cls._meta.model_name, redis_key)],
+            fields=list(names),
+            pipelined=False,
+        )
+        raw = row.raw if isinstance(row, RedisHashRow) else (row or {})
+        raw_values: Iterable[Any] = [raw.get(name) for name in names]
         result: Dict[str, Any] = {}
         for name, raw_value in zip(names, raw_values):
             if raw_value is None:
@@ -2250,84 +1919,19 @@ class Model(metaclass=ModelBase):
         # non-indexed quarantined field has no index to misdirect.
         delete_redis_key = self._redis_key or self.db_key.redis_key
 
-        if pipeline:
-            result_pipeline = pipeline
-            existed = None  # unknown/unused: caller executes and owns the result
-        else:
-            # #476: determine existence BEFORE any mutation, and run field
-            # on_delete() hooks BEFORE the model hash is physically removed.
-            # IndexedFieldMixin.on_delete() reads live pointer state (the
-            # #476 side key, or — for records written before that fix
-            # shipped — the legacy in-hash pointer field) to find the exact
-            # index Set to SREM from. Deleting the hash first (the previous
-            # order here) meant that read always came back empty for the
-            # legacy in-hash pointer, silently falling back to a possibly
-            # stale _saved_field_values snapshot and risking an orphaned
-            # index member pointing at an already-deleted hash.
-            existed = bool(get_REDIS_DB().exists(delete_redis_key))
-            result_pipeline = get_REDIS_DB().pipeline()
-
-        for field_name, field in self._meta.fields.items():  # 3
-            # Use saved field values if available, otherwise fall back to current values
-            # This ensures we clean up the correct Redis keys even if field values changed
-            field_value = self._saved_field_values.get(
-                field_name, getattr(self, field_name)
-            )
-            result_pipeline = field.on_delete(
-                model_instance=self,
-                field_name=field_name,
-                field_value=field_value,
-                pipeline=result_pipeline,
-                saved_redis_key=delete_redis_key,
-                **kwargs,
-            )
-
-        result_pipeline = result_pipeline.delete(delete_redis_key)  # 1
-        result_pipeline = result_pipeline.srem(
-            self._meta.db_class_set_key.redis_key, delete_redis_key
-        )  # 2
-        pipeline = result_pipeline
-
-        # Clean up indexes  # 4
-        cleanup_values = self._saved_field_values or {
-            field_name: getattr(self, field_name)
-            for field_name in self._meta.fields.keys()
-        }
-        for field_names, is_unique in self._meta.indexes:
-            field_names_tuple = tuple(field_names)
-            index_key = self._meta.get_index_key(field_names_tuple)
-            index_hash = self._meta.compute_index_hash_from_values(
-                field_names_tuple, cleanup_values
-            )
-            if index_hash:
-                pipeline = pipeline.hdel(index_key, index_hash)
-
-        # Clean up AccessTrackerMixin keys if applicable
-        from ..fields.access_tracker import AccessTrackerMixin
-
-        if isinstance(self, AccessTrackerMixin):
-            self._delete_access_tracker_keys(pipeline=pipeline)
-
-        # Clean up WriteFilterMixin keys if applicable
-        from ..fields.write_filter import WriteFilterMixin
-
-        if isinstance(self, WriteFilterMixin):
-            self._delete_write_filter_keys(pipeline=pipeline)
-
-        # EventStreamMixin: log delete mutation
-        from ..fields.event_stream import EventStreamMixin
-
-        if isinstance(self, EventStreamMixin):
-            self._xadd_mutation("delete", pipeline=pipeline)
-
-        self._db_content = dict()  # 6
-        self._saved_field_values = dict()  # 6
-
-        if existed is not None:
-            pipeline.execute()
-            return existed
-        else:
-            return pipeline
+        # Storage moved to RedisBackend.delete (#759 M1a): existence check,
+        # on_delete hooks, DEL/SREM, index and mixin-key cleanup, one pipeline.
+        uow = UnitOfWork(pipeline) if pipeline else None
+        existed = get_backend(type(self)).delete(
+            self._meta.spec,
+            [RecordId.from_key(self._meta.model_name, delete_redis_key)],
+            uow=uow,
+            objs=[self],
+            **kwargs,
+        )
+        if uow is not None:
+            return uow.pipeline
+        return bool(existed)
 
     def atomic_increment(
         self,
@@ -2378,8 +1982,6 @@ class Model(metaclass=ModelBase):
         """
         from decimal import Decimal as _Decimal
 
-        from ..redis_db import ENCODING
-
         # Validate field exists
         if field_name not in self._meta.fields:
             raise AttributeError(
@@ -2409,124 +2011,17 @@ class Model(metaclass=ModelBase):
                 f"'{field_name}' is type {field.type.__name__}"
             )
 
-        field_name_bytes = field_name.encode(ENCODING)
-
-        # Lua script that atomically reads, decodes msgpack, increments,
-        # re-encodes, and writes back. Uses cmsgpack which is built into
-        # Redis since version 2.6.
-        #
-        # KEYS[1] = redis hash key
-        # ARGV[1] = field name (bytes)
-        # ARGV[2] = delta value (string representation)
-        # ARGV[3] = 1 if field is Decimal type (uses tagged dict encoding), 0 otherwise
-        #
-        # Returns the new numeric value as a string.
-        lua_script = """
-        local current_packed = redis.call('HGET', KEYS[1], ARGV[1])
-        local current_val = 0
-        local is_decimal = tonumber(ARGV[3])
-
-        if current_packed then
-            local decoded = cmsgpack.unpack(current_packed)
-            if is_decimal == 1 and type(decoded) == 'table' and decoded['as_encodable'] then
-                current_val = tonumber(decoded['as_encodable'])
-            elseif type(decoded) == 'number' then
-                current_val = decoded
-            end
-        end
-
-        local delta = tonumber(ARGV[2])
-        local new_val = current_val + delta
-
-        if is_decimal == 1 then
-            local encoded = cmsgpack.pack({['__Decimal__'] = true, ['as_encodable'] = tostring(new_val)})
-            redis.call('HSET', KEYS[1], ARGV[1], encoded)
-        else
-            local encoded = cmsgpack.pack(new_val)
-            redis.call('HSET', KEYS[1], ARGV[1], encoded)
-        end
-
-        return tostring(new_val)
-        """
-
-        is_decimal = 1 if field.type is _Decimal else 0
-        delta_str = str(float(delta) if isinstance(delta, _Decimal) else delta)
-
-        if isinstance(pipeline, redis.client.Pipeline):
-            # When using a pipeline, register the script and call it
-            script = get_REDIS_DB().register_script(lua_script)
-            pipeline = script(
-                keys=[redis_key],
-                args=[field_name_bytes, delta_str, is_decimal],
-                client=pipeline,
-            )
-
-            # Update in-memory values optimistically
-            current_val = getattr(self, field_name) or field.type()
-            if field.type is int:
-                new_val = int(current_val) + int(delta)
-            elif field.type is _Decimal:
-                new_val = _Decimal(str(current_val)) + _Decimal(str(delta))
-            else:
-                new_val = float(current_val) + float(delta)
-
-            setattr(self, field_name, new_val)
-            if field_name in self._saved_field_values or self._saved_field_values:
-                self._saved_field_values[field_name] = new_val
-
-            # Update sorted index if field is a SortedField
-            if field_name in self._meta.sorted_field_names:
-                field_cls = field.__class__
-                sortedset_db_key = field_cls.get_partitioned_sortedset_db_key(
-                    self, field_name
-                )
-                score_delta = float(delta) if isinstance(delta, _Decimal) else delta
-                pipeline = pipeline.zincrby(
-                    sortedset_db_key.redis_key, score_delta, redis_key
-                )
-
-            return pipeline
-        else:
-            # Execute the Lua script directly
-            result_str = run_lua(
-                get_REDIS_DB(),
-                lua_script,
-                1,
-                redis_key,
-                field_name_bytes,
-                delta_str,
-                is_decimal,
-            )
-
-            # Parse result and convert to field type
-            if isinstance(result_str, bytes):
-                result_str = result_str.decode(ENCODING)
-
-            if field.type is int:
-                # Lua may return "15.0" for integer arithmetic; parse via float then int
-                new_val = int(float(result_str))
-            elif field.type is _Decimal:
-                new_val = _Decimal(result_str)
-            else:
-                new_val = float(result_str)
-
-            # Update in-memory instance
-            setattr(self, field_name, new_val)
-            if field_name in self._saved_field_values or self._saved_field_values:
-                self._saved_field_values[field_name] = new_val
-
-            # Update sorted index if field is a SortedField
-            if field_name in self._meta.sorted_field_names:
-                field_cls = field.__class__
-                sortedset_db_key = field_cls.get_partitioned_sortedset_db_key(
-                    self, field_name
-                )
-                score_delta = float(delta) if isinstance(delta, _Decimal) else delta
-                get_REDIS_DB().zincrby(
-                    sortedset_db_key.redis_key, score_delta, redis_key
-                )
-
-            return new_val
+        # Storage moved to RedisBackend.increment (#759 M1a): the inline Lua,
+        # ZINCRBY for a sorted field, and this instance's in-memory value.
+        uow = UnitOfWork(pipeline) if pipeline is not None else None
+        return get_backend(type(self)).increment(
+            self._meta.spec,
+            RecordId.from_key(self._meta.model_name, redis_key),
+            field_name,
+            delta,
+            uow=uow,
+            obj=self,
+        )
 
     def touch(self, field_name, pipeline=None):
         """Update a DecayingSortedField's timestamp without a full save.

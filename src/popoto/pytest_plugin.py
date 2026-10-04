@@ -106,6 +106,28 @@ def pytest_configure(config):
     config._popoto_opted_in = test_db is not None
     config._popoto_conformance_backends = _resolve_conformance_backends(config)
     _register_conformance_markers(config)
+    _pin_session_backend_to_redis(test_db)
+
+
+def _pin_session_backend_to_redis(test_db: Any) -> None:
+    """Pin the process default storage backend to Redis for the session
+    (#759 M1a; deferred from M0 because it needs ``get_backend()``).
+
+    Runs before collection, so a module-scope ``Model.save()`` and every
+    unmarked test bind Redis even when ``POPOTO_BACKEND`` names another
+    backend; only the conformance ``backend`` fixture moves a test off it, and
+    it restores this pin on teardown. Gated on the plugin opt-in
+    (``popoto_test_db`` / ``POPOTO_TEST_DB``): the plugin loads in every
+    downstream pytest session, and one that never opted in keeps the runtime
+    selection ``import popoto`` gives it. Pinning captures no client --
+    ``RedisBackend`` resolves ``get_REDIS_DB()`` per operation -- so the DB
+    swap above and any later ``set_REDIS_DB_settings()`` are still observed.
+    """
+    if test_db is None:
+        return
+    from popoto.backends import set_backend
+
+    set_backend("redis")
 
 
 def _collapse_src_popoto():
@@ -923,6 +945,14 @@ def backend(request: Any) -> Any:
     """
     name = getattr(request, "param", "redis")
     if name == "redis":
+        # #759 M1a: bind the leg's backend as the process default for the
+        # test, and restore the previous binding (the session pin) on
+        # teardown. set_backend() discards memoised bind() state both ways,
+        # so module-level models rebind lazily on their next use.
+        from popoto.backends import set_backend
+
+        previous = set_backend("redis")
+        request.addfinalizer(lambda: set_backend(previous))
         return ConformanceBackend(name="redis")
     if name != "postgres":  # unreachable through _resolve_conformance_backends
         raise ValueError(f"unknown conformance backend {name!r}")
