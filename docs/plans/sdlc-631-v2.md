@@ -22,7 +22,7 @@ compatibility layer and the wrong storage layout" (§5).
 
 v2 keeps one public model API with **two native implementations** behind a
 model/query-level protocol: Redis keeps today's hooks, index sets and Lua, with
-its behaviour frozen; Postgres gets typed tables, native indexes and its
+regression-gated; Postgres gets typed tables, native indexes and its
 extensions, and is where new capabilities land.
 
 ## Direction (maintainer; binding on this plan)
@@ -37,10 +37,11 @@ The maintainer ruled on 2026-10-04, settling this plan's former first question:
 1. **Postgres is native, not emulated:** per-model typed tables, B-tree/GIN
    indexes, `tstzrange`, pgvector, SQL BM25, `WITH RECURSIVE` and PostGIS, with
    no emulated sets, sorted sets or Lua.
-2. **Redis is regression-frozen: not deprecated, not extended.** Everything
-   that passes on Redis today keeps passing, with the same wire behaviour, on
-   today's hook, index and Lua machinery. It gains no new capabilities and no
-   deprecation warnings. How long Redis stays supported is an open,
+2. **Redis is regression-gated: not deprecated, and no new Redis features are
+   required.** Everything that passes on Redis today keeps passing, with the
+   same wire behaviour, on today's hook, index and Lua machinery. Bug fixes are
+   welcome under gate (a); it gets no deprecation warnings and no new
+   capability work. How long Redis stays supported is an open,
    community-driven decision outside this plan; nothing here presumes it.
 3. **Postgres is the target for new work.** Capabilities beyond today's
    feature set are Postgres-only, with no Redis implementation (§1.1, and the
@@ -58,15 +59,25 @@ by the coordinator under delegated authority and are reversible.
    scoped by agent, project and tags; **no machine id** joins the scope (§3
    Topology, #756 below, M1 outage contract).
 2. **Minimum Postgres 18.** `bind()` checks `server_version_num >= 180000`; M0
-   moves CI to `postgres:18`; unscoped BM25 relies on 18's B-tree skip scan.
+   moves CI to `pgvector/pgvector:pg18`; unscoped BM25 relies on 18's B-tree skip scan.
    No 16/17 fallback.
 3. **`recall()` BM25 is per-scope by default.** It is new and Postgres-only, so
    parity does not bind it; `BM25Field.search` stays corpus-wide for Redis
-   parity, and corpus-wide is a `recall()` option. On a shared database
+   parity, and corpus-wide is a `recall()` option. Direct `recall()` callers get
+   the per-scope default; the Postgres hybrid path behind `ContextAssembler`
+   (`_pull_path_hybrid`) passes `bm25_stats="corpus"` so it ranks identically to
+   Redis, which is what M2's parity gate compares. On a shared database
    per-scope is correct: one agent's corpus must not skew another's IDF.
 4. **The field-compiler API stays internal in v2**, public only when a second
    adopter asks; `docs/field-authoring.md` says hook-overriding custom fields
    are Redis-only for now.
+5. **`bind()` is lazy.** Defining a model never touches the network: class
+   creation runs only a pure static check of the model's field set against the
+   backend's capability tables (e.g. refusing a hook-overriding custom field on
+   a `Meta.backend = "postgres"` model). `bind()`, with the connect, version
+   check, extension check, DDL and schema-version check, runs on the first
+   backend use for that model (first query or save). Importing a model module
+   therefore never dials the database, consistent with the M1 outage contract.
 
 ### Reconciliation with #755 / #756 / #758
 
@@ -101,8 +112,16 @@ later `_updated_at` (tie: the greater source id) and logs the loser to
 
 **Kept from this plan where #758 differs:**
 
-- **"Redis memory is frozen or deprecated."** Frozen, never deprecated: the
+- **"Redis memory is frozen or deprecated."** Regression-gated, never deprecated: the
   ruling leaves Redis's support horizon to a later, community-driven decision.
+- **Postgres >= 16 and `popoto.pg.UnavailableError`.** Overridden: the floor is
+  Postgres 18 (decision 2) and the outage error is `BackendUnavailableError`
+  (M1), a popoto-level type shared by both backends.
+- **`migrate_key` as `UPDATE ... SET _pk` with a cascade.** On Postgres
+  `migrate_key=` **raises** (as #758 proposed) in v2, rather than cascading the
+  key change through postings, edges and membership companions. A change to a
+  scoped model's scope column is supported: it moves that row's BM25 posting
+  rows in the same transaction.
 - **A separate `popoto.pg.Model` base class.** `Meta.backend = "postgres"` on
   the one `Model` instead: a parallel base class forks the model and query
   surface, so the parity gate could not run the existing tests against it.
@@ -123,7 +142,7 @@ later `_updated_at` (tie: the greater source id) and logs the loser to
 - #747 is open: in `src/popoto/fields/validity_field.py` a quoting comment at
   :336 precedes the real `-- MUTATION PHASE` marker at :395, and
   `scripts/check_supersede_lua_phases.py` partitions on the first one.
-- `main` has 32 named `*_LUA` scripts (26 in `fields/`, 1 in `models/base.py`,
+- `main` @ `57c29ebf` has 31 named `*_LUA` scripts (25 in `fields/`, 1 in `models/base.py`,
   3 in `recipes/question_queue.py`, 2 in `extraction/decision_log.py`), one
   inline script in `Model.atomic_increment`, and 73 `pipeline if pipeline` /
   `if pipeline:` sites.
@@ -137,7 +156,7 @@ under both §5 gates (Redis regression, Postgres parity).
 
 | Capability (public entry point) | Redis mechanism today | Protocol v2 method | Postgres-native mapping | Tier |
 |---|---|---|---|---|
-| `Model.save()` (`update_fields`, `migrate_key`, `ignore_errors`, `skip_auto_now`) | msgpack `HSET` + `$Class:` set + per-field `on_save` hooks + `INDEX_SWAP_LUA` | `save` | `INSERT … ON CONFLICT (_pk) DO UPDATE SET <changed cols>`; `migrate_key` = `UPDATE … SET _pk` in the same txn | M1 |
+| `Model.save()` (`update_fields`, `migrate_key`, `ignore_errors`, `skip_auto_now`) | msgpack `HSET` + `$Class:` set + per-field `on_save` hooks + `INDEX_SWAP_LUA` | `save` | `INSERT … ON CONFLICT (_pk) DO UPDATE SET <changed cols>`; `migrate_key` raises `BackendCapabilityError` on Postgres in v2; a scope-column change moves the row's BM25 postings in the same txn | M1 |
 | `Model.create`, `get_or_create`, `update_or_create` | composed of `load` + `save` | above the seam | composed, inside one `transaction()` | M1 |
 | `Model.load`, `Query.get`, `Query.get_many` | `HGETALL` / pipelined `HGETALL` + `decode_popoto_model_hashmap` | `load` | `SELECT … WHERE _pk = ANY($1)` | M1 |
 | `Model.load_fields`, `values=` projection, `load_raw_hash` | `HMGET` (`load_raw_hash` returns raw hash bytes) | `load(fields=)` | column projection; `load_raw_hash` stays Redis-only (debug API) | M1 |
@@ -152,7 +171,7 @@ under both §5 gates (Redis regression, Postgres parity).
 | `computed_sort`, `post_filter`, `to_dict`, `bulk_create`/`bulk_update` | Python over hydrated rows | above the seam | unchanged | M1 |
 | `UniqueField`/`UniqueKeyField` conflict → `ModelException` | `INDEX_SWAP_LUA` `POPOTO_UNIQUE_CONFLICT` | `save` | `UNIQUE` index; `23505` → same `ModelException` text | M1.1 |
 | `TagField` `__any`/`__all`/`__contains` | `TAG_SWAP_LUA`, tag sets | `select` | `text[]` + GIN (`&&`, `@>`) | M1.1 |
-| `Relationship` (lazy key string, reverse lookups, `sample_related_keys`) | stored target key string + `$RelationshipF:` set + `SRANDMEMBER` | `select`, `load` | `text` column holding the target `_pk` + B-tree; `TABLESAMPLE`/`ORDER BY random() LIMIT` | M1.1 |
+| `Relationship` (lazy key string, reverse lookups, `sample_related_keys`) | stored target key string + `$RelationshipF:` set + `SRANDMEMBER` | `select`, `load` | `text` column holding the target `_pk` + B-tree; `ORDER BY random() LIMIT n` via an `OrderTerm` `Random` in `QueryPlan` (`sample_related_keys`) | M1.1 |
 | `DecayingSortedField` / `top_by_decay` (`base_score_field`, `as_of`) | `DECAY_SCORE_LUA` over a ZSET | `rank_decayed` | `ORDER BY` decay expression over typed columns | M2 |
 | `Model.touch` | `ZADD` new timestamp | `touch` | `UPDATE … SET f_at = $at` | M2 |
 | `ConfidenceField.update_confidence`/`get_confidence`, partitioned confidence | `CAPPED_BAYESIAN_UPDATE_LUA` on a companion hash | `update_confidence`; reads via `load` | four typed columns, one `UPDATE … RETURNING` | M2 (partitioned: M3) |
@@ -167,6 +186,7 @@ under both §5 gates (Redis regression, Postgres parity).
 | `ExistenceFilter.might_exist`/`_batch`/`definitely_missing`, `FrequencySketch` | `BLOOM_*_LUA`, `CMS_*_LUA` | `membership_add`, `membership_query` | `(field, token)` / `(field, token, count)` tables (exact; §1.1) | M2 |
 | `CoOccurrenceField.link`/`strengthen`/`unlink`/`weaken_all` | `LINK_WITH_PRUNE_LUA`, `STRENGTHEN_CLAMP_LUA`, `WEAKEN_ALL_LUA` | `graph_update` | edge table upsert; prune by a window rank | M4 |
 | `CoOccurrenceField.propagate`, `recipes/graph_traversal.traverse` | `PROPAGATE_BFS_LUA`, `SRANDMEMBER` | `graph_expand` | `WITH RECURSIVE` with depth/threshold | M4 |
+| `CoOccurrenceField.get_linked` | edge-set read | `graph_expand` (`depth=1`, no threshold; weights come back as scores) | one indexed read of `<model>__<f>_edges` by `src` | M4 |
 | `AccessTrackerMixin` (`on_read`, `confirm_access`, `discard_staged_access`) | `CONFIRM_ACCESS_LUA`, meta hashes | `field_call` | `_access_count`, `_last_accessed` columns + staged-read columns that expire by comparison (#758 D2) | M2 |
 | `WriteFilterMixin`, `ObservationProtocol`, `NeverRecordMixin`, `AppendOnlyMixin` | Python above storage; `$WF:` priority set | above the seam, plus `field_call` for the priority tier | unchanged | M2 (`NeverRecordMixin`, `AppendOnlyMixin`: M4) |
 | Recipes: `ContextAssembler`, `AdaptiveAssembler`, `DefaultMemory`, `SubconsciousMemory`, `TrajectoryMemory`, `MemoryLifecycle`, `ProvenanceJournal`, `TelemetryRecorder`, `BeliefSheetResolver`, `reconciliation`, `policy_cache` | field/model methods (#630) | none new | follows from M1–M3 | M4 (`ContextAssembler`: M2) |
@@ -176,7 +196,7 @@ under both §5 gates (Redis regression, Postgres parity).
 | `popoto.batch()`, `pipeline=` kwarg everywhere | `GuardedPipeline` (`MULTI`/`EXEC`) | `transaction` | one DB transaction | M5 |
 | `async_*` twins, `get_async_redis_db` | `redis.asyncio` | `AsyncBackend` twin | `psycopg.AsyncConnection` pool | M5 |
 | `Publisher`/`Subscriber`, `EventStreamMixin`, `StreamConsumer` | `PUBLISH`/`SUBSCRIBE`, `XADD`/`XREADGROUP` | separate `PubSub` protocol (not counted) | `LISTEN`/`NOTIFY` + an events table with `bigserial` | M5 |
-| `GeoField` (`_latitude`/`_longitude`/`_radius` filters) | `GEOADD`/`GEOSEARCH` | `select` (op `within`) | PostGIS `geography(Point)` + GiST (capability) | M5 |
+| `GeoField` (`_latitude`/`_longitude`/`_radius` filters, with distances) | `GEOADD`/`GEOSEARCH` (`WITHDIST`) | `select` (op `within`, `QueryPlan.compute`) | PostGIS `geography(Point)` + GiST; `ST_Distance` returned as a computed column on `Row` (capability) | M5 |
 | `CyclicDecayField`, `resolve_pressure`/`strengthen_cycle`/`weaken_cycle` | `CYCLIC_DECAY_LUA`, `CYCLES_*_LUA` | `rank_decayed` variant + `field_call` | `jsonb` cycles + SQL expression | M5 |
 | `PredictionLedgerMixin`, `TDValueField.td_update` | `RESOLVE_PREDICTION_LUA`, `TD_UPDATE_LUA` | `field_call` | companion table / `UPDATE … RETURNING` | M5 |
 | `DataFrameField`, `ContentField` | msgpack bytes / filesystem store | `save`/`load` | `bytea` / `text` (or keep the `ContentStore`) | M5 |
@@ -208,6 +228,7 @@ behaviour does not change to match (Direction 2).
 
 | Behaviour | Redis (unchanged) | Postgres | Source |
 |---|---|---|---|
+| `save(migrate_key=)` | rewrites the key and its index entries | raises `BackendCapabilityError` in v2 | #758 |
 | Unit-of-work failure | `MULTI`/`EXEC` applies queued commands and reports runtime errors without rollback | the whole transaction rolls back | #755 Q2 |
 | `\x00` in a text value | stored | `ValueError` naming the field, at `to_db` (TD-12) | #755 Q4 |
 | `ExistenceFilter.might_exist` | bloom, about 1% false positives | exact token table; no false positives, forgets on delete | #758 D3 |
@@ -241,12 +262,15 @@ Predicate = Cond(field: str, op: Op, value: Any) | And(tuple[Predicate, ...]) | 
 @dataclass(frozen=True)
 class QueryPlan:  where: Predicate | None; order_by: tuple[OrderTerm, ...]; limit: int | None
                   offset: int; project: tuple[str, ...] | None; as_of: float | None
+                  compute: tuple[ComputedCol, ...] = ()   # e.g. geo distance, surfaced on Row
 Row = Mapping[str, Any]                      # decoded Python values; always carries "_id": RecordId
 Scored = list[tuple[RecordId, float]]        # every ranking method returns typed pairs
 ```
 
 `ModelSpec` is built once by `ModelBase` from `_meta`. `Op` is the closed set
-of §1 suffixes plus `valid_at` and `within`. Values cross the protocol
+of §1 suffixes plus `valid_at` and `within`. `OrderTerm` is a field with a
+direction, or `Random` (for `sample_related_keys`); `ComputedCol` is a named
+backend-computed value (geo distance) that `Row` carries beside the fields. Values cross the protocol
 **decoded**: no msgpack, key strings or index names.
 
 ### Methods (24)
@@ -254,7 +278,7 @@ of §1 suffixes plus `valid_at` and `within`. Values cross the protocol
 ```python
 class Backend(Protocol):
     # A. lifecycle (3)
-    def bind(self, spec: ModelSpec) -> Capabilities: ...       # at class creation; refuses unsupported fields (TD-9)
+    def bind(self, spec: ModelSpec) -> Capabilities: ...       # LAZY: first backend use per model; connect, version, DDL, schema check
     def transaction(self) -> ContextManager[UnitOfWork]: ...   # popoto.batch() and every pipeline= kwarg
     def close(self) -> None: ...
     # B. records (5)
@@ -303,7 +327,16 @@ TD-10). `field_call` dispatches to a per-backend **field-adapter registry**
 keyed by `(FieldClass via MRO, op)`, so the long tail (PredictionLedger,
 CyclicDecay, TDValue, WriteFilter priority, `idle_seconds`, question-queue
 claim) needs no protocol method per mixin. An unregistered `(field, op)` raises
-`BackendCapabilityError`, and `bind()` refuses a field missing an adapter.
+`BackendCapabilityError`, and a field missing an adapter is refused by the
+static spec check at class creation (below), not at `bind()`.
+
+**Declaration versus bind.** Two steps, never conflated. (1) Class creation
+runs `validate_spec(spec, backend_name)`, a pure function over the backend's
+static capability tables and field-adapter registry: it refuses unsupported
+fields (TD-9) and needs no network, so a model module imports with the database
+down. (2) `bind()` is lazy: it runs on the first backend use of a model (first
+query or save), memoised per (backend, model), and does everything that needs a
+server: connect, version, `pg_extension`, DDL and the schema-version check.
 
 **Not on the protocol, on purpose:** `fuse`/RRF, `computed_sort`,
 `post_filter`, `to_dict`, `get_or_create`/`update_or_create`/`bulk_*`
@@ -322,7 +355,7 @@ firing from there. `src/popoto/backends/postgres/` never imports `redis`, and
 
 | Method | Redis: delegates to (on `main` today) | Postgres: SQL |
 |---|---|---|
-| `bind` | no-op; returns the full capability set | require `server_version_num >= 180000` (else a clear error naming the version found); compile `ModelSpec` → DDL; check the `popoto_schema` version row; refuse unsupported fields |
+| `bind` (lazy, first use) | no-op; returns the full capability set | require `server_version_num >= 180000` (else a clear error naming the version found); check `pg_extension`; compile `ModelSpec` → DDL; check the `popoto_schema` fingerprint and version record (§3). Field refusal is the static `validate_spec`, earlier |
 | `transaction` | `batch()` → `GuardedPipeline` (`MULTI`/`EXEC`) | pool connection, one `READ COMMITTED` transaction, atomic on failure (§1.1); rows locked in PK order; `DeadlockDetected`/`SerializationFailure` retried up to 3 times with jitter, then re-raised (TD-2, #758 D2) |
 | `save` | `Model.save` body: `HSET` msgpack, `$Class:` `SADD`, field `on_save` hooks, `INDEX_SWAP_LUA`/`TAG_SWAP_LUA`, `EXPIRE` | `INSERT … ON CONFLICT (_pk) DO UPDATE SET …` + compiler `write_sql` (postings, edges) in one txn |
 | `load` | `Query.get`/`get_many`: `HGETALL`/`HMGET` + `decode_popoto_model_hashmap` | `SELECT <cols> FROM <table> WHERE _pk = ANY($1)` |
@@ -391,13 +424,19 @@ firing from there. `src/popoto/backends/postgres/` never imports `redis`, and
 
 DDL ownership follows TD-8 and #758 D2, with no manual step in normal use.
 Popoto keeps a deterministic fingerprint per model in `popoto_schema(model,
-fingerprint, ddl, applied_at)`. On first use per **process**, under
+fingerprint, ddl, applied_at)`. On first use per **process** (that is, at the lazy `bind()`), under
 `pg_advisory_xact_lock(hashtext('popoto:ddl:'||table))`, a **missing table** is
 created and an **additive** change (nullable column, index, companion) is
 applied. A **destructive or ambiguous** change (drop, retype, vector dimension,
 key-field change) raises `SchemaDriftError` with the diff; the operator runs
 `python -m popoto.schema migrate <dotted.Model>` (`--dry-run` prints the DDL).
-`POPOTO_SCHEMA_AUTO=0` disables even create/additive. The `migrations.py`
+`POPOTO_SCHEMA_AUTO=0` disables even create/additive. **Version skew on a
+shared schema:** `popoto_schema` also records the writing popoto version and
+schema-format version. An older client that finds a fingerprint it did not
+produce, or a newer format version, raises `SchemaDriftError` rather than
+writing; it never downgrades or reconciles. Destructive migrations are
+operator-run (`python -m popoto.schema migrate`), never automatic, so one
+client cannot alter the schema under the rest of the fleet. The `migrations.py`
 cookbook stays Redis-specific.
 
 ### Multi-tenancy and scoping (`docs/multi-tenancy.md`, #755 item 6)
@@ -429,11 +468,15 @@ popoto:
 - **`LISTEN`/`NOTIFY` needs a session connection:** M5's `PubSub` bypasses the
   transaction-pooled DSN.
 - **Network failure is routine:** timeouts set; `BackendUnavailableError`.
+- **Ownership.** HA, failover and backups of the central database belong to the
+  operator, not popoto; popoto's part is the outage contract (M1) and the risk
+  mitigations in §7.
 
 ### Extensions and capabilities
 
-`bind()` checks `pg_extension` once per process: an `EmbeddingField` without
-`vector`, or a `GeoField` without `postgis`, raises at declaration. Bootstrap
+The lazy `bind()` checks `pg_extension` once per process: an `EmbeddingField`
+without `vector`, or a `GeoField` without `postgis`, raises there, on the
+model's first backend use (declaration cannot know, because it never connects). Bootstrap
 refuses `server_encoding <> 'UTF8'` (TD-13); every tie-break uses
 `COLLATE "C"`, matching Redis's bytewise member order.
 
@@ -448,10 +491,15 @@ refuses `server_encoding <> 'UTF8'` (TD-13); every tie-break uses
   keeps Redis counters and a Postgres `Memory` in one process (#758). It
   replaces #758's `popoto.pg.Model`: Valor's cutover is one `Meta` line.
 - **Unchanged.** `get_redis()`, `POPOTO_REDIS_DB` and `REDIS_URL` keep their
-  meaning. Importing popoto never dials Postgres or needs `psycopg` (M1).
-- **Tests.** The pytest plugin pins `redis` for the session whenever it opted
-  in. The `backend` fixture binds Postgres per test and restores the
-  *previous* binding (salvaged POC rule, `docs/testing.md`).
+  meaning. Importing popoto, or defining a model, never dials Postgres or needs
+  `psycopg` (M1; decision 5).
+- **Tests.** From M1, the pytest plugin pins `redis` for the session whenever
+  it opted in (the pin needs `get_backend()`, which arrives in M1). The
+  `backend` fixture selects Postgres per test, discards the memoised `bind()`
+  state of the models under test so the next first use rebinds them lazily
+  against that test's schema, and on teardown restores the *previous* binding
+  and discards it again (salvaged POC rule, `docs/testing.md`). Module-level
+  test models therefore need no re-declaration.
 
 ## 5. Milestones
 
@@ -462,7 +510,7 @@ shippable.
 
 | Gate | Applies to | Check | Passes when |
 |---|---|---|---|
-| **(a) Redis regression** | every PR, M0–M5 | full suite on the Redis and Valkey jobs in `tests.yml`; M1 wire-trace diff wherever a Redis path moved | every test that passes on Redis at the PR's base commit still passes, with none deleted, skipped, loosened or re-marked to get there. Redis behaviour is frozen: no PR deprecates or extends it |
+| **(a) Redis regression** | every PR, M0–M5 | full suite on the Redis and Valkey jobs in `tests.yml`; M1 wire-trace diff wherever a Redis path moved | every test that passes on Redis at the PR's base commit still passes, with none deleted, skipped, loosened or re-marked to get there. Redis is regression-gated: bug fixes are welcome, no new Redis features are required, and no PR deprecates it |
 | **(b) Postgres parity** | existing-feature rows, M1–M5 | `POPOTO_CONFORMANCE_BACKENDS=redis,postgres pytest -m conformance` in the `postgres` job | the milestone's listed existing test files pass on the Postgres leg from the **same test code**; a Redis-key or §1.1-divergence assertion is `redis_only` with a reason, never deleted |
 | `[PG-only]` tests | §1.1 new capabilities | `pytest tests/postgres/` in the `postgres` job | the capability's own tests pass; there is no Redis leg and no Redis code path is added for one |
 
@@ -472,28 +520,31 @@ sent. M2 and M3 follow Valor's usage (#758 spike-1).
 
 | Milestone | Existing features: gates (a) + (b) | `[PG-only]` additions: gate (a) + own tests |
 |---|---|---|
-| M0 | salvage harness, markers, CI job, #747 fix (gate (a) only; no Postgres code) | — |
-| M1 | plain models: records, query, `Q`, ordering, count, increment; pool, schema compiler, atomic transaction | engine `_created_at`/`_updated_at`; health record + `BackendUnavailableError` |
+| M0 | salvage harness, markers, CI job, #747 fix (gate (a) only; no Postgres code; no change for users who do not opt in) | — |
+| M1 | plain models: records, query, `Q`, ordering, count, increment; pool, schema compiler, lazy `bind()`, `get_backend()` and the Redis session pin, the `postgres` extra, atomic transaction | engine `_created_at`/`_updated_at`; health record + `BackendUnavailableError` |
 | M1.1 | indexed/unique/tag/relationship/collection fields, `Meta.indexes` | — |
 | M2 | **Valor's slice:** decay + `touch`, confidence (+ modulation), BM25, embeddings, `ExistenceFilter`/`FrequencySketch`, `AccessTrackerMixin`, `WriteFilterMixin`, `ObservationProtocol`, `fuse`, `composite_score` (decay/confidence arms), `ContextAssembler` hybrid + `assess` + `_post_effects` | `recall()`; composable scoping; per-scope BM25 stats; `top_by_relevance`; embedding backfill; `_migrated_from`/`_estimated_fields`; Valor `Memory` DDL pinned for #756 |
 | M3 | memory core Valor does not use: `ValidityField` + supersession + `chain`, partitioned confidence, `semantic_search`/`keyword_search` | — |
 | M4 | graph (`CoOccurrenceField`, `graph_traversal`), remaining recipes and mixins, question queue, `idle_seconds` | — |
 | M5 | TTL (`_expires_at` + automatic reaper), `batch()`, async, pub/sub, geo, long-tail fields, `maintain`, `transfer/` | — |
 
-### M0: salvage to `main`, zero behaviour change
+### M0: salvage to `main`, zero behaviour change for users
 
-- **Scope.** Four PRs, each cherry-picked or ported from `efda14a3`, not
+- **Scope.** Three PRs, each cherry-picked or ported from `efda14a3`, not
   rebased. **(a)** The #747 fix: partition on the last or column-0 marker,
   plus a negative test that plants a write in the validation phase. **(b)**
   `pytest_plugin.py`: `conformance`/`redis_only` markers, with `reason=`
   *required* (13 POC marks lacked one); `popoto_conformance_backends` ini/env;
   Postgres schema isolation (`popoto_test_<hex>`, refusing `public`, `popoto`
-  and a db-less URL); the Redis session pin. **(c)** The `postgres` CI job in
+  and a db-less URL). This edits the shipped `src/popoto/pytest_plugin.py`, but
+  the markers and ini keys are inert unless a project uses them, so users who
+  do not opt in see no change. The Redis session pin is **deferred to M1**: it
+  presupposes `get_backend()`, which does not exist until then. **(c)** The `postgres` CI job in
   `tests.yml`: a `pgvector/pgvector` service plus Redis, `REDIS_URL` pinned to
   DB 15 per #639. The POC's `pytest (Postgres)` job uses `postgres:16`
   (`poc/backend-seam`, `.github/workflows/tests.yml`); the salvage bumps it to
-  the Postgres 18 image (`pgvector/pgvector:pg18`), the minimum version. **(d)** The `postgres` extra (`psycopg[binary,pool]`,
-  `pgvector`), `check_lock_imports.py` and `uv.lock`.
+  the Postgres 18 image (`pgvector/pgvector:pg18`), the minimum version. The
+  `postgres` extra is **not** added here (it moves to M1, where code uses it).
 - **Not salvaged.** `backends/` and the 46-method protocol; the
   `tests/conformance/test_{records,indexes,swaps,decay,validity}.py` files test
   that protocol and stay in the archive.
@@ -501,7 +552,7 @@ sent. M2 and M3 follow Valor's usage (#758 spike-1).
   `test_harness.py`/`test_postgres_bootstrap.py` pass in the `postgres` job,
   and the Postgres model leg skips with a named reason. The phase checker fails
   on the planted write; the ratchet is not above its ceiling.
-- **Tests.** `tests/test_pytest_plugin.py`, `tests/test_validity_field.py::TestSupersedeLuaPhaseSplit`, `tests/test_ci_workflow_redis_url.py`, `tests/test_check_lock_imports.py`.
+- **Tests.** `tests/test_pytest_plugin.py`, `tests/test_validity_field.py::TestSupersedeLuaPhaseSplit`, `tests/test_ci_workflow_redis_url.py`.
 
 ### M1: a plain-model vertical slice on typed tables
 
@@ -512,15 +563,24 @@ sent. M2 and M3 follow Valor's usage (#758 spike-1).
   `migrate_key=`), get, delete, exists, increment, filter, `Q`, order_by,
   limit, count. The pool (one `psycopg_pool.ConnectionPool` per (DSN, pid),
   lazy, `max_size` 4, TD-3, sized for one central database), the schema
-  compiler with `popoto_schema`, and `bind()` refusal, including a
-  `server_version_num >= 180000` check. `Model`/`Query` public bodies dispatch to `get_backend()`.
+  compiler with `popoto_schema`, and the lazy `bind()` (first backend use,
+  including the `server_version_num >= 180000` check) and the static
+  `validate_spec` refusal at class creation; `get_backend()` and the pytest
+  plugin's Redis session pin deferred from M0; and the `postgres` extra
+  (`psycopg[binary,pool]`, `pgvector`) with `check_lock_imports.py` and
+  `uv.lock`. `migrate_key=` on a Postgres model raises
+  `BackendCapabilityError`. `Model`/`Query` public bodies dispatch to `get_backend()`.
 - **Exit criteria.**
   - Gates (a) and (b) on the files below, and a Redis command trace of them
     that matches `main` byte for byte (the POC's #751 serializer-hook method).
   - `[PG-only]`: the engine columns; the outage contract (Postgres unreachable
     raises `BackendUnavailableError`, the health record counts dropped writes,
     ERROR is logged once per window; connect and statement timeouts tested);
-    `bind()` against Postgres below 18 raises a clear error; `import popoto` with `psycopg` blocked.
+    first use of a model against Postgres below 18 raises a clear error from
+    `bind()`; `import popoto` with `psycopg` blocked; defining a
+    `Meta.backend = "postgres"` model with the database unreachable succeeds,
+    and the first query or save raises `BackendUnavailableError`;
+    `tests/test_check_lock_imports.py` covers the extra.
   - `Model.save()` p50 ≤ 2x Redis and `filter+hydrate` p50 ≤ 1x after
     `ANALYZE`, via the archive's `scripts/bench_backend_seam.py` ported to v2
     (environment stated).
@@ -551,7 +611,9 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   - `DecayingSortedField` (`partition_by`, `base_score_field`), `touch`,
     `top_by_decay`, and confidence-modulated `rank_decayed` over typed columns;
     `ConfidenceField` as one capped-mean `UPDATE … RETURNING`; `BM25Field` on
-    `(scope, term, _pk, tf)` postings with corpus-wide statistics (#758 D4).
+    `(scope, term, _pk, tf)` postings with corpus-wide statistics for
+    `BM25Field.search` (#758 D4); a scope change on a scoped model moves its
+    posting rows in the same transaction.
   - `EmbeddingField` on `vector(d)`: exact at or below
     `Defaults.PG_VECTOR_EXACT_MAX` (ordering by `(v <=> $q) + 0`), HNSW with
     `iterative_scan = relaxed_order` above it, and a recall guard that re-runs
@@ -574,7 +636,11 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
 - **Exit criteria.**
   - Gates (a) and (b) on the files below.
     `ContextAssembler(retrieval_mode="auto")` returns the same ranked keys on
-    both legs for the retrieval-quality fixtures; BM25 scores and confidence
+    both legs for the retrieval-quality fixtures, because the Postgres hybrid
+    path (`_pull_path_hybrid`, used by `test_context_assembler_hybrid.py`, which
+    partitions by `agent_id`) passes `bm25_stats="corpus"`; the per-scope
+    default applies only to direct `recall()` callers, which are `[PG-only]`
+    and outside the parity comparison; BM25 scores and confidence
     after an identical signal sequence match the Redis oracle to 1e-9.
   - `rank_decayed` with base + confidence at N=2000: Postgres p50 ≤ Redis p50
     (the POC measured 5.4x on bytea; WS4 §4 predicts "the 0.2x case").
@@ -612,7 +678,8 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
 ### M4: graph, the remaining recipes and mixins
 
 - **Scope.** Groups F and H: `graph_*`, `CoOccurrenceField`, `graph_traversal`,
-  and `rank_composite`'s `co_occurrence_boost` arm. `field_call` adapters for
+  `CoOccurrenceField.get_linked` (as `graph_expand` at depth 1), and
+  `rank_composite`'s `co_occurrence_boost` arm. `field_call` adapters for
   `idle_seconds` and question-queue claim/deliver/release (`FOR UPDATE SKIP
   LOCKED`); `NeverRecordMixin`, `AppendOnlyMixin`. Every remaining recipe runs
   unchanged on a Postgres-bound model.
@@ -631,7 +698,7 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   → `transaction()` (TD-5), atomic on Postgres. `AsyncBackend` on
   `psycopg.AsyncConnection` (TD-6). `PubSub` over `LISTEN`/`NOTIFY` plus an
   events table for `EventStreamMixin`/`StreamConsumer` on a session
-  connection (§3 Topology), or declared out of scope. `GeoField`/PostGIS, `CyclicDecayField`, `PredictionLedgerMixin`,
+  connection (§3 Topology), or declared out of scope. `GeoField`/PostGIS (with `QueryPlan.compute` distances for `test_geo_with_distances.py`), `CyclicDecayField`, `PredictionLedgerMixin`,
   `TDValueField`, `DataFrameField`, `ContentField`. `maintain`, and
   same-backend `transfer/`.
 - **Exit criteria.** Each item is its own PR passing gates (a) and (b) on its
@@ -672,13 +739,14 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
 | #758 proceeds as a parallel `popoto.pg` | single-plan proposal posted on #755 and #758; M1 waits for #758's author or the maintainer |
 | Gate (a) erodes: Redis tests get re-marked or skipped to make a PR green | gate (a) compares against the PR's base commit; a new `redis_only`/`skip` on a previously passing test fails review; per-PR mark audit (TD-16) |
 | A `[PG-only]` capability grows a Redis path by accident | each one has a test asserting `BackendCapabilityError` on a Redis-bound model |
+| Central Postgres is a shared dependency (decision 1): one database serves every agent and machine | **Outage:** one outage now hits every agent, where Redis stores were per machine; mitigated by the `BackendUnavailableError` contract (health record, counted dropped writes, once-per-window ERROR) and connect/statement timeouts (M1). **HA and backups are owned by the operator**, not by popoto. **Noisy neighbours:** one agent's backfill, reaper or `recall()` load lands on all; mitigated by pool `max_size` limits, statement timeouts, bounded backfill and reaper batches, and optional server-side pooling (§3 Topology). **Mixed popoto versions on one schema:** the `popoto_schema` version record means an older client raises `SchemaDriftError` on a newer schema instead of writing; destructive migrations are operator-run, never automatic (§3 Migrations) |
 
 ## 8. No-Gos
 
 Generic `bytea` tables, msgpack inside Postgres, PL/pgSQL decoders, or any
 Redis-structure emulation; merging or rebasing `poc/backend-seam`; changing
 Redis key layout or wire behaviour; deprecating Redis, or adding a deprecation
-warning; adding new capabilities to Redis; dual-write or read-through between
+warning; requiring new capabilities of Redis (bug fixes are welcome); dual-write or read-through between
 backends (#756 is a one-off copy); a separate `popoto.pg.Model` base class;
 reading `POSTGRES_URL`/`DATABASE_URL`; popoto-emitted declarative partitioning
 or RLS; `py.typed` (unchanged policy, CLAUDE.md); a Postgres port of
