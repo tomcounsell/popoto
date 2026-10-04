@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import re
 from typing import Any, Optional
 
 from ..types import And, Cond, Not, Op, Or, OrderTerm, Predicate
@@ -104,7 +105,7 @@ def _coerce(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
 _NUMERIC_TYPES = (int, float, decimal.Decimal)
 
 
-def _key_value(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
+def _key_value_unbounded(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
     """An equality / ``__in`` value for a key field, with Redis's semantics.
 
     On Redis a key field matches by its *key string*: ``str(value)`` against
@@ -114,9 +115,21 @@ def _key_value(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
     but ``1.0`` and ``1.5`` match nothing; on ``KeyField(type=float)``, ``1``
     matches nothing (``"1" != "1.0"``). Every value that survives is of the
     column's type, so an ``__in`` list binds as one homogeneous array.
+
+    A ``SortedKeyField`` is the exception: Redis matches it by *score*, a
+    numeric comparison (``code=2.0`` finds 2, ``"01"`` finds 1), so it takes
+    the plain coercion.
     """
     py_type = ts.field_types[field_name]
-    if value is None or kind not in KEY_KINDS or py_type not in _NUMERIC_TYPES:
+    if kind in SORTED_KINDS and isinstance(value, str) and py_type in _NUMERIC_TYPES:
+        # Matched by score: Redis parses the string as a bound would be.
+        return _score_bound(value, py_type is decimal.Decimal)
+    if (
+        value is None
+        or kind not in KEY_KINDS
+        or kind in SORTED_KINDS  # matched by score, not by key string
+        or py_type not in _NUMERIC_TYPES
+    ):
         return _coerce(ts, kind, field_name, value)
     text = str(value)
     try:
@@ -124,6 +137,61 @@ def _key_value(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
     except (ValueError, decimal.InvalidOperation):
         return _NO_MATCH
     return parsed if str(parsed) == text else _NO_MATCH
+
+
+def _key_value(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
+    """:func:`_key_value_unbounded`, with an out-of-range integer matching
+    nothing (Redis finds no such key; ``bigint`` would raise
+    ``NumericValueOutOfRange``)."""
+    result = _key_value_unbounded(ts, kind, field_name, value)
+    if (
+        ts.field_types[field_name] is int
+        and isinstance(result, int)
+        and not isinstance(result, bool)
+        and not -(2**63) <= result < 2**63
+    ):
+        return _NO_MATCH
+    return result
+
+
+_DECIMAL_BOUND = re.compile(
+    r"[ \t\n\v\f\r]*[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?", re.ASCII
+)
+_SPECIAL_BOUND = re.compile(
+    r"[ \t\n\v\f\r]*[+-]?(?:inf(?:inity)?|0x[0-9a-f]+(?:\.[0-9a-f]*)?(?:p[+-]?\d+)?)",
+    re.ASCII | re.IGNORECASE,
+)
+
+
+def _score_bound(text: str, as_decimal: bool) -> Any:
+    """Parse a string score bound as Redis does, or raise.
+
+    For an ``int``/``float`` field ``ZRANGEBYSCORE`` takes the bound as text
+    and the server parses it with ``strtod``, refusing what is left over or
+    ``nan``: ``"nan"``, ``"1_0"``, ``"3 "`` and ``"abc"`` fail with
+    ``min or max is not a float``, while leading whitespace, a sign, an
+    exponent, ``inf``/``infinity`` and hex floats parse. Python's ``float()``
+    is looser (underscores, trailing whitespace, ``nan``, non-ASCII digits),
+    so the shape is checked first.
+
+    A ``Decimal`` field converts the bound with Python's ``float()`` before
+    it reaches the server, so ``"1_0"`` and ``"3 "`` parse and junk raises
+    Python's own ``ValueError``; only ``nan`` reaches the server's error."""
+    if as_decimal:
+        number = float(text)
+        if number != number:
+            raise _query_exception("min or max is not a float")
+        return decimal.Decimal(repr(number))
+    if text == "":
+        return 0.0
+    if _DECIMAL_BOUND.fullmatch(text):
+        return float(text)
+    if _SPECIAL_BOUND.fullmatch(text):
+        stripped = text.strip().lower()
+        if "0x" in stripped.lstrip("+-"):
+            return float.fromhex(stripped)
+        return float(stripped)
+    raise _query_exception("min or max is not a float")
 
 
 def _like_escape(text: str) -> str:
@@ -194,9 +262,11 @@ def _range_value(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
 
     On a ``SortedField`` a numeric *string* bound is parsed, because Redis
     sends the bound to ``ZRANGEBYSCORE`` as text and the server parses it
-    (``score__lte="3"`` matches on both). ``None`` or a non-numeric string
-    matches nothing here, where Redis raises ``ResponseError: min or max is
-    not a float`` (a documented divergence)."""
+    (``score__lte="3"`` matches on both), as strictly as the server does: a
+    string it refuses (``"nan"``, ``"1_0"``, ``"3 "``, ``"abc"``) raises
+    ``QueryException("min or max is not a float")`` here, where Redis raises
+    ``ResponseError`` with that text (same message, different class). ``None``
+    matches nothing here, where Redis raises (a documented divergence)."""
     if value is None:
         return _NO_MATCH
     py_type = ts.field_types[field_name]
@@ -205,12 +275,7 @@ def _range_value(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
         and isinstance(value, str)
         and py_type in (int, float, decimal.Decimal)
     ):
-        try:
-            return (
-                decimal.Decimal(value) if py_type is decimal.Decimal else float(value)
-            )
-        except (ValueError, decimal.InvalidOperation):
-            return _NO_MATCH
+        return _score_bound(value, py_type is decimal.Decimal)
     if isinstance(value, float) and value in (float("inf"), float("-inf")):
         if ts.field_types[field_name] in (int, float, decimal.Decimal):
             return value

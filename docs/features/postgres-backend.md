@@ -138,7 +138,10 @@ when it cannot have committed: always for a read, and for a write only when the
 server reported an error for it (such as `AdminShutdown`), because the server
 rolls that statement's transaction back. A write whose reply was lost may have
 committed, so it is not retried. It raises `BackendUnavailableError` and counts
-as a dropped write. Statements inside a `transaction()` are never retried.
+as a dropped write. The count means "no confirmed reply", not "did not land":
+a write that committed but lost its reply (for example the connection dying
+while the server waits on a synchronous standby) is counted as dropped even
+though the row is there. Check the row before replaying such a write. Statements inside a `transaction()` are never retried.
 
 When Postgres is unreachable, or a connect or statement timeout fires
 (`Defaults.PG_CONNECT_TIMEOUT_SECONDS`, `Defaults.PG_STATEMENT_TIMEOUT_MS`),
@@ -193,10 +196,19 @@ result is a bug in its query layer, tracked in #771. The examples use
 | (ii) `values=` with an unindexed-field filter outside the projection | `filter(group="g1", note="x", values=("code",))` | `[]`: the filter runs on dicts that lack `note` | the matching rows | Postgres |
 | (iii) Two lookups bounding the same side of one `SortedField` | `filter(rank__gt=10, rank__gte=1)` | only the last lookup for that side applies: every row | both apply (`AND`): `[]` | Postgres |
 | (iv) `values=` + `order_by` over a column holding `None` | `filter(rank__gte=0, values=("code", "hits"), order_by="hits")` | `TypeError: '<' not supported…` | rows, `NULL` sorted as the type's zero (as instances sort on both) | Postgres |
-| (v) `None` or a non-numeric string as a `SortedField` bound | `filter(rank__gte=None)`, `filter(rank__lte="abc")` | `ResponseError: min or max is not a float` | `[]` | Redis (neither is a documented contract; failing loudly is the better answer). A numeric string such as `"2.5"` is parsed on both. |
+| (v) A bad `SortedField` range bound | `filter(rank__gte=None)`, `filter(rank__lte="abc")`, `filter(rank__lte="nan")` | `None`: `ResponseError: min or max is not a float`. A string the server's `strtod` refuses (`"nan"`, `"1_0"`, `"3 "`, `"abc"`, a non-ASCII digit) raises the same `ResponseError` (on a `Decimal` field Python's own `ValueError`, which converts first) | a refused string raises `QueryException("min or max is not a float")`: the same text, a different class. `None` returns `[]`. The strings Redis accepts parse identically (`" 3"`, `"+3"`, `"3."`, `"1e1"`, `"inf"`, `"0x10"`, `""` as 0). The `ZRANGEBYSCORE` exclusive prefix (`"(3"`) is not supported: it raises. | Redis (failing loudly is the better answer) |
 | (vi) `KeyField` `__contains` | `filter(code__contains="0")` | matches nothing (the lookup is accepted but not implemented) | `LIKE '%0%'` | Postgres |
 | (vii) `KeyField` `__isnull=False` | `filter(group__isnull=False)` | only some non-null records match, depending on the key's position and value (a second key matches none; values such as `"10"`, or containing `_` or `%`, are missed) | `IS NOT NULL` | Postgres |
 | (viii) Equality on a `DatetimeField` with a naive value against a stored aware one | `filter(at=datetime(2024, 1, 5, 12))` | compared in Python: naive never equals aware | compared as instants, naive taken as UTC (the rule sorted fields use, #519) | Postgres |
+| (ix) Equality on `KeyField(type=Decimal)` | `filter(code=Decimal("1.50"))` against a stored `1.5`; `filter(code=2)` against `2.0` | key strings are compared, so both match nothing | `numeric` values are compared, so both match | Postgres |
+| (x) Saving `Decimal("1.5")` and then `Decimal("1.50")` as `KeyField(type=Decimal)` | `create(code=Decimal("1.50"))` after `1.5` | two records (`"1.5"` and `"1.50"`) | unique violation: the values are equal | Postgres |
+| (xi) `KeyField(type=float)` `-0.0` against a stored `0.0` | `filter(code=-0.0)` | `[]`: `"-0.0" != "0.0"` | `[0.0]` | Postgres |
+
+Numeric key fields otherwise follow Redis's key-string rules on both backends
+(`KeyField(type=int)` matches `1` and `"1"` but not `1.0`; an integer beyond
+`bigint` matches nothing), and a `SortedKeyField` matches by score (`2.0`,
+`"01"` and `" 1"` all find `2` and `1`). Redis's `SortedKeyField` `__in`
+ignores the filter and returns every record (#771); Postgres filters.
 
 A lone unindexed-field `Q` (`filter(Q(hits=5))`), one lower plus one upper
 bound on a sorted field, and `values=` that projects the filtered field all

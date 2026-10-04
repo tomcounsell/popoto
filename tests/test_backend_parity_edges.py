@@ -178,21 +178,65 @@ def test_values_ordered_over_null_is_a_documented_divergence(backend_is_redis):
         assert {r["code"] for r in rows[:2]} == {"b", "10"}
 
 
-def test_none_or_non_numeric_sorted_bound_is_a_documented_divergence(
-    backend_is_redis,
-):
-    """(v) ``None`` or a non-numeric string as a ``SortedField`` range bound:
-    Redis passes it to ``ZRANGEBYSCORE`` and the server refuses it
-    (``ResponseError``); Postgres matches nothing. Neither is a documented
-    contract. A numeric string is parsed on both."""
-    for bound in ({"rank__gte": None}, {"rank__lte": "abc"}):
-        if backend_is_redis:
-            with pytest.raises(Exception, match="min or max is not a float"):
-                list(EdgeItem.query.filter(**bound))
-        else:
-            assert list(EdgeItem.query.filter(**bound)) == []
-    assert codes(EdgeItem.query.filter(rank__lte="2.5")) == ["a", "b"]
-    assert codes(EdgeItem.query.filter(rank__lte="3")) == ["a", "b", "c"]
+def test_none_sorted_bound_is_a_documented_divergence(backend_is_redis):
+    """(v) ``None`` as a ``SortedField`` range bound: Redis passes it to
+    ``ZRANGEBYSCORE`` and the server refuses it (``ResponseError``);
+    Postgres matches nothing. Neither is a documented contract."""
+    if backend_is_redis:
+        with pytest.raises(Exception, match="min or max is not a float"):
+            list(EdgeItem.query.filter(rank__gte=None))
+    else:
+        assert list(EdgeItem.query.filter(rank__gte=None)) == []
+
+
+@pytest.mark.parametrize("bound", ["abc", "nan", "NaN", "1_0", "3 ", "3\n", "\uff13"])
+def test_unparseable_sorted_string_bound_raises_on_both_legs(bound, backend_is_redis):
+    """A string the server's ``strtod`` refuses raises ``min or max is not a
+    float`` on both legs. The class differs: Redis ``ResponseError``,
+    Postgres ``QueryException`` (documented under (v))."""
+    expected = "ResponseError" if backend_is_redis else "QueryException"
+    for lookup in ("rank__lte", "rank__gte"):
+        with pytest.raises(Exception, match="min or max is not a float") as info:
+            list(EdgeItem.query.filter(**{lookup: bound}))
+        assert type(info.value).__name__ == expected
+
+
+@pytest.mark.parametrize(
+    "bound, expected",
+    [
+        ("2.5", ["a", "b"]),
+        ("3", ["a", "b", "c"]),
+        (" 3", ["a", "b", "c"]),
+        ("+3", ["a", "b", "c"]),
+        ("3.", ["a", "b", "c"]),
+        ("1e1", ["10", "a", "b", "c"]),
+        ("inf", ["10", "a", "b", "c"]),
+        ("-inf", []),
+        ("0x2", ["a", "b"]),
+    ],
+)
+def test_parseable_sorted_string_bound_agrees(bound, expected):
+    """What ``strtod`` accepts is accepted on both legs, with the same rows."""
+    assert codes(EdgeItem.query.filter(rank__lte=bound)) == expected
+
+
+class EdgeAmount(popoto.Model):
+    name = popoto.KeyField()
+    amt = popoto.SortedField(type=decimal.Decimal)
+
+
+def test_decimal_sorted_string_bound_follows_python_float():
+    """A ``Decimal`` sorted field converts a string bound with Python's
+    ``float()`` on Redis, so ``"1_0"`` and ``"3 "`` parse and ``"abc"`` raises
+    ``ValueError``; Postgres does the same. ``"nan"`` is refused by both."""
+    for name, amt in (("a", "1"), ("b", "2.5"), ("c", "12")):
+        EdgeAmount.create(name=name, amt=decimal.Decimal(amt))
+    assert [r.name for r in EdgeAmount.query.filter(amt__lte="1_0")] == ["a", "b"]
+    assert [r.name for r in EdgeAmount.query.filter(amt__lte="3 ")] == ["a", "b"]
+    with pytest.raises(ValueError, match="could not convert string to float"):
+        list(EdgeAmount.query.filter(amt__lte="abc"))
+    with pytest.raises(Exception, match="min or max is not a float"):
+        list(EdgeAmount.query.filter(amt__lte="nan"))
 
 
 def test_key_field_contains_is_a_documented_divergence(backend_is_redis):
@@ -333,3 +377,100 @@ def test_numeric_key_equality_uses_the_key_string():
     assert _numeric_codes(IntKeyed, code=1.5) == []
     assert _numeric_codes(FloatKeyed, code=1.0) == [1.0]
     assert _numeric_codes(FloatKeyed, code=1) == []
+
+
+# -- SortedKeyField equality is a score match (#769 review) ---------------------
+
+
+class SortedIntKeyed(popoto.Model):
+    code = popoto.SortedKeyField(type=int)
+
+
+class SortedFloatKeyed(popoto.Model):
+    code = popoto.SortedKeyField(type=float)
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [(1, [1]), (2.0, [2]), ("01", [1]), (" 1", [1]), (1.0, [1]), ("2", [2])],
+    ids=repr,
+)
+def test_sorted_int_key_equality_is_a_score_match(value, expected):
+    """Unlike ``KeyField``, a ``SortedKeyField`` matches by score on Redis:
+    numerically equal values of any spelling match. Postgres agrees."""
+    for code in (1, 2):
+        SortedIntKeyed.create(code=code)
+    assert _numeric_codes(SortedIntKeyed, code=value) == expected
+
+
+def test_sorted_int_key_q_or_of_score_matches():
+    for code in (1, 2, 3):
+        SortedIntKeyed.create(code=code)
+    result = SortedIntKeyed.query.filter(Q(code=1.0) | Q(code=2))
+    assert sorted(r.code for r in result) == [1, 2]
+
+
+@pytest.mark.parametrize(
+    "value, expected", [(1, [1.0]), (1.0, [1.0]), (decimal.Decimal("1"), [1.0])]
+)
+def test_sorted_float_key_equality_is_a_score_match(value, expected):
+    for code in (1.0, 1.5):
+        SortedFloatKeyed.create(code=code)
+    assert _numeric_codes(SortedFloatKeyed, code=value) == expected
+
+
+# -- older numeric key classes, documented (#769 review) ------------------------
+
+
+class DecimalKeyed(popoto.Model):
+    code = popoto.KeyField(type=decimal.Decimal)
+
+
+def test_decimal_key_equality_is_a_documented_divergence(backend_is_redis):
+    """(ix) ``KeyField(type=Decimal)`` equality: Redis compares key strings,
+    so ``Decimal("1.50")`` does not find a stored ``1.5`` and ``2`` does not
+    find ``2.0``; Postgres compares ``numeric`` values, so both match."""
+    D = decimal.Decimal
+    DecimalKeyed.create(code=D("1.5"))
+    DecimalKeyed.create(code=D("2.0"))
+    assert _numeric_codes(DecimalKeyed, code=D("1.5")) == [D("1.5")]
+    same = [] if backend_is_redis else [D("1.5")]
+    assert _numeric_codes(DecimalKeyed, code=D("1.50")) == same
+    assert _numeric_codes(DecimalKeyed, code=2) == (
+        [] if backend_is_redis else [D("2.0")]
+    )
+
+
+def test_decimal_key_differently_scaled_duplicate_is_a_documented_divergence(
+    backend_is_redis,
+):
+    """(x) Saving ``Decimal("1.5")`` and then ``Decimal("1.50")`` on a
+    ``KeyField(type=Decimal)``: Redis stores two keys (``"1.5"``, ``"1.50"``);
+    Postgres raises the unique violation, as the values are equal."""
+    DecimalKeyed.create(code=decimal.Decimal("1.5"))
+    if backend_is_redis:
+        DecimalKeyed.create(code=decimal.Decimal("1.50"))
+        assert len(list(DecimalKeyed.query.all())) == 2
+    else:
+        with pytest.raises(Exception):
+            DecimalKeyed.create(code=decimal.Decimal("1.50"))
+        assert len(list(DecimalKeyed.query.all())) == 1
+
+
+def test_float_key_negative_zero_is_a_documented_divergence(backend_is_redis):
+    """(xi) ``KeyField(type=float)`` ``code=-0.0``: the key string ``"-0.0"``
+    is not ``"0.0"``, so Redis finds nothing; Postgres, comparing floats,
+    finds the stored ``0.0``."""
+    FloatKeyed.create(code=0.0)
+    assert _numeric_codes(FloatKeyed, code=0.0) == [0.0]
+    assert _numeric_codes(FloatKeyed, code=-0.0) == ([] if backend_is_redis else [0.0])
+
+
+def test_int_key_out_of_range_value_matches_nothing():
+    """An integer beyond ``bigint`` finds no key on Redis; Postgres agrees
+    (it used to raise ``NumericValueOutOfRange``)."""
+    for code in (1, 2):
+        IntKeyed.create(code=code)
+    assert _numeric_codes(IntKeyed, code__in=[10**20]) == []
+    assert _numeric_codes(IntKeyed, code__in=[1, 10**20]) == [1]
+    assert _numeric_codes(IntKeyed, code=10**20) == []
