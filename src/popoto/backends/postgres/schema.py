@@ -1,0 +1,418 @@
+"""The Postgres schema compiler (#759 M1b, plan §3).
+
+A :class:`~popoto.backends.types.ModelSpec` compiles to one typed table:
+
+* ``_pk text PRIMARY KEY`` holds the canonical key string -- the same
+  ``ClassName:…`` string Redis uses as the hash key, so ``Model.pk`` is the
+  same on both backends.
+* one typed column per field (the type map below); a ``DatetimeField`` adds
+  ``<f>__utcoff integer`` (offset seconds, ``NULL`` = naive), which keeps the
+  #521 round-trip contract that ``timestamptz`` alone drops.
+* engine-owned ``_created_at`` / ``_updated_at`` (``[PG-only]``).
+* ``UNIQUE`` over the key fields, a B-tree per further key field, and a B-tree
+  ``(partition cols…, f)`` per ``SortedField``.
+
+The compiled shape is fingerprinted and recorded in ``popoto_schema`` the
+first time a process binds the model. Create and additive changes (a new
+nullable column, a new index) apply automatically under
+``pg_advisory_xact_lock``; anything else -- a dropped or retyped column, a key
+change, a newer format version, a schema some *other* client extended --
+raises :class:`SchemaDriftError` rather than writing (§3 Migrations).
+
+Pure except for :func:`ensure_table`, which takes an open connection. Never
+imports ``redis``.
+"""
+
+from __future__ import annotations
+
+import datetime
+import decimal
+import hashlib
+import json
+import re
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
+from typing import Any, Optional, Sequence
+
+from ..types import BackendCapabilityError, ModelSpec, SchemaDriftError
+
+__all__ = [
+    "ENGINE_COLUMNS",
+    "SCHEMA_FORMAT_VERSION",
+    "Column",
+    "TableSpec",
+    "compile_table",
+    "ensure_table",
+    "quote_ident",
+    "table_name_for",
+]
+
+SCHEMA_FORMAT_VERSION = 1
+"""Bumped when the compiler's output shape changes incompatibly. A client
+that finds a newer version in ``popoto_schema`` refuses to write."""
+
+ENGINE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("_created_at", "timestamptz NOT NULL DEFAULT now()"),
+    ("_updated_at", "timestamptz NOT NULL DEFAULT now()"),
+)
+"""Engine-owned columns on every table (plan §1.1, ``[PG-only]``)."""
+
+UTCOFF_SUFFIX = "__utcoff"
+
+#: Python type -> column type (plan §3, "Field → column type mapping").
+SQL_TYPES: dict[type, str] = {
+    str: "text",
+    int: "bigint",
+    float: "double precision",
+    decimal.Decimal: "numeric",
+    bool: "boolean",
+    datetime.datetime: "timestamptz",
+    datetime.date: "date",
+    datetime.time: "time",
+}
+
+#: Field kinds that are key fields (part of ``_pk``).
+KEY_KINDS = frozenset({"KeyField", "UniqueKeyField", "AutoKeyField", "SortedKeyField"})
+#: Field kinds that keep a sorted index.
+SORTED_KINDS = frozenset({"SortedField", "SortedKeyField"})
+
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def quote_ident(name: str) -> str:
+    """Double-quote an identifier. Names reach here from field and model
+    names, which Python already restricts; anything else is refused."""
+    if not _IDENT.fullmatch(name):
+        raise BackendCapabilityError(f"{name!r} is not a usable Postgres identifier")
+    return f'"{name}"'
+
+
+def _snake(name: str) -> str:
+    s = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s).lower()
+
+
+def _bounded(name: str) -> str:
+    """Postgres truncates identifiers past 63 bytes; keep long names unique
+    by replacing the tail with a short hash instead."""
+    if len(name) <= 63:
+        return name
+    digest = hashlib.sha1(name.encode()).hexdigest()[:8]
+    return f"{name[:54]}_{digest}"
+
+
+def table_name_for(model_name: str) -> str:
+    """``popoto.<model_snake>`` (plan §3); the schema is the backend's."""
+    return _bounded(_snake(model_name))
+
+
+@dataclass(frozen=True)
+class Column:
+    """One stored column. ``field`` is the popoto field it belongs to (``None``
+    for ``_pk``); ``role`` is ``"value"``, ``"utcoff"`` or ``"pk"``."""
+
+    name: str
+    sql_type: str
+    field: Optional[str]
+    role: str = "value"
+    py_type: Optional[type] = None
+
+
+@dataclass(frozen=True)
+class TableSpec:
+    """What one model compiles to. ``indexes`` maps index name -> the
+    ``CREATE [UNIQUE] INDEX`` body after ``ON <table>``; both are part of the
+    fingerprint."""
+
+    model: str
+    schema: str
+    table: str
+    columns: tuple[Column, ...]
+    indexes: tuple[tuple[str, str, bool], ...]
+    key_fields: tuple[str, ...]
+    field_types: dict[str, type]
+    unique_indexes: dict[str, tuple[str, ...]] = dataclass_field(default_factory=dict)
+    """Unique index name -> the fields it covers (to name a 23505)."""
+
+    @property
+    def qualified(self) -> str:
+        return f"{quote_ident(self.schema)}.{quote_ident(self.table)}"
+
+    @property
+    def datetime_fields(self) -> tuple[str, ...]:
+        """Fields stored as ``timestamptz`` + ``<f>__utcoff``."""
+        return tuple(
+            name for name, t in self.field_types.items() if t is datetime.datetime
+        )
+
+    def column_map(self) -> dict[str, str]:
+        return {c.name: c.sql_type for c in self.columns}
+
+    def fingerprint(self) -> str:
+        payload = json.dumps(
+            {
+                "format": SCHEMA_FORMAT_VERSION,
+                "columns": sorted(self.column_map().items()),
+                "indexes": sorted([list(i) for i in self.indexes]),
+            },
+            sort_keys=True,
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    def create_sql(self) -> list[str]:
+        cols = ['"_pk" text PRIMARY KEY']
+        cols += [
+            f"{quote_ident(c.name)} {c.sql_type}"
+            for c in self.columns
+            if c.role != "pk"
+        ]
+        cols += [f"{quote_ident(name)} {decl}" for name, decl in ENGINE_COLUMNS]
+        stmts = [f"CREATE TABLE {self.qualified} ({', '.join(cols)})"]
+        stmts += [self.index_sql(i) for i in self.indexes]
+        return stmts
+
+    def index_sql(self, index: tuple[str, str, bool]) -> str:
+        name, body, unique = index
+        return (
+            f"CREATE {'UNIQUE ' if unique else ''}INDEX IF NOT EXISTS "
+            f"{quote_ident(name)} ON {self.qualified} {body}"
+        )
+
+
+def _field_type(spec: ModelSpec, name: str) -> type:
+    fs = spec.fields[name]
+    py_type = fs.py_type or str
+    if py_type not in SQL_TYPES:
+        raise BackendCapabilityError(
+            f"{spec.name}.{name}: type {getattr(py_type, '__name__', py_type)} has "
+            "no Postgres column mapping yet"
+        )
+    return py_type
+
+
+def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
+    """Compile ``spec`` to a :class:`TableSpec`. Pure."""
+    table = table_name_for(spec.name)
+    columns: list[Column] = [Column("_pk", "text", None, role="pk")]
+    field_types: dict[str, type] = {}
+    reserved = {"_pk"} | {name for name, _ in ENGINE_COLUMNS}
+    for name in sorted(spec.fields):
+        if name in reserved:
+            raise BackendCapabilityError(
+                f"{spec.name}.{name} collides with an engine-owned column"
+            )
+        py_type = _field_type(spec, name)
+        field_types[name] = py_type
+        columns.append(Column(name, SQL_TYPES[py_type], name, py_type=py_type))
+        if py_type is datetime.datetime:
+            columns.append(Column(name + UTCOFF_SUFFIX, "integer", name, role="utcoff"))
+
+    indexes: list[tuple[str, str, bool]] = []
+    unique_indexes: dict[str, tuple[str, ...]] = {}
+
+    def index_name(*parts: str) -> str:
+        return _bounded("__".join((table,) + parts + ("idx",)))
+
+    key_fields = tuple(spec.key_fields)  # DB_key order
+    if key_fields:
+        cols = ", ".join(quote_ident(k) for k in key_fields)
+        indexes.append((index_name("keys"), f"({cols})", True))
+        unique_indexes[index_name("keys")] = key_fields
+        for extra in key_fields[1:]:
+            indexes.append((index_name(extra), f"({quote_ident(extra)})", False))
+    for name, fs in sorted(spec.fields.items()):
+        # A unique field (UniqueKeyField, unique=True) gets its own UNIQUE --
+        # Redis enforces it in pre_save; here the index does, and a 23505 on
+        # it becomes the same ModelException. A sole key field is already
+        # unique through the key index.
+        if fs.options.get("unique") and key_fields != (name,):
+            indexes.append((index_name("uniq", name), f"({quote_ident(name)})", True))
+            unique_indexes[index_name("uniq", name)] = (name,)
+    for name, fs in sorted(spec.fields.items()):
+        if fs.kind not in SORTED_KINDS:
+            continue
+        partition = tuple(fs.options.get("partition_by", ()) or ())
+        # The trailing _pk COLLATE "C" is the ORDER BY tie-break (Redis's
+        # bytewise member order), so a range read with LIMIT is index-ordered.
+        cols = ", ".join(quote_ident(c) for c in partition + (name,))
+        body = f'({cols}, "_pk" COLLATE "C")'
+        indexes.append((index_name("sort", name), body, False))
+    return TableSpec(
+        model=spec.name,
+        schema=schema,
+        table=table,
+        columns=tuple(columns),
+        indexes=tuple(indexes),
+        key_fields=key_fields,
+        field_types=field_types,
+        unique_indexes=unique_indexes,
+    )
+
+
+# -- applying it --------------------------------------------------------------
+
+POPOTO_SCHEMA_TABLE = "popoto_schema"
+
+
+def _registry_sql(schema: str) -> str:
+    return (
+        f"CREATE TABLE IF NOT EXISTS {quote_ident(schema)}.{POPOTO_SCHEMA_TABLE} ("
+        "table_name text PRIMARY KEY, model text NOT NULL, "
+        "fingerprint text NOT NULL, columns jsonb NOT NULL, "
+        "indexes jsonb NOT NULL, ddl text NOT NULL, "
+        "popoto_version text NOT NULL, format_version integer NOT NULL, "
+        "applied_at timestamptz NOT NULL DEFAULT now())"
+    )
+
+
+def _popoto_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("popoto")
+    except Exception:  # pragma: no cover - uninstalled checkout
+        return "unknown"
+
+
+def _record(cur: Any, ts: TableSpec, ddl: Sequence[str], *, insert: bool) -> None:
+    params = (
+        ts.table,
+        ts.model,
+        ts.fingerprint(),
+        json.dumps(ts.column_map()),
+        json.dumps([list(i) for i in ts.indexes]),
+        ";\n".join(ddl),
+        _popoto_version(),
+        SCHEMA_FORMAT_VERSION,
+    )
+    registry = f"{quote_ident(ts.schema)}.{POPOTO_SCHEMA_TABLE}"
+    if insert:
+        cur.execute(
+            f"INSERT INTO {registry} (table_name, model, fingerprint, columns, "
+            "indexes, ddl, popoto_version, format_version) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            params,
+        )
+    else:
+        cur.execute(
+            f"UPDATE {registry} SET model = %s, fingerprint = %s, columns = %s, "
+            "indexes = %s, ddl = %s, popoto_version = %s, format_version = %s, "
+            "applied_at = now() WHERE table_name = %s",
+            params[1:] + (params[0],),
+        )
+
+
+def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
+    """Create or check ``ts`` on ``conn`` inside one transaction, under an
+    advisory transaction lock (PgBouncer transaction-mode safe). Returns what
+    it did: ``"created"``, ``"migrated"`` or ``"current"``.
+
+    Raises :class:`SchemaDriftError` for every case it will not reconcile.
+    """
+    schema_q = quote_ident(ts.schema)
+    registry = f"{schema_q}.{POPOTO_SCHEMA_TABLE}"
+    with conn.transaction():
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(%s))", (f"popoto:ddl:{ts.schema}",)
+        )
+        exists = cur.execute(
+            "SELECT 1 FROM pg_namespace WHERE nspname = %s", (ts.schema,)
+        ).fetchone()
+        if not exists:
+            if not auto:
+                raise SchemaDriftError(
+                    f"schema {ts.schema!r} does not exist and POPOTO_SCHEMA_AUTO=0"
+                )
+            cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_q}")
+        cur.execute(_registry_sql(ts.schema))
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(%s))",
+            (f"popoto:ddl:{ts.schema}.{ts.table}",),
+        )
+        row = cur.execute(
+            f"SELECT model, fingerprint, columns, indexes, format_version, "
+            f"popoto_version FROM {registry} WHERE table_name = %s",
+            (ts.table,),
+        ).fetchone()
+        table_exists = cur.execute(
+            "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
+            (ts.schema, ts.table),
+        ).fetchone()
+
+        if row is None:
+            if table_exists:
+                raise SchemaDriftError(
+                    f"{ts.schema}.{ts.table} exists but popoto_schema has no record "
+                    f"for it; popoto will not adopt a table it did not create "
+                    f"(model {ts.model})"
+                )
+            if not auto:
+                raise SchemaDriftError(
+                    f"{ts.schema}.{ts.table} does not exist and POPOTO_SCHEMA_AUTO=0 "
+                    f"(model {ts.model})"
+                )
+            ddl = ts.create_sql()
+            for stmt in ddl:
+                cur.execute(stmt)
+            _record(cur, ts, ddl, insert=True)
+            return "created"
+
+        stored_model, fingerprint, stored_cols, stored_idx, fmt, version = row
+        if fmt > SCHEMA_FORMAT_VERSION:
+            raise SchemaDriftError(
+                f"{ts.schema}.{ts.table} was written by popoto {version} with schema "
+                f"format {fmt}; this client understands format "
+                f"{SCHEMA_FORMAT_VERSION} and will not write to it. Upgrade popoto."
+            )
+        if stored_model != ts.model:
+            raise SchemaDriftError(
+                f"{ts.schema}.{ts.table} belongs to model {stored_model!r}, not "
+                f"{ts.model!r}: two models map to one table"
+            )
+        if fingerprint == ts.fingerprint():
+            return "current"
+
+        ours = ts.column_map()
+        theirs = dict(stored_cols)
+        our_idx = {tuple(i) for i in ts.indexes}
+        their_idx = {tuple(i) for i in stored_idx}
+        problems = []
+        for name, sql_type in theirs.items():
+            if name not in ours:
+                problems.append(
+                    f"column {name} ({sql_type}) exists in the database but not in "
+                    "this model: a field was removed, or a newer client extended "
+                    "the table"
+                )
+            elif ours[name] != sql_type:
+                problems.append(
+                    f"column {name} is {sql_type}, model wants {ours[name]}"
+                )
+        for idx in their_idx - our_idx:
+            problems.append(
+                f"index {idx[0]} ({idx[1]}) exists in the database but not in this "
+                "model (key or sorted-field change)"
+            )
+        if problems:
+            raise SchemaDriftError(
+                f"{ts.schema}.{ts.table} (model {ts.model}) differs from the stored "
+                f"schema (written by popoto {version}) in ways popoto will not "
+                "change automatically; migrate it by hand:\n  " + "\n  ".join(problems)
+            )
+        if not auto:
+            raise SchemaDriftError(
+                f"{ts.schema}.{ts.table} needs an additive change and "
+                "POPOTO_SCHEMA_AUTO=0"
+            )
+        ddl = [
+            f"ALTER TABLE {ts.qualified} ADD COLUMN IF NOT EXISTS "
+            f"{quote_ident(c.name)} {c.sql_type}"
+            for c in ts.columns
+            if c.name not in theirs
+        ]
+        ddl += [ts.index_sql(i) for i in ts.indexes if tuple(i) not in their_idx]
+        for stmt in ddl:
+            cur.execute(stmt)
+        _record(cur, ts, ddl, insert=False)
+        return "migrated"
