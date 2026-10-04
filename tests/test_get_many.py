@@ -23,6 +23,12 @@ from src import popoto
 from src.popoto.redis_db import POPOTO_REDIS_DB
 import src.popoto.redis_db as redis_db_module
 
+# Backend conformance (#759 M1b, plan §5 M1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class Item(popoto.Model):
     name = popoto.KeyField(null=False)

@@ -78,9 +78,10 @@ class BackendCapabilityError(BackendError, NotImplementedError):
 class BackendUnavailableError(BackendError, ConnectionError):
     """The backend cannot be reached, or is not installed or configured.
 
-    The popoto-level outage type both backends share (plan §1.1, M1). In M1a it
-    is what selecting ``postgres`` raises: the Postgres backend is not part of
-    this build yet.
+    The popoto-level outage type both backends share (plan §1.1, M1): an
+    unreachable server or a connect/statement timeout on Postgres, and
+    selecting ``postgres`` without ``POPOTO_POSTGRES_URL`` or the ``postgres``
+    extra.
     """
 
 

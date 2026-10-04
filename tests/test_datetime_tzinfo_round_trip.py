@@ -38,6 +38,13 @@ from src.popoto.models.db_key import DB_key
 from src.popoto.models.encoding import TYPE_ENCODER_DECODERS
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M1b, plan §5 M1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+
 OFFSET_ZONE = "Asia/Bangkok"  # +07:00, no DST
 TZ_PLUS_7 = datetime.timezone(datetime.timedelta(hours=7))
 TZ_MINUS_5 = datetime.timezone(datetime.timedelta(hours=-5))

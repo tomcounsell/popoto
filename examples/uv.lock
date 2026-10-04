@@ -251,6 +251,8 @@ requires-dist = [
     { name = "numpy", marker = "extra == 'voyage'", specifier = ">=1.23.1" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0.0" },
     { name = "pandas", marker = "extra == 'dataframe'", specifier = ">=1.4.3" },
+    { name = "pgvector", marker = "extra == 'postgres'", specifier = ">=0.3" },
+    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = ">=3.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.1.2" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
     { name = "redis", specifier = ">=4.4.4" },
@@ -261,7 +263,7 @@ requires-dist = [
     { name = "ulid-py", marker = "extra == 'ulid'", specifier = ">=1.1.0" },
     { name = "voyageai", marker = "extra == 'voyage'", specifier = ">=0.3.0" },
 ]
-provides-extras = ["dataframe", "ulid", "ksuid", "embeddings", "voyage", "openai", "anthropic", "monitoring", "mcp", "benchmark", "dev", "docs"]
+provides-extras = ["dataframe", "ulid", "ksuid", "embeddings", "voyage", "openai", "anthropic", "monitoring", "mcp", "postgres", "benchmark", "dev", "docs"]
 
 [[package]]
 name = "popoto-kitchen"

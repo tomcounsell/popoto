@@ -1,20 +1,19 @@
-"""The conformance harness, proven on itself (#759 M0(b)).
+"""The conformance harness, proven on itself (#759 M0(b), M1b).
 
 Ported from ``tests/conformance/test_harness.py`` on the frozen
 ``poc/backend-seam`` archive (#631 WS2, with the fixes from #733's review,
-#736, #738 and #739), minus everything that needed the POC's storage backend:
-M0 ships none, so ``backend`` yields a :class:`ConformanceBackend` descriptor
-and binds nothing. The POC's backend-binding tests (the session Redis pin, the
-fixture restoring the previous binding) return with ``get_backend()`` in M1.
+#736, #738 and #739). Since M1b each leg binds its backend for the test, so
+the M0 ``conformance(harness=True)`` flag and its pending-backend skip are
+gone: a model-level test runs on both legs.
 
 Three layers:
 
-1. **Parametrisation** (both legs): ``backend`` names its leg; a model-level
-   test runs on Redis and its Postgres leg skips with the named M1 reason.
-2. **Postgres isolation** (Postgres leg, ``harness=True`` tests only): the
-   schema exists, is named ``popoto_test_<hex>``, is reachable through the
-   descriptor's DSN, is truncated without ``CASCADE``, and ``public`` /
-   ``popoto`` are refused *before* any connection.
+1. **Parametrisation** (both legs): ``backend`` names its leg and binds it; a
+   model-level test round-trips on Redis and on Postgres.
+2. **Postgres isolation** (Postgres leg): the schema exists, is named
+   ``popoto_test_<hex>``, is reachable through the descriptor's DSN, is
+   reset without ``CASCADE``, and ``public`` / ``popoto`` are refused
+   *before* any connection.
 3. **The downstream shape** (unmarked, subprocess): a project that never opts
    in collects exactly as it does with the plugin disabled -- including one
    with its own ``conformance``/``redis_only`` markers and ``backend``
@@ -22,8 +21,7 @@ Three layers:
    has no ``backend`` fixture at all; with neither conformance opt-in a
    conformance test collects as ``[redis]`` only; with the opt-in the
    Postgres leg *skips* with a reason naming what is missing; a reasonless
-   ``redis_only`` and a ``harness=True`` outside ``tests/conformance/`` are
-   collection errors; a db-less ``POSTGRES_URL`` is refused even without
+   ``redis_only`` is a collection error; a db-less ``POSTGRES_URL`` is refused even without
    ``psycopg``. These run as subprocesses so the parent session's own
    configuration does not leak in.
 
@@ -47,7 +45,6 @@ import pytest
 import popoto
 from popoto import pytest_plugin, redis_db
 from popoto.pytest_plugin import (
-    POSTGRES_MODELS_PENDING_REASON,
     POSTGRES_TEST_SCHEMA_PREFIX,
     ConformanceBackend,
     PostgresIsolationRefusedError,
@@ -63,7 +60,7 @@ class HarnessRecord(popoto.Model):
 # -- 1. Parametrisation --------------------------------------------------------
 
 
-@pytest.mark.conformance(harness=True)
+@pytest.mark.conformance
 def test_backend_is_a_descriptor_naming_its_leg(backend, backend_is_redis):
     assert isinstance(backend, ConformanceBackend)
     assert backend.name in ("redis", "postgres")
@@ -77,15 +74,30 @@ def test_backend_is_a_descriptor_naming_its_leg(backend, backend_is_redis):
 
 @pytest.mark.conformance
 def test_model_roundtrip(backend):
-    """The shape of an M1 model-level test. On Redis it runs; on Postgres it
-    skips with :data:`POSTGRES_MODELS_PENDING_REASON`, because before M1 the
-    model layer would still write to Redis under a Postgres label."""
-    assert backend.is_redis, "the Postgres leg must have skipped in the fixture"
+    """A model-level test runs on both legs (#759 M1b), and the Postgres leg
+    really writes to Postgres: the row is in the session schema's table and
+    no Redis hash exists for it."""
     HarnessRecord.create(name="alice", age=30)
     loaded = HarnessRecord.query.get(name="alice")
     assert loaded is not None and loaded.age == 30
+    assert popoto.backends.get_backend(HarnessRecord).name == backend.name
+    if not backend.is_redis:
+        assert backend.instance is popoto.backends.get_backend(HarnessRecord)
+        assert not redis_db.get_REDIS_DB().exists(loaded.pk)
+        with psycopg_connect(backend) as conn:
+            (age,) = conn.execute(
+                f'SELECT age FROM "{backend.schema}".harness_record WHERE _pk = %s',
+                (loaded.pk,),
+            ).fetchone()
+        assert age == 30
     loaded.delete()
     assert HarnessRecord.query.get(name="alice") is None
+
+
+def psycopg_connect(backend):
+    import psycopg
+
+    return psycopg.connect(backend.dsn, autocommit=True)
 
 
 @pytest.mark.conformance
@@ -115,7 +127,7 @@ def postgres_leg(request, backend):
     return request.getfixturevalue("popoto_postgres_schema")
 
 
-@pytest.mark.conformance(harness=True)
+@pytest.mark.conformance
 def test_postgres_schema_exists_and_is_not_public(backend, postgres_leg):
     schema = postgres_leg
     assert backend.schema == schema.name
@@ -127,7 +139,7 @@ def test_postgres_schema_exists_and_is_not_public(backend, postgres_leg):
     assert row == (1,), f"schema {schema.name} was not created"
 
 
-@pytest.mark.conformance(harness=True)
+@pytest.mark.conformance
 def test_postgres_dsn_lands_in_the_session_schema(backend, postgres_leg):
     """The descriptor's DSN carries ``options=-c search_path=<schema>``: a
     connection opened from it resolves unqualified names in the test schema,
@@ -141,7 +153,7 @@ def test_postgres_dsn_lands_in_the_session_schema(backend, postgres_leg):
     assert current == postgres_leg.name
 
 
-@pytest.mark.conformance(harness=True)
+@pytest.mark.conformance
 def test_postgres_truncate_mirrors_flush(backend, postgres_leg):
     """A table created in the schema is emptied by the per-test truncate --
     without the harness needing to know which tables M1 will create."""
@@ -155,7 +167,7 @@ def test_postgres_truncate_mirrors_flush(backend, postgres_leg):
     assert count == 0
 
 
-@pytest.mark.conformance(harness=True)
+@pytest.mark.conformance
 def test_truncate_never_cascades_outside_the_schema(backend, postgres_leg):
     """#733 review, tech-debt 1: ``TRUNCATE ... CASCADE`` follows foreign keys
     across schemas, so a table *outside* the session schema that references one
@@ -190,7 +202,7 @@ def test_truncate_never_cascades_outside_the_schema(backend, postgres_leg):
     assert "parent" in schema.truncate_all()
 
 
-@pytest.mark.conformance(harness=True)
+@pytest.mark.conformance
 def test_failed_create_closes_its_connection(backend, postgres_leg):
     """#733 review, tech-debt 4: ``CREATE SCHEMA`` failing (here, because the
     session schema already exists) closes the admin connection it opened and
@@ -212,7 +224,7 @@ def test_failed_create_closes_its_connection(backend, postgres_leg):
     assert len(opened) == 1 and opened[0].closed
 
 
-@pytest.mark.conformance(harness=True)
+@pytest.mark.conformance
 @pytest.mark.parametrize("name", ["public", "popoto"])
 def test_reserved_schemas_are_refused_before_any_statement(backend, postgres_leg, name):
     """A ``PostgresTestSchema`` named ``public`` or ``popoto`` refuses to
@@ -624,36 +636,21 @@ def test_downstream_default_is_redis_only(tmp_path):
     assert "[postgres]" not in out, out
 
 
-def test_model_level_postgres_leg_skips_with_the_m1_reason(tmp_path):
-    """With the opt-in, ``POSTGRES_URL`` set and ``psycopg`` importable, a
-    model-level conformance test's Postgres leg still skips -- with the named
-    reason, before any connection (the URL names a host that does not
-    exist)."""
-    shim = tmp_path / "shim"
-    shim.mkdir()
-    (shim / "psycopg.py").write_text("# importable stand-in for the driver\n")
-    out = _run_probe(
-        tmp_path,
-        {
-            "POPOTO_CONFORMANCE_BACKENDS": "redis,postgres",
-            "POSTGRES_URL": "postgresql://no-such-host.invalid:5432/postgres",
-            "PYTHONPATH": str(shim),
-        },
-    )
-    assert "test_probe[redis] PASSED" in out, out
-    assert "test_probe[postgres] SKIPPED" in out, out
-    assert POSTGRES_MODELS_PENDING_REASON in out, out
+def test_m0_pending_backend_skip_and_harness_flag_are_gone():
+    """M1b deleted M0's "Postgres backend arrives in M1" skip and the
+    ``conformance(harness=True)`` escape hatch that came with it."""
+    assert not hasattr(pytest_plugin, "POSTGRES_MODELS_PENDING_REASON")
+    assert not hasattr(pytest_plugin, "HARNESS_TEST_DIR")
 
 
 _HARNESS_PROBE = textwrap.dedent("""
     import pytest
 
-    @pytest.mark.conformance(harness=True)
+    @pytest.mark.conformance
     def test_probe(backend):
         assert backend is not None
     """)
 
-# harness=True is confined to tests/conformance/ (#763 review N2).
 _HARNESS_PATH = "tests/conformance/test_probe_conformance.py"
 
 
@@ -750,25 +747,6 @@ def test_db_less_postgres_url_is_refused_even_without_psycopg(tmp_path):
     assert "PostgresIsolationRefusedError" in out, out
     assert "names no database" in out, out
     assert "psycopg is not installed" not in out, out
-
-
-def test_harness_flag_outside_tests_conformance_is_a_collection_error(tmp_path):
-    """#763 review N2: ``conformance(harness=True)`` runs a Postgres leg that
-    model code would silently satisfy on Redis, so it is confined to the
-    harness's own directory. Anywhere else it fails collection, naming the
-    test and the rule."""
-    out = _run_pytest(
-        tmp_path,
-        {"POPOTO_CONFORMANCE_BACKENDS": "redis,postgres"},
-        {"tests/test_probe_conformance.py": _HARNESS_PROBE},
-        "tests/test_probe_conformance.py",
-        expect_rc=None,
-    )
-    assert "ERROR collecting" in out or "errors during collection" in out, out
-    assert "tests/test_probe_conformance.py::test_probe" in out, out
-    assert (
-        "conformance(harness=True) is only allowed under tests/conformance/" in out
-    ), out
 
 
 def test_unknown_backend_name_fails_the_session(tmp_path):

@@ -728,6 +728,24 @@ class Defaults:
     # grant and never rewind the bucket) for at most this long, never forever.
     QUESTION_BUCKET_TTL_SECONDS = 604800
 
+    # -- Postgres backend (#759 M1b) -----------------------------------------
+    # Pool size per (DSN, pid). One central database serves every agent, so
+    # demand is processes x this and must stay under max_connections; past a
+    # few dozen clients put PgBouncer (transaction mode) in front (plan §3).
+    PG_POOL_MAX_SIZE = 4
+    # Seconds to wait for a connection (connect, or a free pool slot) before
+    # the call raises BackendUnavailableError.
+    PG_CONNECT_TIMEOUT_SECONDS = 5.0
+    # Per-transaction statement timeout, applied with SET LOCAL so it is
+    # PgBouncer transaction-mode safe (no session state). 0 disables.
+    PG_STATEMENT_TIMEOUT_MS = 30000
+    # An outage is logged at ERROR once per this many seconds, however many
+    # calls fail inside the window (the health record still counts each).
+    PG_OUTAGE_LOG_WINDOW_SECONDS = 60.0
+    # Deadlock / serialization-failure retries for a single autocommit
+    # statement (inside transaction() these propagate to the caller).
+    PG_TRANSACTION_RETRIES = 3
+
 
 class TemporalPeriod:
     """Named constants for common temporal cycle periods in seconds.

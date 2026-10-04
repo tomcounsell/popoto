@@ -212,6 +212,17 @@ class TestDefaultsSync:
             "VIEW_RESOLVER_STALENESS_THRESHOLD",
             "VIEW_RESOLVER_GATE_OVERFETCH_MULTIPLIER",
             "VIEW_RESOLVER_MAX_BACKFILL_PULLS",
+            # Postgres backend operational constants (#759 M1b): pool size,
+            # timeouts, outage log window, retry count. Read from Defaults at
+            # call time by popoto.backends.postgres (the outage tests
+            # monkeypatch them and expect the next call to see it), and they
+            # are deployment knobs, not retrieval-quality parameters a
+            # benchmark sweep should move.
+            "PG_POOL_MAX_SIZE",
+            "PG_CONNECT_TIMEOUT_SECONDS",
+            "PG_STATEMENT_TIMEOUT_MS",
+            "PG_OUTAGE_LOG_WINDOW_SECONDS",
+            "PG_TRANSACTION_RETRIES",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

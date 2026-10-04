@@ -5,18 +5,21 @@
 model/query level -- ``save``, ``load``, ``select`` -- not at Redis structures,
 so each backend can be native: :mod:`popoto.backends.redis` is today's code,
 **moved** (hooks, index sets and Lua unchanged, and the wire byte-identical);
-a Postgres backend arrives in M1b.
+:mod:`popoto.backends.postgres` stores plain models in typed tables (M1b).
 
-M1a status
-----------
-Groups A-C (lifecycle, records, query) are implemented by
-:class:`~popoto.backends.redis.RedisBackend` and routed: ``Model.save``,
-``delete``, ``exists``, ``atomic_increment``, ``load_fields``, and
-``Query.get``, ``get_many``, ``get_many_objects``, ``filter``/``all``,
-``count`` and ``keys`` call the model's backend. Groups D-H are declared here
+Status (M1)
+-----------
+Groups A-C (lifecycle, records, query) are implemented by both backends and
+routed: ``Model.save``, ``delete``, ``exists``, ``atomic_increment``,
+``load_fields``, and ``Query.get``, ``get_many``, ``get_many_objects``,
+``filter``/``all``, ``count`` and ``keys`` call the model's backend. For
+Redis the query layer sends ``QueryPlan.source`` (the call, replayed through
+the moved filter body); for every other backend it populates ``where`` /
+``order_by`` / ``limit`` / ``project`` with
+:func:`popoto.backends.planning.plan_from_call`. Groups D-H are declared here
 so the protocol is complete; on Redis they are not routed yet (the field and
-model code keeps calling today's implementation directly), and any other
-backend raises :class:`BackendCapabilityError` for them.
+model code keeps calling today's implementation directly), and Postgres
+raises :class:`BackendCapabilityError` for them until their milestone.
 
 Selection (plan §4)
 -------------------
@@ -148,7 +151,7 @@ PROTOCOL_METHODS: dict[str, tuple[str, ...]] = {
     "G": ("membership_add", "membership_query"),
     "H": ("maintain", "field_call"),
 }
-"""The 24 protocol methods by plan §2 group. Groups A-C are routed in M1a."""
+"""The 24 protocol methods by plan §2 group. Groups A-C are routed (M1)."""
 
 
 @runtime_checkable
@@ -423,13 +426,26 @@ STATIC_FIELD_KINDS: dict[str, Optional[frozenset[str]]] = {
             "StringField",
             "DatetimeField",
             "SortedField",
+            # Same §3 type-map row as IntField/FloatField; scalar columns
+            # with no index, so they come with the M1 slice (#759 M1b).
+            "DecimalField",
+            "BooleanField",
+            # A SortedField that is also part of the key: the same column
+            # and B-tree, under the key UNIQUE.
+            "SortedKeyField",
         }
     ),
 }
 
+#: ``type=`` values a ``SortedField`` may carry on Postgres: the sortable
+#: types ``SortedFieldMixin.convert_to_numeric`` scores.
+_POSTGRES_SORTED_TYPES: frozenset[str] = frozenset(
+    {"int", "float", "Decimal", "datetime", "date", "time"}
+)
+
 #: ``type=`` values a plain ``Field`` may carry on Postgres in M1.
 _POSTGRES_PLAIN_TYPES: frozenset[str] = frozenset(
-    {"int", "float", "str", "bool", "datetime"}
+    {"int", "float", "str", "bool", "datetime", "Decimal"}
 )
 
 #: Field hook methods; a user subclass overriding one is Redis-only (plan
@@ -523,6 +539,13 @@ def validate_spec(spec: ModelSpec, backend_name: str) -> None:
         ):
             type_name = getattr(fs.py_type, "__name__", fs.py_type)
             problems.append(f"{fs.name} (Field, type={type_name}) is not supported yet")
+        elif fs.kind in ("SortedField", "SortedKeyField") and (
+            fs.py_type is None or fs.py_type.__name__ not in _POSTGRES_SORTED_TYPES
+        ):
+            type_name = getattr(fs.py_type, "__name__", fs.py_type)
+            problems.append(
+                f"{fs.name} (SortedField, type={type_name}) is not supported yet"
+            )
     if spec.ttl is not None:
         problems.append("Meta.ttl (record expiry arrives in M5)")
     if spec.indexes:
@@ -585,9 +608,18 @@ def compile_where(call: QueryCall) -> Optional[Predicate]:
     :data:`Predicate` tree (``None`` = no filter).
 
     Pure. The Redis backend never calls it -- it replays the call through
-    today's filter code -- so it exists for backends that compile ``WHERE``
-    clauses (M1b), and is unit-tested on its own.
+    today's filter code. With a model on the call (``call.query``) it is the
+    *validated* compile the query layer uses for every other backend
+    (:func:`popoto.backends.planning.plan_from_call`): an unknown field or
+    ``__operator`` raises ``QueryException`` (#768 review). Without one it is
+    the purely syntactic compile M1a shipped, which keeps an unknown suffix as
+    part of the field name and leaves the refusal to the backend.
     """
+    model_class = getattr(call.query, "model_class", None)
+    if model_class is not None and hasattr(model_class, "_meta"):
+        from .planning import plan_from_call
+
+        return plan_from_call(call).where
     parts = _compile_kwargs(call.kwargs)
     parts.extend(p for p in (_compile_q(q) for q in call.q_objects) if p is not None)
     if not parts:
@@ -600,7 +632,15 @@ def compile_where(call: QueryCall) -> Optional[Predicate]:
 _lock = threading.RLock()
 _default: Union[str, Backend, None] = None
 _instances: dict[str, Backend] = {}
-_bound: dict[tuple[int, str], Capabilities] = {}
+_bound: dict[tuple[int, str, int], tuple[Any, Capabilities]] = {}
+"""Memoised ``bind()`` results, keyed by (backend, model name, model class).
+
+Keyed by the class itself (its ``id``, with the class held in the value so
+the ``id`` cannot be recycled while the entry lives), not by the name alone:
+two classes that share a name -- the same model name declared in two modules
+-- must each bind, or the second would ride on the first's checked schema
+(#768 review). The name stays in the key so :func:`reset_bindings` can match
+it."""
 
 
 def _check_name(name: str) -> str:
@@ -634,11 +674,12 @@ def _instance(name: str) -> Backend:
 
             backend = RedisBackend()
         elif name == "postgres":
-            raise BackendUnavailableError(
-                "the Postgres backend is not part of this popoto build yet "
-                "(#759 M1b); select it with Meta.backend or POPOTO_BACKEND once "
-                "it ships, with POPOTO_POSTGRES_URL naming the database"
-            )
+            # Imported here, not at module scope: psycopg is an optional
+            # extra and `import popoto` must never need it. The DSN comes
+            # from POPOTO_POSTGRES_URL only (never POSTGRES_URL/DATABASE_URL).
+            from .postgres import backend_from_env
+
+            backend = backend_from_env()
         else:  # pragma: no cover - _check_name refuses first
             raise ValueError(name)
         _instances[name] = backend
@@ -676,19 +717,19 @@ backend_for = get_backend
 
 def _ensure_bound(backend: Backend, model_cls: Any) -> Capabilities:
     meta = model_cls._meta
-    memo = (id(backend), meta.model_name)
-    caps = _bound.get(memo)
-    if caps is not None:
-        return caps
+    memo = (id(backend), meta.model_name, id(model_cls))
+    entry = _bound.get(memo)
+    if entry is not None:
+        return entry[1]
     with _lock:
-        caps = _bound.get(memo)
-        if caps is None:
+        entry = _bound.get(memo)
+        if entry is None:
             spec = meta.spec
             if spec.backend is None and backend.name in STATIC_FIELD_KINDS:
                 validate_spec(spec, backend.name)
-            caps = backend.bind(spec)
-            _bound[memo] = caps
-    return caps
+            entry = (model_cls, backend.bind(spec))
+            _bound[memo] = entry
+    return entry[1]
 
 
 def set_backend(backend: Union[str, Backend, None]) -> Union[str, Backend, None]:
@@ -701,6 +742,20 @@ def set_backend(backend: Union[str, Backend, None]) -> Union[str, Backend, None]
     with _lock:
         previous = _default
         _default = backend
+        _bound.clear()
+    return previous
+
+
+def _swap_instance(name: str, backend: Optional[Backend]) -> Optional[Backend]:
+    """Install ``backend`` as the instance ``Meta.backend = name`` resolves
+    to (``None`` removes it, so the next use builds one from the
+    environment); returns the previous one. For the pytest plugin's
+    conformance legs. Discards memoised bindings."""
+    _check_name(name)
+    with _lock:
+        previous = _instances.pop(name, None)
+        if backend is not None:
+            _instances[name] = backend
         _bound.clear()
     return previous
 

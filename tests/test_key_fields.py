@@ -21,6 +21,12 @@ from src.popoto.exceptions import ModelException
 # the client object at import time and would not follow the plugin's DB swap.
 import src.popoto.redis_db as redis_db
 
+# Backend conformance (#759 M1b, plan §5 M1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class UniqueKeyModel(popoto.Model):
     name = popoto.UniqueKeyField()
@@ -159,17 +165,22 @@ class TestKeyFieldRedisSets:
             "anonymous": KeySetModel.create(name="anonymous"),
         }
 
+    @pytest.mark.redis_only(reason="reads the $Class: set through the raw Redis client")
     def test_class_wide_set_matches_query_all(self, members):
         class_set_key = KeySetModel._meta.db_class_set_key
         assert len(redis_db.POPOTO_REDIS_DB.smembers(class_set_key.redis_key)) == len(
             KeySetModel.query.all()
         )
 
+    @pytest.mark.redis_only(reason="scans Redis keys through the raw client")
     def test_class_wide_set_matches_stored_keys(self, members):
         assert len(KeySetModel.query.all()) == len(
             redis_db.POPOTO_REDIS_DB.keys(f"{KeySetModel._meta.db_class_key}:*")
         )
 
+    @pytest.mark.redis_only(
+        reason="reads a KeyField index set through the raw Redis client"
+    )
     def test_keyfield_set_holds_exactly_the_matching_instances(self, members):
         bp_key = _field_set_key(KeySetModel, "band", "BLACKPINK")
 
@@ -178,6 +189,9 @@ class TestKeyFieldRedisSets:
             members["jisoo"].db_key.redis_key.encode(),
         }
 
+    @pytest.mark.redis_only(
+        reason="reads a KeyField index set through the raw Redis client"
+    )
     def test_second_keyfield_maintains_its_own_set(self, members):
         singer_key = _field_set_key(KeySetModel, "role", "singer")
         assert len(redis_db.POPOTO_REDIS_DB.smembers(singer_key)) == 2
@@ -193,6 +207,9 @@ class TestKeyFieldRedisSets:
             == members["lisa"]
         )
 
+    @pytest.mark.redis_only(
+        reason="reads a KeyField index set through the raw Redis client"
+    )
     def test_delete_shrinks_the_keyfield_set(self, members):
         bp_key = _field_set_key(KeySetModel, "band", "BLACKPINK")
 
@@ -207,6 +224,9 @@ class TestKeyFieldRedisSets:
         results = KeySetModel.query.filter(role__isnull=True, band__isnull=True)
         assert list(results) == [members["anonymous"]]
 
+    @pytest.mark.redis_only(
+        reason="reads the $Class: and KeyField index sets through the raw Redis client"
+    )
     def test_deleting_everything_empties_all_sets(self, members):
         class_set_key = KeySetModel._meta.db_class_set_key
         bp_key = _field_set_key(KeySetModel, "band", "BLACKPINK")
@@ -221,6 +241,9 @@ class TestKeyFieldRedisSets:
         assert len(redis_db.POPOTO_REDIS_DB.smembers(singer_key)) == 0
 
 
+@pytest.mark.redis_only(
+    reason="reads KeyField index sets through the raw Redis client, and save(migrate_key=True) raises BackendCapabilityError on Postgres in v2 (plan §1.1 documented divergence)"
+)
 class TestKeyFieldIndexCleanupOnMutation:
     """#149: on_save() must remove the instance from its old index."""
 
