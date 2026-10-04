@@ -6,6 +6,9 @@ add a new storage or indexing behavior that the built-in field types do not cove
 for example a field that maintains its own companion hash in Redis alongside the
 model's primary hash, the way `ConfidenceField` and `CyclicDecayField` do.
 
+!!! note
+    Custom fields that override hooks are Redis-only for now; a Postgres backend refuses them at `bind()`.
+
 This page documents the contract a `Field` subclass should follow, with a focus on
 the round-trip protocol every field author must satisfy: `roundtrip_policy`,
 `roundtrip_note`, `export_state`, `import_state`, and `remap_references`. These five
