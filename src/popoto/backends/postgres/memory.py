@@ -575,8 +575,11 @@ class PostgresMemoryOps:
         term: RankTerm,
         kinds: Mapping[str, str],
         now: float,
-    ) -> tuple[str, str, list[Any]]:
-        """``(domain, score, domain params)`` for one composite arm."""
+    ) -> tuple[str, str, list[Any], list[Any]]:
+        """``(domain, score, domain params, score params)`` for one composite
+        arm."""
+        if term.scores is not None:
+            return self._scores_arm(term)
         domain_sql, params = render_where(ts, dict(kinds), term.where)
         domain = domain_sql[len(" WHERE ") :] if domain_sql else "TRUE"
         if term.kind == "decay":
@@ -593,27 +596,56 @@ class PostgresMemoryOps:
                 strength=float(Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH),
             )
             col = f"t.{quote_ident(term.field)}"
-            return f"({col} IS NOT NULL AND {domain})", score, params
+            return f"({col} IS NOT NULL AND {domain})", score, params, []
         if term.kind == "confidence":
             assert term.field is not None
             fs = spec.fields[term.field]
             ic = _lit(float(fs.options.get("initial_confidence", 0.5)))
             conf = f"t.{quote_ident(term.field + '__conf')}"
-            return f"({domain})", f"coalesce({conf}, {ic})", params
+            return f"({domain})", f"coalesce({conf}, {ic})", params, []
         if term.kind == "access":
             return (
                 f'(coalesce(t."_access_count", 0) > 0 AND {domain})',
                 't."_access_count"::float8',
                 params,
+                [],
             )
         if term.kind == "sorted":
             assert term.field is not None
             col = f"t.{quote_ident(term.field)}"
-            return f"({col} IS NOT NULL AND {domain})", f"{col}::float8", params
+            return f"({col} IS NOT NULL AND {domain})", f"{col}::float8", params, []
         raise BackendCapabilityError(
             f"composite_score arm {term.kind!r} is not available on Postgres yet "
-            "(similarity arrives with the M2 vector work, co_occurrence_boost in "
-            "M4)"
+            "(co_occurrence_boost arrives in M4)"
+        )
+
+    @staticmethod
+    def _scores_arm(term: RankTerm) -> tuple[str, str, list[Any], list[Any]]:
+        """A caller-supplied ``{key: score}`` arm (``similarity_boost``, or
+        BM25 scores): the temp ``ZADD`` set of the Redis path, as one
+        ``jsonb`` object parameter looked up per row (a binary search on the
+        object's sorted keys). Only records that exist can rank -- a key with
+        no row is dropped at hydration on Redis too, after taking a slot."""
+        import json
+
+        def enc(value: Any) -> Any:
+            value = float(value)
+            # JSON has no inf/nan; their text form casts back to float8.
+            return (
+                value
+                if math.isfinite(value)
+                else repr(value).replace("inf", "Infinity").replace("nan", "NaN")
+            )
+
+        blob = json.dumps(
+            {str(k): enc(v) for k, v in (term.scores or {}).items()},
+            allow_nan=False,
+        )
+        return (
+            '(%s::jsonb ? t."_pk")',
+            '((%s::jsonb ->> t."_pk")::float8)',
+            [blob],
+            [blob],
         )
 
     def rank_composite(
@@ -643,11 +675,12 @@ class PostgresMemoryOps:
         arms = [self._arm(ts, spec, term, kinds, now) for term in terms]
         select = []
         params: list[Any] = []
-        for i, (domain, score, dparams) in enumerate(arms):
+        for i, (domain, score, dparams, sparams) in enumerate(arms):
             select.append(f"CASE WHEN {domain} THEN {score} END AS a{i}")
             params.extend(dparams)
+            params.extend(sparams)
         where_parts = []
-        for domain, _score, dparams in arms:
+        for domain, _score, dparams, _sparams in arms:
             where_parts.append(domain)
             params.extend(dparams)
         inner_where = " OR ".join(where_parts)

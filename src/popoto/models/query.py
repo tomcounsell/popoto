@@ -941,12 +941,24 @@ class QueryBuilder:
         from ..backends import BackendCapabilityError
         from .encoding import hydrate_decoded_row
 
+        from ..backends import RankTerm
+
         terms = self._composite_terms(model_class, indexes)
-        if co_occurrence_boost or similarity_boost:
+        if co_occurrence_boost:
             raise BackendCapabilityError(
-                "composite_score(co_occurrence_boost=/similarity_boost=) is not "
-                "available on Postgres yet: the similarity arm arrives with the "
-                "#759 M2 vector work, co_occurrence_boost in M4"
+                "composite_score(co_occurrence_boost=) is not available on "
+                "Postgres yet: CoOccurrenceField arrives in #759 M4"
+            )
+        if similarity_boost:
+            # The temp ZSET of the Redis path, as a caller-supplied arm with
+            # weight 1.0 (the weight is already in the scores), last -- the
+            # position its key takes in the ZUNIONSTORE weights (#759 M2b).
+            terms.append(
+                RankTerm(
+                    "similarity",
+                    1.0,
+                    scores={str(k): float(v) for k, v in similarity_boost.items()},
+                )
             )
         if not terms:
             return []
@@ -3769,12 +3781,127 @@ class Query:
             limit=limit,
             bm25_stats=bm25_stats,
             k=k,
+            decay=self._relevance_arm(),
         )
         out = []
         for row, score in rows:
             instance = hydrate_decoded_row(self.model_class, row)
             instance._rrf_score = score
             out.append((instance, score))
+        return out
+
+    def _relevance_arm(self, field_name: Optional[str] = None) -> Any:
+        """``(decay_field, confidence_field_or_None)`` -- the decay x
+        confidence ranking ``top_by_decay`` uses (the same field resolution
+        and modulation switches) -- or ``False`` when the model has no single
+        ``DecayingSortedField`` to rank by and none was named."""
+        from ..fields.decaying_sorted_field import DecayingSortedField
+
+        fields = self.model_class._meta.fields
+        if field_name is None:
+            names = [n for n, f in fields.items() if isinstance(f, DecayingSortedField)]
+            if len(names) != 1:
+                return False
+            field_name = names[0]
+        field = fields.get(field_name)
+        if not isinstance(field, DecayingSortedField):
+            raise QueryException(
+                f"'{self.model_class.__name__}.{field_name}' is not a "
+                "DecayingSortedField"
+            )
+        confidence = QueryBuilder(self)._decay_confidence_field(
+            self.model_class, field, field_name
+        )
+        return field_name, confidence
+
+    def top_by_relevance(
+        self,
+        scope: Any = None,
+        limit: int = 10,
+        *,
+        field_name: Optional[str] = None,
+    ) -> list[tuple[Any, float]]:
+        """``[PG-only]`` The ``limit`` most relevant records -- decay x
+        confidence, the ``DECAY_SCORE_LUA`` score ``top_by_decay`` ranks by,
+        computed in SQL over the M2a columns -- as ``[(instance, score)]``,
+        best first (NaN last, ties by key bytewise). It replaces reading a
+        decay sorted set with a raw ``ZREVRANGE`` (#758 D8).
+
+        Postgres only (#759 plan §1.1): on a Redis-bound model it raises
+        :class:`~popoto.backends.BackendCapabilityError`; use
+        ``top_by_decay`` there.
+
+        Args:
+            scope: The decay field's ``partition_by`` value (a mapping for a
+                multi-column partition). ``None`` ranks every partition
+                together, which Redis's per-partition sorted sets cannot.
+            limit: Records returned.
+            field_name: The ``DecayingSortedField``; optional when the model
+                has exactly one.
+
+        Reads are not tracked (no ``AccessTrackerMixin`` staging), as with
+        ``recall``.
+        """
+        from ..backends.postgres.memory import partition_where
+
+        backend = get_backend(self.model_class)
+        if backend.name == "redis":
+            raise BackendCapabilityError(
+                f"{self.model_class.__name__}.query.top_by_relevance() is "
+                "Postgres-only (#759 plan §1.1); on Redis use top_by_decay()"
+            )
+        arm = self._relevance_arm(field_name)
+        if arm is False:
+            raise QueryException(
+                f"'{self.model_class.__name__}' needs exactly one "
+                "DecayingSortedField for top_by_relevance(), or field_name="
+            )
+        name, confidence = arm
+        field = self.model_class._meta.fields[name]
+        partition = list(field.partition_by or ())
+        where = None
+        if scope is not None:
+            if not partition:
+                raise ValueError(
+                    f"'{self.model_class.__name__}.{name}' has no partition_by; "
+                    "top_by_relevance(scope=) needs one"
+                )
+            if isinstance(scope, dict):
+                unknown = set(scope) - set(partition)
+                if unknown:
+                    raise ValueError(
+                        f"top_by_relevance(scope=) names {sorted(unknown)}; "
+                        f"the partition is {partition}"
+                    )
+                values = {pf: scope.get(pf) for pf in partition}
+            elif len(partition) == 1:
+                values = {partition[0]: scope}
+            else:
+                raise ValueError(
+                    f"the partition is {partition}; pass scope= as a mapping"
+                )
+            where = partition_where(values)
+        if limit is None or limit <= 0:
+            return []
+        import time
+
+        spec = self.model_class._meta.spec
+        scored = backend.rank_decayed(
+            spec,
+            name,
+            now=time.time(),
+            n=int(limit),
+            where=where,
+            base_score_field=getattr(field, "base_score_field", None) or None,
+            confidence_field=confidence,
+        )
+        if not scored:
+            return []
+        rows = backend.load(spec, [rid for rid, _score in scored])
+        out = []
+        for (_rid, score), row in zip(scored, rows):
+            if row is not None:
+                out.append((hydrate_decoded_row(self.model_class, row), float(score)))
         return out
 
     def fuse(

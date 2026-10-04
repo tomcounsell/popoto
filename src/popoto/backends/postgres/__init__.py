@@ -78,7 +78,7 @@ from .schema import (
     ensure_table,
     quote_ident,
 )
-from .search import SearchMixin, prepare_save, require_extensions
+from .search import SearchMixin, prepare_save, record_lock_sql, require_extensions
 
 __all__ = [
     "POSTGRES_URL_ENV",
@@ -425,6 +425,10 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
                 raise _retryable(exc) from exc
             except psycopg.OperationalError as exc:
                 raise self._fail(exc, write=write) from exc
+            # A multi-statement message (a lock, then the statement) replies
+            # with the last statement's result, as on the autocommit path.
+            while cur.nextset():
+                pass
             rows = cur.fetchall() if cur.description else []
             return rows, cur.rowcount
         attempts = int(Defaults.PG_TRANSACTION_RETRIES) + 1
@@ -706,6 +710,13 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
                 + ' SELECT "_ins" FROM "_row"'
             )
             params += search.params
+            # The record-key lock goes first, as a statement of its own, so
+            # the CTEs' snapshot is taken after any concurrent writer of this
+            # record committed (record_lock_sql). The reply is the last
+            # statement's.
+            lock_sql, lock_params = record_lock_sql(ts, [new_key])
+            sql = lock_sql + sql
+            params = lock_params + params
         psycopg = _import_psycopg()
         try:
             rows, _ = self._run(sql, params, uow=uow, write=True)
@@ -1000,7 +1011,6 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
 
     def chain(self, *a: Any, **kw: Any) -> Any:
         raise self._later("chain", "M3")
-
 
     def graph_update(self, *a: Any, **kw: Any) -> Any:
         raise self._later("graph_update", "M4")

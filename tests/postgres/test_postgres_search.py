@@ -11,6 +11,8 @@ backfill and its budget, the ``_migrated_from``/``_estimated_fields`` engine
 columns, and ``garbage_collect`` being a no-op.
 """
 
+import collections
+import hashlib
 import math
 import threading
 import time
@@ -190,6 +192,14 @@ def test_compiled_search_ddl_is_pinned():
         'PRIMARY KEY ("token", "_pk"))',
         'CREATE INDEX IF NOT EXISTS "ddl_memory__bloom__tok__pk__idx" ON '
         '"popoto"."ddl_memory__bloom__tok" ("_pk")',
+        # The narrow vector table the exact path reads (#774 review).
+        'CREATE TABLE IF NOT EXISTS "popoto"."ddl_memory__embedding__vec" ('
+        f'"_pk" text PRIMARY KEY {fk}, "scope" text NOT NULL, '
+        '"v" vector(1536) NOT NULL)',
+        'CREATE INDEX IF NOT EXISTS "ddl_memory__embedding__vec__scope__idx" ON '
+        '"popoto"."ddl_memory__embedding__vec" ("scope")',
+        'ALTER TABLE "popoto"."ddl_memory__embedding__vec" ALTER COLUMN "v" '
+        "SET STORAGE PLAIN",
         'CREATE TABLE IF NOT EXISTS "popoto"."ddl_memory__lexical__post" ('
         f'"scope" text NOT NULL, "term" text NOT NULL, "_pk" text NOT NULL {fk}, '
         '"tf" integer NOT NULL, PRIMARY KEY ("scope", "term", "_pk"))',
@@ -880,3 +890,460 @@ def test_native_writes_clear_migrated_from_and_keep_estimated_fields(
     ).fetchone()
     assert migrated is None
     assert estimated == ["stamp"]
+
+
+# -- #774 review: concurrent saves, the HNSW snapshot, the narrow table --------
+
+
+def _truth(admin, schema):
+    """What the companion rows of every SearchDoc must be, from the rows
+    themselves, and what they are."""
+    rows = admin.execute(
+        f'SELECT "_pk", coalesce(project, \'\'), text FROM "{schema}".search_doc'
+    ).fetchall()
+    want_post, want_tok, want_vec = set(), set(), set()
+    for pk, scope, text in rows:
+        for term, n in collections.Counter(tokenize(text or "", unique=False)).items():
+            want_post.add((scope, term, pk, n))
+        for token in tokenize(text or "") or [(text or "").lower()]:
+            want_tok.add((token, pk))
+        want_vec.add((pk, scope))
+    got_post = set(
+        admin.execute(
+            f'SELECT scope, term, "_pk", tf FROM "{schema}".search_doc__content__post'
+        ).fetchall()
+    )
+    got_tok = set(
+        admin.execute(
+            f'SELECT token, "_pk" FROM "{schema}".search_doc__bloom__tok'
+        ).fetchall()
+    )
+    got_vec = set(
+        admin.execute(
+            f'SELECT "_pk", scope FROM "{schema}".search_doc__embedding__vec'
+        ).fetchall()
+    )
+    return (want_post, want_tok, want_vec), (got_post, got_tok, got_vec)
+
+
+def _interleaved_saves(admin, pg_schema, first, second):
+    """Two saves of record ``r`` whose statements both start while a third
+    session holds the row's lock -- so, without the record-key lock, the
+    second one's statement snapshot predates the first one's commit (the
+    #774 review's reproduction, made deterministic by polling for waiters).
+    ``first``/``second`` are ``(text, project)``."""
+    _doc("r", "alpha beta", project="p1")
+    locker = pg_schema.connect()
+    locker.execute("BEGIN")
+    locker.execute(
+        f'SELECT 1 FROM "{pg_schema.name}".search_doc WHERE name = %s FOR UPDATE',
+        ("r",),
+    )
+
+    def waiting():
+        return admin.execute(
+            "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' "
+            "AND datname = current_database() AND pid <> pg_backend_pid()"
+        ).fetchone()[0]
+
+    def wait_for(n):
+        deadline = time.monotonic() + 10
+        while waiting() < n:
+            assert time.monotonic() < deadline, "saves never blocked"
+            time.sleep(0.01)
+
+    errors = []
+
+    def save(text, project):
+        try:
+            SearchDoc(name="r", text=text, project=project).save()
+        except Exception as exc:  # pragma: no cover - reported below
+            errors.append(exc)
+
+    t1 = threading.Thread(target=save, args=first)
+    t1.start()
+    wait_for(1)
+    t2 = threading.Thread(target=save, args=second)
+    t2.start()
+    wait_for(2)
+    locker.execute("ROLLBACK")
+    locker.close()
+    t1.join(10)
+    t2.join(10)
+    assert not errors, errors
+
+
+@pytest.mark.parametrize("run", range(8))
+def test_concurrent_saves_of_one_record_leave_no_stale_rows(pg, pg_schema, admin, run):
+    """#774 review blocker 1: the second save's rewrite fully replaces the
+    first's (#758 Race 1) -- postings, the exact token rows and the narrow
+    vector row equal the final row's text and scope, including when the
+    second save also moves the record to another scope."""
+    second_project = "p2" if run % 2 else "p1"
+    _interleaved_saves(
+        admin, pg_schema, ("gamma delta", "p1"), ("omega sigma", second_project)
+    )
+    want, got = _truth(admin, pg_schema.name)
+    assert got == want
+    final = SearchDoc.query.get(name="r").text
+    stale = set(tokenize("alpha beta gamma delta omega sigma")) - set(tokenize(final))
+    assert not any(SearchDoc.bloom.might_exist(SearchDoc, t) for t in stale)
+
+
+def test_interleaved_saves_go_stale_without_the_record_lock(
+    pg, pg_schema, admin, monkeypatch
+):
+    """The control: with the record-key lock removed, the same interleaving
+    leaves the first save's postings behind -- so the test above can tell a
+    locked save from an unlocked one (it is not vacuous)."""
+    monkeypatch.setattr(
+        "popoto.backends.postgres.record_lock_sql", lambda ts, pks: ("", [])
+    )
+    _interleaved_saves(admin, pg_schema, ("gamma delta", "p1"), ("omega sigma", "p2"))
+    want, got = _truth(admin, pg_schema.name)
+    assert got[0] != want[0]
+    assert got[0] - want[0]  # the earlier writer's postings stayed behind
+
+
+def test_save_takes_the_record_lock_before_its_statement(pg, monkeypatch):
+    backend = get_backend(SearchDoc)
+    sent = []
+    real_run = backend._run
+
+    def spy(sql, params=(), **kw):
+        sent.append(sql)
+        return real_run(sql, params, **kw)
+
+    monkeypatch.setattr(backend, "_run", spy)
+    _doc("locked", "some text")
+    save_sql = next(s for s in sent if "INSERT INTO" in s and "search_doc" in s)
+    assert save_sql.startswith("SELECT pg_advisory_xact_lock(hashtextextended(")
+    assert save_sql.index("pg_advisory_xact_lock") < save_sql.index("WITH")
+
+
+def test_a_save_in_a_transaction_reads_the_statements_reply(pg):
+    """In a unit of work the lock and the statement are one message; ``_run``
+    reads the last statement's reply on that path too, as it does outside a
+    transaction -- not the lock's void row."""
+    with pg.transaction() as uow:
+        rows, _ = pg._run("SELECT 1; SELECT 2, 'last'", uow=uow)
+        assert rows == [(2, "last")]
+        SearchDoc(name="tx", text="in a transaction", project="p1").save(pipeline=uow)
+    rows, _ = pg._run("SELECT 1; SELECT 2, 'last'")
+    assert rows == [(2, "last")]
+    assert SearchDoc.query.get(name="tx").text == "in a transaction"
+    assert BM25Field.search(SearchDoc, "content", "transaction")
+
+
+def test_recall_hnsw_arm_is_refiltered_in_the_fused_statement(
+    pg, pg_schema, admin, monkeypatch
+):
+    """#774 review blocker 2: the HNSW arm is ranked in an earlier statement;
+    a record that leaves the scope before the fused statement runs must not
+    come back from ``recall(scope=)``."""
+    for i in range(12):
+        _doc(f"s{i:02d}", f"alpha beta {i}", project="p1")
+        _doc(f"o{i:02d}", f"alpha beta {i}", project="p2")
+    monkeypatch.setattr(Defaults, "PG_VECTOR_EXACT_MAX", 0)
+    real = search_mod.SearchMixin._vector_arm
+    moved = []
+
+    def move_between_statements(self, *a, **kw):
+        out = real(self, *a, **kw)
+        if out[0] and not moved:
+            pk = out[0][0][0].canonical
+            admin.execute(
+                f'UPDATE "{pg_schema.name}".search_doc SET project = %s '
+                'WHERE "_pk" = %s',
+                ("p2", pk),
+            )
+            moved.append(pk)
+        return out
+
+    monkeypatch.setattr(search_mod.SearchMixin, "_vector_arm", move_between_statements)
+    results = SearchDoc.query.recall(
+        "alpha beta", scope="p1", limit=60, weights={"bm25": 0}
+    )
+    assert moved and get_backend(SearchDoc)._last_recall["vector"] == "hnsw"
+    assert results
+    assert moved[0] not in {i.pk for i, _s in results}
+    assert {i.project for i, _s in results} == {"p1"}
+
+
+def test_narrow_vector_table_follows_the_record(pg, pg_schema, admin):
+    """The exact path's copy of the vector: written with the record, moved
+    on a scope change (also a scope-only ``update_fields`` save), equal to the
+    record's own column, stored PLAIN, and cascaded on delete."""
+    doc = _doc("n1", "narrow vector text", project="p1")
+    table = f'"{pg_schema.name}".search_doc__embedding__vec'
+    rows = admin.execute(f'SELECT "_pk", scope, v::text FROM {table}').fetchall()
+    (vec,) = admin.execute(
+        f'SELECT embedding__vec::text FROM "{pg_schema.name}".search_doc'
+    ).fetchone()
+    assert rows == [(doc.pk, "p1", vec)]
+    doc.project = "p2"
+    doc.save(update_fields=["project"])
+    assert admin.execute(f"SELECT scope FROM {table}").fetchall() == [("p2",)]
+    doc.project = None
+    doc.save()
+    assert admin.execute(f"SELECT scope FROM {table}").fetchall() == [("",)]
+    (storage,) = admin.execute(
+        "SELECT attstorage FROM pg_attribute WHERE attrelid = %s::regclass "
+        "AND attname = 'v'",
+        (table,),
+    ).fetchone()
+    assert storage == "p"
+    doc.delete()
+    assert admin.execute(f"SELECT count(*) FROM {table}").fetchone() == (0,)
+
+
+def test_exact_path_reads_the_narrow_table_and_agrees_with_hnsw(pg, monkeypatch):
+    for i in range(20):
+        _doc(f"e{i:02d}", f"exact narrow {i}", owner="me" if i % 4 else "you")
+    backend = get_backend(SearchDoc)
+    spec = SearchDoc._meta.spec
+    sent = []
+    real_run = backend._run
+
+    def spy(sql, params=(), **kw):
+        sent.append(sql)
+        return real_run(sql, params, **kw)
+
+    monkeypatch.setattr(backend, "_run", spy)
+    q = PROVIDER.embed(["exact narrow 3"])[0]
+    owner = popoto.backends.Cond("owner", popoto.backends.Op.EXACT, "me")
+    exact, info = backend._vector_arm(spec, "embedding", q, limit=10, where=owner)
+    assert info["path"] == "exact"
+    assert "search_doc__embedding__vec" in sent[-1]
+    hnsw, _ = backend._vector_arm(
+        spec, "embedding", q, limit=10, where=owner, force="hnsw"
+    )
+    assert [r.canonical for r, _s in exact] == [r.canonical for r, _s in hnsw]
+    assert [s for _r, s in exact] == [s for _r, s in hnsw]
+    # recall's scope-only exact arm filters the narrow table on its scope.
+    sent.clear()
+    SearchDoc.query.recall("exact narrow", scope="p1", weights={"bm25": 0})
+    assert backend._last_recall["vector"] == "exact"
+    assert 'n."scope" = %s' in sent[-1]
+
+
+def test_update_fields_naming_the_source_re_embeds(pg, pg_schema, admin):
+    """Naming the source re-embeds, as it re-indexes BM25 (Redis runs only
+    the listed field's hook, so its vector would stay stale); the hash and
+    the narrow row follow."""
+    doc = _doc("re", "original text")
+    before = admin.execute(
+        f'SELECT embedding__hash, embedding__vec::text FROM "{pg_schema.name}".'
+        "search_doc"
+    ).fetchone()
+    doc.text = "rewritten text"
+    doc.save(update_fields=["text"])
+    after = admin.execute(
+        f'SELECT embedding__hash, embedding__vec::text FROM "{pg_schema.name}".'
+        "search_doc"
+    ).fetchone()
+    assert after != before
+    assert after[0] == hashlib.md5(b"rewritten text").hexdigest()
+    (narrow,) = admin.execute(
+        f'SELECT v::text FROM "{pg_schema.name}".search_doc__embedding__vec'
+    ).fetchone()
+    assert narrow == after[1]
+
+
+def test_backfill_writes_the_narrow_row_and_clears_the_import_marks(
+    pg, pg_schema, admin
+):
+    field = SearchDoc._meta.fields["embedding"]
+    field._provider = None
+    try:
+        late = _doc("late", "late text")
+    finally:
+        field._provider = PROVIDER
+    admin.execute(
+        f'UPDATE "{pg_schema.name}".search_doc SET _migrated_from = %s, '
+        "_estimated_fields = %s WHERE _pk = %s",
+        ('{"machine": "m1"}', ["embedding", "stamp"], late.pk),
+    )
+    _doc("trigger", "a save whose own embedding succeeds")
+    migrated, estimated, vec = admin.execute(
+        f'SELECT _migrated_from, _estimated_fields, embedding__vec::text FROM "'
+        f'{pg_schema.name}".search_doc WHERE _pk = %s',
+        (late.pk,),
+    ).fetchone()
+    assert vec is not None
+    assert migrated is None
+    assert estimated == ["stamp"]
+    narrow = admin.execute(
+        f'SELECT scope, v::text FROM "{pg_schema.name}".search_doc__embedding__vec '
+        'WHERE "_pk" = %s',
+        (late.pk,),
+    ).fetchall()
+    assert narrow == [("p1", vec)]
+
+
+# -- the decay arm, top_by_relevance (M2a's columns, #773) ----------------------
+
+DAY = 86400.0
+
+
+class RecallMemory(popoto.Model):
+    name = popoto.UniqueKeyField()
+    project = popoto.Field(type=str, null=True)
+    owner = popoto.IndexedField(type=str, null=True)
+    importance = popoto.FloatField(default=1.0)
+    relevance = popoto.DecayingSortedField(
+        decay_rate=0.5, partition_by="project", base_score_field="importance"
+    )
+    certainty = popoto.ConfidenceField()
+    text = popoto.StringField(default="")
+    content = BM25Field(source="text")
+    embedding = EmbeddingField(source="text", provider=PROVIDER)
+
+
+def _memories():
+    now = time.time()
+    rows = [
+        ("m1", "p1", "alice", 1.0, 1, "redis cluster failover"),
+        ("m2", "p1", "bob", 3.0, 9, "python machine learning"),
+        ("m3", "p1", "alice", 0.5, 2, "redis streams consumer"),
+        ("m4", "p2", "alice", 2.0, 0.5, "redis tuning memory"),
+        ("m5", "p1", "bob", 1.0, 30, "kubernetes deployment guide"),
+    ]
+    out = {}
+    for name, project, owner, importance, age_days, text in rows:
+        out[name] = RecallMemory.create(
+            name=name,
+            project=project,
+            owner=owner,
+            importance=importance,
+            relevance=now - age_days * DAY,
+            text=text,
+        )
+    popoto.ConfidenceField.update_confidence(out["m3"], "certainty", 0.95)
+    popoto.ConfidenceField.update_confidence(out["m2"], "certainty", 0.05)
+    return out
+
+
+def _rrf(*arms, k=60):
+    fused = {}
+    for ranked, weight in arms:
+        for rank, key in enumerate(ranked, start=1):
+            fused[key] = fused.get(key, 0.0) + weight / (k + rank)
+    return sorted(fused.items(), key=lambda kv: (-kv[1], kv[0].encode()))
+
+
+def test_recall_fuses_the_decay_arm_in_the_same_statement(pg, monkeypatch):
+    """The decay arm is rank_decayed's ranking (DECAY_SCORE_LUA over the M2a
+    clock, base score and ``__conf`` modulation) for the same scope, fused
+    with weight ``weights["decay"]`` -- in the fused statement, not a
+    separate round trip."""
+    _memories()
+    backend = get_backend(RecallMemory)
+    spec = RecallMemory._meta.spec
+    query = "redis cluster"
+    where = popoto.backends.Cond("project", popoto.backends.Op.EXACT, "p1")
+    keyword = backend.keyword_search(
+        spec, "content", tokenize(query), limit=50, scope="p1", stats="scope"
+    )
+    vector = backend.vector_search(
+        spec, "embedding", PROVIDER.embed([query])[0], limit=50, where=where
+    )
+    decay = backend.rank_decayed(
+        spec,
+        "relevance",
+        now=time.time(),
+        n=50,
+        where=where,
+        base_score_field="importance",
+        confidence_field="certainty",
+    )
+    want = _rrf(
+        ([r.canonical for r, _s in keyword], 1.0),
+        ([r.canonical for r, _s in vector], 1.0),
+        ([r.canonical for r, _s in decay], 2.0),
+    )[:4]
+    sent = []
+    real_run = backend._run
+
+    def spy(sql, params=(), **kw):
+        sent.append(sql)
+        return real_run(sql, params, **kw)
+
+    monkeypatch.setattr(backend, "_run", spy)
+    got = RecallMemory.query.recall(query, scope="p1", limit=4, weights={"decay": 2.0})
+    assert [i.pk for i, _s in got] == [k for k, _s in want]
+    assert [s for _i, s in got] == pytest.approx([s for _k, s in want], abs=1e-15)
+    assert backend._last_recall["decay"] is True
+    # count + one fused statement: the decay arm adds no round trip.
+    assert len(sent) == 2 and '"a_dec"' in sent[-1]
+    assert {i.project for i, _s in got} == {"p1"}
+
+
+def test_recall_decay_arm_weights_and_filters(pg):
+    _memories()
+    backend = get_backend(RecallMemory)
+    spec = RecallMemory._meta.spec
+    off = RecallMemory.query.recall("redis", scope="p1", weights={"decay": 0})
+    assert backend._last_recall["decay"] is False
+    assert off and {i.project for i, _s in off} == {"p1"}
+    only = RecallMemory.query.recall(
+        "", scope="p1", filters={"owner": "bob"}, weights={"bm25": 0, "vector": 0}
+    )
+    assert backend._last_recall["decay"] is True
+    oracle = backend.rank_decayed(
+        spec,
+        "relevance",
+        now=time.time(),
+        n=10,
+        where=popoto.backends.And(
+            (
+                popoto.backends.Cond("project", popoto.backends.Op.EXACT, "p1"),
+                popoto.backends.Cond("owner", popoto.backends.Op.EXACT, "bob"),
+            )
+        ),
+        base_score_field="importance",
+        confidence_field="certainty",
+    )
+    assert [i.pk for i, _s in only] == [r.canonical for r, _s in oracle]
+    assert len(only) == 2
+    assert only[0][1] == pytest.approx(1 / 61)
+
+
+def test_top_by_relevance_is_decay_times_confidence(pg):
+    _memories()
+    backend = get_backend(RecallMemory)
+    spec = RecallMemory._meta.spec
+    ranked = RecallMemory.query.top_by_relevance(scope="p1", limit=3)
+    oracle = backend.rank_decayed(
+        spec,
+        "relevance",
+        now=time.time(),
+        n=3,
+        where=popoto.backends.Cond("project", popoto.backends.Op.EXACT, "p1"),
+        base_score_field="importance",
+        confidence_field="certainty",
+    )
+    assert [i.pk for i, _s in ranked] == [r.canonical for r, _s in oracle]
+    assert [s for _i, s in ranked] == pytest.approx([s for _r, s in oracle])
+    assert all(isinstance(i, RecallMemory) for i, _s in ranked)
+    # Same order as top_by_decay over the same partition.
+    by_decay = RecallMemory.query.filter(project="p1").top_by_decay(n=3)
+    assert [i.pk for i, _s in ranked] == [i.pk for i in by_decay]
+    # No scope ranks every partition together.
+    everyone = RecallMemory.query.top_by_relevance(limit=10)
+    assert {i.name for i, _s in everyone} == {"m1", "m2", "m3", "m4", "m5"}
+    assert RecallMemory.query.top_by_relevance(scope="p1", limit=0) == []
+    with pytest.raises(ValueError, match="partition"):
+        RecallMemory.query.top_by_relevance(scope={"owner": "x"})
+
+
+def test_top_by_relevance_is_postgres_only(pg):
+    class RedisMemory(popoto.Model):
+        name = popoto.UniqueKeyField()
+        relevance = popoto.DecayingSortedField()
+
+        class Meta:
+            backend = "redis"
+
+    with pytest.raises(BackendCapabilityError, match="Postgres-only"):
+        RedisMemory.query.top_by_relevance()

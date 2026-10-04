@@ -76,6 +76,7 @@ __all__ = [
     "SavePlan",
     "compile_search",
     "prepare_save",
+    "record_lock_sql",
     "require_extensions",
     "scope_text",
 ]
@@ -92,6 +93,12 @@ HASH_SUFFIX = "__hash"
 
 #: pgvector's HNSW index takes at most 2,000 dimensions for ``vector``.
 HNSW_MAX_DIMENSIONS = 2000
+
+#: The widest vector the narrow table stores ``STORAGE PLAIN``: 4 bytes a
+#: dimension plus an 8-byte header must fit an 8 kB heap page beside the
+#: ``_pk`` and ``scope`` text (``MaxHeapTupleSize`` is 8,160 bytes). Wider
+#: vectors keep the default ``EXTENDED`` storage (TOAST) there too.
+PLAIN_MAX_DIMENSIONS = 1900
 
 #: The Lua script returns ``tostring(score)``: Lua's ``%.14g``. The parity
 #: path (``BM25Field.search``) hands back the same representation.
@@ -137,6 +144,10 @@ class EmbeddingLayout:
     an unconstrained ``vector`` with no HNSW index, and every search is
     exact."""
     field_ref: Any
+    narrow: str = ""
+    """Qualified narrow vector table ``(_pk, scope, v)``: the exact path's
+    copy of the vector, kept un-TOASTed (``STORAGE PLAIN``) so a scope's
+    vectors are read straight from the heap (see :func:`compile_search`)."""
 
     @property
     def hnsw(self) -> bool:
@@ -254,6 +265,7 @@ def compile_search(
             )
         elif fs.kind == "EmbeddingField":
             dims = _provider_dims(ref)
+            narrow_name, narrow = companion(f"{name}__vec")
             layout = EmbeddingLayout(
                 field=name,
                 source=fs.options.get("source"),
@@ -262,6 +274,7 @@ def compile_search(
                 hash=name + HASH_SUFFIX,
                 dims=dims,
                 field_ref=ref,
+                narrow=narrow,
             )
             vec_type = f"vector({dims})" if dims else "vector"
             columns.append(Column(layout.vec, vec_type, name, role="aux"))
@@ -284,6 +297,27 @@ def compile_search(
             indexes.append(
                 (index_name("model", name), f"({quote_ident(layout.model)})", False)
             )
+            # The narrow vector table (#774 review): the exact arm's copy of
+            # each vector, keyed by record, with the record's scope. In the
+            # record table a 1536-d vector (6 kB) is TOASTed, so the exact
+            # arm read two heaps and de-TOASTed every row of the scope; here
+            # it is stored inline (PLAIN) in a row of its own, and a scope's
+            # vectors are one index range plus their heap pages. Written in
+            # the save statement beside the record's own vector column (which
+            # the HNSW index keeps serving), and cascaded on delete.
+            narrow_stmts = [
+                f"CREATE TABLE IF NOT EXISTS {narrow} ("
+                f'"_pk" text PRIMARY KEY {ref_pk}, "scope" text NOT NULL, '
+                f'"v" {vec_type} NOT NULL)',
+                f"CREATE INDEX IF NOT EXISTS "
+                f'{quote_ident(_bounded(narrow_name + "__scope__idx"))} '
+                f'ON {narrow} ("scope")',
+            ]
+            if dims is not None and dims <= PLAIN_MAX_DIMENSIONS:
+                narrow_stmts.append(
+                    f'ALTER TABLE {narrow} ALTER COLUMN "v" SET STORAGE PLAIN'
+                )
+            companions.append((narrow_name, tuple(narrow_stmts)))
             embedding[name] = layout
         elif fs.kind == "ExistenceFilter":
             tok_name, tok = companion(f"{name}__tok")
@@ -435,6 +469,35 @@ def _cond_text(
 # -- writes -------------------------------------------------------------------
 
 
+def record_lock_sql(ts: TableSpec, pks: Sequence[str]) -> tuple[str, list[Any]]:
+    """A statement taking the record-key advisory lock of each of ``pks``
+    (``pg_advisory_xact_lock``, held to the end of the transaction), in
+    ``_pk`` byte order, to run **before** a statement that rewrites those
+    records' companion rows -- with a trailing ``"; "``.
+
+    Why (#774 review): the data-modifying CTEs of a save share one snapshot,
+    so under READ COMMITTED a second save of the same record that started
+    before the first committed cannot see the rows the first one inserted,
+    and its ``DELETE … NOT term = ANY(new)`` leaves them behind. Serialising
+    the writers of one record on its key, in a statement of its own, gives
+    the rewrite a snapshot taken after the previous writer committed (and
+    covers two racing first inserts, which have no row to lock yet).
+
+    Lock order (plan §6, TD-2): record-key locks are taken after any
+    ``(model, field)`` lock and sorted, so two writers of overlapping record
+    sets take them in the same order. The key names the schema and table,
+    so equal ``_pk`` strings in two schemas never contend."""
+    ordered = sorted(set(pks), key=lambda k: k.encode("utf-8"))
+    keys = [f"popoto:rec:{ts.qualified}:{pk}" for pk in ordered]
+    if len(keys) == 1:
+        return "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0)); ", keys
+    return (
+        "SELECT count(pg_advisory_xact_lock(hashtextextended(u.k, 0))) "
+        "FROM unnest(%s::text[]) WITH ORDINALITY AS u(k, i); ",
+        [keys],
+    )
+
+
 @dataclass
 class SavePlan:
     """What a save adds to its statement: data-modifying CTEs (run in the
@@ -464,9 +527,10 @@ def prepare_save(
 
     As on Redis, a field's work runs on a full save, or on an
     ``update_fields`` save that names it -- with one deliberate addition for
-    BM25: naming its *source* re-indexes too, and naming only a *scope*
-    column moves the postings to the new scope (Redis's hooks run only for
-    the listed field, so its index goes stale there).
+    BM25 and embeddings: naming the *source* re-indexes and re-embeds too,
+    and naming only a *scope* column moves the postings and the narrow
+    vector row to the new scope (Redis's hooks run only for the listed
+    field, so its index and vector go stale there).
     """
     layout: SearchLayout = ts.search
     listed = set(fields) if fields is not None else None
@@ -481,25 +545,40 @@ def prepare_save(
         n += 1
         return f'"_s{n}"'
 
+    moved = listed is None or any(c in listed for c in layout.scope_columns)
+
     for emb in layout.embedding.values():
-        if listed is not None and emb.field not in listed:
-            continue
-        made = _embed_for_save(obj, emb)
+        made = None
+        if listed is None or emb.field in listed or (emb.source or "") in listed:
+            made = _embed_for_save(obj, emb)
         if made is None:
+            if moved:
+                # The vector stays; its narrow row follows the record's scope.
+                ctes.append(
+                    f'{tag()} AS (UPDATE {emb.narrow} SET "scope" = %s '
+                    'WHERE "_pk" = %s AND "scope" <> %s)'
+                )
+                params += [scope, pk, scope]
             continue
         vector, dims = made
+        literal = _vector_literal(vector)
         values[emb.field] = dims
-        values[emb.vec] = _vector_literal(vector)
+        values[emb.vec] = literal
         values[emb.model] = _model_identity(emb.field_ref)
         values[emb.hash] = _md5(str(_source_text(obj, emb.source or "")))
         setattr(obj, emb.field, dims)
         embedded.append(emb)
+        ctes.append(
+            f'{tag()} AS (INSERT INTO {emb.narrow} ("_pk", "scope", "v") '
+            'VALUES (%s, %s, %s::vector) ON CONFLICT ("_pk") DO UPDATE SET '
+            '"scope" = EXCLUDED."scope", "v" = EXCLUDED."v")'
+        )
+        params += [pk, scope, literal]
 
     from ...fields._tokenizer import tokenize
 
     for bm in layout.bm25.values():
         content = listed is None or bm.field in listed or bm.source in listed
-        moved = listed is not None and any(c in listed for c in layout.scope_columns)
         if content:
             text = _source_text(obj, bm.source)
             tokens = tokenize(str(text if text is not None else ""), unique=False)
@@ -712,20 +791,40 @@ def backfill(
         ]
         if not good:
             return 0
+        # Locked like a save (record_lock_sql), so a concurrent save of one of
+        # these rows cannot interleave with this rewrite of its narrow vector
+        # row; a row whose source changed (hash) or that left the scope since
+        # the probe is skipped. Clears _migrated_from like every native write
+        # (#756's import contract), bumps _updated_at, and takes the field off
+        # _estimated_fields: the vector is now derived natively, not imported.
+        lock_sql, lock_params = record_lock_sql(ts, [g[0] for g in good])
+        scope_key = scope_text([getattr(obj, c, None) for c in layout.scope_columns])
         _, written = backend._run(
-            f"UPDATE {ts.qualified} AS t SET {quote_ident(emb.vec)} = "
-            f"u.v::vector, {quote_ident(emb.model)} = %s, "
-            f"{quote_ident(emb.hash)} = u.h, {quote_ident(emb.field)} = u.d "
+            lock_sql + f'WITH "_bf" AS (UPDATE {ts.qualified} SET '
+            f"{quote_ident(emb.vec)} = u._bf_v::vector, "
+            f"{quote_ident(emb.model)} = %s, {quote_ident(emb.hash)} = u._bf_h, "
+            f"{quote_ident(emb.field)} = u._bf_d, "
+            '"_updated_at" = now(), "_migrated_from" = NULL, '
+            '"_estimated_fields" = array_remove("_estimated_fields", %s) '
             "FROM unnest(%s::text[], %s::text[], %s::text[], %s::int[]) "
-            "AS u(pk, v, h, d) "
-            f'WHERE t."_pk" = u.pk AND md5(t.{src}::text) = u.h',
-            [
+            "AS u(_bf_pk, _bf_v, _bf_h, _bf_d) "
+            f'WHERE {ts.qualified}."_pk" = u._bf_pk AND md5({src}::text) = u._bf_h '
+            f"AND ({cond}) RETURNING u._bf_pk, u._bf_v) "
+            f'INSERT INTO {emb.narrow} ("_pk", "scope", "v") '
+            'SELECT b._bf_pk, %s, b._bf_v::vector FROM "_bf" b '
+            'ON CONFLICT ("_pk") DO UPDATE SET "scope" = EXCLUDED."scope", '
+            '"v" = EXCLUDED."v"',
+            lock_params
+            + [
                 model,
+                emb.field,
                 [g[0] for g in good],
                 [g[1] for g in good],
                 [g[2] for g in good],
                 [g[3] for g in good],
-            ],
+            ]
+            + cond_params
+            + [scope_key],
             write=True,
         )
         return int(written or 0)
@@ -738,19 +837,64 @@ def backfill(
 
 
 def _embedded_count(
-    ts: TableSpec, emb: EmbeddingLayout, cond: str, cond_params: list[Any]
+    ts: TableSpec,
+    emb: EmbeddingLayout,
+    cond: str,
+    cond_params: list[Any],
+    scope_key: Optional[str] = None,
 ) -> tuple[str, list[Any]]:
     """How many rows matching ``cond`` hold a vector, as an expression the
-    indexes serve: every row matching ``cond`` (an index-only scan on the
-    scope's sorted index) minus those in the no-vector partial index. The
-    plain ``count(*) … WHERE v IS NOT NULL`` reads the heap of every row in
-    scope, which at 20k rows was most of the 5% scope's budget."""
+    indexes serve.
+
+    ``scope_key`` (``cond`` is exactly that scope, nothing more): the narrow
+    table's rows in the scope, an index-only count on its ``scope`` index.
+    ``cond`` ``TRUE``: the narrow table's rows. Otherwise every row matching
+    ``cond`` (an index-only scan on the scope's sorted index) minus those in
+    the no-vector partial index -- the plain ``count(*) ... WHERE v IS NOT
+    NULL`` reads the heap of every row in scope, which at 20k rows was most
+    of the 5% scope's budget."""
+    if scope_key is not None:
+        return f'(SELECT count(*) FROM {emb.narrow} WHERE "scope" = %s)', [scope_key]
+    if cond == "TRUE" and not cond_params:
+        return f"(SELECT count(*) FROM {emb.narrow})", []
     vec = quote_ident(emb.vec)
     sql = (
         f"((SELECT count(*) FROM {ts.qualified} WHERE ({cond})) - "
         f"(SELECT count(*) FROM {ts.qualified} WHERE {vec} IS NULL AND ({cond})))"
     )
     return sql, list(cond_params) + list(cond_params)
+
+
+def _exact_sql(
+    ts: TableSpec,
+    emb: EmbeddingLayout,
+    cond: str,
+    cond_params: list[Any],
+    scope_key: Optional[str] = None,
+) -> tuple[str, list[Any]]:
+    """The exact vector arm over the narrow table: ``SELECT "_pk", "d"``
+    best first (distance, then ``_pk`` bytewise). The ``OFFSET 0`` fence
+    keeps the distance computed once per row, in the scan, and leaves no
+    path an index could serve (the HNSW index is on the record table
+    anyway). Returns the SQL and the filter's parameters; the caller binds
+    ``[q] + filter params + [limit]``.
+
+    ``scope_key`` filters on the narrow row's own ``scope`` (``cond`` is
+    exactly that scope); any other ``cond`` keeps the records matching it in
+    the record table."""
+    if scope_key is not None:
+        filt, params = ' WHERE n."scope" = %s', [scope_key]
+    elif cond == "TRUE" and not cond_params:
+        filt, params = "", []
+    else:
+        filt = f' WHERE n."_pk" IN (SELECT "_pk" FROM {ts.qualified} WHERE {cond})'
+        params = list(cond_params)
+    sql = (
+        f'SELECT x."_pk", x."d" FROM (SELECT n."_pk", (n."v" <=> %s::vector) '
+        f'AS "d" FROM {emb.narrow} n{filt} OFFSET 0) AS x '
+        'ORDER BY x."d", x."_pk" COLLATE "C" LIMIT %s'
+    )
+    return sql, params
 
 
 # -- BM25 SQL ------------------------------------------------------------------
@@ -1025,9 +1169,12 @@ class SearchMixin:
         where: Optional[Predicate] = None,
         force: Optional[str] = None,
         embedded: Optional[int] = None,
+        scope_key: Optional[str] = None,
     ) -> tuple[Scored, dict[str, Any]]:
         """The vector arm and how it ran: ``{"path": "exact"|"hnsw",
-        "guard": bool, "embedded": n}``. ``force`` pins the path (tests)."""
+        "guard": bool, "embedded": n}``. ``force`` pins the path (tests).
+        ``scope_key``: ``where`` is exactly that scope (lets the exact path
+        and the count filter the narrow table on its own column)."""
         import numpy as np
 
         ts, emb = self._embedding(spec, field)
@@ -1039,7 +1186,9 @@ class SearchMixin:
         cond, cond_params = _cond_text(ts, spec, where)
         vec = quote_ident(emb.vec)
         if embedded is None:
-            count_sql, count_params = _embedded_count(ts, emb, cond, cond_params)
+            count_sql, count_params = _embedded_count(
+                ts, emb, cond, cond_params, scope_key
+            )
             rows, _ = self._run(f"SELECT {count_sql}", count_params)
             embedded = int(rows[0][0])
         info["embedded"] = embedded
@@ -1055,16 +1204,14 @@ class SearchMixin:
             f'SELECT "_pk", ({vec} <=> %s::vector) AS "d" FROM {ts.qualified} '
             f"WHERE {vec} IS NOT NULL AND {cond}"
         )
-        exact_sql = (
-            f'{base} ORDER BY ({vec} <=> %s::vector) + 0, "_pk" COLLATE "C" ' "LIMIT %s"
-        )
-        exact_params = [literal] + cond_params + [literal, int(limit)]
+        exact_sql, filt_params = _exact_sql(ts, emb, cond, cond_params, scope_key)
+        exact_params = [literal] + filt_params + [int(limit)]
         if path == "hnsw":
             rows, _ = self._run(
                 self._hnsw_prefix()
                 + f'SELECT "_pk", "d" FROM ({base} ORDER BY {vec} <=> %s::vector '
                 'LIMIT %s) AS h ORDER BY "d", "_pk" COLLATE "C"',
-                exact_params,
+                [literal] + cond_params + [literal, int(limit)],
             )
             if len(rows) < min(int(limit), embedded):
                 info["guard"] = True
@@ -1229,17 +1376,27 @@ class SearchMixin:
         k: int = 60,
         extra_arms: Optional[Mapping[str, Sequence[str]]] = None,
         query_vector: Optional[Sequence[float]] = None,
+        decay: Any = None,
     ) -> list[tuple[dict[str, Any], float]]:
-        """BM25 and vector arms fused by weighted RRF (``Σ w / (k + rank)``)
-        in a statement that also returns the fused records' full rows:
-        ``[(row, score)]``, best first, ties by ``_pk`` bytewise. An
+        """BM25, vector and decay arms fused by weighted RRF (``Σ w / (k +
+        rank)``) in a statement that also returns the fused records' full
+        rows: ``[(row, score)]``, best first, ties by ``_pk`` bytewise. An
         index-only count picks the vector path first; on the HNSW path the
         vector arm is its own statement (see ``_hnsw_prefix``). See
         :meth:`popoto.models.query.Query.recall` for the arguments.
 
+        The decay arm is ``rank_decayed``'s ranking -- the ``DECAY_SCORE_LUA``
+        expression over the M2a columns (the ``<f>`` clock, the base-score
+        column, ``<f>__conf`` modulation) -- computed in the fused statement
+        itself, over the same scope and filters. ``decay`` names it as
+        ``(decay_field, confidence_field_or_None)`` (``Query.recall`` resolves
+        both the way ``top_by_decay`` does), ``False`` leaves it out, and
+        ``None`` picks the model's one ``DecayingSortedField`` with its one
+        ``ConfidenceField``, if any.
+
         ``extra_arms`` are already-ranked key lists (``{name: [key, …]}``)
-        fused beside the SQL arms -- the decay arm, which ``rank_decayed``
-        computes -- with ``weights[name]``.
+        fused beside the SQL arms with ``weights[name]``, re-filtered by the
+        scope and filters in the fused statement.
         """
         from ...fields._tokenizer import tokenize
 
@@ -1252,6 +1409,7 @@ class SearchMixin:
         info: dict[str, Any] = {
             "vector": None,
             "bm25": False,
+            "decay": False,
             "guard": False,
             "embedded": 0,
         }
@@ -1267,47 +1425,15 @@ class SearchMixin:
             ts, spec, scope_cols, scope_values, filters, tags, tags_mode
         )
         scope_key = scope_text(scope_values) if scope_values is not None else None
-        extra_arms = dict(extra_arms or {})
-        decay = next(
-            (
-                n
-                for n in sorted(spec.fields)
-                if spec.fields[n].kind == "DecayingSortedField"
-            ),
-            None,
-        )
-        if (
-            decay is not None
-            and "decay" not in extra_arms
-            and float(weights.get("decay", 1.0)) > 0
-        ):
-            # The decay x confidence arm is rank_decayed's ranking over the
-            # same scope and filters, fused beside the SQL arms.
-            confidence = next(
-                (
-                    n
-                    for n in sorted(spec.fields)
-                    if spec.fields[n].kind == "ConfidenceField"
-                ),
-                None,
-            )
-            try:
-                ranked = self.rank_decayed(  # type: ignore[attr-defined]
-                    spec,
-                    decay,
-                    now=time.time(),
-                    n=depth,
-                    where=where,
-                    confidence_field=confidence,
-                )
-                extra_arms["decay"] = [rid.canonical for rid, _s in ranked]
-            except BackendCapabilityError:
-                pass
+        # The narrow vector table filters on its own scope column only when
+        # the scope is the whole predicate.
+        scope_only = scope_key if (not filters and tags is None) else None
 
         ctes: list[str] = []
         params: list[Any] = []
         arms: list[tuple[str, float]] = []
         cond, cond_params = _cond_text(ts, spec, where)
+        in_scope = f'"_pk" IN (SELECT "_pk" FROM {ts.qualified} WHERE {cond})'
 
         tokens = tokenize(query_text or "")
         if tokens and layout.bm25:
@@ -1328,8 +1454,7 @@ class SearchMixin:
                 ctes.append(
                     '"a_bm25" AS (SELECT s."_pk", row_number() OVER (ORDER BY '
                     's."score" DESC, s."_pk" COLLATE "C") AS "rank" FROM '
-                    f'{sc} s WHERE s."_pk" IN (SELECT "_pk" FROM {ts.qualified} '
-                    f'WHERE {cond}) ORDER BY "rank" LIMIT %s)'
+                    f'{sc} s WHERE s.{in_scope} ORDER BY "rank" LIMIT %s)'
                 )
                 params += cond_params + [depth]
                 arms.append(('"a_bm25"', weight))
@@ -1347,7 +1472,7 @@ class SearchMixin:
                 arr = np.asarray(vector, dtype=np.float32)
                 if arr.size and np.linalg.norm(arr):
                     count_sql, count_params = _embedded_count(
-                        ts, emb, cond, cond_params
+                        ts, emb, cond, cond_params, scope_only
                     )
                     (embedded,) = self._run(f"SELECT {count_sql}", count_params)[0][0]
                     info["embedded"] = int(embedded)
@@ -1366,26 +1491,47 @@ class SearchMixin:
                             where=where,
                             force="hnsw",
                             embedded=int(embedded),
+                            scope_key=scope_only,
                         )
                         info["vector"] = "hnsw"
                         info["guard"] = vinfo["guard"]
                         ranked_vector = [rid.canonical for rid, _s in scored]
                         if ranked_vector:
+                            # Ranked in an earlier statement: re-apply the
+                            # scope and filters here, so a record that left
+                            # the scope in between is not returned (#774
+                            # review); a deleted one drops out at the join.
                             arm = '"a_vec"'
                             ctes.append(
                                 f'{arm} AS (SELECT u.pk AS "_pk", u.r AS "rank" '
-                                "FROM unnest(%s::text[]) WITH ORDINALITY AS u(pk, r))"
+                                "FROM unnest(%s::text[]) WITH ORDINALITY AS "
+                                f'u(pk, r) WHERE u.pk IN (SELECT "_pk" FROM '
+                                f"{ts.qualified} WHERE {cond}))"
                             )
-                            params.append(ranked_vector)
+                            params += [ranked_vector] + cond_params
                             arms.append((arm, weight))
                     elif embedded:
                         vctes, vparams = self._vector_ctes(
-                            ts, emb, _vector_literal(arr), cond, cond_params, depth
+                            ts,
+                            emb,
+                            _vector_literal(arr),
+                            cond,
+                            cond_params,
+                            depth,
+                            scope_only,
                         )
                         ctes += vctes
                         params += vparams
                         arms.append(('"a_vec"', weight))
                         info["vector"] = "exact"
+
+        decay_arm = self._recall_decay(spec, decay)
+        if decay_arm is not None and float(weights.get("decay", 1.0)) > 0:
+            dctes, dparams = self._decay_ctes(ts, spec, decay_arm, cond, depth)
+            ctes += dctes
+            params += cond_params + dparams
+            arms.append(('"a_dec"', float(weights.get("decay", 1.0))))
+            info["decay"] = True
 
         for name, keys in (extra_arms or {}).items():
             weight = float(weights.get(name, 1.0))
@@ -1430,6 +1576,70 @@ class SearchMixin:
             out.append((decoded, float(row[width])))
         return out
 
+    @staticmethod
+    def _recall_decay(
+        spec: ModelSpec, decay: Any
+    ) -> Optional[tuple[str, Optional[str]]]:
+        """``(decay_field, confidence_field)`` for recall's decay arm, or
+        ``None`` (see :meth:`recall`'s ``decay``)."""
+        if decay is False:
+            return None
+        if decay is not None:
+            field, confidence = decay
+            return str(field), (str(confidence) if confidence else None)
+        decays = sorted(
+            n for n, f in spec.fields.items() if f.kind == "DecayingSortedField"
+        )
+        if len(decays) != 1:
+            return None
+        confidences = sorted(
+            n for n, f in spec.fields.items() if f.kind == "ConfidenceField"
+        )
+        modulate = (
+            len(confidences) == 1
+            and bool(Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED)
+            and bool(Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH)
+        )
+        return decays[0], (confidences[0] if modulate else None)
+
+    @staticmethod
+    def _decay_ctes(
+        ts: TableSpec,
+        spec: ModelSpec,
+        decay: tuple[str, Optional[str]],
+        cond: str,
+        depth: int,
+    ) -> tuple[list[str], list[Any]]:
+        """The decay arm as a CTE ``"a_dec"(_pk, rank)``: ``rank_decayed``'s
+        score and order (NaN last, then score descending, then ``_pk``
+        bytewise) over the records matching ``cond``, ``depth`` deep. The
+        caller binds ``cond``'s parameters, then the returned ones."""
+        from .memory import decay_score_sql
+
+        field, confidence = decay
+        fs = spec.fields[field]
+        expr = decay_score_sql(
+            ts,
+            spec,
+            field,
+            now=time.time(),
+            rate=float(fs.options.get("decay_rate", Defaults.DECAY_RATE)),
+            base_field=fs.options.get("base_score_field") or None,
+            confidence_field=confidence,
+            strength=float(Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH),
+        )
+        # OFFSET 0 fences the scored subquery, as in rank_decayed: the score
+        # is evaluated once per row, not once per sort key.
+        cte = (
+            '"a_dec" AS (SELECT r."_pk", row_number() OVER (ORDER BY '
+            '(r."_score" = \'NaN\'::float8), r."_score" DESC, '
+            'r."_pk" COLLATE "C") AS "rank" FROM (SELECT t."_pk", '
+            f'{expr} AS "_score" FROM {ts.qualified} AS t WHERE '
+            f"t.{quote_ident(field)} IS NOT NULL AND ({cond}) OFFSET 0) AS r "
+            'ORDER BY "rank" LIMIT %s)'
+        )
+        return [cte], [int(depth)]
+
     def _vector_ctes(
         self,
         ts: TableSpec,
@@ -1438,20 +1648,19 @@ class SearchMixin:
         cond: str,
         cond_params: list[Any],
         depth: int,
+        scope_key: Optional[str] = None,
     ) -> tuple[list[str], list[Any]]:
-        """The exact vector arm as CTEs ending in ``"a_vec"(_pk, rank)``:
-        ordered by ``(v <=> q) + 0``, which no index can serve, so the plan
-        is the scope's rows and a top-N sort whatever indexes exist. (The
-        HNSW path runs as its own statement: :meth:`recall`.)"""
-        vec = quote_ident(emb.vec)
+        """The exact vector arm as CTEs ending in ``"a_vec"(_pk, rank)``,
+        over the narrow table (:func:`_exact_sql`): the scope's rows and a
+        top-N sort, whatever indexes exist. (The HNSW path
+        runs as its own statement: :meth:`recall`.)"""
+        sql, params = _exact_sql(ts, emb, cond, cond_params, scope_key)
         ctes = [
-            f'"vall" AS (SELECT "_pk", ({vec} <=> %s::vector) AS "d" FROM '
-            f"{ts.qualified} WHERE {vec} IS NOT NULL AND ({cond}) "
-            f'ORDER BY ({vec} <=> %s::vector) + 0, "_pk" COLLATE "C" LIMIT %s)',
+            f'"vall" AS ({sql})',
             '"a_vec" AS (SELECT "_pk", row_number() OVER (ORDER BY "d", '
             '"_pk" COLLATE "C") AS "rank" FROM "vall" WHERE "d" < 1)',
         ]
-        return ctes, [literal] + list(cond_params) + [literal, depth]
+        return ctes, [literal] + params + [depth]
 
     @staticmethod
     def _embed_query(emb: EmbeddingLayout, text: str) -> Optional[list[float]]:

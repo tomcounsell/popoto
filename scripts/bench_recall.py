@@ -156,7 +156,7 @@ def main() -> int:
                     print(f"  seeded {i} in {time.time() - started:.0f}s", flush=True)
         seed_s = time.time() - started
         admin.execute(f'VACUUM ANALYZE "{schema}".bench_memory')
-        for suffix in ("lexical__post", "lexical__dl"):
+        for suffix in ("lexical__post", "lexical__dl", "embedding__vec"):
             admin.execute(f'VACUUM ANALYZE "{schema}".bench_memory__{suffix}')
         (postings,) = admin.execute(
             f'SELECT count(*) FROM "{schema}".bench_memory__lexical__post'
@@ -213,7 +213,10 @@ def main() -> int:
                 spec, "embedding", qv, limit=50, where=where
             )
             timed(recall, args.warmup)
-            runs = [timed(recall, args.iters) for _ in range(args.runs)]
+            runs, loads = [], []
+            for _ in range(args.runs):
+                runs.append(timed(recall, args.iters))
+                loads.append(os.getloadavg()[0])
             every = [x for run in runs for x in run]
             arms = {
                 "bm25 arm": timed(bm25, args.iters),
@@ -230,6 +233,7 @@ def main() -> int:
             for k, run in enumerate(runs, 1):
                 print(
                     f"  run {k}: p50 {pct(run, 50):6.2f} ms  p95 {pct(run, 95):6.2f} ms"
+                    f"  (load average {loads[k - 1]:.2f})"
                 )
             p95 = pct(every, 95)
             verdict = "PASS" if p95 <= budget else "FAIL"

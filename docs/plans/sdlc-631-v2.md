@@ -413,7 +413,7 @@ firing from there. `src/popoto/backends/postgres/` never imports `redis`, and
 | `DecayingSortedField` | `<f> double precision` (epoch seconds, the Redis sorted-set score; M2a departure, §5 M2) | B-tree `(partition cols…, <f>, _pk COLLATE "C")` |
 | `ConfidenceField` | `<f> double precision` (the model attribute, as the Redis hash keeps it) + state `<f>__conf double precision`, `<f>__n bigint`, `<f>__corr bigint`, `<f>__contra bigint` (`NULL` = the seed; M2a) | none (M2a departure, §5 M2) |
 | `ValidityField` | `<f> tstzrange`, `<f>_ingested_at timestamptz`, `<f>_identity text`, `<f>_supersedes text`, `<f>_superseded_by text` | GiST on `<f>`; partial `UNIQUE (<f>_identity) WHERE upper_inf(<f>)` replaces the open-pointer STRING |
-| `EmbeddingField` | `vector(d)` (`d` from provider) | HNSW `vector_cosine_ops` past the threshold (needs pgvector) |
+| `EmbeddingField` | `<f> bigint` (dimensions) + `<f>__vec vector(d)` (`d` from provider), `<f>__model`, `<f>__hash`; companion `<model>__<f>__vec (_pk, scope, v vector(d))`, `v` `STORAGE PLAIN` (M2b departure, §5 M2) | HNSW `vector_cosine_ops` on `<f>__vec` (needs pgvector); `(scope)` on the companion |
 | `BM25Field` | `<f>_len int` + companion `<model>__<f>_postings(scope, term, _pk, tf)` | PK `(scope, term, _pk)` |
 | `CoOccurrenceField` | companion `<model>__<f>_edges(src, dst, weight)` | PK `(src, dst)`, B-tree `(dst)` |
 | `ExistenceFilter` / `FrequencySketch` | companion `(token)` / `(token, count)` | PK |
@@ -681,6 +681,48 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     `pg_advisory_xact_lock` like `popoto_schema`, not a companion per model.
     It carries the model tables' model-name-collision caveat on a shared
     schema.
+- **M2b as shipped (#774): departures from this plan, recorded.** M2b is
+  BM25, embeddings, `ExistenceFilter`/`FrequencySketch`, `fuse`, `recall()`,
+  `top_by_relevance`, the backfill and the #756 engine columns; it merged
+  after M2a, so `recall()`'s decay arm, `top_by_relevance` and
+  `composite_score(similarity_boost=)` use M2a's columns (`<f>` clock,
+  base-score column, `<f>__conf`).
+  - **`recall()` on the HNSW path is three statements, not one:** an
+    index-only count (which picks the path), the HNSW arm, then the fused
+    statement. The HNSW arm needs statement-wide `SET LOCAL` planner
+    settings (`enable_seqscan`/`enable_bitmapscan`/`enable_sort` off): at 20k
+    1536-d rows and a 60% scope the planner otherwise chose a bitmap heap
+    scan plus top-N sort (77 ms) over the index (~5 ms), and the same
+    settings in a combined statement pushed the BM25 arm onto a full scan of
+    the postings' `_pk` index (300 ms). Its ranking joins the fused
+    statement as a key list that is re-filtered by the scope and filters
+    there, so a record that leaves the scope in between is not returned
+    (#774 review). The exact path is two statements (the count, then
+    everything else), and the decay arm adds none.
+  - **A narrow vector companion, `<model>__<f>__vec (_pk, scope, v)`,
+    `STORAGE PLAIN`** (when `d` ≤ 1,900, so a row fits a page), written in
+    the save statement and by the backfill, cascaded on delete, read by the
+    exact path and the recall guard. The record table keeps `<f>__vec` for
+    the HNSW index. Reason: in the record table a 1536-d vector is TOASTed,
+    and de-TOASTing a 5% scope's 1,000 vectors put the 5% `recall` p95 at
+    13-25 ms against the 15 ms bar (#774 review). Cost: a second copy of
+    each vector.
+  - **Record-key advisory lock on a save that rewrites companion rows.**
+    `pg_advisory_xact_lock(hashtextextended('popoto:rec:<table>:<_pk>', 0))`
+    runs as its own statement before the save's CTE statement, so the
+    rewrite's snapshot follows any earlier writer of the record (#758 Race
+    1: two interleaved saves left the first one's postings and token rows
+    behind, 8 of 8 runs, #774 review). The backfill takes the same locks in
+    `_pk` byte order. Record-key locks come after any `(model, field)` lock
+    (TD-2, §6).
+  - **`save(update_fields=[source])` re-indexes BM25 and re-embeds** (a
+    divergence beyond §1.1: Redis runs only the listed field's hook, so its
+    index and vector go stale); a scope-only `update_fields` save moves the
+    postings and the narrow vector row.
+  - **`top_by_relevance` lives on `Model.query`**, beside `recall()`, and
+    returns `[(instance, score)]`.
+  - **`ContentField` is a `text` column**, pulled forward from M5 because
+    the M2b gate files' models use it.
 - **Exit criteria.**
   - Gates (a) and (b) on the files below.
     `ContextAssembler(retrieval_mode="auto")` returns the same ranked keys on
@@ -765,7 +807,7 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
 |---|---|---|
 | TD-1, #747 | the phase checker is vacuous | M0(a) |
 | TD-12, TD-15, TD-26, TD-40 | NUL in `text`; UoW rollback; `2**63`; `rank_decayed` raw reply | documented divergences, §1.1 |
-| TD-2, #750 B1 | cross-operation deadlock is detected, not prevented | lock ordering at commit, `_pk`-ordered `FOR UPDATE`, typed retryable error `BackendRetryableError` (M2a, #773: single statements and `on_context_used` retry then raise it; a caller-owned `transaction()` raises it at once); the `(model, field)` lock before row locks is deferred to M3's `supersede` (§5 M2, M2a departures) |
+| TD-2, #750 B1 | cross-operation deadlock is detected, not prevented | lock ordering at commit, `_pk`-ordered `FOR UPDATE`, typed retryable error `BackendRetryableError` (M2a, #773: single statements and `on_context_used` retry then raise it; a caller-owned `transaction()` raises it at once); the `(model, field)` lock before row locks is deferred to M3's `supersede` (§5 M2, M2a departures); M2b adds the record-key advisory lock on saves that rewrite companion rows, taken after any `(model, field)` lock and sorted (§5 M2, M2b departures) |
 | TD-3 | one connection per instance; ten threads hung the harness | `psycopg_pool.ConnectionPool`, a connection per transaction, pid check after fork (M1) |
 | TD-8, #750 TD4 | `CREATE OR REPLACE FUNCTION` ×10 on every connection | `popoto_schema` fingerprint, once per process; no PL/pgSQL required by M1 (§3) |
 | TD-10 | 73 `pipeline if pipeline` sites return `None` on an empty Postgres UoW | `UnitOfWork.__bool__ = True`, so the sites are inert; Postgres never hands a UoW to a Redis hook. The sweep is optional hygiene |

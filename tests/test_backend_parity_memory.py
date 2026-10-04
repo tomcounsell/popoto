@@ -1065,18 +1065,55 @@ def test_composite_priority_arm_is_a_documented_divergence(backend_is_redis):
             ParityComposite.query.composite_score({"priority": 1.0})
 
 
-def test_composite_similarity_boost_waits_for_the_vector_arm(backend_is_redis):
+def test_composite_similarity_boost_is_one_more_arm(backend):
+    """``similarity_boost`` is one more ZUNIONSTORE input, weight 1.0 and
+    last, on both legs (#759 M2b): a record it names scores its arms plus the
+    boost, bit for bit, and a record it does not name keeps its arms alone."""
+    a = ParityComposite.create(name="a", importance=0.6)
+    b = ParityComposite.create(name="b", importance=0.6)
+    c = ParityComposite.create(name="c", importance=0.6)
+    boost = {a.db_key.redis_key: 0.9, b.db_key.redis_key: 0.25}
+    seen = {}
+    ranked = ParityComposite.query.composite_score(
+        {"certainty": 0.5},
+        similarity_boost=boost,
+        limit=10,
+        post_filter=lambda key, score: seen.__setitem__(key, score) or True,
+    )
+    assert [r.name for r in ranked] == ["a", "b", "c"]
+    for record, extra in ((a, 0.9), (b, 0.25), (c, 0.0)):
+        data = ConfidenceField.get_confidence_data(record, "certainty")
+        expected = 0.5 * data["confidence"] + extra
+        assert seen[record.db_key.redis_key] == expected
+
+
+def test_composite_similarity_boost_alone_ranks_its_keys(backend):
+    """With a decay arm that every record is in and a boost that only one
+    record gets, the boost decides the order; ``min_score`` cuts on the sum,
+    before ``temperature`` divides it, on both legs."""
+    a = ParityComposite.create(name="a", importance=0.6)
+    ParityComposite.create(name="b", importance=0.6)
+    ranked = ParityComposite.query.composite_score(
+        {"certainty": 1.0},
+        similarity_boost={a.db_key.redis_key: 2.0},
+        min_score=1.0,
+        temperature=0.5,
+    )
+    assert [r.name for r in ranked] == ["a"]
+
+
+def test_composite_co_occurrence_boost_waits_for_m4(backend_is_redis):
     record = ParityComposite.create(name="s", importance=0.6)
     boost = {record.db_key.redis_key: 0.9}
     if backend_is_redis:
         ranked = ParityComposite.query.composite_score(
-            {"certainty": 1.0}, similarity_boost=boost
+            {"certainty": 1.0}, co_occurrence_boost=boost
         )
         assert [r.name for r in ranked] == ["s"]
     else:
-        with pytest.raises(BackendCapabilityError, match="similarity"):
+        with pytest.raises(BackendCapabilityError, match="co_occurrence"):
             ParityComposite.query.composite_score(
-                {"certainty": 1.0}, similarity_boost=boost
+                {"certainty": 1.0}, co_occurrence_boost=boost
             )
 
 
@@ -1145,3 +1182,39 @@ def test_where_a_nan_score_ranks_is_a_documented_divergence(backend, backend_is_
     assert math.isnan(scores[nan_record.db_key.redis_key])
     if not backend_is_redis:
         assert [k for k, _ in ranked] == [fresh, old, nan_record.db_key.redis_key]
+
+
+def test_top_by_relevance_is_the_modulated_decay_ranking(backend_is_redis, backend):
+    """``[PG-only]`` ``top_by_relevance`` (#759 M2b, #758 D8) is decay x
+    confidence in SQL; its Redis counterpart is ``top_by_decay`` over the
+    ``DECAY_SCORE_LUA`` scores. Both legs check the same oracle: Redis
+    ranks it with ``top_by_decay`` and refuses ``top_by_relevance``;
+    Postgres returns the same order with the oracle's scores."""
+    now = time.time()
+    shape = (
+        ("low", 0.05, 30),
+        ("mid", 0.5, 30),
+        ("high", 0.95, 30),
+        ("fresh", 0.5, 2),
+    )
+    for name, confidence, days in shape:
+        record = ParityModulated.create(name=name)
+        backdate(backend, record, now - days * DAY)
+        plant_confidence(backend, record, confidence)
+    s = Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH
+    oracle = {
+        name: lua_decay(now, now - days * DAY, 0.5, confidence=c, s=s)
+        for name, c, days in shape
+    }
+    want = sorted(oracle, key=lambda n: -oracle[n])[:3]
+    by_decay = ParityModulated.query.top_by_decay("relevance", n=3)
+    assert [r.name for r in by_decay] == want
+    if backend_is_redis:
+        with pytest.raises(BackendCapabilityError, match="Postgres-only"):
+            ParityModulated.query.top_by_relevance(limit=3)
+        return
+    ranked = ParityModulated.query.top_by_relevance(limit=3)
+    assert [r.name for r, _s in ranked] == want
+    for record, score in ranked:
+        # The query reads time.time() itself: allow its drift.
+        assert math.isclose(score, oracle[record.name], rel_tol=1e-6)

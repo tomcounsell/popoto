@@ -85,7 +85,7 @@ first query does not.
 | `DecayingSortedField(partition_by=…, base_score_field=…)` (M2a) | `double precision`: the decay clock, in epoch seconds | B-tree `(partition cols…, f, _pk COLLATE "C")` |
 | `ConfidenceField` (M2a) | `double precision` for the attribute, plus the state `<f>__conf` (`double precision`), `<f>__n`, `<f>__corr`, `<f>__contra` (`bigint`) | — |
 | `BM25Field(source=…)` (M2b) | no column of its own: postings `<table>__<f>__post (scope, term, _pk, tf)` and lengths `<table>__<f>__dl (_pk, scope, len)` | postings `PRIMARY KEY (scope, term, _pk)` plus a B-tree on `_pk`; lengths `(scope) INCLUDE (len)` |
-| `EmbeddingField(source=…)` (M2b) | `<f> bigint` (the dimension count Redis stores), `<f>__vec vector(d)`, `<f>__model text`, `<f>__hash text` | HNSW `vector_cosine_ops`; a partial B-tree on rows with no vector, and a B-tree on `<f>__model` (the backfill's probe) |
+| `EmbeddingField(source=…)` (M2b) | `<f> bigint` (the dimension count Redis stores), `<f>__vec vector(d)`, `<f>__model text`, `<f>__hash text`, plus the narrow vector table `<table>__<f>__vec (_pk, scope, v vector(d))`, `v` stored `PLAIN` | HNSW `vector_cosine_ops` on `<f>__vec`; a partial B-tree on rows with no vector, and a B-tree on `<f>__model` (the backfill's probe); `(scope)` on the narrow table |
 | `ExistenceFilter` / `FrequencySketch` (M2b) | no column: `<table>__<f>__tok (token, _pk)` / `<table>__<f>__cnt (token, count)` | `PRIMARY KEY (token, _pk)` / `PRIMARY KEY (token)` |
 | `ContentField` (M2b, pulled forward from M5) | `text` holding the content itself (no `$CF:` reference, no file) | — |
 
@@ -99,10 +99,12 @@ Every table also has:
 - `_migrated_from jsonb` and `_estimated_fields text[]` (M2b), the import
   contract for the one-off Redis-to-Postgres copy (#756). An importer records
   where a row came from and which values it inferred. Every native write
-  (`save`, `atomic_increment`, `push`) sets `_migrated_from` to `NULL`, so a
-  re-load can guard with `WHERE _migrated_from IS NOT NULL` and never
-  overwrite a row popoto has written since. The engine never touches
-  `_estimated_fields`.
+  (`save`, `atomic_increment`, `push`, and the embedding backfill) sets
+  `_migrated_from` to `NULL`, so a re-load can guard with
+  `WHERE _migrated_from IS NOT NULL` and never overwrite a row popoto has
+  written since. The only engine write to `_estimated_fields` is the
+  backfill's: it removes the embedding field's name, because the vector it
+  writes is derived natively rather than imported.
 
 `DatetimeField` round-trips the way it does on Redis (#521). An aware value
 comes back with the same UTC offset as a fixed-offset `timezone`. A naive
@@ -223,6 +225,10 @@ CREATE TABLE "popoto"."memory__bloom__tok" (
   PRIMARY KEY ("token", "_pk"));
 CREATE TABLE "popoto"."memory__seen__cnt" (
   "token" text PRIMARY KEY, "count" bigint NOT NULL);
+CREATE TABLE "popoto"."memory__embedding__vec" (
+  "_pk" text PRIMARY KEY REFERENCES "popoto"."memory" ("_pk") ON DELETE CASCADE,
+  "scope" text NOT NULL, "v" vector(1536) NOT NULL);
+ALTER TABLE "popoto"."memory__embedding__vec" ALTER COLUMN "v" SET STORAGE PLAIN;
 ```
 
 `tests/postgres/test_postgres_search.py::test_compiled_search_ddl_is_pinned`
@@ -233,8 +239,23 @@ pins the full statement list.
 `SortedField`. With neither, every record is in scope `''`. A `NULL` scope
 column is scope `''` too, so it is never dropped. The scope leads the
 postings key. A save that changes a scope column, including
-`save(update_fields=["project_key"])`, moves the record's postings in the
-same statement.
+`save(update_fields=["project_key"])`, moves the record's postings and its
+narrow vector row in the same statement.
+
+**Concurrent saves of one record.** The data-modifying CTEs of a save share
+one snapshot, so under `READ COMMITTED` a second save of the same record
+whose statement started before the first one committed could not see the
+rows the first one wrote, and would leave them behind. A save that rewrites
+companion rows therefore takes the record's advisory lock first, as its own
+statement in the same message:
+`SELECT pg_advisory_xact_lock(hashtextextended('popoto:rec:<table>:<_pk>', 0))`.
+The rewrite then takes its snapshot after any earlier writer of that record
+has committed, which also covers two racing first inserts. The backfill
+takes the same locks, sorted by `_pk`. Record-key locks come after any
+`(model, field)` lock (none exist before M3). Pinned by
+`test_concurrent_saves_of_one_record_leave_no_stale_rows`, which interleaves
+two saves behind a held row lock in 8 runs, and by its control, which shows
+the same interleaving goes stale without the lock.
 
 ### BM25
 
@@ -270,7 +291,18 @@ every search is exact.
 A save embeds the source text exactly as `on_save` does on Redis: a provider
 failure raises `RuntimeError` and nothing is written. The vector is stored
 as float32, the precision of Redis's `.npy` files. Reads that hydrate records
-never fetch it.
+never fetch it. A save that names the source in `update_fields` re-embeds,
+as it re-indexes BM25.
+
+**The narrow vector table.** Each vector is also kept in
+`<table>__<f>__vec (_pk, scope, v)`, written in the save statement and
+cascaded on delete. In the record table a 1536-d vector (6 kB) is TOASTed,
+so an exact scan reads two heaps and de-TOASTs every row in scope. The
+narrow table stores `v` inline (`STORAGE PLAIN`, up to
+1,900 dimensions, so the row fits an 8 kB page), and a scope's vectors are
+one index range on `scope` plus their heap pages. The exact path reads it;
+the HNSW index stays on the record table's column. The cost is a second
+copy of every vector, about 6 kB a row at 1536-d.
 
 **The vector arm** (`_get_vector_scores`, behind `ContextAssembler`'s hybrid
 path) returns cosine similarity `1 - (v <=> q)`, positive only, as Redis's
@@ -280,7 +312,8 @@ which no index can serve. Above that it uses the HNSW index with
 `SET LOCAL hnsw.ef_search = Defaults.PG_HNSW_EF_SEARCH` and
 `hnsw.iterative_scan = relaxed_order`. When HNSW returns fewer rows than
 `min(limit, rows with a vector)`, the **recall guard** re-runs the arm
-exactly, so a pathological query costs latency rather than coming back empty.
+exactly (on the narrow table), so a pathological query costs latency rather
+than coming back empty.
 `EmbeddingField.load_embeddings` reads the column (normalized as before, in
 `_pk` order). `garbage_collect` and `sweep_stale_tempfiles` return `0` and
 touch no file: the vector goes with its row.
@@ -292,8 +325,12 @@ outside any `transaction()`, and stops at
 `Defaults.PG_BACKFILL_BUDGET_SECONDS` (1 s) of wall clock. A provider call
 that outlives the budget is abandoned, so a slow provider cannot hold
 `save()` past it. A row is written only while its source still hashes to the
-text that was embedded, so a concurrent edit is never given a stale vector.
-Errors are logged and swallowed.
+text that was embedded and the row is still in the scope, so a concurrent
+edit is never given a stale vector. It writes the narrow row in the same
+statement, under the same record locks a save takes. Errors are logged and
+swallowed. The busy flag is process-wide: while one backfill's provider
+call is still out (abandoned at the budget but not yet returned), every
+other model's backfill skips.
 
 ### Membership
 
@@ -335,12 +372,32 @@ arm runs as its own statement, with the recall guard, first. That arm needs
 statement-wide planner settings to keep the planner on the HNSW index, and
 in a combined statement those settings would push the BM25 arm onto a full
 index scan. Its ranking then joins the fused statement as a ranked list.
+A record that leaves the scope between the HNSW statement and the fused one
+is filtered out again in the fused statement, like every ranked list that
+joins it.
 Every scoping argument is optional, and they compose. BM25's statistics are
 **per scope** by default (`bm25_stats="scope"`): on a shared database, one
 agent's corpus must not skew another's IDF. `bm25_stats="corpus"` uses the
-corpus-wide statistics `BM25Field.search` uses. A model with a
-`DecayingSortedField` adds a third arm from `rank_decayed` when its backend
-provides it.
+corpus-wide statistics `BM25Field.search` uses.
+
+A model with one `DecayingSortedField` adds a third arm, `weights["decay"]`
+(default 1.0): `top_by_decay`'s ranking (`DECAY_SCORE_LUA` over the M2a
+columns: the field's clock, its `base_score_field`, and `<f>__conf`
+modulation when the field resolves a `ConfidenceField`), computed in the
+fused statement itself over the same scope and filters. It adds no round
+trip.
+
+**`Query.top_by_relevance(scope=None, limit=10)`** (`[PG-only]`, #758 D8)
+returns `[(instance, score)]` ranked by decay × confidence in SQL, the score
+`top_by_decay` ranks by. It replaces reading a decay sorted set with a raw
+`ZREVRANGE`. `scope` is the decay field's `partition_by` value; `None` ranks
+every partition together. On a Redis-bound model it raises
+`BackendCapabilityError`; use `top_by_decay` there.
+
+**`composite_score(similarity_boost=…)`** works on Postgres too (M2b). The
+mapping is one more arm, weight 1.0 and last, as its temporary set is in the
+Redis `ZUNIONSTORE`. `semantic_search(indexes=…)` uses it.
+`co_occurrence_boost` waits for `CoOccurrenceField` (M4).
 
 ## Topology and the outage contract
 
@@ -610,16 +667,16 @@ cast to the column's type.
 | `ExistenceFilter.might_exist` (M2b) | a bloom filter: false positives are possible, and a deleted record stays "seen" | exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: `test_existence_filter.py::TestMembershipExactness` |
 | `FrequencySketch.get_frequency` (M2b) | a count-min sketch: never under, may be over | the exact count of saves (never decremented, like the sketch). Pinned: same class |
 | `ExistenceFilter.fill_ratio` (M2b) | the fraction of set bits | an estimate, `1 - e^(-k·n/m)` for the `n` distinct tokens stored |
-| `save(update_fields=[…])` naming a `BM25Field`'s **source**, or only a **scope** column (M2b) | only the listed fields' hooks run, so the BM25 index keeps the old text or scope | re-indexes on the source; moves the postings on a scope change. Pinned: `tests/postgres/test_postgres_search.py` |
+| `save(update_fields=[…])` naming a `BM25Field`'s or `EmbeddingField`'s **source**, or only a **scope** column (M2b) | only the listed fields' hooks run, so the BM25 index keeps the old text or scope, and the vector (and its hash) the old text | re-indexes and re-embeds on the source; moves the postings and the narrow vector row on a scope change. Pinned: `test_update_fields_naming_the_source_reindexes`, `test_update_fields_naming_the_source_re_embeds` |
 | `EmbeddingField` storage (M2b) | a `.npy` file per record plus `_index.json`, and an in-process matrix cache | the `vector(d)` column. No file, no cache, and `garbage_collect` / `sweep_stale_tempfiles` return `0`. The tests that assert files are `redis_only` |
-| Vector-arm ties and precision (M2b) | equal similarities come back in directory-listing order; numpy float32 dot products | ties by key, bytewise; pgvector's `<=>`. Similarities agree to 1e-6, because both are float32 accumulations in a different order |
+| Vector-arm ties and precision (M2b) | equal similarities come back in directory-listing order; numpy float32 dot products | ties by key, bytewise; pgvector's `<=>`. Both are float32 accumulations in a different order, so similarities differ by an amount that grows with the dimension. Measured maximum absolute difference over 10,000 vector-query pairs per dimension (clustered Gaussian vectors, PostgreSQL 18.6, pgvector 0.8.7): 2.5e-7 at 2-d, 2.3e-7 at 8-d, 5.3e-7 at 64-d, 8.9e-7 at 256-d, 1.2e-6 at 768-d, 1.4e-6 at 1024-d, 1.7e-6 at 1536-d (the #774 review measured 1.56e-6) and 2.3e-6 at 3072-d. So 1e-6 holds only up to about 256 dimensions; above that, near-ties can order differently |
 | `ContentField` (M2b) | a `$CF:` reference in the hash, with the content in a file store | the content itself in a `text` column |
 | `BM25Field.recompute_stats` (M2b) | corrects the running `avgdl`'s floating drift | a no-op: `N` and `avgdl` are counted live |
 | The `$BM25:` / `$EF:` / `$FS:` keys (M2b) | the index, readable through the raw client | not used: postings, length and token tables. The tests that read the keys are `redis_only` |
 | A reload after `touch()` (M2a) | `touch` moves only the sorted-set score, so the hash, and a reload, keep the save-time value | the clock is the field's column, so a reload sees the touched time. Pinned: `test_a_reload_after_touch_is_a_documented_divergence` |
 | `DecayingSortedField.rank_decayed(zset_key, …)` (M2a, TD-40) | ranks that sorted set | raises `BackendCapabilityError` naming `top_by_decay`, the backend-neutral call |
 | `composite_score({"priority": …})` (M2a) | ranks by the WriteFilter priority set | raises `BackendCapabilityError`: the priority tier is a no-op on Postgres (plan §5 M2) |
-| `composite_score(similarity_boost=/co_occurrence_boost=)` (M2a) | injects the boost as an arm | raises `BackendCapabilityError` until the vector arm (M2) and `CoOccurrenceField` (M4) arrive |
+| `composite_score(co_occurrence_boost=)` (M2a) | injects the boost as an arm | raises `BackendCapabilityError` until `CoOccurrenceField` (M4) arrives. `similarity_boost=` is an arm on both since M2b; a key with no record cannot take a top-K slot on Postgres, where on Redis it takes one and is then dropped at hydration |
 | Where a NaN decay score ranks (M2a) | NaN (`0 * inf`: a `-inf` clock with above-prior confidence) makes the script's comparator inconsistent (`x > nan` is always false), so `table.sort` places it arbitrarily and can misorder real scores around it | real scores sorted, NaN last; every member's score is the same on both. Pinned: `test_where_a_nan_score_ranks_is_a_documented_divergence` |
 | A NaN decay score in `composite_score` (M2a) | `rank_decayed` replies `nan` (`0 * inf`: a `-inf` clock with above-prior confidence) and the composite's `ZADD` refuses it: `ResponseError: value is not a valid float` | that arm scores 0 for the record, the value `ZUNIONSTORE` gives a NaN product. Pinned: `test_a_nan_decay_score_in_composite_is_a_documented_divergence` |
 | The confirmed access log (M2a) | a capped list of read timestamps (`$AT:…:access_log`) | not kept: `access_count` and `last_accessed` are. It is read only by `export_state`, which arrives with `transfer/` in M5 |
@@ -652,10 +709,11 @@ tokens from a 30,000-term Zipf vocabulary, and clustered synthetic vectors.
 It runs `VACUUM ANALYZE`, then makes three runs of 200
 `recall(q, scope=p, limit=10)` calls at a 5% and a 60% scope, and times each
 arm alone. The targets are at most 15 ms p95 at 5% scope and at most 60 ms
-p95 at 60% scope. The 5% scope (1,000 vectors) takes the exact path, where
-reading 1,000 TOASTed 6 KB vectors is most of the time. The 60% scope
-(12,000 vectors) takes HNSW. The PR that introduced this section records the
-measured numbers and the environment.
+p95 at 60% scope. The 5% scope (1,000 vectors) takes the exact path, over
+the narrow vector table; before that table, reading 1,000 TOASTed 6 kB
+vectors from the record table was most of the time, and the 5% p95 sat
+at 13-25 ms. The 60% scope (12,000 vectors) takes HNSW. Each run prints the
+load average. BENCH_TABLE
 
 ```bash
 POPOTO_POSTGRES_URL=postgresql://localhost:5432/popoto_bench \
