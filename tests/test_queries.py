@@ -8,8 +8,14 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src import popoto
 
-
 # MODELS WITH MORE THAN ONE KEYFIELD
+# Backend conformance (#759 M1b, plan §5 M1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+
 class MultiKeyModel(popoto.Model):
     key1 = popoto.KeyField()
     key2 = popoto.KeyField()

@@ -7,6 +7,12 @@ from popoto.redis_db import POPOTO_REDIS_DB
 from popoto.fields.geo_field import GeoField
 from popoto.fields.shortcuts import AutoKeyField, UniqueKeyField
 
+# Backend conformance (#759 M1b, plan §5 M1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class Restaurant(popoto.Model):
     """Test model with SortedField and GeoField."""
@@ -66,6 +72,9 @@ def cleanup():
 class TestDeleteAll:
     """Tests for Model.delete_all() method."""
 
+    @pytest.mark.redis_only(
+        reason="Restaurant declares a GeoField, which arrives on Postgres in M5 (#759 plan §5)"
+    )
     def test_delete_all_removes_all_instances(self):
         """delete_all() should remove all instances of the model."""
         # Create multiple restaurants
@@ -85,12 +94,18 @@ class TestDeleteAll:
         assert deleted == 10
         assert Restaurant.query.count() == 0
 
+    @pytest.mark.redis_only(
+        reason="Restaurant declares a GeoField, which arrives on Postgres in M5 (#759 plan §5)"
+    )
     def test_delete_all_returns_zero_when_empty(self):
         """delete_all() should return 0 when no instances exist."""
         assert Restaurant.query.count() == 0
         deleted = Restaurant.delete_all()
         assert deleted == 0
 
+    @pytest.mark.redis_only(
+        reason="Restaurant declares a GeoField, which arrives on Postgres in M5 (#759 plan §5)"
+    )
     def test_delete_all_cleans_sorted_index(self):
         """delete_all() should clean up SortedField indexes."""
         # Create restaurants with ratings
@@ -124,6 +139,9 @@ class TestDeleteAll:
         Customer(username="user3", email="test@example.com", name="New User").save()
         assert Customer.query.count() == 1
 
+    @pytest.mark.redis_only(
+        reason="Restaurant declares a GeoField, which arrives on Postgres in M5 (#759 plan §5)"
+    )
     def test_delete_all_cleans_geo_index(self):
         """delete_all() should clean up GeoField indexes."""
         # Create restaurants with locations
@@ -158,6 +176,9 @@ class TestDeleteAll:
         )
         assert len(nearby) == 0
 
+    @pytest.mark.redis_only(
+        reason="MenuItem has a Relationship (M1.1) to Restaurant, which has a GeoField (M5) (#759 plan §5)"
+    )
     def test_delete_all_with_relationships(self):
         """delete_all() should work with models that have Relationships."""
         # Create restaurant and menu items
@@ -190,6 +211,9 @@ class TestDeleteAll:
         Restaurant.delete_all()
         assert Restaurant.query.count() == 0
 
+    @pytest.mark.redis_only(
+        reason="Restaurant declares a GeoField, which arrives on Postgres in M5 (#759 plan §5)"
+    )
     def test_delete_all_with_batch_size(self):
         """delete_all() should respect batch_size parameter."""
         # Create many restaurants
@@ -213,6 +237,9 @@ class TestDeleteAll:
 class TestAsyncDeleteAll:
     """Tests for Model.async_delete_all() method."""
 
+    @pytest.mark.redis_only(
+        reason="Restaurant declares a GeoField, which arrives on Postgres in M5 (#759 plan §5)"
+    )
     @pytest.mark.asyncio
     async def test_async_delete_all_removes_all_instances(self):
         """async_delete_all() should remove all instances."""
@@ -233,6 +260,9 @@ class TestAsyncDeleteAll:
         assert deleted == 5
         assert Restaurant.query.count() == 0
 
+    @pytest.mark.redis_only(
+        reason="Restaurant declares a GeoField, which arrives on Postgres in M5 (#759 plan §5)"
+    )
     @pytest.mark.asyncio
     async def test_async_delete_all_returns_zero_when_empty(self):
         """async_delete_all() should return 0 when no instances exist."""

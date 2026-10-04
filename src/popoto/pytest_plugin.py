@@ -67,7 +67,6 @@ import threading
 import uuid
 import warnings
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
@@ -593,24 +592,24 @@ def _popoto_db0_tripwire(request):
 # own: a project fixture, or ``@pytest.mark.parametrize("backend", ...)``,
 # wins and is left alone.
 #
-# There is no storage backend in M0. ``backend`` yields a
-# :class:`ConformanceBackend` *descriptor* (a name and, on the Postgres leg, the
-# session schema and a DSN whose ``search_path`` is that schema), and binds
-# nothing process-wide. Model code still talks to Redis on every leg, so the
-# Postgres leg of a model-level test would pass while exercising Redis. It
-# therefore skips, with :data:`POSTGRES_MODELS_PENDING_REASON`, until M1 brings
-# the backend. Only a harness self-test -- one marked
-# ``conformance(harness=True)``, which inspects the schema rather than models --
-# runs its Postgres leg now, and the flag is a collection error outside
-# ``tests/conformance/`` so a model-level test cannot borrow it (#763 N2). M1
-# deletes the flag together with ``POSTGRES_MODELS_PENDING_REASON``.
+# ``backend`` yields a :class:`ConformanceBackend` descriptor (a name and, on
+# the Postgres leg, the session schema, a DSN whose ``search_path`` is that
+# schema, and the bound ``PostgresBackend``). Since #759 M1b each leg also
+# *binds* its backend as the process default for the test -- ``set_backend``
+# -- and restores the previous binding on teardown, discarding memoised
+# ``bind()`` state both ways, so module-level test models run on whichever leg
+# is active with no re-declaration. (M0's ``conformance(harness=True)`` flag
+# and its "Postgres backend arrives in M1" skip are gone: every leg now has a
+# backend to run against.)
 #
 # The Postgres leg isolates on one schema per session, ``popoto_test_<32 hex>``,
 # created at first use and ``DROP SCHEMA ... CASCADE``d at session end, with
-# every table in it truncated before each test (the FLUSHDB mirror). The
-# truncate names every table in one statement and has no ``CASCADE``: a foreign
-# key reaching into the schema from outside it makes the truncate fail rather
-# than empty a table the harness does not own. The session-end ``DROP SCHEMA
+# every table in it dropped before each test (the FLUSHDB mirror: Redis has no
+# schema to survive a flush, and test modules declare same-named models with
+# different fields, so a table must not outlive its test either). The reset
+# names every table in one ``DROP TABLE`` and has no ``CASCADE``: a foreign
+# key reaching into the schema from outside it makes the reset fail rather
+# than drop a table the harness does not own. The session-end ``DROP SCHEMA
 # ... CASCADE`` does reach outside, but only to objects that depend on a test
 # table: a view elsewhere selecting from one is dropped, and a foreign key
 # elsewhere referencing one loses that constraint (its table and rows stay).
@@ -630,12 +629,6 @@ CONFORMANCE_BACKENDS: tuple[str, ...] = ("redis", "postgres")
 
 POSTGRES_TEST_SCHEMA_PREFIX = "popoto_test_"
 """Every schema the harness creates, truncates or drops carries this prefix."""
-
-POSTGRES_MODELS_PENDING_REASON = "Postgres backend arrives in M1 (#759)"
-"""Why the Postgres leg of a model-level conformance test skips in M0."""
-
-HARNESS_TEST_DIR = ("tests", "conformance")
-"""Where, relative to the rootdir, ``conformance(harness=True)`` is allowed."""
 
 _CONFORMANCE_FIXTURES_PLUGIN = "popoto-conformance-fixtures"
 """Plugin name the conformance fixtures register under, in opted-in sessions."""
@@ -664,16 +657,18 @@ class PostgresIsolationRefusedError(redis_db.PopotoException, ValueError):
 class ConformanceBackend:
     """What the ``backend`` fixture yields: which leg this is, and where.
 
-    A descriptor, not a backend: M0 ships no storage backend, so nothing is
-    bound process-wide and model code runs on Redis on every leg. ``dsn`` is
-    ``POSTGRES_URL`` with ``options=-c search_path=<schema>`` appended, so any
-    connection opened from it resolves unqualified names inside the session
-    schema; both it and ``schema`` are ``None`` on the Redis leg.
+    The fixture also binds the leg's backend process-wide for the test (see
+    the module notes); ``instance`` is that backend on the Postgres leg.
+    ``dsn`` is ``POSTGRES_URL`` with ``options=-c search_path=<schema>``
+    appended, so any connection opened from it resolves unqualified names
+    inside the session schema; ``dsn``, ``schema`` and ``instance`` are
+    ``None`` on the Redis leg.
     """
 
     name: str
     dsn: str | None = None
     schema: str | None = None
+    instance: Any = None
 
     @property
     def is_redis(self) -> bool:
@@ -688,10 +683,10 @@ def _register_conformance_markers(config: Any) -> None:
     and fail without it."""
     config.addinivalue_line(
         "markers",
-        "conformance(harness=False): storage-backend conformance test; the "
-        "`backend` fixture is parametrised over POPOTO_CONFORMANCE_BACKENDS / "
-        "popoto_conformance_backends (default: redis only). harness=True marks "
-        "a self-test of the harness, whose Postgres leg runs before M1",
+        "conformance: storage-backend conformance test; the `backend` fixture "
+        "is parametrised over POPOTO_CONFORMANCE_BACKENDS / "
+        "popoto_conformance_backends (default: redis only) and binds each "
+        "leg's backend for the test",
     )
     config.addinivalue_line(
         "markers",
@@ -784,35 +779,6 @@ def _check_redis_only_reasons(metafunc: Any) -> None:
             )
 
 
-def _check_harness_location(metafunc: Any) -> None:
-    """Fail collection on ``conformance(harness=True)`` outside
-    ``tests/conformance/``.
-
-    The flag lets the Postgres leg run before M1, which is only honest for a
-    test that inspects the schema itself: a model-level test borrowing it
-    would pass its ``[postgres]`` leg while writing to Redis. Confining it to
-    the harness's own directory makes that misuse a collection error rather
-    than a silent pass (#763 N2). M1 deletes the flag.
-    """
-    definition = metafunc.definition
-    try:
-        relative = Path(definition.path).relative_to(metafunc.config.rootpath)
-    except ValueError:
-        relative = None
-    if relative is not None and relative.parts[: len(HARNESS_TEST_DIR)] == (
-        HARNESS_TEST_DIR
-    ):
-        return
-    pytest.fail(
-        f"{definition.nodeid}: @pytest.mark.conformance(harness=True) is only "
-        f"allowed under {'/'.join(HARNESS_TEST_DIR)}/ (relative to the rootdir). "
-        "It runs the Postgres leg before a Postgres backend exists, so a "
-        "model-level test using it would pass while exercising Redis. Drop "
-        "harness=True; the Postgres leg then skips until M1.",
-        pytrace=False,
-    )
-
-
 def pytest_generate_tests(metafunc: Any) -> None:
     """Parametrise the plugin's ``backend`` over the configured backends --
     only for tests carrying the ``conformance`` marker, in a session that
@@ -830,8 +796,6 @@ def pytest_generate_tests(metafunc: Any) -> None:
     conformance = metafunc.definition.get_closest_marker("conformance")
     if conformance is None:
         return
-    if conformance.kwargs.get("harness", False):
-        _check_harness_location(metafunc)
     names = getattr(metafunc.config, "_popoto_conformance_backends", None)
     if names is None:
         names = _resolve_conformance_backends(metafunc.config)
@@ -947,6 +911,7 @@ class PostgresTestSchema:
     name: str
     url: str
     _conn: Any = field(default=None, repr=False)
+    _backend: Any = field(default=None, repr=False)
 
     @property
     def dsn(self) -> str:
@@ -992,6 +957,41 @@ class PostgresTestSchema:
             )
         return tables
 
+    def drop_tables(self) -> list[str]:
+        """``DROP TABLE`` every table in the schema -- the per-test reset the
+        ``backend`` fixture runs (#759 M1b) -- in one statement and without
+        ``CASCADE``, so a foreign key reaching in from outside the schema makes
+        it fail rather than drop a table the harness does not own. Returns the
+        table names it dropped."""
+        _check_schema_name(self.name)
+        from psycopg import sql
+
+        rows = self._conn.execute(
+            "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = %s "
+            "ORDER BY tablename",
+            (self.name,),
+        ).fetchall()
+        tables = [row[0] for row in rows]
+        if tables:
+            self._conn.execute(
+                sql.SQL("DROP TABLE {}").format(
+                    sql.SQL(", ").join(
+                        sql.Identifier(self.name, table) for table in tables
+                    )
+                )
+            )
+        return tables
+
+    def backend(self) -> Any:
+        """The session's ``PostgresBackend``, bound to this schema: one per
+        session, so its connection pool is reused across tests."""
+        _check_schema_name(self.name)
+        if self._backend is None:
+            from popoto.backends.postgres import PostgresBackend
+
+            self._backend = PostgresBackend(dsn=self.url, schema=self.name)
+        return self._backend
+
     def drop(self) -> None:
         """``DROP SCHEMA ... CASCADE`` on this schema, then close the admin
         connection.
@@ -1008,6 +1008,9 @@ class PostgresTestSchema:
         _check_schema_name(self.name)
         from psycopg import sql
 
+        if self._backend is not None:
+            self._backend.close()
+            self._backend = None
         try:
             self._conn.execute(
                 sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
@@ -1060,18 +1063,21 @@ class _ConformanceFixtures:
         """The conformance leg under test, as a :class:`ConformanceBackend`.
 
         Parametrised by :func:`pytest_generate_tests` for ``conformance``
-        tests; unparametrised (Redis) otherwise. The Postgres leg skips, in
-        order: when the test is ``redis_only``; when it is a model-level test
-        (:data:`POSTGRES_MODELS_PENDING_REASON` -- no backend exists before M1,
-        so running it would exercise Redis under a Postgres label); and when
-        ``psycopg`` or ``POSTGRES_URL`` is missing. Otherwise it truncates the
-        session schema and yields its DSN.
+        tests; unparametrised (Redis) otherwise. In an opted-in session each
+        leg binds its backend as the process default for the test and restores
+        the previous binding on teardown (#759 M1b), so module-level models
+        need no re-declaration. The Postgres leg skips when the test is
+        ``redis_only`` and when ``psycopg`` or ``POSTGRES_URL`` is missing;
+        otherwise it drops every table in the session schema (the FLUSHDB
+        mirror) and binds the session's ``PostgresBackend``. A model with an
+        explicit ``Meta.backend = "postgres"`` resolves to that same instance
+        for the test.
         """
         name = getattr(request, "param", "redis")
         if name == "redis":
-            # #759 M1a: in an opted-in session, bind the leg's backend as the
-            # process default for the test and restore the previous binding
-            # (the session pin) on teardown. set_backend() discards memoised
+            # In an opted-in session, bind the leg's backend as the process
+            # default for the test and restore the previous binding (the
+            # session pin) on teardown. set_backend() discards memoised
             # bind() state both ways, so module-level models rebind lazily.
             if getattr(request.config, "_popoto_opted_in", False):
                 from popoto.backends import set_backend
@@ -1084,13 +1090,42 @@ class _ConformanceFixtures:
         redis_only = request.node.get_closest_marker("redis_only")
         if redis_only is not None:
             pytest.skip(f"redis_only: {redis_only.kwargs.get('reason', '')}")
-        conformance = request.node.get_closest_marker("conformance")
-        if conformance is None or not conformance.kwargs.get("harness", False):
-            pytest.skip(POSTGRES_MODELS_PENDING_REASON)
         _require_postgres()
         schema = request.getfixturevalue("popoto_postgres_schema")
-        schema.truncate_all()
-        return ConformanceBackend(name="postgres", dsn=schema.dsn, schema=schema.name)
+        schema.drop_tables()
+        instance = schema.backend()
+        instance.forget_tables()
+        from popoto.backends import _swap_instance, set_backend
+
+        previous = set_backend(instance)
+        previous_instance = _swap_instance("postgres", instance)
+
+        def _restore() -> None:
+            _swap_instance("postgres", previous_instance)
+            set_backend(previous)
+
+        request.addfinalizer(_restore)
+        return ConformanceBackend(
+            name="postgres", dsn=schema.dsn, schema=schema.name, instance=instance
+        )
+
+    @pytest.fixture(autouse=True)
+    def _popoto_conformance_leg(self, request: Any) -> None:
+        """Bind a conformance test's leg *before* the module's own fixtures.
+
+        A plugin autouse fixture is set up ahead of a test module's autouse
+        fixtures, so resolving ``backend`` here means a module fixture that
+        seeds rows (``setup_and_teardown`` style) already writes to the leg's
+        backend. Without it, the seed would land on Redis and the Postgres leg
+        would test an empty table. Acts only on a test this plugin
+        parametrised (``conformance`` + the plugin's ``backend``).
+        """
+        callspec = getattr(request.node, "callspec", None)
+        if callspec is None or "backend" not in callspec.params:
+            return
+        if request.node.get_closest_marker("conformance") is None:
+            return
+        request.getfixturevalue("backend")
 
     @pytest.fixture
     def backend_is_redis(self, backend: ConformanceBackend) -> bool:

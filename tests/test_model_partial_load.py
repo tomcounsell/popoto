@@ -20,6 +20,12 @@ import pytest
 from src import popoto
 from src.popoto.models.encoding import decode_popoto_model_hashmap
 
+# Backend conformance (#759 M1b, plan §5 M1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class Widget(popoto.Model):
     owner = popoto.KeyField()
@@ -35,6 +41,9 @@ def widget():
     w.delete()
 
 
+@pytest.mark.redis_only(
+    reason="spies on the Redis client to assert the HGET wire shape"
+)
 def test_load_fields_single_name_issues_hget(widget, monkeypatch):
     calls = []
     original = popoto.POPOTO_REDIS_DB.execute_command
@@ -48,6 +57,9 @@ def test_load_fields_single_name_issues_hget(widget, monkeypatch):
     assert "HGET" in calls
 
 
+@pytest.mark.redis_only(
+    reason="spies on the Redis client to assert the HMGET wire shape"
+)
 def test_load_fields_multi_name_issues_hmget(widget, monkeypatch):
     calls = []
     original = popoto.POPOTO_REDIS_DB.execute_command
@@ -72,6 +84,9 @@ def test_load_fields_happy_path_decodes_values(widget):
     assert result == {"size": 3, "name": "bolt"}
 
 
+@pytest.mark.redis_only(
+    reason="plants non-msgpack bytes in the Redis hash; a typed Postgres column cannot hold undecodable bytes"
+)
 def test_load_fields_undecodable_value_maps_to_none(widget):
     # Write raw non-msgpack bytes directly into the hash field -- this is
     # the case a wire diff cannot see: present-but-corrupt must map to
@@ -89,6 +104,9 @@ def test_load_fields_zero_names_raises_value_error(widget):
         Widget.load_fields(widget.db_key.redis_key)
 
 
+@pytest.mark.redis_only(
+    reason="load_raw_hash is a Redis-only debug API (plan §1); Postgres raises BackendCapabilityError"
+)
 def test_load_raw_hash_returns_undecoded_bytes(widget):
     raw = Widget.load_raw_hash(widget.db_key.redis_key)
     assert raw
@@ -97,6 +115,9 @@ def test_load_raw_hash_returns_undecoded_bytes(widget):
         assert isinstance(value, bytes)
 
 
+@pytest.mark.redis_only(
+    reason="load_raw_hash is a Redis-only debug API (plan §1); Postgres raises BackendCapabilityError"
+)
 def test_load_raw_hash_round_trips_through_decode_popoto_model_hashmap(widget):
     raw = Widget.load_raw_hash(widget.db_key.redis_key)
     instance = decode_popoto_model_hashmap(
@@ -107,21 +128,33 @@ def test_load_raw_hash_round_trips_through_decode_popoto_model_hashmap(widget):
     assert instance.size == widget.size
 
 
+@pytest.mark.redis_only(
+    reason="load_raw_hash is a Redis-only debug API (plan §1); Postgres raises BackendCapabilityError"
+)
 def test_load_raw_hash_missing_key_returns_empty_dict():
     raw = Widget.load_raw_hash("Widget:nobody:nothing")
     assert raw == {}
 
 
+@pytest.mark.redis_only(
+    reason="idle_seconds reads OBJECT IDLETIME; on Postgres it arrives in M4 and raises BackendCapabilityError"
+)
 def test_idle_seconds_live_key_returns_float(widget):
     result = Widget.idle_seconds(widget.db_key.redis_key)
     assert isinstance(result, float)
 
 
+@pytest.mark.redis_only(
+    reason="idle_seconds reads OBJECT IDLETIME; on Postgres it arrives in M4 and raises BackendCapabilityError"
+)
 def test_idle_seconds_missing_key_returns_none():
     result = Widget.idle_seconds("Widget:nobody:nothing")
     assert result is None
 
 
+@pytest.mark.redis_only(
+    reason="spies on the Redis client to assert the OBJECT idletime wire shape"
+)
 def test_idle_seconds_sends_the_lowercase_idletime_subcommand(
     widget, monkeypatch, assert_captured
 ):
@@ -146,6 +179,9 @@ def test_idle_seconds_sends_the_lowercase_idletime_subcommand(
     assert_captured(seen, ["idletime"])
 
 
+@pytest.mark.redis_only(
+    reason="asserts the Redis commands a rebound global Redis client receives"
+)
 def test_partial_load_apis_follow_a_rebound_global_client(
     monkeypatch, widget, assert_captured
 ):
