@@ -309,6 +309,14 @@
          <lastmod>2026-10-04</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/reference/popoto/backends/redis/</loc>
+         <lastmod>2026-10-04</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/backends/types/</loc>
+         <lastmod>2026-10-04</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/reference/popoto/embeddings/sentence_transformers/</loc>
          <lastmod>2026-10-04</lastmod>
     </url>
