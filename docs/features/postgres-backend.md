@@ -209,11 +209,16 @@ Where a test pins one of these, it pins both behaviours explicitly or carries a
 
 ### Query results
 
-Each row is pinned on both conformance legs by a test in
-`tests/test_backend_parity_edges.py`. In rows (i)–(iv), (vi) and (vii) Redis's
-result is a bug in its query layer, tracked in #771. The examples use
-`code`/`group` (`KeyField`), `rank` (`SortedField`), `note`/`hits`
-(unindexed) and `at` (an unindexed `DatetimeField`).
+Each row is pinned on both conformance legs: rows (i)–(viii) by a test in
+`tests/test_backend_parity_edges.py`, rows (ix)–(xvii) (M1.1) in
+`tests/test_backend_parity_fields.py`. In rows (i)–(iv), (vi), (vii), (ix),
+(xi), (xii) and (xv)–(xvii) Redis's result is a bug in its query layer,
+tracked in #771. The examples use `code`/`group` (`KeyField`), `rank`
+(`SortedField`), `note`/`hits` (unindexed) and `at` (an unindexed
+`DatetimeField`); the M1.1 rows use `IndexedField`s named by type (`s` str,
+`i` int, `f` float, `dec` Decimal, `dte` date), a `DateField` `day`, a
+`ListField` `lst`, a capped `ListField(max_length=3)` `cap`, a
+`TupleField` `pair` and a `Relationship` `author`/`owner`.
 
 | | Example | Redis (unchanged) | Postgres | Correct |
 |---|---|---|---|---|
@@ -226,10 +231,29 @@ result is a bug in its query layer, tracked in #771. The examples use
 | (vi) `KeyField` `__contains` | `filter(code__contains="0")` | matches nothing (the lookup is accepted but not implemented) | `LIKE '%0%'` | Postgres |
 | (vii) `KeyField` `__isnull=False` | `filter(group__isnull=False)` | only some non-null records match, depending on the key's position and value (a second key matches none; values such as `"10"`, or containing `_` or `%`, are missed) | `IS NOT NULL` | Postgres |
 | (viii) Equality on a `DatetimeField` with a naive value against a stored aware one | `filter(at=datetime(2024, 1, 5, 12))` | compared in Python: naive never equals aware | compared as instants, naive taken as UTC (the rule sorted fields use, #519) | Postgres |
+| (ix) Chained relationship lookup | `filter(author__country="uk")` | `AttributeError`: `filter_query` gets `bytes` keys back and calls `.db_key` on them | resolves the related model's query and matches its keys | Postgres |
+| (x) Equality on a collection field with another collection type | `filter(pair=[1, "x"])` on a `TupleField` holding `(1, "x")` | Python equality after hydration: a tuple never equals a list, so `[]` | compares the stored JSON documents, so the list matches (a `SetField` compares as a set) | Postgres is the more useful; neither is wrong by contract |
+| (xi) `IndexedField` numeric equality across value forms | `filter(i=1.0)` on `1`; `filter(f=1)` or `f="1"` on `1.0`; `filter(dec=Decimal("1.5"))` on `1.50`; `filter(i=True)` on `1`; `i__in=[1, 2.0]` | compares the filter value's key string (`"1.0"` ≠ `"1"`), so `[]`. Save coerces `i=1.0` to `1`, so a record saved with `i=1.0` cannot be found by `filter(i=1.0)` | compares numbers, as Python equality does (`1 == 1.0`, `Decimal("1.5") == Decimal("1.50")`) | Postgres |
+| (xii) `__startswith`/`__endswith` on a row holding `None` | `filter(s__startswith="No")`, `s__endswith="ne"`, `s__startswith=""`, `f__startswith="N"` | the `None` set is named `…:None`, so the glob matches rows holding `None` | `LIKE` never matches `NULL` | Postgres |
+| (xiii) Pattern lookup on a float in `1e15 <= abs(x) < 1e16`, or a `Decimal` Python writes in exponent form | `filter(f__startswith="1000")` on `1e15` | matches the key string `1000000000000000.0` | no match: Postgres renders `1e+15` (and `numeric` never uses exponent form) | Redis (the key string is the lookup's contract; outside this band Postgres renders it exactly) |
+| (xiv) `order_by` on a collection field | `filter(…, order_by="lst")` | sorts as Python does (`[] < [1, 2] < [2]`); `TypeError` for mixed or `dict` elements | `BackendCapabilityError`: `jsonb` orders by length first (`[2] < [1, 2]`), so Postgres refuses rather than return a different order. Sort in Python. | Redis, where it does not raise |
+| (xv) `order_by` on a `date` column holding `None` (`IndexedField(type=date)`, `DateField`) | `filter(…, order_by="day")` | `TypeError: function missing required argument 'year'`: `None` sorts as the type's zero, `date()` | `NULL` first (last for `-day`) | Postgres |
+| (xvi) `order_by` on a `Relationship` | `filter(…, order_by="owner")` | `AttributeError: … '_meta'` | ordered by the stored key string, `NULL` first | Postgres |
+| (xvii) A capped `ListField` on a lazy read | `filter(…)`, `all()`; `filter(…, values=("name", "cap"))` | `cap` is `None` (only `get` loads the separate list key); `values=` omits `cap` and logs `quarantined field 'cap'` per row | the stored list, as `get` returns on both | Postgres |
 
 A lone unindexed-field `Q` (`filter(Q(hits=5))`), one lower plus one upper
 bound on a sorted field, and `values=` that projects the filtered field all
 agree on both backends.
+
+M1.1 cases that agree on both backends, and are pinned as such: a string
+filter on an `IndexedField` of type `bool`, `date` or `datetime` that is the
+stored value's key string (`b="True"`, `dte="2026-01-01"`,
+`dtm="2026-01-01T12:00:00.000000Z"`; `"true"` matches neither); an aware
+`time` filter on a `TimeField`, which matches nothing; `__startswith` /
+`__endswith` on a non-text `IndexedField`, matched against the key string
+(`1.0`, `True`, `2026-01-01`, `1.50`, `…T12:00:00.000000Z`) except row (xiii);
+and `__in` with mixed numeric types (`i__in=[1, Decimal("2")]`), each element
+cast to the column's type.
 
 ### Records and other behaviour
 
@@ -245,9 +269,6 @@ agree on both backends.
 | An invalid `order_by=` / `values=` on a query that matches nothing | returns `[]` before validating | raises the same `QueryException` either way |
 | `save(update_fields=…)` on a record that does not exist yet | writes a partial hash that stays out of the class set, so queries do not see it | inserts the row (unlisted columns `NULL`), so queries see it |
 | `UniqueKeyField` / `UniqueField` / unique `Meta.indexes` conflict | checked by a read in `pre_save` before the write | the same read, through the backend, plus a `UNIQUE` index inside the write as the authority (it also catches two conflicting saves in one `transaction()`); same `ModelException` text either way (`tests/postgres/test_postgres_fields.py`) |
-| Chained relationship lookup, `Book.query.filter(author__country="uk")` (M1.1) | raises `AttributeError` (`filter_query` gets `bytes` keys back and calls `.db_key` on them); a pre-existing bug, left as it is | resolves the related model's query and matches its keys. Postgres is correct. Pinned on both legs: `test_backend_parity_fields.py::test_chained_relationship_lookup_is_a_documented_divergence` |
-| `IndexedField(type=datetime)` `__startswith="2026-01-01T"` (M1.1) | matches the canonical key rendering (`2026-01-01T12:00:00.000000Z`) | matches the column's text cast (`2026-01-01 12:00:00+00`), so that prefix matches nothing. Neither is a useful datetime lookup; use a `SortedField` range. Pinned on both legs: `test_backend_parity_fields.py::test_indexed_pattern_lookup_on_a_non_text_column_is_a_documented_divergence` |
-| Equality on a collection field, `filter(pair=[1, "x"])` on a `TupleField` holding `(1, "x")` (M1.1) | Python equality after hydration: a tuple never equals a list, so nothing matches | compares the stored JSON documents, so the list matches (a `SetField` compares as a set). Postgres is the more useful; neither is wrong by contract. Pinned on both legs: `test_backend_parity_fields.py::test_collection_equality_is_a_documented_divergence` |
 | An aware `time` in a `TimeField` / `SortedField(type=time)` (M1.1) | stored with its offset (`isoformat()`) | `ValueError` naming the field: a `time` column holds wall-clock time only. Use a `DatetimeField` when the offset matters. Pinned: `tests/postgres/test_postgres_fields.py::test_an_aware_time_is_refused` |
 | `push()` on a capped `ListField` whose record was deleted (M1.1) | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
 | `load_raw_hash`, `idle_seconds`, `Query.keys(catchall=/clean=)` | Redis debug and inspection APIs | raise `BackendCapabilityError` (`idle_seconds` arrives in M4) |

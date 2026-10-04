@@ -17,6 +17,7 @@ import pytest
 
 import popoto
 from popoto import Q
+from popoto.backends.types import BackendCapabilityError
 from popoto.exceptions import ModelException
 from popoto.models.query import QueryException
 
@@ -127,17 +128,17 @@ class ParityStamp(popoto.Model):
     pair = popoto.TupleField(null=True)
 
 
-def test_indexed_pattern_lookup_on_a_non_text_column_is_a_documented_divergence(
-    backend_is_redis,
-):
+def test_indexed_pattern_lookup_on_a_datetime_matches_the_key_string():
     """Redis matches ``__startswith`` against the canonical key rendering
-    (``…T12:00:00.000000Z``); Postgres against the column's text cast
-    (``… 12:00:00+00``). Pinned so neither changes silently."""
+    (``…T12:00:00.000000Z``); Postgres renders the column the same way
+    (``to_char`` in UTC), so the text cast's space form matches on neither."""
     ParityStamp.create(code="s", at=datetime.datetime(2026, 1, 1, 12, 0))
     found = [s.code for s in ParityStamp.query.filter(at__startswith="2026-01-01T")]
-    assert found == (["s"] if backend_is_redis else [])
+    assert found == ["s"]
+    found = [s.code for s in ParityStamp.query.filter(at__endswith=":00.000000Z")]
+    assert found == ["s"]
     found = [s.code for s in ParityStamp.query.filter(at__startswith="2026-01-01 ")]
-    assert found == ([] if backend_is_redis else ["s"])
+    assert found == []
 
 
 def test_collection_equality_is_a_documented_divergence(backend_is_redis):
@@ -231,3 +232,216 @@ def test_delete_with_a_malformed_in_memory_tag_value(books):
     assert book.delete() is True
     assert ParityBook.query.get(title="hobbit") is None
     assert keys(ParityBook.query.filter(tags__contains="1")) == []
+
+
+# -- value forms, patterns, ordering and capped lists (#770 review) ----------
+
+
+class ParityOwner(popoto.Model):
+    name = popoto.KeyField()
+
+
+class ParityTyped(popoto.Model):
+    name = popoto.KeyField()
+    s = popoto.IndexedField(type=str, null=True)
+    i = popoto.IndexedField(type=int, null=True)
+    f = popoto.IndexedField(type=float, null=True)
+    b = popoto.IndexedField(type=bool, null=True)
+    dec = popoto.IndexedField(type=Decimal, null=True)
+    dtm = popoto.IndexedField(type=datetime.datetime, null=True)
+    dte = popoto.IndexedField(type=datetime.date, null=True)
+    tim = popoto.TimeField(null=True)
+    day = popoto.DateField(null=True)
+    lst = popoto.ListField(null=True)
+    owner = popoto.Relationship(model=ParityOwner, null=True)
+    cap = popoto.ListField(max_length=3)
+
+
+UTC = datetime.timezone.utc
+
+
+@pytest.fixture
+def typed():
+    owner = ParityOwner.create(name="o1")
+    ParityTyped.create(
+        name="r1",
+        s="Nope",
+        i=1,
+        f=1.0,
+        b=True,
+        dec=Decimal("1.50"),
+        dtm=datetime.datetime(2026, 1, 1, 12, tzinfo=UTC),
+        dte=datetime.date(2026, 1, 1),
+        tim=datetime.time(1, 2, 3),
+        day=datetime.date(2026, 1, 1),
+        lst=[1, 2],
+        owner=owner,
+        cap=[1, "a"],
+    )
+    ParityTyped.create(
+        name="r2", s=None, i=2, f=2.5, b=False, dec=Decimal("2"), lst=[2], cap=[]
+    )
+    ParityTyped.create(
+        name="r3",
+        s="x",
+        dec=Decimal("1.5"),
+        dte=datetime.date(2025, 6, 30),
+        day=datetime.date(2025, 6, 30),
+        lst=[],
+        cap=[3],
+    )
+
+
+def typed_names(*args, **kwargs):
+    return sorted(r.name for r in ParityTyped.query.filter(*args, **kwargs))
+
+
+def typed_order(field):
+    every = ["r1", "r2", "r3"]
+    return [r.name for r in ParityTyped.query.filter(name__in=every, order_by=field)]
+
+
+def test_in_with_mixed_numeric_types_binds_as_the_column_type(typed):
+    """#770 review blocker 1: psycopg refuses a list of mixed types, so each
+    ``__in`` element is cast to the column's type first (an integer column
+    drops a non-integral number). These value forms agree on both legs."""
+    assert typed_names(i__in=[1, Decimal("2")]) == ["r1", "r2"]
+    assert typed_names(i__in=[1, 2.5]) == ["r1"]
+    assert typed_names(f__in=[1.0, Decimal("2.5")]) == ["r1", "r2"]
+    assert typed_names(dec__in=[Decimal("2"), 7.5]) == ["r2"]
+
+
+def test_indexed_string_filter_matches_the_stored_key_string(typed):
+    """A string that is a ``bool``/``date``/``datetime`` value's key string
+    finds it on both legs (Redis: same set; Postgres: parsed only when it
+    renders back byte for byte)."""
+    assert typed_names(b="True") == ["r1"]
+    assert typed_names(b="False") == ["r2"]
+    assert typed_names(b="true") == []
+    assert typed_names(b__in=["True", 0]) == ["r1"]
+    assert typed_names(dte="2026-01-01") == ["r1"]
+    assert typed_names(dte="2026-1-1") == []
+    assert typed_names(dtm="2026-01-01T12:00:00.000000Z") == ["r1"]
+    assert typed_names(dtm="2026-01-01 12:00:00+00:00") == []
+    assert typed_names(i="1") == ["r1"]
+    assert typed_names(f="1.0") == ["r1"]
+
+
+def test_an_aware_time_never_equals_a_stored_time(typed):
+    """Redis compares a ``TimeField`` by Python equality, where an aware
+    ``time`` never equals a naive one; Postgres matches nothing for it
+    rather than stripping the offset."""
+    assert typed_names(tim=datetime.time(1, 2, 3)) == ["r1"]
+    assert typed_names(tim=datetime.time(1, 2, 3, tzinfo=UTC)) == []
+
+
+def test_numeric_indexed_equality_across_value_forms_is_a_documented_divergence(
+    typed, backend_is_redis
+):
+    """Redis looks an ``IndexedField`` up by the filter value's key string, so
+    ``i=1.0`` (``"1.0"``) misses a stored ``1`` (``"1"``) -- even though the
+    save path coerces ``i=1.0`` to ``1``, so a record cannot be found by the
+    value it was saved with. Postgres compares numbers, as Python equality
+    does. A Redis query-layer bug, left as it is (plan gate (a))."""
+    redis = backend_is_redis
+    assert typed_names(i=1.0) == ([] if redis else ["r1"])
+    assert typed_names(i=True) == ([] if redis else ["r1"])
+    assert typed_names(f=1) == ([] if redis else ["r1"])
+    assert typed_names(f="1") == ([] if redis else ["r1"])
+    assert typed_names(dec=Decimal("1.5")) == (["r3"] if redis else ["r1", "r3"])
+    assert typed_names(i__in=[1, 2.0]) == (["r1"] if redis else ["r1", "r2"])
+    ParityTyped.create(name="r4", i=7.0, f=9, cap=[])
+    assert typed_names(i=7.0) == ([] if redis else ["r4"])
+    assert typed_names(f=9) == ([] if redis else ["r4"])
+
+
+def test_indexed_pattern_lookup_renders_the_key_string(typed):
+    """``__startswith``/``__endswith`` on a non-text indexed column match the
+    key string Redis stores: ``1.0``, ``True``, ``2026-01-01``, ``1.50``."""
+    assert typed_names(f__endswith="0") == ["r1"]
+    assert typed_names(f__startswith="1.") == ["r1"]
+    assert typed_names(b__startswith="T") == ["r1"]
+    assert typed_names(b__startswith="t") == []
+    assert typed_names(dte__startswith="2026-01") == ["r1"]
+    assert typed_names(dec__endswith="50") == ["r1"]
+    assert typed_names(i__startswith="2") == ["r2"]
+
+
+def test_float_pattern_in_the_exponent_band_is_a_documented_divergence(
+    backend_is_redis,
+):
+    """Python writes ``1e15`` as ``1000000000000000.0`` and switches to
+    exponent form at ``1e16``; Postgres switches at ``1e15``."""
+    ParityTyped.create(name="big", f=1e15, cap=[])
+    found = typed_names(f__startswith="1000")
+    assert found == (["big"] if backend_is_redis else [])
+
+
+def test_pattern_lookup_matching_none_is_a_documented_divergence(
+    typed, backend_is_redis
+):
+    """Redis globs the index keys, and a ``None`` value's set is named
+    ``…:None``, so ``__startswith="No"`` matches a row holding ``None``. A
+    Redis query-layer bug; Postgres's ``LIKE`` never matches ``NULL``."""
+    redis = backend_is_redis
+    assert typed_names(s__startswith="No") == (["r1", "r2"] if redis else ["r1"])
+    assert typed_names(s__endswith="ne") == (["r2"] if redis else [])
+    assert typed_names(s__startswith="") == (
+        ["r1", "r2", "r3"] if redis else ["r1", "r3"]
+    )
+    assert typed_names(f__startswith="N") == (["r3"] if redis else [])
+
+
+def test_order_by_a_collection_field_is_refused_on_postgres(typed, backend_is_redis):
+    """Redis sorts hydrated lists as Python does (``[] < [1, 2] < [2]``);
+    ``jsonb`` orders by length first. Rather than a silently different order,
+    Postgres refuses."""
+    if backend_is_redis:
+        assert typed_order("lst") == ["r3", "r1", "r2"]
+    else:
+        with pytest.raises(BackendCapabilityError, match="collection field"):
+            typed_order("lst")
+
+
+@pytest.mark.parametrize("field", ["dte", "day"])
+def test_order_by_a_date_holding_null_is_a_documented_divergence(
+    typed, backend_is_redis, field
+):
+    """Redis sorts ``None`` as the type's zero, ``date()``, which raises.
+    Postgres sorts ``NULL`` first. A Redis query-layer bug."""
+    if backend_is_redis:
+        with pytest.raises(TypeError, match="year"):
+            typed_order(field)
+    else:
+        assert typed_order(field) == ["r2", "r3", "r1"]
+        assert typed_order("-" + field) == ["r1", "r3", "r2"]
+
+
+def test_order_by_a_relationship_is_a_documented_divergence(typed, backend_is_redis):
+    """Redis sorts with the related model's class as the zero value and fails
+    on ``_meta``. Postgres orders by the stored key string, ``NULL`` first.
+    A Redis query-layer bug."""
+    if backend_is_redis:
+        with pytest.raises(AttributeError, match="_meta"):
+            typed_order("owner")
+    else:
+        assert typed_order("owner") == ["r2", "r3", "r1"]
+
+
+def test_capped_list_on_lazy_reads_is_a_documented_divergence(typed, backend_is_redis):
+    """A capped ``ListField`` lives in its own Redis list key, which only the
+    eager decode (``get``) loads: ``filter()``/``all()`` leave it ``None`` and
+    ``values=`` drops it. Postgres stores it in the row, so every read returns
+    it. A Redis query-layer bug; ``get`` agrees on both."""
+    assert list(ParityTyped.query.get(name="r1").cap) == [1, "a"]
+    lazy = {r.name: r.cap for r in ParityTyped.query.filter(name__in=["r1", "r3"])}
+    every = {r.name: r.cap for r in ParityTyped.query.all()}
+    (row,) = ParityTyped.query.filter(name="r1", values=("name", "cap"))
+    if backend_is_redis:
+        assert lazy == {"r1": None, "r3": None}
+        assert set(every.values()) == {None}
+        assert row == {"name": "r1"}
+    else:
+        assert {k: list(v) for k, v in lazy.items()} == {"r1": [1, "a"], "r3": [3]}
+        assert list(every["r2"]) == []
+        assert row["name"] == "r1" and list(row["cap"]) == [1, "a"]
