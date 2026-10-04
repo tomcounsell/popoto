@@ -712,7 +712,7 @@ class PostgresMemoryOps(PostgresValidityOps):
         now = time.time()
         ctes: list[str] = []
         cte_params: list[Any] = []
-        named: list[RankTerm] = []
+        arm_terms: list[RankTerm] = []
         for i, term in enumerate(terms):
             if term.kind == "similarity" and term.scores is not None:
                 # Each caller-supplied arm is one CTE of (key, score), as the
@@ -732,8 +732,8 @@ class PostgresMemoryOps(PostgresValidityOps):
                     term.scores,
                     dict(term.options, cte=cte),
                 )
-            named.append(term)
-        terms = named
+            arm_terms.append(term)
+        terms = arm_terms
         arms = [self._arm(ts, spec, term, kinds, now) for term in terms]
         select = []
         params: list[Any] = []

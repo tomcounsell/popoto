@@ -366,7 +366,7 @@ def refuse_valid_from_conflict(
 
     key = obj.db_key.redis_key
     for name in validity_field_names(spec):
-        declared = getattr(obj, name, None)
+        declared: Any = getattr(obj, name, None)
         try:
             requested = float(declared)
         except (TypeError, ValueError):

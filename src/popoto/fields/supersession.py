@@ -68,7 +68,7 @@ import hashlib
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Optional, Sequence, Union, cast
 
 import redis.client
 import redis.exceptions
@@ -888,7 +888,7 @@ def _save_and_close_on_backend(
     return SupersedeResult(
         instance=new_instance,
         closed_key=closed or None,
-        pipeline=pipeline,
+        pipeline=cast(Any, pipeline),
         close_index=None,
     )
 

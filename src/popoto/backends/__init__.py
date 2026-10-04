@@ -310,7 +310,12 @@ class Backend(Protocol):
         base_score_field: Optional[str] = None,
         confidence_field: Optional[str] = None,
         validity_field: Optional[str] = None,
-    ) -> Scored: ...
+        confidence_partition: Optional[Mapping[str, Any]] = None,
+    ) -> Scored:
+        """M3: ``validity_field`` gates the ranking at ``as_of`` (``None`` =
+        now); ``confidence_partition`` is the partition a partitioned
+        ``confidence_field`` is read from."""
+        ...
 
     def rank_composite(
         self,
@@ -323,7 +328,11 @@ class Backend(Protocol):
         where: Optional[Predicate],
         as_of: Optional[float],
         temperature: float,
-    ) -> Scored: ...
+        validity_field: Optional[str] = None,
+    ) -> Scored:
+        """M3: ``validity_field`` masks the result at ``as_of`` (``None`` =
+        now), the Redis ``ZDIFFSTORE`` after the union."""
+        ...
 
     def vector_search(
         self,
