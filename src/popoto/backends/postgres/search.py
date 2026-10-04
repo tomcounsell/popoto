@@ -737,6 +737,22 @@ def backfill(
             _backfill_busy.release()
 
 
+def _embedded_count(
+    ts: TableSpec, emb: EmbeddingLayout, cond: str, cond_params: list[Any]
+) -> tuple[str, list[Any]]:
+    """How many rows matching ``cond`` hold a vector, as an expression the
+    indexes serve: every row matching ``cond`` (an index-only scan on the
+    scope's sorted index) minus those in the no-vector partial index. The
+    plain ``count(*) … WHERE v IS NOT NULL`` reads the heap of every row in
+    scope, which at 20k rows was most of the 5% scope's budget."""
+    vec = quote_ident(emb.vec)
+    sql = (
+        f"((SELECT count(*) FROM {ts.qualified} WHERE ({cond})) - "
+        f"(SELECT count(*) FROM {ts.qualified} WHERE {vec} IS NULL AND ({cond})))"
+    )
+    return sql, list(cond_params) + list(cond_params)
+
+
 # -- BM25 SQL ------------------------------------------------------------------
 
 
@@ -1008,6 +1024,7 @@ class SearchMixin:
         limit: int,
         where: Optional[Predicate] = None,
         force: Optional[str] = None,
+        embedded: Optional[int] = None,
     ) -> tuple[Scored, dict[str, Any]]:
         """The vector arm and how it ran: ``{"path": "exact"|"hnsw",
         "guard": bool, "embedded": n}``. ``force`` pins the path (tests)."""
@@ -1021,11 +1038,10 @@ class SearchMixin:
         literal = _vector_literal(q)
         cond, cond_params = _cond_text(ts, spec, where)
         vec = quote_ident(emb.vec)
-        rows, _ = self._run(
-            f"SELECT count(*) FROM {ts.qualified} WHERE {vec} IS NOT NULL AND {cond}",
-            cond_params,
-        )
-        embedded = int(rows[0][0])
+        if embedded is None:
+            count_sql, count_params = _embedded_count(ts, emb, cond, cond_params)
+            rows, _ = self._run(f"SELECT {count_sql}", count_params)
+            embedded = int(rows[0][0])
         info["embedded"] = embedded
         if not embedded:
             return [], info
@@ -1064,10 +1080,25 @@ class SearchMixin:
 
     @staticmethod
     def _hnsw_prefix() -> str:
+        """Settings for a statement on the HNSW path (never an exact one).
+
+        The planner prices a filtered HNSW scan above reading the scope's
+        rows and sorting them by distance once the filter keeps most of the
+        table: measured on 20k 1536-d rows, a 60% scope went bitmap heap scan
+        + top-N sort, 77 ms, where the index answers in a few. So the
+        statement prices out sequential and bitmap scans and explicit sorts;
+        what is left that can produce rows in distance order is the HNSW
+        index. The settings are statement-wide, which is why the HNSW query
+        always runs as a statement of its own: in a recall statement they
+        would push the BM25 arm onto a full scan of the postings' ``_pk``
+        index (measured: 300 ms). The guard's exact re-run is a separate
+        statement too, with no settings."""
         ef = int(Defaults.PG_HNSW_EF_SEARCH)
         return (
             f"SET LOCAL hnsw.ef_search = {ef}; "
             "SET LOCAL hnsw.iterative_scan = relaxed_order; "
+            "SET LOCAL enable_seqscan = off; SET LOCAL enable_bitmapscan = off; "
+            "SET LOCAL enable_sort = off; "
         )
 
     def load_vectors(
@@ -1200,8 +1231,10 @@ class SearchMixin:
         query_vector: Optional[Sequence[float]] = None,
     ) -> list[tuple[dict[str, Any], float]]:
         """BM25 and vector arms fused by weighted RRF (``Σ w / (k + rank)``)
-        in one statement that also returns the fused records' full rows:
-        ``[(row, score)]``, best first, ties by ``_pk`` bytewise. See
+        in a statement that also returns the fused records' full rows:
+        ``[(row, score)]``, best first, ties by ``_pk`` bytewise. An
+        index-only count picks the vector path first; on the HNSW path the
+        vector arm is its own statement (see ``_hnsw_prefix``). See
         :meth:`popoto.models.query.Query.recall` for the arguments.
 
         ``extra_arms`` are already-ranked key lists (``{name: [key, …]}``)
@@ -1216,7 +1249,12 @@ class SearchMixin:
             )
         ts, layout = self._layout(spec)
         weights = dict(weights or {})
-        info: dict[str, Any] = {"vector": None, "bm25": False}
+        info: dict[str, Any] = {
+            "vector": None,
+            "bm25": False,
+            "guard": False,
+            "embedded": 0,
+        }
         self._last_recall = info
         if limit is None or limit <= 0:
             return []
@@ -1297,7 +1335,6 @@ class SearchMixin:
                 arms.append(('"a_bm25"', weight))
                 info["bm25"] = True
 
-        prefix = ""
         if layout.embedding:
             emb = next(iter(layout.embedding.values()))
             weight = float(weights.get("vector", 1.0))
@@ -1309,16 +1346,46 @@ class SearchMixin:
 
                 arr = np.asarray(vector, dtype=np.float32)
                 if arr.size and np.linalg.norm(arr):
-                    literal = _vector_literal(arr)
-                    vctes, vparams = self._vector_ctes(
-                        ts, emb, literal, cond, cond_params, depth
+                    count_sql, count_params = _embedded_count(
+                        ts, emb, cond, cond_params
                     )
-                    ctes += vctes
-                    params += vparams
-                    arms.append(('"a_vec"', weight))
-                    info["vector"] = "sql"
-                    if emb.hnsw:
-                        prefix = self._hnsw_prefix()
+                    (embedded,) = self._run(f"SELECT {count_sql}", count_params)[0][0]
+                    info["embedded"] = int(embedded)
+                    hnsw = emb.hnsw and embedded > int(Defaults.PG_VECTOR_EXACT_MAX)
+                    if embedded and hnsw:
+                        # The HNSW plan needs statement-wide planner settings
+                        # (_hnsw_prefix) that would push the BM25 arm onto a
+                        # full index scan, so on this path the vector arm is
+                        # its own statement -- with the recall guard -- and
+                        # its ranking joins the fusion as a ranked list.
+                        scored, vinfo = self._vector_arm(
+                            spec,
+                            emb.field,
+                            arr,
+                            limit=depth,
+                            where=where,
+                            force="hnsw",
+                            embedded=int(embedded),
+                        )
+                        info["vector"] = "hnsw"
+                        info["guard"] = vinfo["guard"]
+                        ranked_vector = [rid.canonical for rid, _s in scored]
+                        if ranked_vector:
+                            arm = '"a_vec"'
+                            ctes.append(
+                                f'{arm} AS (SELECT u.pk AS "_pk", u.r AS "rank" '
+                                "FROM unnest(%s::text[]) WITH ORDINALITY AS u(pk, r))"
+                            )
+                            params.append(ranked_vector)
+                            arms.append((arm, weight))
+                    elif embedded:
+                        vctes, vparams = self._vector_ctes(
+                            ts, emb, _vector_literal(arr), cond, cond_params, depth
+                        )
+                        ctes += vctes
+                        params += vparams
+                        arms.append(('"a_vec"', weight))
+                        info["vector"] = "exact"
 
         for name, keys in (extra_arms or {}).items():
             weight = float(weights.get(name, 1.0))
@@ -1348,14 +1415,10 @@ class SearchMixin:
         params.append(int(limit))
         cols = self._select_cols(ts)
         col_sql = ", ".join(f"t.{quote_ident(c)}" for c in cols)
-        guard = ""
-        if info["vector"] == "sql":
-            guard = ', (SELECT count(*) FROM "vg") > 0, (SELECT n FROM "vn")'
         sql = (
-            prefix
-            + "WITH "
+            "WITH "
             + ", ".join(ctes)
-            + f' SELECT {col_sql}, f."score"{guard} FROM "fused" f JOIN '
+            + f' SELECT {col_sql}, f."score" FROM "fused" f JOIN '
             f'{ts.qualified} t ON t."_pk" = f."_pk" '
             'ORDER BY f."score" DESC, t."_pk" COLLATE "C"'
         )
@@ -1365,9 +1428,6 @@ class SearchMixin:
         for row in rows:
             decoded = self._decode(ts, cols, row[:width])
             out.append((decoded, float(row[width])))
-        if rows and info["vector"] == "sql":
-            info["guard"] = bool(rows[0][width + 1])
-            info["embedded"] = int(rows[0][width + 2])
         return out
 
     def _vector_ctes(
@@ -1379,57 +1439,19 @@ class SearchMixin:
         cond_params: list[Any],
         depth: int,
     ) -> tuple[list[str], list[Any]]:
-        """The vector arm as CTEs, choosing its path inside the statement:
-        ``vn`` counts the rows with a vector in scope; ``vx`` (exact, ordered
-        by ``(v <=> q) + 0``) runs only at or below the threshold, ``vh``
-        (HNSW) only above it, and ``vg`` (exact again) only when ``vh`` came
-        back short -- the recall guard. Each gate is a pseudo-constant
-        condition, so the planner puts it on a one-time filter and a gated
-        branch is never executed."""
+        """The exact vector arm as CTEs ending in ``"a_vec"(_pk, rank)``:
+        ordered by ``(v <=> q) + 0``, which no index can serve, so the plan
+        is the scope's rows and a top-N sort whatever indexes exist. (The
+        HNSW path runs as its own statement: :meth:`recall`.)"""
         vec = quote_ident(emb.vec)
-        exact_max = int(Defaults.PG_VECTOR_EXACT_MAX)
-        sel = (
-            f'SELECT "_pk", ({vec} <=> %s::vector) AS "d" FROM {ts.qualified} '
-            f"WHERE {vec} IS NOT NULL AND ({cond})"
-        )
         ctes = [
-            f'"vn"("n") AS (SELECT count(*) FROM {ts.qualified} WHERE {vec} IS NOT '
-            f"NULL AND ({cond}))"
-        ]
-        params: list[Any] = list(cond_params)
-        ctes.append(
-            f'"vx" AS ({sel} AND (SELECT "n" FROM "vn") <= %s '
-            f'ORDER BY ({vec} <=> %s::vector) + 0, "_pk" COLLATE "C" LIMIT %s)'
-        )
-        params += (
-            [literal] + cond_params + [exact_max if emb.hnsw else 2**62, literal, depth]
-        )
-        if emb.hnsw:
-            ctes.append(
-                f'"vh" AS MATERIALIZED ({sel} AND (SELECT "n" FROM "vn") > %s '
-                f"ORDER BY {vec} <=> %s::vector LIMIT %s)"
-            )
-            params += [literal] + cond_params + [exact_max, literal, depth]
-            short = '(SELECT count(*) FROM "vh") < least(%s, (SELECT "n" FROM "vn"))'
-            ctes.append(
-                f'"vg" AS ({sel} AND (SELECT "n" FROM "vn") > %s AND {short} '
-                f'ORDER BY ({vec} <=> %s::vector) + 0, "_pk" COLLATE "C" LIMIT %s)'
-            )
-            params += [literal] + cond_params + [exact_max, depth, literal, depth]
-            ctes.append(
-                '"vall" AS (SELECT * FROM "vx" UNION ALL SELECT * FROM "vh" WHERE '
-                'NOT ((SELECT count(*) FROM "vh") < least(%s, (SELECT "n" FROM '
-                '"vn"))) UNION ALL SELECT * FROM "vg")'
-            )
-            params += [depth]
-        else:
-            ctes.append('"vg" AS (SELECT * FROM "vx" WHERE false)')
-            ctes.append('"vall" AS (SELECT * FROM "vx")')
-        ctes.append(
+            f'"vall" AS (SELECT "_pk", ({vec} <=> %s::vector) AS "d" FROM '
+            f"{ts.qualified} WHERE {vec} IS NOT NULL AND ({cond}) "
+            f'ORDER BY ({vec} <=> %s::vector) + 0, "_pk" COLLATE "C" LIMIT %s)',
             '"a_vec" AS (SELECT "_pk", row_number() OVER (ORDER BY "d", '
-            '"_pk" COLLATE "C") AS "rank" FROM "vall" WHERE "d" < 1)'
-        )
-        return ctes, params
+            '"_pk" COLLATE "C") AS "rank" FROM "vall" WHERE "d" < 1)',
+        ]
+        return ctes, [literal] + list(cond_params) + [literal, depth]
 
     @staticmethod
     def _embed_query(emb: EmbeddingLayout, text: str) -> Optional[list[float]]:

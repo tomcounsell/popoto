@@ -641,48 +641,69 @@ def test_recall_weights_drop_and_shift_arms(pg):
     assert SearchDoc.query.recall("redis", weights={"bm25": 0, "vector": 0}) == []
 
 
-def test_recall_vector_arm_hnsw_path_and_guard_in_one_statement(pg, monkeypatch):
+def test_recall_vector_arm_hnsw_path_and_guard(pg, monkeypatch):
     for i in range(25):
         _doc(f"h{i:02d}", f"hnsw text {i}", owner="me" if i % 5 == 0 else "you")
     backend = get_backend(SearchDoc)
     exact = SearchDoc.query.recall("hnsw text 5", filters={"owner": "me"})
+    assert backend._last_recall["vector"] == "exact"
     assert backend._last_recall["guard"] is False
+    assert backend._last_recall["embedded"] == 5
     monkeypatch.setattr(Defaults, "PG_VECTOR_EXACT_MAX", 0)
     monkeypatch.setattr(
         search_mod.SearchMixin, "_hnsw_prefix", staticmethod(lambda: STARVED_HNSW)
     )
     guarded = SearchDoc.query.recall("hnsw text 5", filters={"owner": "me"})
+    assert backend._last_recall["vector"] == "hnsw"
     assert backend._last_recall["guard"] is True
+    # The guard's exact re-run ranks exactly as the exact path did, so the
+    # fused result is the same.
     assert [(i.name, s) for i, s in guarded] == [(i.name, s) for i, s in exact]
 
 
-def test_recall_hnsw_statement_uses_the_index(pg, pg_schema, admin, monkeypatch):
-    for i in range(25):
-        _doc(f"x{i:02d}", f"explain text {i}")
+def test_hnsw_statement_uses_the_index_under_a_wide_filter(
+    pg, pg_schema, admin, monkeypatch
+):
+    """The planner prices a filtered HNSW scan above reading the scope and
+    sorting once the filter keeps most rows; _hnsw_prefix's settings leave
+    the index as the only ordered path. EXPLAIN the very statement
+    _vector_arm sends on the HNSW path."""
+    for i in range(40):
+        _doc(f"x{i:02d}", f"explain text {i}", owner="me" if i % 10 else "you")
     admin.execute(f'ANALYZE "{pg_schema.name}".search_doc')
     backend = get_backend(SearchDoc)
     spec = SearchDoc._meta.spec
-    ts = backend._table(spec)
-    emb = ts.search.embedding["embedding"]
-    literal = search_mod._vector_literal(PROVIDER.embed(["explain"])[0])
-    ctes, params = backend._vector_ctes(ts, emb, literal, "TRUE", [], 10)
-    sql = (
-        "SET LOCAL enable_seqscan = off; EXPLAIN WITH "
-        + ", ".join(ctes)
-        + ' SELECT * FROM "a_vec"'
-    )
-    with admin.cursor() as cur:
-        import psycopg
+    sent = []
+    real_run = backend._run
 
-        cur = psycopg.ClientCursor(admin)
-        cur.execute("BEGIN")
-        cur.execute(sql, params)
-        while cur.nextset():
-            pass
+    def spy(sql, params=(), **kw):
+        sent.append((sql, list(params)))
+        return real_run(sql, params, **kw)
+
+    monkeypatch.setattr(backend, "_run", spy)
+    owner_me = popoto.backends.Cond("owner", popoto.backends.Op.EXACT, "me")
+    backend._vector_arm(
+        spec,
+        "embedding",
+        PROVIDER.embed(["explain"])[0],
+        limit=10,
+        where=owner_me,
+        force="hnsw",
+    )
+    sql, params = next((s, p) for s, p in sent if "SET LOCAL hnsw" in s)
+    prefix, _, body = sql.partition("SELECT ")
+    import psycopg
+
+    cur = psycopg.ClientCursor(admin)
+    cur.execute("BEGIN")
+    try:
+        cur.execute(prefix)
+        cur.execute("EXPLAIN SELECT " + body, params)
         plan = "\n".join(r[0] for r in cur.fetchall())
+    finally:
         cur.execute("ROLLBACK")
     assert "search_doc__hnsw__embedding__idx" in plan
-    assert "One-Time Filter" in plan
+    assert "Seq Scan" not in plan and "Bitmap" not in plan
 
 
 def test_recall_is_postgres_only(pg):

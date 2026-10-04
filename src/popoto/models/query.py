@@ -3485,9 +3485,11 @@ class Query:
         ``[(instance, score)]`` best first (ties by key, bytewise).
 
         Postgres only (#759 plan §1.1): on a Redis-bound model it raises
-        :class:`~popoto.backends.BackendCapabilityError`. The BM25 and vector
-        arms and the fusion run in one SQL statement that also returns the
-        fused records' rows, so there is no second hydration round trip.
+        :class:`~popoto.backends.BackendCapabilityError`. The arms and the
+        fusion run in one SQL statement that also returns the fused records'
+        rows, so there is no second hydration round trip; an index-only count
+        picks the vector path first, and on the HNSW path the vector arm runs
+        as its own statement (docs/features/postgres-backend.md).
 
         Args:
             query_text: The query. It is tokenized for the BM25 arm (the

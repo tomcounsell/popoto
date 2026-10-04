@@ -91,7 +91,20 @@ def main() -> int:
     ap.add_argument("--warmup", type=int, default=20)
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--keep", action="store_true")
+    ap.add_argument(
+        "--exact-max",
+        type=int,
+        default=None,
+        help="override Defaults.PG_VECTOR_EXACT_MAX for this run",
+    )
+    ap.add_argument(
+        "--reuse",
+        metavar="SCHEMA",
+        help="time against a schema an earlier --keep run seeded (no seeding)",
+    )
     args = ap.parse_args()
+    if args.exact_max is not None:
+        Defaults.PG_VECTOR_EXACT_MAX = args.exact_max
 
     import psycopg
 
@@ -108,9 +121,12 @@ def main() -> int:
         class Meta:
             backend = "postgres"
 
-    schema = f"popoto_test_{uuid.uuid4().hex}"
+    schema = args.reuse or f"popoto_test_{uuid.uuid4().hex}"
+    if not schema.startswith("popoto_test_"):
+        sys.exit("--reuse takes a popoto_test_<hex> schema")
     admin = psycopg.connect(PG_URL, autocommit=True)
-    admin.execute(f'CREATE SCHEMA "{schema}"')
+    if not args.reuse:
+        admin.execute(f'CREATE SCHEMA "{schema}"')
     backend = PostgresBackend(dsn=PG_URL, schema=schema)
     previous = _swap_instance("postgres", backend)
     rng = np.random.default_rng(11)
@@ -121,6 +137,11 @@ def main() -> int:
         started = time.time()
         sizes = [int(args.n * share) for _p, share in PROJECTS]
         i = 0
+        if args.reuse:
+            sizes = [0] * len(PROJECTS)
+            (i,) = admin.execute(
+                f'SELECT count(*) FROM "{schema}".bench_memory'
+            ).fetchone()
         for (project, _share), size in zip(PROJECTS, sizes):
             for _ in range(size):
                 words = rng.choice(vocab, size=int(rng.integers(40, 81)), p=zipf)
@@ -225,7 +246,7 @@ def main() -> int:
     finally:
         _swap_instance("postgres", previous)
         backend.close()
-        if not args.keep:
+        if not (args.keep or args.reuse):
             admin.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         else:
             print(f"kept schema {schema}")

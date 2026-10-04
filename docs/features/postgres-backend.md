@@ -305,11 +305,15 @@ for memory, score in hits: ...
 ```
 
 The BM25 and vector arms rank `max(limit, Defaults.PG_RECALL_ARM_DEPTH)`
-deep and are fused by weighted RRF, `Σ w / (60 + rank)`. One SQL statement
-does all of it and returns the fused records' rows. The vector arm chooses
-between exact and HNSW, and runs the recall guard, inside that statement.
-Each branch is gated by a one-time filter on the scope's vector count. Every
-scoping argument is optional, and they compose. BM25's statistics are
+deep and are fused by weighted RRF, `Σ w / (60 + rank)`. A first, index-only
+statement counts the scope's rows with a vector, which picks the vector
+path. On the exact path one SQL statement then runs both arms and the
+fusion, and returns the fused records' rows. On the HNSW path the vector
+arm runs as its own statement, with the recall guard, first. That arm needs
+statement-wide planner settings to keep the planner on the HNSW index, and
+in a combined statement those settings would push the BM25 arm onto a full
+index scan. Its ranking then joins the fused statement as a ranked list.
+Every scoping argument is optional, and they compose. BM25's statistics are
 **per scope** by default (`bm25_stats="scope"`): on a shared database, one
 agent's corpus must not skew another's IDF. `bm25_stats="corpus"` uses the
 corpus-wide statistics `BM25Field.search` uses. A model with a
