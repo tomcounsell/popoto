@@ -31,6 +31,13 @@ from src.popoto.recipes import graph_traversal
 from src.popoto.recipes.context_assembler import ContextAssembler
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Test models
 # ---------------------------------------------------------------------------
@@ -312,6 +319,14 @@ class TestModulateAdmission:
         assert weight == pytest.approx(1.0 * confidence)
         assert weight < 1.0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "backdates the decay clock with a raw ZADD on the field's sorted set; "
+            "the Postgres twin backdates the column "
+            "(tests/postgres/test_postgres_graph.py::"
+            "test_decay_modulation_lowers_a_stale_weight)"
+        )
+    )
     def test_decay_modulation_lowers_stale_weight(self):
         fresh = GTMixed.create()
         stale = GTMixed.create()

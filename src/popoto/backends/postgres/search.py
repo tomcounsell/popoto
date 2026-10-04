@@ -1229,6 +1229,9 @@ class SearchMixin:
             tokens,
             limit=limit,
             allowed=allowed,
+            # Named, not left to the default: the hybrid path's parity rests
+            # on corpus statistics (architect decision 3).
+            stats="corpus",
             fetch_cap=SCOPED_SEARCH_FETCH_CAP if allowed is not None else None,
         )
         return [(rid.canonical, _lua_number(score)) for rid, score in scored]

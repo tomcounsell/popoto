@@ -43,6 +43,13 @@ from src.popoto.fields.access_tracker import AccessTrackerMixin
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # --- Test Models ---
 
 
@@ -566,6 +573,14 @@ class TestPropagate:
         # The near end is still reached.
         assert "b" in scores
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects the over-cap weight with a raw ZADD on the edge sorted set; "
+            "the Postgres twin writes the edge row directly "
+            "(tests/postgres/test_postgres_graph.py::"
+            "test_an_over_cap_stored_weight_is_clamped_at_read_time)"
+        )
+    )
     def test_propagate_read_time_min_for_overcap_weights(self):
         """A manually-ZADDed over-cap stored weight is clamped at read time,
         so propagated activation <= decay_per_hop * cap (not decay_per_hop * raw)."""

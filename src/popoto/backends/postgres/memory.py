@@ -618,8 +618,7 @@ class PostgresMemoryOps:
             col = f"t.{quote_ident(term.field)}"
             return f"({col} IS NOT NULL AND {domain})", f"{col}::float8", params, []
         raise BackendCapabilityError(
-            f"composite_score arm {term.kind!r} is not available on Postgres yet "
-            "(co_occurrence_boost arrives in M4)"
+            f"composite_score arm {term.kind!r} is not available on Postgres"
         )
 
     @staticmethod

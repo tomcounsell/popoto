@@ -872,6 +872,35 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   `test_memory_lifecycle.py`, `test_provenance_journal.py`,
   `test_question_queue.py`, `test_memory_telemetry.py`, `test_view_resolver.py`,
   `test_reconciliation_m5.py`, `test_recipes_field_layer.py`.
+- **Split.** M4 ships as two PRs: **M4a** (group F -- the graph,
+  `CoOccurrenceField`, `graph_traversal`, the `co_occurrence_boost` arm) and
+  **M4b** (group H's adapters, the mixins and the remaining recipes). M4a
+  has no dependency on M3; several M4b recipes (`provenance_journal`,
+  `reconciliation`, `view_resolver`) declare a `ValidityField` and need M3.
+- **M4a as shipped: departures from this plan, recorded.**
+  - **The edge table is `<table>__<f>__edge (src, dst, weight)`**, `PRIMARY
+    KEY (src, dst)`, the M2b companion naming, with no `(dst)` index: the
+    only read by `dst` is a delete's reverse-edge cleanup, which joins on the
+    deleted rows' `(dst, src)` and so uses the primary key. No foreign key,
+    because Redis links any two key strings, records or not.
+  - **Edge writes take record-key locks, not a `(model, field)` lock.** A
+    write locks the edge sets it writes (`src`, and `dst` when symmetric),
+    sorted by `_pk`, with the same `popoto:rec:` key a record writer takes:
+    the edge set is that key's state, so it slots into the one lock order.
+    That lock is what makes `link`'s count-then-prune atomic (pinned with a
+    deterministic interleaving and its control).
+  - **`graph_expand` has two paths.** `WITH RECURSIVE` (one statement, a
+    layer per iteration, each node's heaviest arrival kept) is exact only
+    where the BFS step is monotone (a threshold of at least `1e-290`, a
+    finite non-negative decay); elsewhere the visited map's order decides the
+    Lua's answer, and the backend replays the Lua queue in Python over
+    neighbour lists fetched one layer per statement. The probe compares both
+    paths with Redis on every shape.
+  - **`graph_update` and `graph_expand` return the field methods' values**
+    (the Lua integer reply of `link`, the `%.14g` reply of `strengthen`, the
+    pruned count of `weaken_all`; `(RecordId, score)` pairs), and take a
+    `mode` (`bfs`, `linked`, `edges`) and `cap`, so `get_linked` and
+    `export_state` are `graph_expand` reads.
 
 ### M5: the remainder
 

@@ -62,6 +62,7 @@ from ..types import (
 )
 from ..planning import has_filters
 from .codec import decode_json, encode_json_element
+from .graph import GraphMixin, graph_delete_sql
 from .memory import NOT_HANDLED, PostgresMemoryOps
 from .plan import (
     non_null_fields,
@@ -308,14 +309,16 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 # -- the backend --------------------------------------------------------------
 
 
-class PostgresBackend(SearchMixin, PostgresMemoryOps):
+class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin):
     """The Postgres implementation of :class:`popoto.backends.Backend`.
 
     Search -- ``keyword_search``, ``vector_search``, ``membership_*`` and the
     ``[PG-only]`` ``recall`` -- comes from :class:`.search.SearchMixin`
     (#759 M2b). Groups D/E's ranking and memory state (``touch``,
     ``update_confidence``, ``rank_decayed``, ``rank_composite``) come from
-    :class:`~.memory.PostgresMemoryOps` (#759 M2a)."""
+    :class:`~.memory.PostgresMemoryOps` (#759 M2a); the co-occurrence graph
+    (``graph_update``, ``graph_expand``) from :class:`~.graph.GraphMixin`
+    (#759 M4)."""
 
     name = "postgres"
 
@@ -875,11 +878,13 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
             return 0
         ts = self._table(spec, write=True)
         keys = [rid.canonical for rid in ids]
+        # CoOccurrenceField.on_delete, as CTEs of the same statement (M4).
+        graph_sql, uses = graph_delete_sql(ts, spec)
         sql, params = self._record_locked(
             ts,
             keys,
-            f'DELETE FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])',
-            [keys],
+            f'{graph_sql}DELETE FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])',
+            [keys] * (uses + 1),
         )
         rows, count = self._run(sql, params, uow=uow, write=True)
         for obj in options.get("objs") or ():
@@ -1029,12 +1034,6 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
 
     def chain(self, *a: Any, **kw: Any) -> Any:
         raise self._later("chain", "M3")
-
-    def graph_update(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("graph_update", "M4")
-
-    def graph_expand(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("graph_expand", "M4")
 
     def maintain(self, *a: Any, **kw: Any) -> Any:
         raise self._later("maintain", "M5")

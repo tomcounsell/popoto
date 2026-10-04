@@ -121,7 +121,8 @@ class ParityTrackedConfident(AccessTrackerMixin, popoto.Model):
 
 class ParityComposite(AccessTrackerMixin, WriteFilterMixin, popoto.Model):
     """``test_composite_score_query.CompositeMemory`` without the
-    CoOccurrenceField (Postgres stores that from M4)."""
+    CoOccurrenceField (written before Postgres stored one, M4; the field
+    plays no part in these tests)."""
 
     name = popoto.UniqueKeyField()
     importance = popoto.FloatField(default=0.5)
@@ -1141,19 +1142,24 @@ def test_composite_similarity_boost_alone_ranks_its_keys(backend):
     assert [r.name for r in ranked] == ["a"]
 
 
-def test_composite_co_occurrence_boost_waits_for_m4(backend_is_redis):
-    record = ParityComposite.create(name="s", importance=0.6)
-    boost = {record.db_key.redis_key: 0.9}
-    if backend_is_redis:
-        ranked = ParityComposite.query.composite_score(
-            {"certainty": 1.0}, co_occurrence_boost=boost
-        )
-        assert [r.name for r in ranked] == ["s"]
-    else:
-        with pytest.raises(BackendCapabilityError, match="co_occurrence"):
-            ParityComposite.query.composite_score(
-                {"certainty": 1.0}, co_occurrence_boost=boost
-            )
+def test_composite_co_occurrence_boost_is_an_arm_on_both_backends(backend):
+    """Until #759 M4 Postgres refused ``co_occurrence_boost=``; it is now a
+    caller-supplied arm, weight 1.0, after the indexes -- where its temporary
+    set sits in the Redis ``ZUNIONSTORE`` -- so the boost decides the order on
+    both legs, and a boosted key with no record takes no slot."""
+    a = ParityComposite.create(name="a", importance=0.6)
+    b = ParityComposite.create(name="b", importance=0.6)
+    boost = {b.db_key.redis_key: 0.9, a.db_key.redis_key: 0.1}
+    ranked = ParityComposite.query.composite_score(
+        {"certainty": 1.0}, co_occurrence_boost=boost
+    )
+    assert [r.name for r in ranked] == ["b", "a"]
+    both = ParityComposite.query.composite_score(
+        {"certainty": 1.0},
+        co_occurrence_boost={a.db_key.redis_key: 0.5},
+        similarity_boost={b.db_key.redis_key: 0.75},
+    )
+    assert [r.name for r in both] == ["b", "a"]
 
 
 def test_composite_scores_agree_with_the_arms(backend):

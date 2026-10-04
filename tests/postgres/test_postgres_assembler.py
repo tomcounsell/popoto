@@ -285,7 +285,9 @@ def test_the_hybrid_path_ranks_bm25_with_corpus_statistics(pg, monkeypatch):
     real = backend.keyword_search
 
     def spy(*args, **kwargs):
-        seen.append(kwargs.get("stats", "corpus"))
+        # No default: a caller that dropped the kwarg would record None
+        # (#779 review note 5).
+        seen.append(kwargs.get("stats"))
         return real(*args, **kwargs)
 
     monkeypatch.setattr(backend, "keyword_search", spy)
