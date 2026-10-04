@@ -88,6 +88,8 @@ from ..backends import (
     get_backend,
 )
 from ..backends.redis import RedisHashRow, RedisIdRow, RedisResultRow
+from ..backends.planning import plan_from_call
+from .encoding import hydrate_decoded_row
 
 logger = logging.getLogger("POPOTO.Query")
 
@@ -104,13 +106,23 @@ def _record_ids(model_class: Any, keys: Any) -> "list[RecordId]":
 
 def _raw_hash(row: Any) -> Any:
     """The hash a Redis ``load`` row carries, as Redis replied, for
-    ``decode_popoto_model_hashmap``. Decoded rows from a non-Redis backend are
-    hydrated in M1b."""
+    ``decode_popoto_model_hashmap``. A decoded row from a non-Redis backend
+    has no hash; callers check :func:`_is_decoded` first and hydrate it with
+    ``hydrate_decoded_row``."""
     if isinstance(row, RedisHashRow):
         return row.raw
     raise BackendCapabilityError(
-        "hydrating a decoded Row arrives with the Postgres backend (#759 M1b)"
+        "a decoded Row has no Redis hash; hydrate it with hydrate_decoded_row"
     )
+
+
+def _is_decoded(rows: Any) -> bool:
+    """True when ``load`` rows came from a backend that returns decoded values
+    (Postgres) rather than Redis hashes. ``None`` entries say nothing."""
+    for row in rows:
+        if row is not None:
+            return not isinstance(row, RedisHashRow)
+    return False
 
 
 def _raw_hashes(model_class: Any, rows: Any) -> list[Any]:
@@ -125,8 +137,16 @@ def _row_result(row: Any) -> Any:
     if isinstance(row, RedisResultRow):
         return row.result
     raise BackendCapabilityError(
-        "hydrating a decoded Row arrives with the Postgres backend (#759 M1b)"
+        "a decoded Row is hydrated by Query._execute_filter, not _row_result"
     )
+
+
+def _decoded_backend(model_class: Any) -> bool:
+    """True when ``model_class`` is bound to a backend other than Redis. The
+    native-async query methods talk to ``redis.asyncio`` directly; for such a
+    model they run the sync method in a thread instead (the async backend
+    twin is M5)."""
+    return get_backend(model_class).name != "redis"
 
 
 def _row_key(row: Any) -> Any:
@@ -2305,10 +2325,13 @@ class Query:
             )
             if row is None:
                 return None
-            hashmap = _raw_hash(row)
-            instance = decode_popoto_model_hashmap(
-                self.model_class, hashmap, source_redis_key=redis_key
-            )
+            if isinstance(row, RedisHashRow):
+                hashmap = _raw_hash(row)
+                instance = decode_popoto_model_hashmap(
+                    self.model_class, hashmap, source_redis_key=redis_key
+                )
+            else:  # a decoded row (Postgres, #759 M1b)
+                instance = hydrate_decoded_row(self.model_class, row)
             if not _no_track:
                 _fire_on_read(self.model_class, [instance])
 
@@ -2375,12 +2398,16 @@ class Query:
         from ..models.encoding import decode_popoto_model_hashmap
 
         # One pipelined HGETALL per key on Redis (#759 M1a: via load).
-        hashes_list = _raw_hashes(
-            self.model_class,
-            get_backend(self.model_class).load(
-                self.model_class._meta.spec, _record_ids(self.model_class, redis_keys)
-            ),
+        rows = get_backend(self.model_class).load(
+            self.model_class._meta.spec, _record_ids(self.model_class, redis_keys)
         )
+        if _is_decoded(rows):  # Postgres (#759 M1b): one SELECT … = ANY
+            results = [hydrate_decoded_row(self.model_class, row) for row in rows]
+            live = [r for r in results if r is not None]
+            if live:
+                _fire_on_read(self.model_class, live)
+            return live if skip_none else results
+        hashes_list = _raw_hashes(self.model_class, rows)
 
         results = []
         live_instances = []
@@ -2435,6 +2462,12 @@ class Query:
             # Repair - clean up dangling references
             Product.query.keys(clean=True)
         """
+        if (clean or catchall) and _decoded_backend(self.model_class):
+            raise BackendCapabilityError(
+                "Query.keys(clean=/catchall=) scans Redis keys and is Redis-only "
+                f"(plan §1); {self.model_class.__name__} is bound to "
+                f"{get_backend(self.model_class).name!r}"
+            )
         if clean:
             logger.warning(
                 "Query.keys(clean=True) is deprecated. Use Model.clean_indexes() for production-safe orphan cleanup."
@@ -3419,19 +3452,33 @@ class Query:
         # this call through the filter code that used to live here, so the
         # key-set evaluation, pushdown retry, hydration, client-side filters,
         # ordering and on_read are unchanged.
-        plan = QueryPlan(
-            limit=kwargs.get("limit"),
-            project=kwargs.get("values"),
-            source=QueryCall(
-                query=self,
-                kind="filter",
-                kwargs=kwargs,
-                q_objects=q_objects,
-                options={"_no_track": _no_track, "_allow_pushdown": _allow_pushdown},
-            ),
+        call = QueryCall(
+            query=self,
+            kind="filter",
+            kwargs=kwargs,
+            q_objects=q_objects,
+            options={"_no_track": _no_track, "_allow_pushdown": _allow_pushdown},
         )
-        rows = get_backend(self.model_class).select(self.model_class._meta.spec, plan)
-        return [_row_result(row) for row in rows]
+        backend = get_backend(self.model_class)
+        if backend.name == "redis":
+            plan = QueryPlan(
+                limit=kwargs.get("limit"), project=kwargs.get("values"), source=call
+            )
+            rows = backend.select(self.model_class._meta.spec, plan)
+            return [_row_result(row) for row in rows]
+        # Every other backend compiles WHERE/ORDER BY from the plan's terms,
+        # so populate them (#759 M1b; validation and ordering rules mirror
+        # the Redis path, see popoto.backends.planning).
+        rows = backend.select(self.model_class._meta.spec, plan_from_call(call))
+        # A decoded-row backend (Postgres, #759 M1b) filtered, ordered and
+        # limited in the database; what is left is hydration and on_read.
+        values = kwargs.get("values")
+        if values:
+            return [{name: row.get(name) for name in values} for row in rows]
+        results = [hydrate_decoded_row(self.model_class, row) for row in rows]
+        if not _no_track and results:
+            _fire_on_read(self.model_class, results)
+        return results
 
     def prepare_results(
         self,
@@ -3545,10 +3592,12 @@ class Query:
         """
         # Moved to the backend's count (#759 M1a); on Redis, SCARD with no
         # filters, else the filter's key set.
-        return get_backend(self.model_class).count(
-            self.model_class._meta.spec,
-            QueryPlan(source=QueryCall(query=self, kind="count", kwargs=kwargs)),
+        backend = get_backend(self.model_class)
+        call = QueryCall(query=self, kind="count", kwargs=kwargs)
+        plan = (
+            QueryPlan(source=call) if backend.name == "redis" else plan_from_call(call)
         )
+        return backend.count(self.model_class._meta.spec, plan)
 
     @classmethod
     def get_many_objects(
@@ -3652,21 +3701,29 @@ class Query:
             else:
                 # Storage moved to the backend's load (#759 M1a): one
                 # pipelined HMGET per key on Redis.
-                hashes_list = _raw_hashes(
-                    model,
-                    get_backend(model).load(
-                        model._meta.spec,
-                        _record_ids(model, db_keys),
-                        fields=values,
-                    ),
+                rows = get_backend(model).load(
+                    model._meta.spec,
+                    _record_ids(model, db_keys),
+                    fields=values,
                 )
+                if _is_decoded(rows):  # Postgres (#759 M1b)
+                    return [
+                        {name: row.get(name) for name in values}
+                        for row in rows
+                        if row is not None
+                    ]
+                hashes_list = _raw_hashes(model, rows)
 
         else:
             # One pipelined HGETALL per key on Redis (#759 M1a: via load).
-            hashes_list = _raw_hashes(
-                model,
-                get_backend(model).load(model._meta.spec, _record_ids(model, db_keys)),
+            rows = get_backend(model).load(
+                model._meta.spec, _record_ids(model, db_keys)
             )
+            if _is_decoded(rows):  # Postgres (#759 M1b)
+                return [
+                    hydrate_decoded_row(model, row) for row in rows if row is not None
+                ]
+            hashes_list = _raw_hashes(model, rows)
 
         if {} in hashes_list:
             # A member whose hash is gone (Meta.ttl expiry, or an external
@@ -3723,6 +3780,11 @@ class Query:
         Raises:
             QueryException: If the filter matches more than one object.
         """
+        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
+            found: Any = await to_thread(
+                self.get, db_key, redis_key, _no_track=_no_track, **kwargs
+            )
+            return found
         from ..models.encoding import decode_popoto_model_hashmap
 
         if (
@@ -3772,6 +3834,8 @@ class Query:
             keys = ["Product:widget:001", "Product:widget:002"]
             products = await Product.query.async_get_many(redis_keys=keys)
         """
+        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
+            return await to_thread(self.get_many, redis_keys, skip_none)
         if not redis_keys:
             return []
 
@@ -3835,6 +3899,13 @@ class Query:
             Object loading uses native async Redis for better performance on
             bulk data retrieval.
         """
+        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
+            return await to_thread(
+                self._execute_filter,
+                _no_track=_no_track,
+                _allow_pushdown=_allow_pushdown,
+                **kwargs,
+            )
         # A fresh _PushdownState per call (built inside
         # _filter_keys_with_pushdown below) is the reset — no separate
         # self._geo_* clear is needed, and none is safe here: async_filter
@@ -3955,6 +4026,8 @@ class Query:
         Returns:
             List of all model instances or dicts (if values= specified)
         """
+        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
+            return await to_thread(self.all, **kwargs)
         async_redis = await get_async_redis_db()
         redis_db_keys_list = list(
             await async_redis.smembers(
@@ -3986,6 +4059,8 @@ class Query:
         Returns:
             Count of matching instances
         """
+        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
+            return await to_thread(self.count, **kwargs)
         async_redis = await get_async_redis_db()
 
         if not len(kwargs):
@@ -4031,6 +4106,8 @@ class Query:
             The clean operation uses to_thread() as it involves complex pipeline
             operations. Regular key retrieval uses native async.
         """
+        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
+            return await to_thread(self.keys, catchall=catchall, clean=clean, **kwargs)
         if clean:
             # Clean operation is complex with pipelines, use thread pool
             return await to_thread(self.keys, catchall=catchall, clean=clean, **kwargs)

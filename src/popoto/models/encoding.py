@@ -827,3 +827,48 @@ def decode_lazy_field(value_bytes: bytes):
         The decoded Python value with custom types restored.
     """
     return decode_custom_types(msgpack.unpackb(value_bytes, strict_map_key=False))
+
+
+def hydrate_decoded_row(
+    model_class: Any, row: Any, *, fields_only: bool = False
+) -> Any:
+    """Build a model instance (or projection dict) from a *decoded* backend
+    row -- the shape a non-Redis backend's ``load``/``select`` returns, field
+    name to Python value plus ``"_id"`` (#759 M1b).
+
+    The counterpart of :func:`decode_popoto_model_hashmap` for values that
+    arrive already decoded: no msgpack, and no quarantine (a typed column
+    cannot hold undecodable bytes). Like :func:`_create_lazy_model` it skips
+    ``__init__``'s validation of values that were valid when saved, and it
+    records identity provenance the same way: the instance's ``_redis_key``
+    is the key the row was read from (``_pk``), never a recomputation.
+
+    Fields absent from the row (a projection, or a column the table gained
+    after the row was written) take their declared default, matching
+    ``Model.__init__`` (#380).
+    """
+    if row is None:
+        return None
+    values = {name: value for name, value in row.items() if name != "_id"}
+    if fields_only:
+        return values
+    meta = model_class._meta
+    instance: Any = object.__new__(model_class)
+    state = instance.__dict__
+    state["_corrupt_fields"] = {}
+    for field_name, field in meta.fields.items():
+        if field_name in values:
+            state[field_name] = values[field_name]
+        else:
+            default = field.default() if callable(field.default) else field.default
+            state[field_name] = default
+    record_id = row.get("_id")
+    key = getattr(record_id, "canonical", None)
+    state["_redis_key"] = key if key is not None else instance.db_key.redis_key
+    state["obsolete_redis_key"] = None
+    state["_db_content"] = dict()
+    state["_saved_field_values"] = {name: state[name] for name in meta.fields}
+    state["_ttl"] = meta.ttl
+    state["_expire_at"] = None
+    state["_is_persisted"] = True
+    return instance

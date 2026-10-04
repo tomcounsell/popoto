@@ -81,6 +81,28 @@ from ..exceptions import (
 
 logger = logging.getLogger("POPOTO.model_base")
 
+
+def _require_redis(model_class: Any, api: str, why: str) -> None:
+    """Refuse a Redis-only API on a model bound to another backend, rather
+    than let it read Redis for a record that lives elsewhere (#759 M1b)."""
+    if get_backend(model_class).name != "redis":
+        from ..backends import BackendCapabilityError
+
+        raise BackendCapabilityError(
+            f"{model_class.__name__}.{api} is not available on the "
+            f"{get_backend(model_class).name!r} backend ({why})"
+        )
+
+
+def _as_uow(pipeline: Any) -> "Optional[UnitOfWork]":
+    """What a ``pipeline=`` kwarg becomes at the backend seam: a unit of work
+    passes through as it is (a Postgres ``transaction()``, #759 M1b), a Redis
+    pipeline is wrapped, and no pipeline is ``None``."""
+    if isinstance(pipeline, UnitOfWork):
+        return pipeline
+    return UnitOfWork(pipeline) if pipeline else None
+
+
 #: Remove one orphan's index memberships, only if its hash is still gone.
 #: KEYS[1] is the hash, KEYS[2..] the index keys; ARGV[i] is "s" (set) or
 #: "z" (sorted set) for KEYS[i+1]. The EXISTS check inside the script is
@@ -1217,10 +1239,18 @@ class Model(metaclass=ModelBase):
                     raise ModelException(error_message)
 
         # Check unique field constraints (individual fields with unique=True)
-        # Uses SCARD + SISMEMBER instead of SMEMBERS for ~20x faster lookups
+        # Uses SCARD + SISMEMBER instead of SMEMBERS for ~20x faster lookups.
+        # Redis only: on Postgres a UNIQUE index enforces this inside the
+        # write, and reading Redis sets here would consult the wrong store
+        # (#759 M1b).
+        _unique_on_redis = None
         for field_name, field in self._meta.fields.items():
             if not getattr(field, "unique", False):
                 continue
+            if _unique_on_redis is None:
+                _unique_on_redis = get_backend(type(self)).name == "redis"
+            if not _unique_on_redis:
+                break
             field_value = getattr(self, field_name)
             if field_value is None:
                 continue
@@ -1506,7 +1536,7 @@ class Model(metaclass=ModelBase):
         # event-stream XADD after it, which the moved body used to issue last
         # on each path -- so they still run at exactly that point.
         queued = isinstance(pipeline, redis.client.Pipeline)
-        uow = UnitOfWork(pipeline) if pipeline else None
+        uow = _as_uow(pipeline)
         previous_key = self._redis_key
         outcome = get_backend(type(self)).save(
             self,
@@ -1781,6 +1811,7 @@ class Model(metaclass=ModelBase):
                 exempt every record from any idleness-based policy, so the
                 caller decides how to handle it.
         """
+        _require_redis(cls, "idle_seconds", "OBJECT IDLETIME; Postgres: M4")
         key: Optional[str] = redis_key or None
         if key is None:
             if isinstance(db_key, str):
@@ -1838,6 +1869,10 @@ class Model(metaclass=ModelBase):
             fields=list(names),
             pipelined=False,
         )
+        if row is not None and not isinstance(row, RedisHashRow):
+            # A decoded row (Postgres, #759 M1b): values arrive decoded, and a
+            # NULL column is "absent", as a missing hash field is on Redis.
+            return {name: row[name] for name in names if row.get(name) is not None}
         raw = row.raw if isinstance(row, RedisHashRow) else (row or {})
         raw_values: Iterable[Any] = [raw.get(name) for name in names]
         result: Dict[str, Any] = {}
@@ -1870,6 +1905,7 @@ class Model(metaclass=ModelBase):
             ``dict[bytes, bytes]`` as returned by ``HGETALL``. Empty dict
             when the key does not exist.
         """
+        _require_redis(cls, "load_raw_hash", "a Redis-only debug API (plan §1)")
         return get_REDIS_DB().hgetall(redis_key)
 
     def delete(
@@ -1877,7 +1913,7 @@ class Model(metaclass=ModelBase):
         pipeline: "Pipeline" = None,
         *args,
         **kwargs,
-    ) -> Union["Pipeline", bool]:
+    ) -> Union["Pipeline", bool, "UnitOfWork"]:
         """Delete this instance from Redis.
 
         Executes the complete deletion workflow:
@@ -1921,7 +1957,7 @@ class Model(metaclass=ModelBase):
 
         # Storage moved to RedisBackend.delete (#759 M1a): existence check,
         # on_delete hooks, DEL/SREM, index and mixin-key cleanup, one pipeline.
-        uow = UnitOfWork(pipeline) if pipeline else None
+        uow = _as_uow(pipeline)
         existed = get_backend(type(self)).delete(
             self._meta.spec,
             [RecordId.from_key(self._meta.model_name, delete_redis_key)],
@@ -1930,7 +1966,8 @@ class Model(metaclass=ModelBase):
             **kwargs,
         )
         if uow is not None:
-            return uow.pipeline
+            # A Postgres unit of work has no pipeline: hand back the unit.
+            return uow.pipeline if uow.pipeline is not None else uow
         return bool(existed)
 
     def atomic_increment(
@@ -2013,7 +2050,7 @@ class Model(metaclass=ModelBase):
 
         # Storage moved to RedisBackend.increment (#759 M1a): the inline Lua,
         # ZINCRBY for a sorted field, and this instance's in-memory value.
-        uow = UnitOfWork(pipeline) if pipeline is not None else None
+        uow = _as_uow(pipeline) if pipeline is not None else None
         return get_backend(type(self)).increment(
             self._meta.spec,
             RecordId.from_key(self._meta.model_name, redis_key),
@@ -2641,6 +2678,14 @@ class Model(metaclass=ModelBase):
         if not instances:
             return []
 
+        backend = get_backend(cls)
+        if backend.name != "redis":
+            # Composed in one transaction() (plan §2): all or nothing.
+            with backend.transaction() as uow:
+                for instance in instances:
+                    instance.save(pipeline=uow)
+            return list(instances)
+
         created = []
         pipeline = get_REDIS_DB().pipeline()
         count = 0
@@ -2793,6 +2838,16 @@ class Model(metaclass=ModelBase):
         if not instances:
             return 0
 
+        backend = get_backend(cls)
+        if backend.name != "redis":
+            # Composed in one transaction() (plan §2): all or nothing.
+            with backend.transaction() as uow:
+                for instance in instances:
+                    for field_name, value in updates.items():
+                        setattr(instance, field_name, value)
+                    instance.save(pipeline=uow)
+            return len(instances)
+
         pipeline = get_REDIS_DB().pipeline()
         count = 0
         updated_count = 0
@@ -2854,6 +2909,14 @@ class Model(metaclass=ModelBase):
 
         if not instances:
             return 0
+
+        backend = get_backend(cls)
+        if backend.name != "redis":
+            # Composed in one transaction() (plan §2): all or nothing.
+            with backend.transaction() as uow:
+                for instance in instances:
+                    instance.delete(pipeline=uow)
+            return len(instances)
 
         pipeline = get_REDIS_DB().pipeline()
         count = 0
