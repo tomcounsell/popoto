@@ -422,14 +422,17 @@ cast to the column's type.
 | `update_confidence(…, pipeline=uow)` with a Postgres `transaction()` (M2a) | (a Redis pipeline queues the update and returns `None`) | the update runs inside the transaction, so its value is returned and the attribute synced |
 | A model with a `CyclicDecayField`, `ValidityField`, partitioned `ConfidenceField` or `CoOccurrenceField` (M2a) | supported | refused at declaration until M5, M3, M3 and M4 respectively, so `ObservationProtocol`'s cycle, supersession and auto-discharge effects have no Postgres model to act on yet |
 
-## Performance (M1 exit criteria)
+## Performance (M1 and M2a exit criteria)
 
 `scripts/bench_backend_seam.py` measures the public API on both backends. It
 seeds 2,000 records, runs `ANALYZE`, and then makes three runs of 300
 iterations per operation, with the two backends interleaved within each run.
 The M1 targets are `Model.save()` p50 at most 2x Redis and `filter` +
-hydration p50 at most 1x Redis. The PR that introduced this page records the
-measured numbers and the environment they were taken on.
+hydration p50 at most 1x Redis. M2a adds `rank_decayed` with a base score and
+confidence modulation over all 2,000 records (top 10): Postgres p50 at most
+1x Redis, `DECAY_SCORE_LUA` against one `SELECT`; `top_by_decay` with
+hydration is measured beside it. The PRs that introduced each milestone
+record the measured numbers and the environment they were taken on.
 
 ```bash
 REDIS_URL=redis://localhost:6379/14 \
