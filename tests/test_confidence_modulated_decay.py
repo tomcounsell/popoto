@@ -35,6 +35,14 @@ from src.popoto.fields.decaying_sorted_field import (
 from src.popoto.models.query import QueryException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M2a, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+
 # --- Test Models ---
 
 
@@ -111,8 +119,16 @@ ALL_MODELS = [
 
 @pytest.fixture(autouse=True)
 def _clean():
+    from src.popoto.backends import BackendCapabilityError
+
     for model in ALL_MODELS:
-        model.delete_all()
+        try:
+            model.delete_all()
+        except BackendCapabilityError:
+            # Postgres leg only: ModDecayPartitionedConfidence's partitioned
+            # ConfidenceField is stored there from #759 M3, so the model is
+            # refused at first use and has nothing to delete.
+            pass
         # Resolution is cached per model class; clear so kill-switch and
         # ambiguity tests observe a fresh resolve.
         model._meta.fields["relevance"]._confidence_modulation_cache.clear()
@@ -347,12 +363,18 @@ class TestModulationArgs:
 
 
 class TestQueryIntegration:
+    @pytest.mark.redis_only(
+        reason="uses a partitioned ConfidenceField, which Postgres stores from #759 M3"
+    )
     def test_partitioned_confidence_query_without_filter_raises(self):
         rec = ModDecayPartitionedConfidence(name="a", project="apollo")
         rec.save()
         with pytest.raises(QueryException, match="project"):
             ModDecayPartitionedConfidence.query.top_by_decay("relevance", n=5)
 
+    @pytest.mark.redis_only(
+        reason="evaluates DECAY_SCORE_LUA directly against Redis structures; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_no_confidence_data_is_bit_exactly_neutral(self):
         """A model WITH a ConfidenceField but no recorded evidence must score
         identically to the same model with modulation switched off."""
@@ -388,6 +410,9 @@ class TestQueryIntegration:
         # Byte-identical Lua tostring() output, not just approximately equal.
         assert run(modulated_key, s) == run("", "0")
 
+    @pytest.mark.redis_only(
+        reason="backdates the decay clock with a raw ZADD on the Redis sorted set; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_low_confidence_record_ranks_below_a_corroborated_one(self):
         """The wiring is live: identical records aged identically diverge once
         one accumulates dismissals and the other corroborations."""
@@ -439,6 +464,9 @@ def _make_aged(model_class, names, days=30, field_name="relevance"):
     return records
 
 
+@pytest.mark.redis_only(
+    reason="evaluates DECAY_SCORE_LUA directly against Redis structures; the two-leg version is in tests/test_backend_parity_memory.py"
+)
 class TestByteExactNeutrality:
     """Every 'off' path must reproduce pre-#491 scores byte-for-byte.
 
@@ -544,6 +572,9 @@ class TestByteExactNeutrality:
 # --- Risk 4: the sub-one-day sign flip -------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason="plants confidence payloads with a raw HSET and evaluates DECAY_SCORE_LUA directly; the two-leg version is in tests/test_backend_parity_memory.py"
+)
 class TestSignFlipRegression:
     """A freshly-touched low-confidence record must not outrank a fresh
     high-confidence one.
@@ -593,6 +624,9 @@ class TestSignFlipRegression:
 # --- Directional effect ----------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason="plants confidence payloads with a raw HSET and evaluates DECAY_SCORE_LUA directly; the two-leg version is in tests/test_backend_parity_memory.py"
+)
 class TestDirectionalEffect:
     """Low confidence decays measurably faster, high confidence slower."""
 
@@ -635,6 +669,9 @@ class TestDirectionalEffect:
 
 
 class TestCorruptPayloadThroughQuery:
+    @pytest.mark.redis_only(
+        reason="plants corrupt or positional msgpack payloads in the Redis companion hash and evaluates DECAY_SCORE_LUA directly; typed Postgres columns cannot hold them"
+    )
     def test_non_msgpack_payload_falls_back_to_neutral(self):
         recs = _make_aged(ModDecayOneConfidence, ["a", "b"])
         # 0xc1 is msgpack's "never used" byte: cmsgpack.unpack raises, so the
@@ -648,6 +685,9 @@ class TestCorruptPayloadThroughQuery:
         # And the query path still returns both records rather than erroring.
         assert len(ModDecayOneConfidence.query.top_by_decay("relevance", n=10)) == 2
 
+    @pytest.mark.redis_only(
+        reason="plants corrupt or positional msgpack payloads in the Redis companion hash and evaluates DECAY_SCORE_LUA directly; typed Postgres columns cannot hold them"
+    )
     def test_scalar_payload_falls_back_to_neutral(self):
         """Decodable but not a table (`type(data) ~= 'table'`) -> neutral."""
         recs = _make_aged(ModDecayOneConfidence, ["a"])
@@ -657,6 +697,9 @@ class TestCorruptPayloadThroughQuery:
             ModDecayOneConfidence, now
         )
 
+    @pytest.mark.redis_only(
+        reason="plants corrupt or positional msgpack payloads in the Redis companion hash and evaluates DECAY_SCORE_LUA directly; typed Postgres columns cannot hold them"
+    )
     def test_positional_payload_is_read_like_the_confidence_writer_reads_it(self):
         """A msgpack ARRAY payload is read positionally: data[1] is confidence.
 
@@ -678,6 +721,9 @@ class TestCorruptPayloadThroughQuery:
         # And it is genuinely modulated, not silently neutral.
         assert positional != _as_scores(_baseline_scores(ModDecayOneConfidence, now))
 
+    @pytest.mark.redis_only(
+        reason="plants corrupt or positional msgpack payloads in the Redis companion hash and evaluates DECAY_SCORE_LUA directly; typed Postgres columns cannot hold them"
+    )
     def test_out_of_range_positional_payload_is_still_clamped(self):
         """Even the positional path cannot push the exponent out of bounds."""
         recs = _make_aged(ModDecayOneConfidence, ["a"])
@@ -688,6 +734,9 @@ class TestCorruptPayloadThroughQuery:
         _plant_confidence(recs["a"], 1.0)
         assert clamped == _as_scores(_wired_scores(ModDecayOneConfidence, now))
 
+    @pytest.mark.redis_only(
+        reason="plants confidence payloads with a raw HSET and evaluates DECAY_SCORE_LUA directly; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_out_of_range_confidence_is_clamped(self):
         recs = _make_aged(ModDecayOneConfidence, ["under", "over"])
         _plant_confidence(recs["under"], -4.0)
@@ -704,6 +753,9 @@ class TestCorruptPayloadThroughQuery:
     def test_empty_zset_with_modulation_enabled(self):
         assert ModDecayOneConfidence.query.top_by_decay("relevance", n=10) == []
 
+    @pytest.mark.redis_only(
+        reason="evaluates DECAY_SCORE_LUA directly against Redis structures; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_missing_data_hash_entirely_is_neutral(self):
         recs = _make_aged(ModDecayOneConfidence, ["a", "b"])
         field = ModDecayOneConfidence._meta.fields["certainty"]

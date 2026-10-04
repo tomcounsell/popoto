@@ -35,6 +35,14 @@ from src.popoto.fields.observation import ObservationProtocol, RecallProposal
 from src.popoto.fields.constants import TemporalPeriod
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M2a, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+
 # --- Test Models ---
 
 
@@ -140,6 +148,9 @@ def _get_staged_count(instance):
 
 
 class TestOnRead:
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_delegates_to_access_tracker(self):
         """on_read() should stage a read via AccessTrackerMixin."""
         item = FullMemory(name="read-test-1", content="hello")
@@ -164,6 +175,9 @@ class TestOnRead:
 # =========================================================================
 
 
+@pytest.mark.redis_only(
+    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+)
 class TestOnSurfaced:
     def setup_method(self):
         _cleanup_proposals()
@@ -208,6 +222,9 @@ class TestOnSurfaced:
 # =========================================================================
 
 
+@pytest.mark.redis_only(
+    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+)
 class TestActedOutcome:
     def test_touch_called(self):
         """Acted outcome should refresh the decay timestamp via touch()."""
@@ -284,6 +301,9 @@ class TestActedOutcome:
 # =========================================================================
 
 
+@pytest.mark.redis_only(
+    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+)
 class TestDismissedOutcome:
     def test_discard_staged_reads(self):
         """Dismissed outcome should discard staged reads."""
@@ -339,6 +359,9 @@ class TestDismissedOutcome:
 # =========================================================================
 
 
+@pytest.mark.redis_only(
+    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+)
 class TestDeferredOutcome:
     def test_discard_staged_reads(self):
         """Deferred outcome should discard staged reads."""
@@ -406,6 +429,9 @@ class TestDeferredOutcome:
 # =========================================================================
 
 
+@pytest.mark.redis_only(
+    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+)
 class TestContradictedOutcome:
     def test_discard_staged_reads(self):
         """Contradicted outcome should discard staged reads."""
@@ -461,6 +487,9 @@ class TestContradictedOutcome:
 
 
 class TestGracefulDegradation:
+    @pytest.mark.redis_only(
+        reason="reads the decay clock from the Redis sorted set through the raw client; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_decay_only_model_acted(self):
         """Model with DecayingSortedField but no CyclicDecayField still gets touch() on acted."""
         item = DecayOnlyMemory(name="decay-only-acted", content="simple")
@@ -483,6 +512,9 @@ class TestGracefulDegradation:
         # Should confirm access
         assert item.access_count == 1
 
+    @pytest.mark.redis_only(
+        reason="reads the AccessTracker staged-read list through the raw Redis client; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_decay_only_model_dismissed(self):
         """DecayingSortedField-only model: dismissed should discard reads, skip cycle ops."""
         item = DecayOnlyMemory(name="decay-only-dismissed", content="nope")
@@ -504,6 +536,9 @@ class TestGracefulDegradation:
         outcome_map = {item.db_key.redis_key: "acted"}
         ObservationProtocol.on_context_used([item], outcome_map)
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_no_pressure_model_acted(self):
         """CyclicDecayField with pressure_rate=0: acted should skip resolve_pressure()."""
         item = NoPressureMemory(name="nopressure-acted")
@@ -523,6 +558,9 @@ class TestRecallProposal:
     def setup_method(self):
         _cleanup_proposals()
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_create_and_get_pending(self):
         """create_batch should add proposals; get_pending should return them."""
         m1 = FullMemory(name="rp-create-1", content="a")
@@ -540,6 +578,9 @@ class TestRecallProposal:
         for member_key, score in pending:
             assert before <= score <= after
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_resolve_removes_proposal(self):
         """resolve should remove the proposal from pending."""
         m1 = FullMemory(name="rp-resolve-1", content="a")
@@ -551,6 +592,9 @@ class TestRecallProposal:
         RecallProposal.resolve(m1, "acted")
         assert len(RecallProposal.get_pending(FullMemory)) == 0
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_resolve_idempotent(self):
         """resolve on already-resolved proposal should return 0."""
         m1 = FullMemory(name="rp-resolve-idem", content="a")
@@ -561,6 +605,9 @@ class TestRecallProposal:
         result = RecallProposal.resolve(m1, "acted")
         assert result == 0
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_expire_stale(self):
         """expire_stale should remove proposals older than TTL."""
         m1 = FullMemory(name="rp-expire-1", content="a")
@@ -577,6 +624,9 @@ class TestRecallProposal:
         assert len(expired) == 2
         assert len(RecallProposal.get_pending(FullMemory)) == 0
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_expire_stale_empty(self):
         """expire_stale with no pending proposals should return empty list."""
         expired = RecallProposal.expire_stale(FullMemory)
@@ -599,6 +649,9 @@ class TestRecallProposal:
 
 
 class TestCycleMethods:
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_strengthen_cycle(self):
         """strengthen_cycle should multiply amplitudes by factor."""
         item = FullMemory(name="strengthen-1", content="boost")
@@ -609,6 +662,9 @@ class TestCycleMethods:
         new_amp = _get_cycles(item)[0][1]
         assert abs(new_amp - original_amp * 1.5) < 0.001
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_weaken_cycle(self):
         """weaken_cycle should multiply amplitudes by factor."""
         item = FullMemory(name="weaken-1", content="fade")
@@ -619,6 +675,9 @@ class TestCycleMethods:
         new_amp = _get_cycles(item)[0][1]
         assert abs(new_amp - original_amp * 0.6) < 0.001
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_amplitude_clamping_max(self):
         """Amplitudes should be clamped at 100.0."""
         item = FullMemory(name="clamp-max", content="huge")
@@ -631,6 +690,9 @@ class TestCycleMethods:
         cycles = _get_cycles(item)
         assert cycles[0][1] <= 100.0
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_amplitude_clamping_min(self):
         """Amplitudes below 0.01 should snap to 0.0."""
         item = FullMemory(name="clamp-min", content="tiny")
@@ -643,6 +705,9 @@ class TestCycleMethods:
         cycles = _get_cycles(item)
         assert cycles[0][1] == 0.0
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_factor_1_0_noop(self):
         """strengthen_cycle with factor=1.0 should not change amplitudes."""
         item = FullMemory(name="factor-noop", content="same")
@@ -668,6 +733,9 @@ class TestCycleMethods:
         with pytest.raises(TypeError, match="unsaved"):
             item.strengthen_cycle("relevance")
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_nonexistent_field_raises(self):
         """strengthen_cycle on nonexistent field should raise AttributeError."""
         item = FullMemory(name="nofield-cycle", content="x")
@@ -676,6 +744,9 @@ class TestCycleMethods:
         with pytest.raises(AttributeError, match="no field"):
             item.strengthen_cycle("nonexistent")
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_no_cycles_stored(self):
         """strengthen_cycle when no cycles stored should return empty list."""
         item = NoPressureMemory(name="nocycles-stored")
@@ -691,6 +762,9 @@ class TestCycleMethods:
         result = item.strengthen_cycle("relevance", factor=1.5)
         assert result == []
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_pipeline_support(self):
         """strengthen_cycle with pipeline should return pipeline."""
         item = FullMemory(name="pipe-cycle", content="piped")
@@ -701,6 +775,9 @@ class TestCycleMethods:
         assert result is pipe
         pipe.execute()
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_pipeline_no_stored_entry_now_queues_one_command(self):
         """#699 critique C6, disclosed not fixed: a pipelined strengthen_cycle/
         weaken_cycle against a member with NO stored cycles entry used to
@@ -738,6 +815,9 @@ class TestCycleMethods:
 
 
 class TestEdgeCases:
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_invalid_outcome_raises(self):
         """on_context_used with invalid outcome string should raise ValueError."""
         item = FullMemory(name="invalid-outcome", content="bad")
@@ -752,6 +832,9 @@ class TestEdgeCases:
         """on_context_used with empty instances should be a no-op."""
         ObservationProtocol.on_context_used([], {"key": "acted"})
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_empty_outcome_map_defaults_deferred(self):
         """on_context_used with empty outcome_map: all instances get deferred."""
         item = FullMemory(name="empty-map", content="default")
@@ -763,6 +846,9 @@ class TestEdgeCases:
         # Deferred: staged reads discarded
         assert _get_staged_count(item) == 0
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_multiple_instances_mixed_outcomes(self):
         """on_context_used with multiple instances and mixed outcomes."""
         m1 = FullMemory(name="mix-acted", content="a")
@@ -797,6 +883,9 @@ class TestEdgeCases:
 # =========================================================================
 
 
+@pytest.mark.redis_only(
+    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+)
 class TestSynergy:
     def test_decaying_sorted_field_plus_access_tracker(self):
         """Retrieve 5 memories, report 2 acted and 3 deferred.
@@ -924,6 +1013,9 @@ class UsedOutcomeMemory(AccessTrackerMixin, PredictionLedgerMixin, popoto.Model)
     certainty = ConfidenceField(initial_confidence=0.5)
 
 
+@pytest.mark.redis_only(
+    reason="setup_method needs UsedOutcomeMemory, which declares a CyclicDecayField (Postgres from #759 M5)"
+)
 class TestUsedOutcome:
     """Tests for the 'used' outcome in ObservationProtocol (#352)."""
 
@@ -1160,6 +1252,9 @@ class EpsilonBoundaryMemory(popoto.Model):
     )
 
 
+@pytest.mark.redis_only(
+    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+)
 class TestAutoDischargeEpsilonBoundary:
     """Auto-discharge fires only for conf < threshold - CONFIDENCE_EPSILON.
 
@@ -1303,6 +1398,9 @@ class TestUnsavedDegradation:
 
     # -- unsaved FullMemory (AccessTracker + CyclicDecayField), one outcome each --
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_unsaved_acted_noop(self):
         """Unsaved FullMemory + 'acted' returns without raising; no cycles/AT keys written."""
         self._cleanup()
@@ -1318,6 +1416,9 @@ class TestUnsavedDegradation:
         finally:
             self._cleanup()
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_unsaved_dismissed_noop(self):
         """Unsaved FullMemory + 'dismissed' returns without raising; no cycles key written."""
         self._cleanup()
@@ -1331,6 +1432,9 @@ class TestUnsavedDegradation:
         finally:
             self._cleanup()
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_unsaved_contradicted_noop(self):
         """Unsaved FullMemory + 'contradicted' returns without raising; no cycles key written."""
         self._cleanup()
@@ -1344,6 +1448,9 @@ class TestUnsavedDegradation:
         finally:
             self._cleanup()
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_unsaved_used_noop(self):
         """Unsaved FullMemory + 'used' returns without raising; no AT keys written."""
         self._cleanup()
@@ -1358,6 +1465,9 @@ class TestUnsavedDegradation:
         finally:
             self._cleanup()
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_unsaved_deferred_noop(self):
         """Control: unsaved FullMemory + 'deferred' already degraded before this fix."""
         self._cleanup()
@@ -1374,6 +1484,9 @@ class TestUnsavedDegradation:
 
     # -- unsaved DecayOnlyMemory (AccessTracker + DecayingSortedField, no CyclicDecayField) --
 
+    @pytest.mark.redis_only(
+        reason="its cleanup deletes FullMemory, which declares a CyclicDecayField (Postgres from #759 M5), and it asserts on AccessTracker keys through the raw client"
+    )
     def test_unsaved_decay_only_acted_noop(self):
         """Unsaved DecayOnlyMemory + 'acted' covers the touch() site with no CyclicDecayField."""
         self._cleanup()
@@ -1391,6 +1504,9 @@ class TestUnsavedDegradation:
         finally:
             self._cleanup()
 
+    @pytest.mark.redis_only(
+        reason="its cleanup deletes FullMemory, which declares a CyclicDecayField (Postgres from #759 M5), and it asserts on AccessTracker keys through the raw client"
+    )
     def test_unsaved_decay_only_used_noop(self):
         """Unsaved DecayOnlyMemory + 'used' covers the _apply_used confirm_access site."""
         self._cleanup()
@@ -1407,6 +1523,9 @@ class TestUnsavedDegradation:
 
     # -- AccessTrackerMixin-only: isolates the two confirm_access sites --
 
+    @pytest.mark.redis_only(
+        reason="its cleanup deletes FullMemory, which declares a CyclicDecayField (Postgres from #759 M5), and it asserts on AccessTracker keys through the raw client"
+    )
     def test_unsaved_tracker_only_acted_noop(self):
         """Unsaved TrackerOnlyMemory + 'acted': no decay fields, so this reaches
         the _apply_acted confirm_access guard with no cycle guard to hide behind."""
@@ -1422,6 +1541,9 @@ class TestUnsavedDegradation:
         finally:
             self._cleanup()
 
+    @pytest.mark.redis_only(
+        reason="its cleanup deletes FullMemory, which declares a CyclicDecayField (Postgres from #759 M5), and it asserts on AccessTracker keys through the raw client"
+    )
     def test_unsaved_tracker_only_used_noop(self):
         """Unsaved TrackerOnlyMemory + 'used': isolates the _apply_used
         confirm_access guard on a model with no decay fields."""
@@ -1437,6 +1559,9 @@ class TestUnsavedDegradation:
         finally:
             self._cleanup()
 
+    @pytest.mark.redis_only(
+        reason="its cleanup deletes FullMemory, which declares a CyclicDecayField (Postgres from #759 M5), and it asserts on AccessTracker keys through the raw client"
+    )
     def test_saved_tracker_only_still_confirms_access(self):
         """Control for the two tests above: on a SAVED TrackerOnlyMemory the
         confirm_access effect still lands, so the guards are not swallowing it."""
@@ -1456,6 +1581,9 @@ class TestUnsavedDegradation:
 
     # -- saved-instance control: guards must not swallow real effects --
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_saved_instance_still_gets_effects(self):
         """Control: saved FullMemory still moves cycle amplitudes on acted/dismissed/contradicted,
         and 'used' still confirms the staged access. Without this, the guards could swallow
@@ -1507,6 +1635,9 @@ class TestUnsavedDegradation:
 
     # -- mixed batch: unsaved first, saved second, in ONE on_context_used call --
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_mixed_batch_unsaved_first_saved_effects_still_land(self):
         """[unsaved, saved] in one call: the saved member's effects still land,
         proving the loop no longer aborts mid-batch on the unsaved member."""
@@ -1534,6 +1665,9 @@ class TestUnsavedDegradation:
 
     # -- blast-radius control: real corruption must remain observable --
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_corrupt_cycles_payload_on_saved_instance_stays_observable(self):
         """A corrupt, non-msgpack payload in a SAVED instance's cycles hash must still
         produce an observable failure (amplitudes do not move).
@@ -1674,6 +1808,9 @@ class TestUnsavedDegradation:
             f"wrapped in try/except (TypeError, ...)."
         )
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_unsaved_instance_raises_still_passes_unmodified(self):
         """Sentinel: TestCycleAmplitudes::test_unsaved_instance_raises (direct
         strengthen_cycle call) must be unaffected by the protocol-layer guards.

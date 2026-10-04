@@ -358,11 +358,38 @@ class DecayingSortedField(SortedFieldMixin, Field):
                 "decay_rate must be > 0 (got {})".format(self.decay_rate)
             )
 
+        # The model class this field belongs to (set by ModelBase), so a
+        # Redis-only call on a model stored elsewhere can be refused.
+        self._owner_model: Any = None
+
         # Force type=float and auto_now=True behavior
         kwargs["type"] = float
         kwargs["auto_now"] = True
         kwargs["sorted"] = True
         super().__init__(**kwargs)
+
+    def _bind_owner(self, model_class: Any) -> None:
+        """Called by ``ModelBase`` once the owning model class exists."""
+        self._owner_model = model_class
+
+    def _refuse_off_redis(self) -> None:
+        """This method takes a Redis sorted-set key; on a model stored in
+        another backend there is no such key (plan §1.1, TD-40)."""
+        owner = getattr(self, "_owner_model", None)
+        if owner is None:
+            return
+        from ..backends.routing import non_redis_backend
+
+        backend = non_redis_backend(owner)
+        if backend is not None:
+            from ..backends import BackendCapabilityError
+
+            raise BackendCapabilityError(
+                f"{type(self).__name__}.rank_decayed(zset_key, ...) ranks a Redis "
+                f"sorted set; {owner.__name__} is stored on the {backend.name!r} "
+                "backend. Use Model.query.top_by_decay(), the backend-neutral "
+                "call."
+            )
 
     def rank_decayed(
         self,
@@ -414,6 +441,7 @@ class DecayingSortedField(SortedFieldMixin, Field):
             **undecoded**. Callers already differ in how they decode and
             normalizing it here would change what their parsing loops receive.
         """
+        self._refuse_off_redis()
         conf_hash_key, conf_s, conf_c0 = (
             MODULATION_DISABLED if confidence is None else confidence
         )

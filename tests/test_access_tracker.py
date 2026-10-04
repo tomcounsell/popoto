@@ -26,6 +26,14 @@ import pytest
 from src import popoto
 from src.popoto.fields.access_tracker import AccessTrackerMixin
 
+# Backend conformance (#759 M2a, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+
 # --- Test Models ---
 
 
@@ -66,6 +74,9 @@ def teardown_module():
 # --- on_read() tests ---
 
 
+@pytest.mark.redis_only(
+    reason="reads the AccessTracker staged-read list through the raw Redis client; the two-leg version is in tests/test_backend_parity_memory.py"
+)
 class TestOnRead:
     """Test that on_read() stages timestamps."""
 
@@ -137,6 +148,9 @@ class TestConfirmAccess:
         for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
+    @pytest.mark.redis_only(
+        reason="reads the confirmed access log, a capped Redis list; Postgres keeps the count and the last read only"
+    )
     def test_confirm_promotes_staged(self):
         """confirm_access() moves staged timestamps to access_log."""
         item = TrackedItem.create(name="confirm_test")
@@ -219,6 +233,9 @@ class TestDiscardStagedAccess:
         for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
+    @pytest.mark.redis_only(
+        reason="reads the AccessTracker staged-read list through the raw Redis client; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_discard_clears_staging(self):
         """discard_staged_access() removes staging list."""
         item = TrackedItem.create(name="discard_test")
@@ -230,6 +247,9 @@ class TestDiscardStagedAccess:
         staged_key = f"$AT:TrackedItem:staged:{item.db_key.redis_key}"
         assert redis.llen(staged_key) == 0
 
+    @pytest.mark.redis_only(
+        reason="reads the confirmed access log, a capped Redis list; Postgres keeps the count and the last read only"
+    )
     def test_discard_preserves_confirmed(self):
         """discard_staged_access() does not affect already confirmed data."""
         item = TrackedItem.create(name="discard_preserve")
@@ -254,6 +274,9 @@ class TestDiscardStagedAccess:
 # --- Access log capping tests ---
 
 
+@pytest.mark.redis_only(
+    reason="reads the confirmed access log, a capped Redis list; Postgres keeps the count and the last read only"
+)
 class TestAccessLogCapping:
     """Test that access_log is capped at max_access_log."""
 
@@ -331,6 +354,9 @@ class TestProperties:
 # --- no_track() tests ---
 
 
+@pytest.mark.redis_only(
+    reason="reads the AccessTracker staged-read list through the raw Redis client; the two-leg version is in tests/test_backend_parity_memory.py"
+)
 class TestNoTrack:
     """Test that no_track() suppresses on_read firing from queries."""
 
@@ -368,6 +394,9 @@ class TestNoTrack:
 # --- Delete cleanup tests ---
 
 
+@pytest.mark.redis_only(
+    reason="inspects AccessTracker keys in the Redis keyspace through the raw client"
+)
 class TestDeleteCleanup:
     """Test that delete() cleans up all 3 access tracker keys."""
 
@@ -417,6 +446,9 @@ class TestUntrackedModel:
         item = UntrackedItem.create(name="untracked")
         assert not hasattr(item, "on_read")
 
+    @pytest.mark.redis_only(
+        reason="inspects AccessTracker keys in the Redis keyspace through the raw client"
+    )
     def test_untracked_get_no_side_effects(self):
         """Getting an untracked model creates no $AT keys."""
         UntrackedItem.create(name="untracked_get")
@@ -445,6 +477,9 @@ class TestConcurrentAccess:
         for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
+    @pytest.mark.redis_only(
+        reason="reads the AccessTracker staged-read list through the raw Redis client; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_concurrent_on_read(self):
         """Multiple threads calling on_read() concurrently."""
         item = TrackedItem.create(name="concurrent_test")
@@ -508,6 +543,9 @@ class TestConcurrentAccess:
 # --- Query integration tests ---
 
 
+@pytest.mark.redis_only(
+    reason="reads the AccessTracker staged-read list through the raw Redis client; the two-leg version is in tests/test_backend_parity_memory.py"
+)
 class TestQueryIntegration:
     """Test that queries fire on_read for AccessTrackerMixin models."""
 
@@ -547,6 +585,9 @@ class TestQueryIntegration:
 # --- Export tests ---
 
 
+@pytest.mark.redis_only(
+    reason="reads the confirmed access log, a capped Redis list; Postgres keeps the count and the last read only"
+)
 class TestSpacingEffect:
     """Test that spaced reads produce different access logs than massed reads."""
 
@@ -607,6 +648,9 @@ class TestSpacingEffect:
 # --- Synergy test: priority score from access log ---
 
 
+@pytest.mark.redis_only(
+    reason="reads the confirmed access log, a capped Redis list; Postgres keeps the count and the last read only"
+)
 class TestSynergyWithDecay:
     """Test that confirmed access log enables priority score computation."""
 
@@ -664,6 +708,9 @@ class TrackedPartitioned(AccessTrackerMixin, popoto.Model):
     relevance = popoto.DecayingSortedField(partition_by="category")
 
 
+@pytest.mark.redis_only(
+    reason="reads the AccessTracker staged-read list through the raw Redis client; the two-leg version is in tests/test_backend_parity_memory.py"
+)
 class TestPartitionInteraction:
     """Test AccessTracker works correctly with partition_by on DecayingSortedField."""
 
@@ -728,6 +775,9 @@ class TestStagedTTL:
         for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
+    @pytest.mark.redis_only(
+        reason="reads the staged list's TTL through the raw Redis client; Postgres staged reads expire by comparison, the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_on_read_sets_ttl(self):
         """on_read() applies a TTL to the staged key."""
         item = TrackedItem.create(name="ttl_test")
@@ -740,6 +790,9 @@ class TestStagedTTL:
         assert ttl > 0
         assert ttl <= TrackedItem._staged_ttl_seconds
 
+    @pytest.mark.redis_only(
+        reason="reads the staged list's TTL through the raw Redis client; Postgres staged reads expire by comparison, the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_on_read_pipeline_sets_ttl(self):
         """on_read() with a pipeline also sets the TTL on the staged key."""
         item = TrackedItem.create(name="ttl_pipe_test")
@@ -753,6 +806,9 @@ class TestStagedTTL:
         assert ttl > 0
         assert ttl <= TrackedItem._staged_ttl_seconds
 
+    @pytest.mark.redis_only(
+        reason="reads the staged list's TTL through the raw Redis client; Postgres staged reads expire by comparison, the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_multiple_on_reads_refresh_ttl(self):
         """Repeated on_read() calls keep refreshing the TTL."""
         item = TrackedItem.create(name="ttl_refresh")
@@ -786,6 +842,9 @@ class TestStagedTTL:
         """_staged_ttl_seconds defaults to 86400 (24h)."""
         assert TrackedItem._staged_ttl_seconds == 86400
 
+    @pytest.mark.redis_only(
+        reason="reads the staged list's TTL through the raw Redis client; Postgres staged reads expire by comparison, the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_staged_ttl_custom_value(self):
         """Subclasses can override _staged_ttl_seconds."""
 
@@ -825,6 +884,9 @@ class TestCrossTTLBoundary:
         for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
+    @pytest.mark.redis_only(
+        reason="force-expires the staged-read list with a raw DEL; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_confirm_after_staged_key_expires_drops_read(self):
         """A read confirmed after _staged_ttl_seconds is silently dropped.
 

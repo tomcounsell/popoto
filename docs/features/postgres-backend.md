@@ -5,12 +5,15 @@ Popoto v2 keeps one model API with two native storage backends behind it
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.
 
-This page covers the first Postgres milestones: **plain models** (M1) and
-**plain-field breadth** (M1.1). That means records, queries, `Q` objects,
-ordering, counting and atomic increments for the field types listed below,
-including indexed, unique, tag, relationship and collection fields. Models that use other fields stay on Redis
-until their milestone. Popoto refuses them when you declare them, so they
-never fail halfway through.
+This page covers the first Postgres milestones: **plain models** (M1),
+**plain-field breadth** (M1.1) and the **ranking and memory-state half of
+Valor's slice** (M2a). That means records, queries, `Q` objects, ordering,
+counting and atomic increments for the field types listed below, including
+indexed, unique, tag, relationship and collection fields, plus decay ranking,
+confidence, read tracking, the write filter, `ObservationProtocol` and
+`composite_score`. Models that use other fields stay on Redis until their
+milestone. Popoto refuses them when you declare them, so they never fail
+halfway through.
 
 ## Selecting the backend
 
@@ -61,7 +64,7 @@ spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.
 
-## Supported fields (M1, M1.1)
+## Supported fields (M1, M1.1, M2a)
 
 | popoto field | Column | Index |
 |---|---|---|
@@ -78,6 +81,8 @@ first query does not.
 | `ListField(max_length=N)` (M1.1) | `jsonb`, each element type-tagged as `push()` writes it on Redis | — |
 | `BytesField` / `DateField` / `TimeField` (M1.1) | `bytea` / `date` / `time` | — |
 | `Meta.indexes` (M1.1) | — | a composite B-tree per entry; `UNIQUE` when `is_unique` |
+| `DecayingSortedField(partition_by=…, base_score_field=…)` (M2a) | `double precision`: the decay clock, in epoch seconds | B-tree `(partition cols…, f, _pk COLLATE "C")` |
+| `ConfidenceField` (M2a) | `double precision` for the attribute, plus the state `<f>__conf` (`double precision`), `<f>__n`, `<f>__corr`, `<f>__contra` (`bigint`) | — |
 
 Every table also has:
 
@@ -114,7 +119,26 @@ tuple is checked in `pre_save` by a read through the backend, with the same
 authority behind it: a write that races past the read, or two conflicting
 saves inside one `transaction()`, gets the same text from the index.
 
-Fields that arrive later: the memory fields (M2–M4); `GeoField`, `Meta.ttl`
+**Memory state (M2a).** A `ConfidenceField` keeps two things, as it does on
+Redis: the model attribute (the hash value there, its own column here) and
+the evidence state (the companion hash entry there, the four `__` columns
+here). State that is `NULL` is the seed Redis writes on save with `HSETNX`
+(`initial_confidence` and three zeros), so a save never writes it and a
+re-save never resets it. A model with `AccessTrackerMixin` gains
+`_access_count`, `_last_accessed`, `_staged_reads` and `_staged_at`; staged
+reads count only while `_staged_at` is within `_staged_ttl_seconds`, which is
+what the Redis list's refreshed `EXPIRE` means. `WriteFilterMixin`'s gate runs
+above the seam as before; its priority tier is not stored (plan §5 M2).
+`RecallProposal` keeps its pending proposals in one engine table per schema,
+`popoto_recall_proposal`, created on first use like `popoto_schema`. No state
+column is indexed: each index would make every `update_confidence` or
+`confirm_access` a non-HOT update, and nothing filters or orders by one alone.
+A partitioned `ConfidenceField` arrives in M3 and is refused until then.
+`PredictionLedgerMixin` keeps its ledger in Redis until M5 and is refused on a
+Postgres model too, rather than issuing Redis commands for a record Redis does
+not hold.
+
+Fields that arrive later: the remaining memory fields (M2b–M4); `GeoField`, `Meta.ttl`
 and the rest (M5); an `IndexedField` on a collection type is refused. A model
 that uses one of them raises
 `BackendCapabilityError` when you declare it with `Meta.backend =
@@ -202,7 +226,128 @@ with backend.transaction() as uow:      # one READ COMMITTED transaction
 inside one `transaction()`. A unique conflict anywhere in the batch rolls back
 the whole batch. Deadlock and serialization failures are retried
 automatically, up to `Defaults.PG_TRANSACTION_RETRIES` times, for single
-statements. Inside a `transaction()` they propagate to the caller.
+statements, which then raise `popoto.backends.BackendRetryableError`. Inside a
+`transaction()` -- including at its commit -- the whole unit rolls back and
+`BackendRetryableError` is raised at once, chained from the driver error;
+popoto does not retry a block it does not own:
+
+```python
+from popoto.backends import BackendRetryableError
+
+for attempt in range(3):
+    try:
+        with backend.transaction() as uow:
+            ...
+        break
+    except BackendRetryableError:
+        continue  # rolled back by a concurrent transaction; safe to rerun
+```
+
+Before #759 M2a's patch these reached the caller as raw psycopg
+`DeadlockDetected` / `SerializationFailure`. A statement whose completion is
+unknown (SQLSTATE 40003) is not retryable -- it may have committed -- and is
+reported as `BackendUnavailableError`.
+
+## Ranking and memory state (M2a)
+
+Each operation is one statement. `top_by_decay` is `rank_decayed` (below)
+followed by one `load` of the ranked rows, in rank order; a model with
+`AccessTrackerMixin` then stages the reads in one more `UPDATE`.
+
+**`rank_decayed`** is `DECAY_SCORE_LUA` as a `SELECT`, operation for
+operation in `double precision`, so the platform's `pow` behind `power()`
+gives the Lua's bits:
+
+```sql
+SELECT t."_pk",
+       ((CASE WHEN b < 0 THEN -1 ELSE 1 END) * abs(b)
+        * power(greatest(($now - t.f) / 86400, 0.01), -$rate))
+       -- with confidence modulation:
+       * power(greatest(greatest(($now - t.f) / 86400, 0.01), 1),
+               -($rate * power(2, $s2 * ($c0 - greatest(0, least(1, coalesce(t.c__conf, $c0)))))
+                 - $rate)) AS "_score"
+  FROM popoto.<model> AS t
+ WHERE t.f IS NOT NULL AND <partition filters>
+ ORDER BY ("_score" = 'NaN'), "_score" DESC, "_pk" COLLATE "C"
+ LIMIT $n
+```
+
+`b` is the base-score column (`1.0` when there is none, or it is `NULL`, a
+string or a boolean, as the script's `HGET` + `cmsgpack` rule gives; a
+`numeric` converts through the same `strtod` the script's `tonumber` uses),
+`$s2` is twice `Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH`, and `$c0` the
+confidence field's `initial_confidence`. Only the partition filters scope the
+scan, as on Redis, where they pick the sorted set.
+
+Postgres raises `value out of range` where C's `pow` and `*` overflow to
+`inf` or underflow to `0` (`power(0.01, -155)`, `1e-300 * 1e-300`; the #631
+POC's boundary rows). Rows whose inputs sit in a box where no step can leave
+the `double` range -- every realistic one -- take the expression above; any
+other row, and every row when the rate or strength is extreme, takes a
+correlated subquery that computes the same steps with each `power`, `*` and
+`-` clamped, so the result is `inf` or `0`, with its sign, where the Lua's is.
+Inside a band of 0.003 in log space at each end of the `double` range (a
+result within 0.25% of `DBL_MAX`, or between `2.47e-324` and `2.48e-324`) the
+clamp saturates where the exact value is still finite; that is the only place
+the two legs can differ. Scores come back rounded through `%.14g`, which is
+what the Lua's `tostring` replies with.
+
+**`update_confidence`** is `CAPPED_BAYESIAN_UPDATE_LUA` as one `UPDATE`:
+
+```sql
+UPDATE popoto.<model> SET
+  c__conf   = greatest(0, least(1, coalesce(c__conf, $c0)
+              + ($signal - coalesce(c__conf, $c0)) / (least(coalesce(c__n, 0) + 1, $cap) + 1))),
+  c__n      = coalesce(c__n, 0) + 1,
+  c__corr   = coalesce(c__corr, 0) + <1 if $signal >= 0.5>,
+  c__contra = coalesce(c__contra, 0) + <1 if $signal < 0.5>
+ WHERE "_pk" = $pk
+RETURNING c__conf, c__n, c__corr, c__contra
+```
+
+The arithmetic is the script's, so the stored confidence is bit-identical to
+the Redis one; the returned value is rounded through `%.14g` as the script's
+reply is. No row means the record does not exist: the field layer raises the
+same `TypeError` as on Redis (with a pipeline, the update is skipped, as the
+queued script skips it).
+
+**`composite_score`** is one `SELECT` over the model's rows: each index is an
+arm scoring the records its Redis sorted set would hold (the decay arm the
+partition's clocks, the confidence arm every record, the access arm every
+record read at least once), a record is ranked when any arm holds it, and the
+aggregate runs over the arms that do -- `SUM` in the indexes' order (a NaN
+step, `inf + -inf`, becomes 0 as `ZUNIONSTORE` makes it), `MAX`/`MIN`
+ignoring the rest. Ties come back in descending key order, as `ZREVRANGE`
+gives; `min_score` applies before `temperature`, and `post_filter` after it,
+as on Redis. Two differences stay below the 1e-9 tolerance: Redis's decay arm
+holds the script's `%.14g`-rounded scores where Postgres uses the full
+`double`, and Redis adds three or more arms in its own set order rather than
+the indexes', which can move a sum by an ulp.
+
+**The seeded probe.** `scripts/probe_memory_parity.py` builds the same random
+corpus on both backends -- ages from fresh to centuries, the future, shared
+timestamps and pathological clocks; base scores of every type the script reads,
+from `5e-324` to `1e305`; signal sequences; partitions; staged and confirmed
+reads -- and compares `rank_decayed`, `top_by_decay`, confidence,
+read tracking and `composite_score` between the legs. Its classes and the
+two documented NaN rows are in the PR that introduced M2a;
+`tests/postgres/test_memory_probe.py` runs a 40-shape slice of it in CI.
+
+```bash
+REDIS_URL=redis://localhost:6379/10 \
+POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
+    python scripts/probe_memory_parity.py --seeds 1 2 3 --shapes 200
+```
+
+**`ObservationProtocol.on_context_used`** applies all five outcomes for a
+batch in one transaction: the batch's rows are locked `FOR UPDATE` in `_pk`
+order first (the plan's §6 lock order), then each instance's effects run in
+that order -- `touch` for `acted`, staged reads confirmed (`acted`, `used`) or
+discarded (the rest), the confidence signal (`acted`, `contradicted`), and its
+proposal resolved. A deadlock or serialization failure retries the whole
+batch up to `Defaults.PG_TRANSACTION_RETRIES` times and then raises
+`BackendRetryableError`; inside a `transaction()` you pass as `pipeline` it
+raises that error at once, for you to retry.
 
 ## Documented divergences
 
@@ -290,15 +435,27 @@ cast to the column's type.
 | `push()` on a capped `ListField` whose record was deleted (M1.1) | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
 | `load_raw_hash`, `idle_seconds`, `Query.keys(catchall=/clean=)` | Redis debug and inspection APIs | raise `BackendCapabilityError` (`idle_seconds` arrives in M4) |
 | `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` | run the sync call in a worker thread (the async driver arrives in M5) |
+| A reload after `touch()` (M2a) | `touch` moves only the sorted-set score, so the hash, and a reload, keep the save-time value | the clock is the field's column, so a reload sees the touched time. Pinned: `test_a_reload_after_touch_is_a_documented_divergence` |
+| `DecayingSortedField.rank_decayed(zset_key, …)` (M2a, TD-40) | ranks that sorted set | raises `BackendCapabilityError` naming `top_by_decay`, the backend-neutral call |
+| `composite_score({"priority": …})` (M2a) | ranks by the WriteFilter priority set | raises `BackendCapabilityError`: the priority tier is a no-op on Postgres (plan §5 M2) |
+| `composite_score(similarity_boost=/co_occurrence_boost=)` (M2a) | injects the boost as an arm | raises `BackendCapabilityError` until the vector arm (M2) and `CoOccurrenceField` (M4) arrive |
+| Where a NaN decay score ranks (M2a) | NaN (`0 * inf`: a `-inf` clock with above-prior confidence) makes the script's comparator inconsistent (`x > nan` is always false), so `table.sort` places it arbitrarily and can misorder real scores around it | real scores sorted, NaN last; every member's score is the same on both. Pinned: `test_where_a_nan_score_ranks_is_a_documented_divergence` |
+| A NaN decay score in `composite_score` (M2a) | `rank_decayed` replies `nan` (`0 * inf`: a `-inf` clock with above-prior confidence) and the composite's `ZADD` refuses it: `ResponseError: value is not a valid float` | that arm scores 0 for the record, the value `ZUNIONSTORE` gives a NaN product. Pinned: `test_a_nan_decay_score_in_composite_is_a_documented_divergence` |
+| The confirmed access log (M2a) | a capped list of read timestamps (`$AT:…:access_log`) | not kept: `access_count` and `last_accessed` are. It is read only by `export_state`, which arrives with `transfer/` in M5 |
+| `update_confidence(…, pipeline=uow)` with a Postgres `transaction()` (M2a) | (a Redis pipeline queues the update and returns `None`) | the update runs inside the transaction, so its value is returned and the attribute synced |
+| A model with a `CyclicDecayField`, `ValidityField`, partitioned `ConfidenceField`, `CoOccurrenceField` or `PredictionLedgerMixin` (M2a) | supported | refused at declaration until M5, M3, M3, M4 and M5 respectively, so `ObservationProtocol`'s cycle, supersession, auto-discharge and ledger-resolution effects have no Postgres model to act on yet |
 
-## Performance (M1 exit criteria)
+## Performance (M1 and M2a exit criteria)
 
 `scripts/bench_backend_seam.py` measures the public API on both backends. It
 seeds 2,000 records, runs `ANALYZE`, and then makes three runs of 300
 iterations per operation, with the two backends interleaved within each run.
 The M1 targets are `Model.save()` p50 at most 2x Redis and `filter` +
-hydration p50 at most 1x Redis. The PR that introduced this page records the
-measured numbers and the environment they were taken on.
+hydration p50 at most 1x Redis. M2a adds `rank_decayed` with a base score and
+confidence modulation over all 2,000 records (top 10): Postgres p50 at most
+1x Redis, `DECAY_SCORE_LUA` against one `SELECT`; `top_by_decay` with
+hydration is measured beside it. The PRs that introduced each milestone
+record the measured numbers and the environment they were taken on.
 
 ```bash
 REDIS_URL=redis://localhost:6379/14 \

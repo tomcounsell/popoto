@@ -39,6 +39,13 @@ from src.popoto.fields.validity_field import ValidityField  # noqa: E402
 
 DAY = 86400.0
 
+# Backend conformance (#759 M2a, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class RankedMemory(popoto.Model):
     key = popoto.KeyField()
@@ -125,6 +132,9 @@ def _decoded(reply):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason="DecayingSortedField.rank_decayed(zset_key) ranks a Redis sorted set and is refused off Redis (plan §1.1, TD-40)"
+)
 def test_rank_decayed_matches_top_by_decay():
     """The seam must score identically to the existing query path, or the
     metacognitive proxy silently disagrees with retrieval."""
@@ -154,6 +164,9 @@ def test_rank_decayed_matches_top_by_decay():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason="asserts the Redis command sequence of DecayingSortedField.rank_decayed"
+)
 def test_n_none_issues_zcard_before_eval(monkeypatch):
     """Wire order is ZCARD then EVAL. The recipe's captured sequence depends on
     it: the ZCARD it used to issue itself now happens here, in the same place."""
@@ -174,6 +187,9 @@ def test_n_none_issues_zcard_before_eval(monkeypatch):
     assert verbs.index("ZCARD") < evals[0]
 
 
+@pytest.mark.redis_only(
+    reason="asserts the Redis command sequence of DecayingSortedField.rank_decayed"
+)
 def test_empty_zset_short_circuits_without_any_eval(monkeypatch):
     """``if not cardinality: continue`` in the recipe became a ``return []``
     here. An EVAL on an empty set would be a new command on the wire."""
@@ -188,6 +204,9 @@ def test_empty_zset_short_circuits_without_any_eval(monkeypatch):
     assert "EVAL" not in verbs and "EVALSHA" not in verbs
 
 
+@pytest.mark.redis_only(
+    reason="asserts the Redis command sequence of DecayingSortedField.rank_decayed"
+)
 def test_explicit_n_issues_no_zcard(monkeypatch):
     """The query path passes its own limit and must not pay for a ZCARD."""
     tag = uuid.uuid4().hex[:8]
@@ -215,6 +234,9 @@ def test_cyclic_override_is_a_distinct_implementation():
     ), "CyclicDecayField must override rank_decayed"
 
 
+@pytest.mark.redis_only(
+    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+)
 def test_cyclic_rank_decayed_returns_scores():
     tag = uuid.uuid4().hex[:8]
     now = time.time()
@@ -230,6 +252,9 @@ def test_cyclic_rank_decayed_returns_scores():
     assert all(v > 0 for v in scored.values())
 
 
+@pytest.mark.redis_only(
+    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+)
 def test_cyclic_override_ignores_the_validity_gate():
     """CYCLIC_DECAY_LUA has no validity gate: KEYS 1-4 are taken and its header
     forbids renumbering. The parameter exists so callers stay polymorphic, and
@@ -259,6 +284,9 @@ def test_cyclic_override_ignores_the_validity_gate():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason="uses a ValidityField, which Postgres stores from #759 M3"
+)
 def test_resolve_excluded_keys_unions_closed_and_future():
     from src.popoto.fields.supersession import SupersessionProtocol
 
@@ -275,6 +303,9 @@ def test_resolve_excluded_keys_unions_closed_and_future():
     assert open_record.db_key.redis_key not in excluded
 
 
+@pytest.mark.redis_only(
+    reason="uses a ValidityField, which Postgres stores from #759 M3"
+)
 def test_unmanaged_records_are_never_excluded():
     """The whole reason this is an exclusion set and not a whitelist: a record
     with no interval predates the field's adoption and must stay retrievable.
@@ -289,6 +320,9 @@ def test_unmanaged_records_are_never_excluded():
     assert unmanaged.db_key.redis_key not in excluded
 
 
+@pytest.mark.redis_only(
+    reason="uses a ValidityField, which Postgres stores from #759 M3"
+)
 def test_resolve_excluded_keys_issues_exactly_two_range_reads(monkeypatch):
     """Two ZRANGEBYSCOREs, in the order the assembler established. A third read
     or a reorder would show up in the base-vs-branch command capture."""
@@ -299,6 +333,9 @@ def test_resolve_excluded_keys_issues_exactly_two_range_reads(monkeypatch):
     assert len(ranges) == 2
 
 
+@pytest.mark.redis_only(
+    reason="uses a ValidityField, which Postgres stores from #759 M3"
+)
 def test_excluded_keys_are_decoded_strings():
     """Consumers compare against ``record.db_key.redis_key``, which is a str."""
     from src.popoto.fields.supersession import SupersessionProtocol

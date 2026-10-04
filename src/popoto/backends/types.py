@@ -39,10 +39,12 @@ __all__ = [
     "QueryCall",
     "QueryPlan",
     "RANDOM",
+    "RankTerm",
     "RecordId",
     "Row",
     "SaveOutcome",
     "SchemaDriftError",
+    "BackendRetryableError",
     "Scored",
     "UnitOfWork",
 ]
@@ -88,6 +90,24 @@ class BackendUnavailableError(BackendError, ConnectionError):
 class SchemaDriftError(BackendError):
     """The stored schema and the model disagree in a way popoto will not
     reconcile automatically (plan §3, Migrations). Raised by ``bind()``."""
+
+
+class BackendRetryableError(BackendError):
+    """A deadlock or serialization failure rolled the work back; running it
+    again is safe (plan §6, TD-2), so a caller catches one popoto type instead
+    of a driver error (#759 M2a). Raised ``from`` the driver error:
+
+    - inside a caller-owned ``transaction()`` (a statement in it, or its
+      COMMIT), at once -- the whole unit was rolled back and only the caller
+      can run its block again, so popoto does not retry it;
+    - by a single statement outside a unit of work, and by
+      ``ObservationProtocol.on_context_used``, once their own bounded retries
+      (``Defaults.PG_TRANSACTION_RETRIES``) are spent.
+
+    Before #773's patch a caller-owned transaction saw the raw psycopg
+    ``DeadlockDetected`` / ``SerializationFailure``; code that caught those
+    should catch this instead. A statement whose completion is unknown
+    (40003) is not this error: it may have committed (#769)."""
 
 
 # -- identity -----------------------------------------------------------------
@@ -177,6 +197,10 @@ class ModelSpec:
     """The subset of :attr:`indexes` declared unique (``Meta.indexes``'s
     ``is_unique`` flag). Added in M1.1 beside §2's ``indexes``, which carries
     the field names only."""
+    mixins: frozenset[str] = frozenset()
+    """Names of the popoto model mixins in the model's MRO
+    (``AccessTrackerMixin``, ``WriteFilterMixin``...). Added in M2a: a mixin
+    that keeps per-record state needs columns of its own on Postgres."""
 
 
 # -- predicates and plans -----------------------------------------------------
@@ -293,6 +317,34 @@ Row = Mapping[str, Any]
 ``None`` for a Redis projection row, which has never carried its key)."""
 
 Scored = list[tuple[RecordId, float]]
+
+
+_dataclass_field = field  # RankTerm has a member named ``field``
+
+
+@dataclass(frozen=True)
+class RankTerm:
+    """One arm of ``rank_composite`` (plan §2 group E): a per-record score
+    and the weight it carries in the composite.
+
+    ``kind`` names where the score comes from: ``"decay"`` (a
+    ``DecayingSortedField``'s decayed score, the ``rank_decayed`` expression),
+    ``"confidence"`` (a ``ConfidenceField``'s stored confidence),
+    ``"access"`` (``AccessTrackerMixin``'s confirmed read count; only records
+    read at least once), ``"sorted"`` (a ``SortedField``'s score), or a
+    caller-supplied ``scores`` mapping (``"similarity"``, ``"co_occurrence"``).
+    ``where`` is the arm's own domain -- the partition its index covers --
+    because each arm of today's ``ZUNIONSTORE`` is a separate set: a record
+    scores on the arms whose set holds it, and is ranked when any one does.
+    """
+
+    kind: str
+    weight: float
+    field: Optional[str] = None
+    where: Optional["Predicate"] = None
+    scores: Optional[Mapping[str, float]] = None
+    options: Mapping[str, Any] = _dataclass_field(default_factory=dict)
+    """Per-arm settings: a decay arm's ``confidence_field`` (modulation)."""
 
 
 # -- writes -------------------------------------------------------------------

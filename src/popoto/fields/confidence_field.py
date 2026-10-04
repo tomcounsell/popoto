@@ -37,6 +37,7 @@ Example:
 """
 
 import logging
+from typing import Any, Optional
 
 import msgpack
 import redis
@@ -44,11 +45,26 @@ import redis
 from ..exceptions import ModelException
 from ..models.canonical_key import canonical_key_str
 from ..models.query import QueryException
+from ..backends.routing import non_redis_backend
 from ..redis_db import get_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
 
 logger = logging.getLogger("POPOTO.ConfidenceField")
+
+
+def _refuse_on_backend(model_class: Any, api: str, what: str) -> None:
+    """A Redis-structure API on a model stored elsewhere is refused rather
+    than run against Redis for records that live in another backend."""
+    backend = non_redis_backend(model_class)
+    if backend is not None:
+        from ..backends import BackendCapabilityError
+
+        raise BackendCapabilityError(
+            f"ConfidenceField.{api} works on Redis {what}; {model_class.__name__} "
+            f"is stored on the {backend.name!r} backend"
+        )
+
 
 # Lua script: atomic capped-evidence update of the confidence companion hash.
 # While n_eff = min(evidence_count + prior_weight, cap) is below the cap, the
@@ -546,6 +562,12 @@ class ConfidenceField(Field):
         except Exception:
             raise TypeError("update_confidence() requires a saved model instance")
 
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            return cls._update_confidence_on_backend(
+                backend, model_instance, field_name, member_key, signal, pipeline
+            )
+
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
 
         if pipeline is not None:
@@ -600,6 +622,73 @@ class ConfidenceField(Field):
         return new_confidence
 
     @classmethod
+    def _update_confidence_on_backend(
+        cls,
+        backend: Any,
+        model_instance: Any,
+        field_name: str,
+        member_key: str,
+        signal: float,
+        pipeline: Any,
+    ) -> Optional[float]:
+        """``update_confidence`` on a non-Redis backend (#759 M2a): one
+        ``UPDATE … RETURNING`` with the Lua's formula and cap.
+
+        The contract is the Redis one. Without a pipeline the new confidence
+        is returned and the attribute synced, and a record that does not
+        exist raises ``TypeError``. With a Redis pipeline (which cannot carry
+        a Postgres write) the update runs at once and ``None`` is returned,
+        as a queued update returns. With the backend's own unit of work the
+        update runs inside its transaction, so its result is known: the value
+        is returned and the attribute synced, and a missing record is skipped
+        (``None``) as the queued Lua skips it.
+        """
+        from ..backends import UnitOfWork, record_id
+
+        uow = pipeline if isinstance(pipeline, UnitOfWork) else None
+        state = backend.update_confidence(
+            model_instance._meta.spec,
+            record_id(model_instance, key=member_key),
+            field_name,
+            signal,
+            uow=uow,
+        )
+        if pipeline is not None and uow is None:
+            return None
+        if state is None:
+            if pipeline is not None:
+                return None
+            raise TypeError("update_confidence() requires a saved model instance")
+        new_confidence = state["confidence"]
+        setattr(model_instance, field_name, new_confidence)
+        return new_confidence
+
+    @classmethod
+    def _backend_state(cls, model_instance: Any, field_name: str) -> Any:
+        """The stored confidence state on a non-Redis backend, or ``None`` on
+        Redis (the caller reads the companion hash)."""
+        backend = non_redis_backend(model_instance)
+        if backend is None:
+            return None
+        from ..backends import record_id
+
+        field = model_instance._meta.fields[field_name]
+        state = backend.field_call(
+            model_instance._meta.spec,
+            field_name,
+            "state",
+            record_id(model_instance),
+        )
+        if state is None:
+            return {
+                "confidence": field.initial_confidence,
+                "evidence_count": 0,
+                "corroborations": 0,
+                "contradictions": 0,
+            }
+        return state
+
+    @classmethod
     def get_confidence(cls, model_instance, field_name):
         """Get the current confidence value for a member.
 
@@ -613,6 +702,10 @@ class ConfidenceField(Field):
         field = model_instance._meta.fields.get(field_name)
         if not isinstance(field, ConfidenceField):
             raise TypeError(f"{field_name} is not a ConfidenceField")
+
+        state = cls._backend_state(model_instance, field_name)
+        if state is not None:
+            return state["confidence"]
 
         member_key = model_instance.db_key.redis_key
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
@@ -639,6 +732,10 @@ class ConfidenceField(Field):
         field = model_instance._meta.fields.get(field_name)
         if not isinstance(field, ConfidenceField):
             raise TypeError(f"{field_name} is not a ConfidenceField")
+
+        state = cls._backend_state(model_instance, field_name)
+        if state is not None:
+            return state
 
         member_key = model_instance.db_key.redis_key
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
@@ -672,6 +769,7 @@ class ConfidenceField(Field):
         field = model_class._meta.fields.get(field_name)
         if not isinstance(field, ConfidenceField):
             raise TypeError(f"{field_name} is not a ConfidenceField")
+        _refuse_on_backend(model_class, "get_confidence_filtered", "an HSCAN pattern")
 
         base_key = field.get_special_use_field_db_key(model_class, field_name)
         data_hash_key = base_key.redis_key + ":data"
@@ -725,6 +823,7 @@ class ConfidenceField(Field):
                 f"ConfidenceField '{field_name}' has no partition_by configured. "
                 f"Nothing to migrate."
             )
+        _refuse_on_backend(model_class, "migrate_to_partitioned", "companion hashes")
 
         # Read the unpartitioned hash
         base_key = field.get_special_use_field_db_key(model_class, field_name)

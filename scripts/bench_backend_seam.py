@@ -13,7 +13,10 @@ table after seeding (the archive's two bimodal rows were a missing
 ``ANALYZE``), warm up, then time each op ``--runs`` times (default 3) of
 ``--iters`` iterations and report every run's p50 and the min-max range.
 The M1 exit criteria compared are ``save`` p50 <= 2x Redis and
-``filter+hydrate`` p50 <= 1x Redis.
+``filter+hydrate`` p50 <= 1x Redis; M2a adds ``rank_decayed`` with a base
+score and confidence modulation over N records, p50 <= 1x Redis (plan §5 M2:
+``DECAY_SCORE_LUA`` against one ``SELECT`` with the decay expression in
+``ORDER BY``), and the public ``top_by_decay`` with hydration beside it.
 
 Safety: Redis is bound from ``REDIS_URL`` *before* importing popoto
 (CLAUDE.md, #577) and database 0 is refused. On Postgres the script creates
@@ -65,7 +68,12 @@ if not PG_URL:
 import psycopg  # noqa: E402
 
 import popoto  # noqa: E402
-from popoto.backends import set_backend  # noqa: E402
+from popoto import ConfidenceField, DecayingSortedField  # noqa: E402
+from popoto.backends import get_backend, set_backend  # noqa: E402
+from popoto.fields.decaying_sorted_field import (  # noqa: E402
+    confidence_modulation_args,
+    resolve_confidence_modulation_field,
+)
 from popoto.backends.postgres import PostgresBackend  # noqa: E402
 from popoto.backends.redis import RedisBackend  # noqa: E402
 
@@ -84,6 +92,44 @@ class BenchNote(popoto.Model):
     score = popoto.SortedField(type=float, default=0.0)
 
 
+class BenchMemory(popoto.Model):
+    """M2a's ranking slice: a decay clock scaled by a base score and
+    modulated by a confidence -- Valor's ``top_by_relevance`` shape."""
+
+    key = popoto.KeyField()
+    strength = popoto.FloatField(default=1.0)
+    last_seen = DecayingSortedField(decay_rate=0.5, base_score_field="strength")
+    certainty = ConfidenceField()
+
+
+_NOW = time.time()
+
+
+def _rank_decayed(i: int) -> Any:
+    """One ranking over every record, top 10: the field's ``DECAY_SCORE_LUA``
+    on Redis, the backend's single ``SELECT`` on Postgres -- the call
+    ``top_by_decay`` makes, without the hydration."""
+    field = BenchMemory._meta.fields["last_seen"]
+    backend = get_backend(BenchMemory)
+    if backend.name == "redis":
+        zkey = field.get_sortedset_db_key(BenchMemory, "last_seen").redis_key
+        return field.rank_decayed(
+            zkey,
+            now=_NOW,
+            n=10,
+            confidence=confidence_modulation_args(BenchMemory, field, "last_seen"),
+        )
+    conf, _ = resolve_confidence_modulation_field(BenchMemory, field, "last_seen")
+    return backend.rank_decayed(
+        BenchMemory._meta.spec,
+        "last_seen",
+        now=_NOW,
+        n=10,
+        base_score_field="strength",
+        confidence_field=conf,
+    )
+
+
 def _p(samples_ns: list[int], q: float) -> float:
     s = sorted(samples_ns)
     return s[min(len(s) - 1, max(0, round(q * (len(s) - 1))))] / 1_000.0
@@ -98,7 +144,26 @@ def _timeit(fn: Callable[[int], Any], iters: int, offset: int) -> list[int]:
     return out
 
 
+def _seed_memory(n: int) -> None:
+    """N memories aged 0-400 days with mixed strengths, half of them with
+    confidence evidence, saved with their age (``skip_auto_now``)."""
+    import random
+
+    rng = random.Random(759)
+    for i in range(n):
+        record = BenchMemory(
+            key=f"m{i}",
+            strength=round(rng.uniform(0.2, 5.0), 3),
+            last_seen=_NOW - rng.uniform(0, 400) * 86400,
+        )
+        record.save(skip_auto_now=True)
+        if i % 2:
+            for _ in range(rng.randint(1, 4)):
+                ConfidenceField.update_confidence(record, "certainty", rng.random())
+
+
 def _seed(n: int) -> None:
+    _seed_memory(n)
     now = datetime.datetime(2026, 1, 1, tzinfo=UTC)
     for i in range(n):
         BenchNote(
@@ -128,12 +193,17 @@ OPS: dict[str, Callable[[int], Any]] = {
     "Query.get(owner=, slug=)": lambda i: BenchNote.query.get(
         owner=f"o{i % 20}", slug=f"s{i % 2000}"
     ),
+    "rank_decayed(base+confidence, all N, n=10)": _rank_decayed,
+    "top_by_decay(n=10) base+confidence + hydrate": lambda i: (
+        BenchMemory.query.top_by_decay("last_seen", n=10)
+    ),
 }
 EXIT_CRITERIA = {
     "Model.save() new record": 2.0,
     "Model.save() existing record": 2.0,
     "filter(score__gte, limit=50) + hydrate": 1.0,
     "filter(owner=, score__lt, limit=20) + hydrate": 1.0,
+    "rank_decayed(base+confidence, all N, n=10)": 1.0,
 }
 
 
@@ -202,7 +272,13 @@ def main() -> None:
     try:
         rd = RedisBackend()
         seed(rd, args.n, lambda: None)
-        seed(pg, args.n, lambda: admin.execute(f'ANALYZE "{schema}".bench_note'))
+        seed(
+            pg,
+            args.n,
+            lambda: admin.execute(
+                f'ANALYZE "{schema}".bench_note, "{schema}".bench_memory'
+            ),
+        )
         res = bench({"redis": rd, "postgres": pg}, args.iters, args.runs)
         redis_res, pg_res = res["redis"], res["postgres"]
     finally:
