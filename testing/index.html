@@ -2949,6 +2949,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backend-conformance-tests-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backend Conformance Tests (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#manual-test-helpers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3078,6 +3089,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backend-conformance-tests-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backend Conformance Tests (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#manual-test-helpers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3171,12 +3193,110 @@ of the plugin.</p>
 <p><strong>Disabling the plugin:</strong></p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pytest<span class="w"> </span>-p<span class="w"> </span>no:popoto
 </code></pre></div>
+<h2 id="backend-conformance-tests-opt-in">Backend Conformance Tests (opt-in)<a class="headerlink" href="#backend-conformance-tests-opt-in" title="Permanent link">&para;</a></h2>
+<p>Popoto v2 adds a Postgres backend behind the same model API
+(<a href="https://github.com/tomcounsell/popoto/issues/759">#759</a>). The plugin carries
+the harness that runs one test against each backend. Until the Postgres backend
+lands (milestone M1), the harness exists so its isolation and opt-in contract
+can be tested on their own. Model code still runs on Redis on every leg.</p>
+<p>In a session that opted in (below), a test marked <code>conformance</code> that requests
+the <code>backend</code> fixture runs once per configured backend, with ids <code>[redis]</code> and
+<code>[postgres]</code>. Unmarked tests are never parametrised. A test that requests
+<code>backend</code> without the marker gets the Redis leg, once.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">conformance</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_save_and_load</span><span class="p">(</span><span class="n">backend</span><span class="p">):</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"m1"</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">"..."</span><span class="p">)</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="k">assert</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">"m1"</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+</code></pre></div>
+<p>Which backends run is configured the way <code>popoto_test_db</code> is, and defaults to
+Redis only:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># pyproject.toml</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">[tool.pytest.ini_options]</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="na">popoto_conformance_backends</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"redis,postgres"</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">POPOTO_CONFORMANCE_BACKENDS</span><span class="o">=</span>redis,postgres<span class="w"> </span><span class="nv">POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>pytest<span class="w"> </span>-m<span class="w"> </span>conformance
+</code></pre></div>
+<p>The environment variable overrides the ini option. The valid names are <code>redis</code>
+and <code>postgres</code>. Any other name fails the session at startup, so a typo cannot
+produce a Redis-only run that looks like Postgres coverage.</p>
+<p><strong>Projects that do not opt in see no change.</strong> A session opts in by setting
+<code>popoto_test_db</code> / <code>POPOTO_TEST_DB</code> or <code>popoto_conformance_backends</code> /
+<code>POPOTO_CONFORMANCE_BACKENDS</code>. Without one of those, the plugin registers
+neither marker and defines none of the <code>backend</code>, <code>backend_is_redis</code> and
+<code>popoto_postgres_schema</code> fixtures. A test requesting <code>backend</code> gets pytest's
+usual <code>fixture 'backend' not found</code>, and the project collects exactly the same
+test ids as with <code>-p no:popoto</code>. That holds even when the project uses its own
+<code>conformance</code> and <code>redis_only</code> markers alongside its own <code>backend</code> fixture
+(parametrised or not) or <code>@pytest.mark.parametrize("backend", ...)</code>.</p>
+<p>Opting in does not take over a project's own <code>backend</code> either. Parametrisation
+and the <code>redis_only</code> reason rule below apply only where the <code>backend</code> fixture
+that resolves for the test is the plugin's. A <code>backend</code> fixture the project
+defines, in a conftest, module or class, shadows the plugin's, as any closer
+fixture does in pytest. A direct <code>parametrize("backend", ...)</code> replaces it. In
+both cases the test is collected as if the plugin were absent.</p>
+<p><strong>What <code>backend</code> is in M0.</strong> The fixture yields a <code>ConformanceBackend</code>
+descriptor, not a backend. It has <code>name</code> (<code>"redis"</code> or <code>"postgres"</code>), plus
+<code>schema</code> and <code>dsn</code> on the Postgres leg, and <code>is_redis</code>. Nothing is bound
+process-wide. A model-level test would therefore exercise Redis on its Postgres
+leg, so that leg <strong>skips</strong> with the reason <code>Postgres backend arrives in M1
+(#759)</code>. Only harness self-tests, marked <code>conformance(harness=True)</code> because
+they inspect the schema rather than models, run their Postgres leg before M1.
+The flag is allowed only in files under <code>tests/conformance/</code>, relative to the
+rootdir. Anywhere else it fails collection, so a model-level test cannot borrow
+it and pass its <code>[postgres]</code> leg while writing to Redis. It is temporary: M1
+deletes <code>harness=True</code> together with the pending-backend skip, once a Postgres
+backend exists for every leg to run against.</p>
+<p><strong>The Postgres leg skips when it cannot run.</strong> If <code>psycopg</code> is not installed or
+<code>POSTGRES_URL</code> is unset, each <code>[postgres]</code> parameter reports <code>SKIPPED</code> with a
+reason naming what is missing (<code>pytest -rs</code> shows it). <code>psycopg</code> is imported
+only on that leg, so the plugin never needs it to load. Two conditions are
+<em>refused</em> instead. Each raises <code>PostgresIsolationRefusedError</code> before any
+connection is opened, mirroring the DB-0 refusal on the Redis side. The URL is
+checked before <code>psycopg</code> is imported, so a db-less URL is refused even where the
+driver is not installed:</p>
+<ul>
+<li>a <code>POSTGRES_URL</code> that names no database, which libpq would resolve to the
+  connecting role's default;</li>
+<li>any schema other than <code>popoto_test_</code> plus exactly 32 lowercase hex characters.
+  This refuses <code>public</code>, <code>popoto</code> and <code>popoto_test_prod</code>.</li>
+</ul>
+<p><strong>Isolation</strong> is one schema per session. The harness runs
+<code>CREATE SCHEMA popoto_test_&lt;32 hex&gt;</code> at first use and truncates every table in
+it before each test, as the Postgres counterpart of <code>FLUSHDB</code>. At session end
+it runs <code>DROP SCHEMA ... CASCADE</code>, even when tests failed. The truncate names
+every table in one statement without <code>CASCADE</code>. A foreign key reaching into the
+schema from outside makes it fail rather than empty a table the harness does
+not own. The session-end <code>DROP SCHEMA ... CASCADE</code> is different. It follows
+dependencies across schemas, so it removes an object elsewhere <em>only if that
+object depends on a test table</em>. On PostgreSQL 18.6, a view in another schema
+that selects from a test table is dropped. A foreign key in another schema that
+references a test table loses that constraint, while its table and rows remain.
+Objects that do not depend on a test table are untouched. The descriptor's
+<code>dsn</code> is <code>POSTGRES_URL</code> with
+<code>options=-c search_path=&lt;schema&gt;</code> appended, so a connection opened from it
+resolves unqualified names inside the schema. The plugin still needs Redis
+bound (<code>popoto_test_db</code> / <code>REDIS_URL</code>), because its autouse flush runs before
+every test, including Postgres-leg tests.</p>
+<p><strong>Assertions that only hold on Redis.</strong> Mark them
+<code>@pytest.mark.redis_only(reason="...")</code>, which skips every non-Redis leg. The
+<code>reason=</code> is required. A <code>redis_only</code> mark without one fails collection on any
+test that uses the plugin's <code>backend</code> fixture, which is the only thing that
+reads the mark, so every mark can be audited later. For a test that must branch
+rather than skip,
+the <code>backend_is_redis</code> fixture returns <code>True</code> on the Redis leg. The
+<code>popoto_postgres_schema</code> session fixture exposes the schema name and an admin
+<code>connect()</code> for a test that wants to inspect it.</p>
+<p>In this repository the harness's own tests live in
+<code>tests/conformance/test_harness.py</code>.</p>
 <h2 id="manual-test-helpers">Manual Test Helpers<a class="headerlink" href="#manual-test-helpers" title="Permanent link">&para;</a></h2>
 <p>The <code>popoto.testing</code> module provides helpers for non-pytest test runners or manual use:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">use_test_db</span><span class="p">,</span> <span class="n">flush_test_db</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">use_test_db</span><span class="p">(</span><span class="n">db</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>   <span class="c1"># Switch to test DB</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">flush_test_db</span><span class="p">()</span>      <span class="c1"># Clear the test DB</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">use_test_db</span><span class="p">,</span> <span class="n">flush_test_db</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">use_test_db</span><span class="p">(</span><span class="n">db</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>   <span class="c1"># Switch to test DB</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">flush_test_db</span><span class="p">()</span>      <span class="c1"># Clear the test DB</span>
 </code></pre></div>
 <p>These are not needed when using the pytest plugin, which handles both automatically.</p>
 <p><code>flush_test_db()</code> resolves the client to flush via <code>get_REDIS_DB()</code> <strong>at call
@@ -3207,13 +3327,13 @@ scratch area.</p>
 <li>Prefer targeted deletes (scan a narrow key prefix, delete just those
    keys) over any blanket <code>flushdb()</code>/<code>flushall()</code>.</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://localhost:6379/15"</span><span class="w">  </span><span class="c1"># non-zero, before import popoto</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>python<span class="w"> </span>my_repro_script.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://localhost:6379/15"</span><span class="w">  </span><span class="c1"># non-zero, before import popoto</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>python<span class="w"> </span>my_repro_script.py
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"REDIS_URL"</span><span class="p">,</span> <span class="s2">"redis://localhost:6379/15"</span><span class="p">)</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>  <span class="c1"># must come after the REDIS_URL setdefault above</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"REDIS_URL"</span><span class="p">,</span> <span class="s2">"redis://localhost:6379/15"</span><span class="p">)</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>  <span class="c1"># must come after the REDIS_URL setdefault above</span>
 </code></pre></div>
 <p>Copy <code>scripts/scratch_repro.py</code> as a starting point — it sets <code>REDIS_URL</code>
 before <code>import popoto</code>, refuses to run if the resolved database is 0, and
