@@ -25,35 +25,6 @@ class EveryTypeModel(popoto.Model):
     time_val = popoto.TimeField(null=False)
 
 
-one = EveryTypeModel(
-    int_val=1,
-    float_val=1.0,
-    decimal_val=Decimal(1.00),
-    string_val="one",
-    boolean_val=True,
-    bytes_val=b"1",
-    list_val=[
-        1,
-    ],
-    dict_val={"one": 1},
-    set_val={
-        1,
-    },
-    tuple_val=(1,),
-    date_val=date(2020, 1, 1),
-    datetime_val=datetime(2020, 1, 1, 13, 11),
-    time_val=time(1, 11, 1, 111),
-)
-one.save()
-
-same_one = EveryTypeModel.query.all()[0]
-for field_name in one._meta.fields.keys():
-    assert getattr(one, field_name) == getattr(same_one, field_name)
-
-for item in EveryTypeModel.query.all():
-    item.delete()
-
-
 class EveryNullableTypeModel(popoto.Model):
     int_val = popoto.Field(type=int)
     float_val = popoto.Field(type=float)
@@ -70,7 +41,40 @@ class EveryNullableTypeModel(popoto.Model):
     time_val = popoto.Field(type=time)
 
 
-two = EveryNullableTypeModel.create()
+def test_every_non_null_field_type_round_trips_through_save_and_load():
+    one = EveryTypeModel(
+        int_val=1,
+        float_val=1.0,
+        decimal_val=Decimal(1.00),
+        string_val="one",
+        boolean_val=True,
+        bytes_val=b"1",
+        list_val=[
+            1,
+        ],
+        dict_val={"one": 1},
+        set_val={
+            1,
+        },
+        tuple_val=(1,),
+        date_val=date(2020, 1, 1),
+        datetime_val=datetime(2020, 1, 1, 13, 11),
+        time_val=time(1, 11, 1, 111),
+    )
+    one.save()
 
-for item in EveryNullableTypeModel.query.all():
-    item.delete()
+    same_one = EveryTypeModel.query.all()[0]
+    for field_name in one._meta.fields.keys():
+        assert getattr(one, field_name) == getattr(same_one, field_name)
+
+    for item in EveryTypeModel.query.all():
+        item.delete()
+
+
+def test_every_nullable_field_type_creates_with_all_values_unset():
+    # No assert in the original: the check is that create() with every
+    # field left null does not raise, and that the rows delete cleanly.
+    two = EveryNullableTypeModel.create()
+
+    for item in EveryNullableTypeModel.query.all():
+        item.delete()
