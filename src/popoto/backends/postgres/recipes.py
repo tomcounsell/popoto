@@ -79,6 +79,7 @@ TOMB_FIELD = "_tomb"
 TOMBPRIOR_FIELD = "_tombprior"
 QQ_FIELD = "_qq"
 NEVER_RECORD_FIELD = "_never_record"
+EMBED_CACHE_FIELD = "_embed_cache"
 
 SORTED_KINDS = frozenset({"SortedField", "SortedKeyField", "DecayingSortedField"})
 
@@ -104,6 +105,10 @@ ENGINE_TABLES: dict[str, str] = {
     "popoto_lease": (
         "key text PRIMARY KEY, token text NOT NULL, "
         "expires_at double precision NOT NULL"
+    ),
+    "popoto_embedding_cache": (
+        "model text NOT NULL, member text NOT NULL, vector jsonb NOT NULL, "
+        "PRIMARY KEY (model, member)"
     ),
     "popoto_never_record_count": (
         "model text NOT NULL, reason text NOT NULL, count bigint NOT NULL, "
@@ -198,6 +203,12 @@ class RecipeOpsMixin:
                 "count": self._prior_count,
                 "purge_all": self._prior_purge_all,
             }
+        elif field == EMBED_CACHE_FIELD:
+            handlers = {
+                "get": self._embed_cache_get,
+                "set": self._embed_cache_set,
+                "drop": self._embed_cache_drop,
+            }
         elif field == NEVER_RECORD_FIELD:
             handlers = {
                 "drop": self._nr_drop,
@@ -222,7 +233,13 @@ class RecipeOpsMixin:
         handler = handlers.get(op)
         if handler is None:
             return _NOT_HANDLED
-        if field in (COUNTER_FIELD, TOMB_FIELD, TOMBPRIOR_FIELD, NEVER_RECORD_FIELD):
+        if field in (
+            COUNTER_FIELD,
+            TOMB_FIELD,
+            TOMBPRIOR_FIELD,
+            NEVER_RECORD_FIELD,
+            EMBED_CACHE_FIELD,
+        ):
             # Model-level stores: the field name carries no information.
             return handler(spec, *args, uow=uow, **kwargs)
         return handler(spec, field, *args, uow=uow, **kwargs)
@@ -567,6 +584,51 @@ class RecipeOpsMixin:
             write=True,
         )
         return int(rows[0][0])
+
+    # -- reconciliation's embedding cache ---------------------------------------------
+
+    def _embed_cache_get(
+        self, spec: ModelSpec, member: str, *, uow: Optional[UnitOfWork] = None
+    ) -> Optional[list[float]]:
+        """``HGET POPOTO:M5:embedding_cache <member>``: the cached vector."""
+        table = self._engine("popoto_embedding_cache")
+        rows, _ = self._run(
+            f"SELECT vector FROM {table} WHERE model = %s AND member = %s",
+            [spec.name, member],
+            uow=uow,
+        )
+        return [float(v) for v in rows[0][0]] if rows else None
+
+    def _embed_cache_set(
+        self,
+        spec: ModelSpec,
+        member: str,
+        vector: Sequence[float],
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> None:
+        from psycopg.types.json import Jsonb
+
+        table = self._engine("popoto_embedding_cache")
+        self._run(
+            f"INSERT INTO {table} (model, member, vector) VALUES (%s, %s, %s) "
+            "ON CONFLICT (model, member) DO UPDATE SET vector = EXCLUDED.vector",
+            [spec.name, member, Jsonb([float(v) for v in vector])],
+            uow=uow,
+            write=True,
+        )
+
+    def _embed_cache_drop(
+        self, spec: ModelSpec, member: str, *, uow: Optional[UnitOfWork] = None
+    ) -> int:
+        table = self._engine("popoto_embedding_cache")
+        _, count = self._run(
+            f"DELETE FROM {table} WHERE model = %s AND member = %s",
+            [spec.name, member],
+            uow=uow,
+            write=True,
+        )
+        return int(count or 0)
 
     # -- NeverRecordMixin's audit log -----------------------------------------------
 

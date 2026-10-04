@@ -85,6 +85,13 @@ from src.popoto.recipes.provenance_journal import (
 )
 from src.popoto.redis_db import get_REDIS_DB, scan_keys
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 AGENT = "agent-under-test"
 OTHER_AGENT = "agent-next-door"
 
@@ -176,6 +183,20 @@ def _keys():
 
 def _interval(instance):
     """Return ``(valid_from, invalid_at, ingested_at)`` for one entry."""
+    from popoto.backends import get_backend
+
+    backend = get_backend(JournalEntry)
+    if backend.name != "redis":
+        # The Postgres leg (#759 M4): the same three instants are the
+        # record's ValidityField columns (M3); no row reads as no member.
+        ts = backend._table(JournalEntry._meta.spec)
+        f = VALIDITY_FIELD_NAME
+        rows, _ = backend._run(
+            f'SELECT "{f}__valid_from", "{f}__invalid_at", "{f}__ingested_at" '
+            f'FROM {ts.qualified} WHERE "_pk" = %s',
+            [instance.db_key.redis_key],
+        )
+        return tuple(rows[0]) if rows else (None, None, None)
     keys = _keys()
     member = instance.db_key.redis_key
     return (
@@ -354,6 +375,12 @@ def _numkeys(args):
 
 
 class TestAppendOnlyContract:
+    @pytest.mark.redis_only(
+        reason=(
+            "checks the record (and its derived keys) with raw Redis EXISTS/SCAN; the "
+            "Postgres twin checks the row (tests/postgres/test_postgres_journal.py::test_the_append_only_contract_holds_on_postgres)"
+        )
+    )
     def test_a_fresh_append_is_allowed_and_persists(self):
         entry = _append()
         assert get_REDIS_DB().exists(entry.db_key.redis_key)
@@ -390,12 +417,24 @@ class TestAppendOnlyContract:
         with pytest.raises(AppendOnlyViolation):
             loaded.save()
 
+    @pytest.mark.redis_only(
+        reason=(
+            "checks the record (and its derived keys) with raw Redis EXISTS/SCAN; the "
+            "Postgres twin checks the row (tests/postgres/test_postgres_journal.py::test_the_append_only_contract_holds_on_postgres)"
+        )
+    )
     def test_deleting_an_entry_raises_append_only_violation(self):
         entry = _append()
         with pytest.raises(AppendOnlyViolation):
             entry.delete()
         assert get_REDIS_DB().exists(entry.db_key.redis_key)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "checks the record (and its derived keys) with raw Redis EXISTS/SCAN; the "
+            "Postgres twin checks the row (tests/postgres/test_postgres_journal.py::test_the_append_only_contract_holds_on_postgres)"
+        )
+    )
     def test_delete_all_raises_append_only_violation_and_keeps_the_records(self):
         """``delete_all()`` routes through ``instance.delete()``, so the guard fires."""
         entry = _append()
@@ -403,6 +442,12 @@ class TestAppendOnlyContract:
             JournalEntry.delete_all()
         assert get_REDIS_DB().exists(entry.db_key.redis_key)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "checks the record (and its derived keys) with raw Redis EXISTS/SCAN; the "
+            "Postgres twin checks the row (tests/postgres/test_postgres_journal.py::test_the_append_only_contract_holds_on_postgres)"
+        )
+    )
     def test_save_with_migrate_key_raises_even_though_the_new_key_is_free(self):
         """The destroy-through-a-public-kwarg shape ``EXISTS`` cannot express."""
         entry = _append()
@@ -410,6 +455,12 @@ class TestAppendOnlyContract:
             entry.save(migrate_key=True)
         assert get_REDIS_DB().exists(entry.db_key.redis_key)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "checks the record (and its derived keys) with raw Redis EXISTS/SCAN; the "
+            "Postgres twin checks the row (tests/postgres/test_postgres_journal.py::test_the_append_only_contract_holds_on_postgres)"
+        )
+    )
     def test_mutating_a_key_field_closes_both_routes_to_a_key_migration(self):
         """The rename route is shut whichever way it is taken.
 
@@ -429,6 +480,13 @@ class TestAppendOnlyContract:
 
         assert get_REDIS_DB().exists(original_key)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "pins the Redis intra-pipeline gap; on Postgres the guard reads inside the "
+            "transaction and refuses the second save (a documented divergence; "
+            "tests/postgres/test_postgres_recipes.py::test_append_only_sees_its_own_transaction)"
+        )
+    )
     def test_two_saves_of_one_key_on_one_pipeline_are_not_caught(self):
         """Race 2's deterministic shape — a documented boundary, not a guarantee.
 
@@ -622,6 +680,12 @@ class TestAnnotationsAndMembership:
             JournalEntry.query.filter(validity__current=True)
         )
 
+    @pytest.mark.redis_only(
+        reason=(
+            "checks the record (and its derived keys) with raw Redis EXISTS/SCAN; the "
+            "Postgres twin checks the row (tests/postgres/test_postgres_journal.py::test_the_append_only_contract_holds_on_postgres)"
+        )
+    )
     def test_a_superseded_entry_is_still_returned_as_of_before_the_close(self):
         t0 = time.time() - 100.0
         target = _append(at=t0)
@@ -631,6 +695,12 @@ class TestAnnotationsAndMembership:
         assert target.db_key.redis_key in as_of
         assert get_REDIS_DB().exists(target.db_key.redis_key)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "spies the Redis client's chain-hash reads; Postgres membership reads the "
+            "row's interval columns, and the chain is never consulted there either"
+        )
+    )
     def test_membership_queries_never_read_the_chain_hashes(self, monkeypatch):
         """Membership comes from the interval ZSETs, with no chain walk."""
         t0 = time.time() - 100.0
@@ -708,7 +778,26 @@ def _lossy(value):
 
 
 def _keyspace_contains(needle):
-    """True if ``needle`` appears in any key name or any value in the DB."""
+    """True if ``needle`` appears in any key name or any value in the DB.
+
+    On the Postgres leg (#759 M4) every table of the leg's schema is swept
+    too, row by row as text, and Redis still is: "in neither store"."""
+    from popoto.backends import get_backend
+
+    backend = get_backend()
+    if backend.name != "redis":
+        rows, _ = backend._run(
+            "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = %s",
+            [backend.schema],
+        )
+        for (table,) in rows:
+            found, _ = backend._run(
+                f'SELECT 1 FROM "{backend.schema}"."{table}" AS t '
+                "WHERE strpos(t::text, %s) > 0 LIMIT 1",
+                [needle],
+            )
+            if found:
+                return True
     for key in scan_keys("*"):
         key = _lossy(key)
         if needle in key:
@@ -1308,6 +1397,13 @@ class TestPreFlightValidation:
             )
         assert counter.nonzero == {}, counter.nonzero
 
+    @pytest.mark.redis_only(
+        reason=(
+            "validates a redis-py pipeline's transaction/WATCH state; a Postgres-bound "
+            "journal accepts only its backend's unit of work and refuses anything else "
+            "(tests/postgres/test_postgres_journal.py::test_only_the_backends_unit_of_work_is_accepted)"
+        )
+    )
     def test_a_non_transactional_pipeline_is_refused_before_any_command(
         self, monkeypatch
     ):
@@ -1323,6 +1419,13 @@ class TestPreFlightValidation:
         assert counter.nonzero == {}, counter.nonzero
         assert list(pipe.command_stack) == []
 
+    @pytest.mark.redis_only(
+        reason=(
+            "validates a redis-py pipeline's transaction/WATCH state; a Postgres-bound "
+            "journal accepts only its backend's unit of work and refuses anything else "
+            "(tests/postgres/test_postgres_journal.py::test_only_the_backends_unit_of_work_is_accepted)"
+        )
+    )
     def test_a_watching_pipeline_is_refused_before_any_command(self, monkeypatch):
         """A WATCHing pipeline executes immediately instead of queueing.
 
@@ -1355,6 +1458,13 @@ class TestPreFlightValidation:
         assert _interval(target)[1] == float("inf")
         assert ProvenanceJournal.annotations_for(target) == []
 
+    @pytest.mark.redis_only(
+        reason=(
+            "validates a redis-py pipeline's transaction/WATCH state; a Postgres-bound "
+            "journal accepts only its backend's unit of work and refuses anything else "
+            "(tests/postgres/test_postgres_journal.py::test_only_the_backends_unit_of_work_is_accepted)"
+        )
+    )
     def test_a_watching_pipeline_in_multi_is_accepted_and_the_close_applies(self):
         """``watch()`` + ``multi()`` is the standard redis-py optimistic-lock
         pattern and must be accepted.
@@ -1396,6 +1506,13 @@ class TestPreFlightValidation:
         assert stored is not None
         assert stored.statement == "a correction"
 
+    @pytest.mark.redis_only(
+        reason=(
+            "validates a redis-py pipeline's transaction/WATCH state; a Postgres-bound "
+            "journal accepts only its backend's unit of work and refuses anything else "
+            "(tests/postgres/test_postgres_journal.py::test_only_the_backends_unit_of_work_is_accepted)"
+        )
+    )
     def test_the_watch_refusal_recommends_multi_and_never_unwatch(self):
         """UNWATCH would silently discard the caller's optimistic lock, so the
         remediation must not suggest it."""
@@ -1413,6 +1530,13 @@ class TestPreFlightValidation:
         assert "multi()" in message
         assert "Do NOT call UNWATCH" in message
 
+    @pytest.mark.redis_only(
+        reason=(
+            "validates a redis-py pipeline's transaction/WATCH state; a Postgres-bound "
+            "journal accepts only its backend's unit of work and refuses anything else "
+            "(tests/postgres/test_postgres_journal.py::test_only_the_backends_unit_of_work_is_accepted)"
+        )
+    )
     def test_a_non_pipeline_object_is_refused_before_any_command(self, monkeypatch):
         target = _append()
         counter = self._counted(monkeypatch)
@@ -1435,6 +1559,13 @@ class TestPreFlightValidation:
 
 
 class TestAnnotationAtomicity:
+    @pytest.mark.redis_only(
+        reason=(
+            "pins Redis keeping the queued annotation when the close fails at EXEC; on "
+            "Postgres the unit rolls back and nothing is written (the M3 divergence row; "
+            "tests/postgres/test_postgres_journal.py::test_a_failing_close_writes_no_annotation)"
+        )
+    )
     def test_a_target_deleted_between_pre_flight_and_exec_raises_typed(
         self, monkeypatch
     ):
@@ -1492,6 +1623,14 @@ class TestAnnotationAtomicity:
     assertions below pin the properties that actually matter.
     """
 
+    @pytest.mark.redis_only(
+        reason=(
+            "pins MULTI/EXEC behaviour -- queued commands, the script's reply after EXEC, "
+            "partial application; on Postgres the annotate-and-close is one transaction "
+            "that rolls back whole and reports the close at the call "
+            "(tests/postgres/test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close)"
+        )
+    )
     def test_the_annotate_and_close_sequence_is_one_transactional_pipeline(
         self, monkeypatch
     ):
@@ -1524,6 +1663,14 @@ class TestAnnotationAtomicity:
         ), f"mutating calls were issued outside the pipeline: {counter.nonzero}"
         assert result.target_closed is True
 
+    @pytest.mark.redis_only(
+        reason=(
+            "pins MULTI/EXEC behaviour -- queued commands, the script's reply after EXEC, "
+            "partial application; on Postgres the annotate-and-close is one transaction "
+            "that rolls back whole and reports the close at the call "
+            "(tests/postgres/test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close)"
+        )
+    )
     def test_a_caller_supplied_pipeline_is_returned_unexecuted(self, monkeypatch):
         """A fault before ``execute()`` applies nothing."""
         t0 = time.time() - 100.0
@@ -1552,6 +1699,14 @@ class TestAnnotationAtomicity:
         assert modes.count("invalidate") == 1
         assert modes.count("open") == 1
 
+    @pytest.mark.redis_only(
+        reason=(
+            "pins MULTI/EXEC behaviour -- queued commands, the script's reply after EXEC, "
+            "partial application; on Postgres the annotate-and-close is one transaction "
+            "that rolls back whole and reports the close at the call "
+            "(tests/postgres/test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close)"
+        )
+    )
     def test_a_command_error_inside_exec_leaves_the_annotation_with_the_target_open(
         self,
     ):
@@ -1592,6 +1747,14 @@ class TestAnnotationAtomicity:
         assert get_REDIS_DB().exists(annotation.db_key.redis_key)
         assert _interval(target)[1] == float("inf")
 
+    @pytest.mark.redis_only(
+        reason=(
+            "pins MULTI/EXEC behaviour -- queued commands, the script's reply after EXEC, "
+            "partial application; on Postgres the annotate-and-close is one transaction "
+            "that rolls back whole and reports the close at the call "
+            "(tests/postgres/test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close)"
+        )
+    )
     def test_bypassing_the_pre_flight_surfaces_a_raw_response_error(self):
         """#588 pin: the reason D7 step 4 exists cannot be refactored away.
 
@@ -1640,6 +1803,14 @@ class TestAnnotationAtomicity:
                 target, agent_id=AGENT, statement="a correction", at=backdated
             )
 
+    @pytest.mark.redis_only(
+        reason=(
+            "pins MULTI/EXEC behaviour -- queued commands, the script's reply after EXEC, "
+            "partial application; on Postgres the annotate-and-close is one transaction "
+            "that rolls back whole and reports the close at the call "
+            "(tests/postgres/test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close)"
+        )
+    )
     def test_supersession_protocol_closes_a_pipelined_successor(self):
         """#588 finding 1, fixed: membership is decided inside the script.
 
@@ -1740,6 +1911,12 @@ class TestAnnotationAtomicity:
                 assert_valid_from=True,
             )
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects the failure into the Redis pipeline's XADD; EventStreamMixin's "
+            "stream stays a Redis structure until #759 M5, outside the Postgres transaction"
+        )
+    )
     def test_an_xadd_failure_inside_the_pipeline_aborts_the_whole_annotation(
         self, monkeypatch
     ):
@@ -1783,6 +1960,12 @@ class TestCouplingKillSwitch:
             monkeypatch.setenv("POPOTO_JOURNAL_COUPLING_DISABLE", value)
             assert _read_journal_coupling_switch() is False, value
 
+    @pytest.mark.redis_only(
+        reason=(
+            "counts the EVALs a Redis pipeline queues; the twin checks the uncoupled "
+            "close on Postgres (tests/postgres/test_postgres_journal.py::test_an_uncoupled_supersede_closes_nothing)"
+        )
+    )
     def test_an_uncoupled_supersede_issues_the_command_set_of_a_bare_append(
         self, monkeypatch
     ):
@@ -1873,6 +2056,12 @@ def _derived_keys_naming(member):
 
 
 class TestHardDelete:
+    @pytest.mark.redis_only(
+        reason=(
+            "checks the erased record's derived Redis keys; the twin checks the rows "
+            "(tests/postgres/test_postgres_journal.py::test_hard_delete_erases_the_row_and_the_links_naming_it)"
+        )
+    )
     def test_hard_delete_removes_the_record_and_every_derived_trace(self):
         t0 = time.time() - 100.0
         target = _append(
@@ -1893,6 +2082,12 @@ class TestHardDelete:
         # The annotation itself survives -- only the erased record is swept.
         assert get_REDIS_DB().exists(annotation.db_key.redis_key)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the chain hashes; on Postgres the links are chain columns, cleared "
+            "by hard_delete (tests/postgres/test_postgres_journal.py::test_hard_delete_erases_the_row_and_the_links_naming_it)"
+        )
+    )
     def test_hard_delete_clears_the_value_side_of_the_chain_hashes(self):
         t0 = time.time() - 100.0
         first = _append(at=t0)
@@ -1909,6 +2104,12 @@ class TestHardDelete:
 
 
 class TestOrphanIndexRead:
+    @pytest.mark.redis_only(
+        reason=(
+            "plants an orphan member in a Redis index set; Postgres indexes are "
+            "transactional with the row, so the shape cannot occur"
+        )
+    )
     def test_an_index_member_with_no_hash_is_skipped_rather_than_raising(self):
         """Race 1: indexed-field EVALs run eagerly, ahead of the internal
         pipeline, so a crash between the two leaves an index entry pointing at
@@ -1927,6 +2128,12 @@ class TestOrphanIndexRead:
         found = _redis_keys(JournalEntry.query.filter(target=target_key))
         assert found == [annotation.db_key.redis_key]
 
+    @pytest.mark.redis_only(
+        reason=(
+            "plants an orphan member in a Redis index set; Postgres indexes are "
+            "transactional with the row, so the shape cannot occur"
+        )
+    )
     def test_a_fully_orphaned_index_returns_empty_rather_than_raising(self):
         target = _append()
         ghost_target = "JournalEntry:no-such-target"
@@ -1967,6 +2174,14 @@ class TestConcurrentDoubleClose:
             JournalEntry.query.filter(validity__current=True)
         )
 
+    @pytest.mark.redis_only(
+        reason=(
+            "pins MULTI/EXEC behaviour -- queued commands, the script's reply after EXEC, "
+            "partial application; on Postgres the annotate-and-close is one transaction "
+            "that rolls back whole and reports the close at the call "
+            "(tests/postgres/test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close)"
+        )
+    )
     def test_a_reclose_on_a_caller_pipeline_reports_unknown_not_closed(self):
         """The caller-pipeline path must not claim a close it cannot know about.
 
@@ -2002,6 +2217,14 @@ class TestConcurrentDoubleClose:
         # And the close it reported nothing about genuinely applied nothing.
         assert _interval(target)[1] == pytest.approx(t0 + 50.0)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "pins MULTI/EXEC behaviour -- queued commands, the script's reply after EXEC, "
+            "partial application; on Postgres the annotate-and-close is one transaction "
+            "that rolls back whole and reports the close at the call "
+            "(tests/postgres/test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close)"
+        )
+    )
     def test_a_caller_pipeline_append_queues_no_close_at_all(self):
         """``close_index is None`` is the "nothing was queued to close" signal."""
         pipe = get_REDIS_DB().pipeline()
@@ -2208,6 +2431,12 @@ class TestEntryModelGuard:
         assert "statement" in JournalEntry._meta.fields
         assert dict(SubclassedEntry._meta.fields) == {}
 
+    @pytest.mark.redis_only(
+        reason=(
+            "proves nothing was written by diffing the Redis keyspace; the twin counts "
+            "the journal's rows (tests/postgres/test_postgres_journal.py::test_a_refused_entry_model_writes_no_row)"
+        )
+    )
     def test_a_subclassed_entry_model_is_rejected_before_anything_is_written(self):
         before = set(scan_keys("*"))
         with pytest.raises(TypeError) as excinfo:
@@ -2222,6 +2451,12 @@ class TestEntryModelGuard:
         for field in journal_module._REQUIRED_ENTRY_FIELDS:
             assert repr(field) in message
 
+    @pytest.mark.redis_only(
+        reason=(
+            "proves nothing was written by diffing the Redis keyspace; the twin counts "
+            "the journal's rows (tests/postgres/test_postgres_journal.py::test_a_refused_entry_model_writes_no_row)"
+        )
+    )
     def test_a_partial_field_set_is_rejected_naming_every_missing_field(self):
         """The round-2 review's false negative: a *partial* subclass.
 
@@ -2266,6 +2501,12 @@ class TestEntryModelGuard:
         declared = set(JournalEntry._meta.field_names)
         assert journal_module._REQUIRED_ENTRY_FIELDS == declared - {"entry_id"}
 
+    @pytest.mark.redis_only(
+        reason=(
+            "proves nothing was written by diffing the Redis keyspace; the twin counts "
+            "the journal's rows (tests/postgres/test_postgres_journal.py::test_a_refused_entry_model_writes_no_row)"
+        )
+    )
     def test_the_partial_subclass_is_refused_by_every_mutating_method(self):
         target = _append()
         before = set(scan_keys("*"))
@@ -2279,6 +2520,12 @@ class TestEntryModelGuard:
         assert _interval(target)[1] == float("inf")
         assert set(scan_keys("*")) == before
 
+    @pytest.mark.redis_only(
+        reason=(
+            "checks the record (and its derived keys) with raw Redis EXISTS/SCAN; the "
+            "Postgres twin checks the row (tests/postgres/test_postgres_journal.py::test_the_append_only_contract_holds_on_postgres)"
+        )
+    )
     def test_the_reference_model_is_exempt_and_still_writes(self):
         """``JournalEntry`` is the reference shape, so it skips the check —
         and the full-set guard must not have made the ordinary path unusable.

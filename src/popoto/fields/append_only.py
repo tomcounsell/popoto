@@ -345,6 +345,17 @@ class AppendOnlyMixin:
             for field_name, field in instance._meta.fields.items()
             if isinstance(field, ValidityField)
         ]
+        from ..backends.routing import non_redis_backend
+
+        backend = non_redis_backend(instance)
+        if backend is not None:
+            # #759 M4: on a non-Redis backend the record's interval, chain
+            # links and open-claim pointer are its own row (and the pointer
+            # table cascades with it), so step 1 already removed them; what
+            # step 3 sweeps -- a neighbour's link naming the erased record --
+            # is the neighbours' chain columns.
+            _clear_links_to(backend, type(instance), validity_field_names, member)
+            return existed
         for field_name in validity_field_names:
             keys = ValidityField.get_all_keys(instance, field_name)
             get_REDIS_DB().zrem(keys["valid_from"], member)
@@ -371,3 +382,31 @@ class AppendOnlyMixin:
                     get_REDIS_DB().delete(pointer_key)
 
         return existed
+
+
+def _clear_links_to(
+    backend: Any, model_class: Any, field_names: list[str], member: str
+) -> None:
+    """Null every ``<f>__supersedes`` / ``<f>__superseded_by`` column that
+    names ``member``: the value side of the chain hashes on Redis. Each row
+    it rewrites is a record write, so its record-key lock comes first."""
+    if not field_names:
+        return
+    ts = backend._table(model_class._meta.spec)
+    for field_name in field_names:
+        for suffix in ("__supersedes", "__superseded_by"):
+            col = f'"{field_name}{suffix}"'
+            rows, _ = backend._run(
+                f'SELECT "_pk" FROM {ts.qualified} WHERE {col} = %s', [member]
+            )
+            keys = [row[0] for row in rows]
+            if not keys:
+                continue
+            sql, params = backend._record_locked(
+                ts,
+                keys,
+                f"UPDATE {ts.qualified} SET {col} = NULL "
+                f'WHERE "_pk" = ANY(%s::text[]) AND {col} = %s',
+                [keys, member],
+            )
+            backend._run(sql, params, write=True)
