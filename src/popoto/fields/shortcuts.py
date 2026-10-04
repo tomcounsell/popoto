@@ -278,6 +278,28 @@ class CappedListProxy:
                 "Cannot push() on an unsaved model instance. Call save() first."
             )
 
+        from ..backends import get_backend
+
+        model_class = type(self._model_instance)
+        backend = get_backend(model_class)
+        if backend.name != "redis":
+            # #759 M1.1: a capped list is a jsonb column on Postgres; the
+            # backend prepends and trims in one UPDATE (field_call adapter).
+            from ..backends import RecordId
+
+            stored = backend.field_call(
+                model_class._meta.spec,
+                self._field_name,
+                "push",
+                RecordId.from_key(
+                    model_class._meta.model_name, self._model_instance._redis_key
+                ),
+                value,
+                max_length=self._max_length,
+            )
+            self._data = list(stored)
+            return
+
         list_key = f"{self._model_instance._redis_key}::{self._field_name}"
         encoded_value = _encode_list_element(value)
 

@@ -8,6 +8,12 @@ from src.popoto.fields.shortcuts import IntField
 from src.popoto.exceptions import ModelException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M1.1, plan §5 M1.1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 # Flush Redis before tests
 @pytest.fixture(autouse=True)

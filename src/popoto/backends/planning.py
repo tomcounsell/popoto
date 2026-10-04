@@ -26,7 +26,9 @@ It reproduces, from the model's own filter vocabulary
 * **plain fields**: an unindexed field compared by equality, which Redis does
   client-side after hydration, is an ordinary ``Cond``.
 
-Pure: no network, no backend driver.
+Pure -- no network, no backend driver -- with one exception: a chained
+``Relationship`` lookup (``person__name="Alice"``) runs the related model's
+own query to find the keys it matches, as Redis's ``filter_query`` does.
 """
 
 from __future__ import annotations
@@ -49,13 +51,27 @@ _SUFFIX_OPS = {
     "lt": Op.LT,
     "lte": Op.LTE,
     "between": Op.BETWEEN,
+    # TagField (M1.1): any-of / all-of over the tag values.
+    "any": Op.ANY,
+    "all": Op.ALL,
 }
 
 TRUE: Predicate = And(())
 """Matches everything (an empty ``Q()``)."""
 
 
-def _query_exception(message: str) -> Exception:
+#: Field kinds whose Redis ``filter_query`` raises ``popoto.exceptions.
+#: QueryException`` -- a different class from ``popoto.models.query.
+#: QueryException``, which the query layer and the other mixins raise. A
+#: refusal raises the class Redis raises for the same call (#759 M1.1).
+_EXCEPTIONS_MODULE_KINDS = frozenset({"IndexedField", "UniqueField", "TagField"})
+
+
+def _query_exception(message: str, kind: Optional[str] = None) -> Exception:
+    if kind in _EXCEPTIONS_MODULE_KINDS:
+        from ..exceptions import QueryException as FieldQueryException
+
+        return FieldQueryException(message)
     from ..models.query import QueryException
 
     return QueryException(message)
@@ -79,14 +95,24 @@ class _Params:
                 # equality; here it is an ordinary WHERE.
                 return Cond(param, Op.EXACT, value)
             raise _query_exception(f"Invalid filter parameters: {param}")
+        kind = self.kind(field_name)
+        if kind == "Relationship":
+            return self._relationship_cond(field_name, param, value)
         if param == field_name:
+            if kind == "TagField":
+                raise _query_exception(
+                    f"Exact-match filter on TagField '{field_name}' is not "
+                    f"supported; use {field_name}__contains (membership), "
+                    f"{field_name}__any (any-of) or {field_name}__all (all-of).",
+                    kind,
+                )
             return Cond(field_name, Op.EXACT, value)
         suffix = param[len(field_name) + 2 :]
         op = _SUFFIX_OPS.get(suffix)
         if op is None:  # pragma: no cover - a vocabulary we do not know
             raise _query_exception(f"Invalid filter parameters: {param}")
         if op is Op.ISNULL and value is not True and value is not False:
-            raise _query_exception(f"{param} filter must be True or False")
+            raise _query_exception(f"{param} filter must be True or False", kind)
         if op is Op.BETWEEN and (
             not isinstance(value, (tuple, list)) or len(value) != 2
         ):
@@ -95,6 +121,36 @@ class _Params:
                 f"2 elements (low, high), got {value!r}"
             )
         return Cond(field_name, op, value)
+
+    def kind(self, field_name: str) -> str:
+        spec = self.meta.spec
+        fs = spec.fields.get(field_name)
+        return fs.kind if fs is not None else "Field"
+
+    def _relationship_cond(self, field_name: str, param: str, value: Any) -> Cond:
+        """A ``Relationship`` lookup as Redis evaluates it.
+
+        ``field=instance`` matches the records whose column holds the
+        instance's key (the reverse-index Set on Redis); anything but a model
+        instance raises the same ``QueryException``. A chained
+        ``field__other=value`` resolves the related model's own query first
+        and matches its keys, the two steps ``Relationship.filter_query``
+        takes -- through the related model's backend, whichever it is.
+        """
+        from ..models.base import Model
+
+        if param == field_name:
+            if not isinstance(value, Model):
+                raise _query_exception(
+                    "Query filter on Relationship expects model instance. "
+                    f"Instead, got {value}"
+                )
+            return Cond(field_name, Op.EXACT, str(value.db_key.redis_key))
+        related = self.meta.fields[field_name].model
+        sub_param = param[len(field_name) + 2 :]
+        matches = related.query.filter(**{sub_param: value})
+        keys = [str(m.db_key.redis_key) for m in matches]
+        return Cond(field_name, Op.IN, tuple(keys))
 
     def leaf(self, filters: dict[str, Any]) -> list[Predicate]:
         params = [k for k in filters if k not in RESULT_MODIFIERS]

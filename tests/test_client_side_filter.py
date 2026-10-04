@@ -252,9 +252,6 @@ def _seed_truncation_repro():
     TruncationRepro.create(name="ccc", kind="x", note="hit")
 
 
-@pytest.mark.redis_only(
-    reason="TruncationRepro declares an IndexedField, which arrives on Postgres in M1.1 (#759 plan §5)"
-)
 def test_get_finds_a_match_beyond_the_uniqueness_limit():
     """get()'s limit=2 optimization must not hide a unique match that sorts
     after the first two keys when a plain-field filter is in play."""
@@ -271,9 +268,6 @@ def test_get_finds_a_match_beyond_the_uniqueness_limit():
             item.delete()
 
 
-@pytest.mark.redis_only(
-    reason="TruncationRepro declares an IndexedField, which arrives on Postgres in M1.1 (#759 plan §5)"
-)
 def test_get_still_detects_non_uniqueness_beyond_the_limit():
     """The truncation also masked the more-than-one check: both 'miss'
     rows sort first here, but the guard must hold regardless of order."""
@@ -288,9 +282,6 @@ def test_get_still_detects_non_uniqueness_beyond_the_limit():
             item.delete()
 
 
-@pytest.mark.redis_only(
-    reason="TruncationRepro declares an IndexedField, which arrives on Postgres in M1.1 (#759 plan §5)"
-)
 def test_explicit_filter_limit_applies_after_client_side_filters():
     """filter(..., limit=N) with a plain-field filter must filter first,
     then limit -- the same latent wrongness as get(), fixed by the same

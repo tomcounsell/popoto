@@ -30,6 +30,12 @@ from popoto.fields.tag_field import TagFieldMixin
 from popoto.recipes.context_assembler import ContextAssembler
 from popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M1.1, plan §5 M1.1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -95,6 +101,9 @@ class TestTagFieldCRUD:
             reloaded = TaggedMemory.query.get(key=m.key)
             assert reloaded.tags == []
 
+    @pytest.mark.redis_only(
+        reason="asserts the $TagPtr: pointer side key exists before and is gone after delete; Postgres keeps tags in a text[] column with no pointer key"
+    )
     def test_delete_removes_from_all_tag_sets(self):
         m = TaggedMemory.create(tags=["a", "b", "c"])
         assert len(TaggedMemory.query.filter(tags__contains="b")) == 1
@@ -255,6 +264,9 @@ class TestTagFieldNormalization:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason="inspects the $TagF: index Sets and $TagPtr: pointer key through the raw Redis client (Valkey-safety of the Redis layout)"
+)
 class TestTagFieldValkeySafety:
     def setup_method(self):
         TaggedMemory.delete_all()
@@ -281,6 +293,9 @@ class TestTagFieldValkeySafety:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason="AssemblerMemory declares a DecayingSortedField and drives ContextAssembler, which arrive on Postgres in M2 (#759 plan §5)"
+)
 class TestTagFieldAssembler:
     def setup_method(self):
         AssemblerMemory.delete_all()
@@ -393,6 +408,9 @@ class TestTagFieldAssembler:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason="AssemblerMemory declares a DecayingSortedField and drives ContextAssembler, which arrive on Postgres in M2 (#759 plan §5)"
+)
 class TestTagFieldBenchmark:
     def setup_method(self):
         AssemblerMemory.delete_all()

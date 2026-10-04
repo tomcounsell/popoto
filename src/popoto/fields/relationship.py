@@ -618,6 +618,13 @@ class Relationship(Field):
             No exception handling by design — a caller that wants to degrade on
             a failed read owns that policy and should catch around this call.
         """
+        from ..backends import get_backend
+
+        backend = get_backend(model)
+        if backend.name != "redis":
+            return cls._sample_related_keys_planned(
+                backend, model, field_name, related_key, count
+            )
         related_db_key = (
             related_key
             if isinstance(related_key, DB_key)
@@ -632,3 +639,38 @@ class Relationship(Field):
             member.decode("utf-8") if isinstance(member, bytes) else str(member)
             for member in members or []
         ]
+
+    @classmethod
+    def _sample_related_keys_planned(
+        cls,
+        backend: Any,
+        model: "Model",
+        field_name: str,
+        related_key: Union[str, DB_key],
+        count: int,
+    ) -> list[str]:
+        """:meth:`sample_related_keys` on a backend without the reverse-index
+        Set (#759 M1.1): an id-only select ``WHERE <field> = <related key>
+        ORDER BY random() LIMIT count`` (plan §1, ``OrderTerm`` ``RANDOM``).
+
+        ``SRANDMEMBER``'s count contract is kept: a positive count yields up
+        to ``count`` distinct members, ``0`` none, and a negative count
+        exactly ``-count`` members with repeats allowed.
+        """
+        import random
+
+        from ..backends import RANDOM, Cond, Op, QueryPlan
+
+        if count == 0:
+            return []
+        key = related_key.redis_key if isinstance(related_key, DB_key) else related_key
+        if isinstance(key, bytes):
+            key = key.decode("utf-8")
+        where = Cond(field_name, Op.EXACT, str(key))
+        if count > 0:
+            plan = QueryPlan(where=where, order_by=(RANDOM,), limit=count, project=())
+            rows = backend.select(model._meta.spec, plan)
+            return [row["_id"].canonical for row in rows]
+        rows = backend.select(model._meta.spec, QueryPlan(where=where, project=()))
+        members = [row["_id"].canonical for row in rows]
+        return random.choices(members, k=-count) if members else []

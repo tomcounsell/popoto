@@ -5,6 +5,12 @@ import pytest
 from popoto import Model, KeyField, Field, AutoKeyField
 from popoto.exceptions import KeyMutationError
 
+# Backend conformance (#759 M1.1, plan §5 M1.1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class ImmutableKeyModel(Model):
     """Model with KeyFields for testing immutability."""
@@ -62,6 +68,9 @@ class TestKeyFieldImmutability:
         with pytest.raises(KeyMutationError, match="old_name"):
             instance.save()
 
+    @pytest.mark.redis_only(
+        reason="save(migrate_key=True) raises BackendCapabilityError on Postgres in v2 (documented divergence, plan §1.1; pinned by tests/postgres test_migrate_key_raises)"
+    )
     def test_migrate_key_true_succeeds(self):
         """save(migrate_key=True) should allow KeyField mutation."""
         instance = ImmutableKeyModel.create(
@@ -167,6 +176,9 @@ class TestMigrateKeyWithQuery:
         with pytest.raises(KeyMutationError):
             loaded.save()
 
+    @pytest.mark.redis_only(
+        reason="save(migrate_key=True) raises BackendCapabilityError on Postgres in v2 (documented divergence, plan §1.1; pinned by tests/postgres test_migrate_key_raises)"
+    )
     def test_query_loaded_instance_migrate_key_works(self):
         """migrate_key=True should work on query-loaded instances."""
         SingleKeyModel.create(slug="original", title="Test")
@@ -177,6 +189,9 @@ class TestMigrateKeyWithQuery:
         assert len(SingleKeyModel.query.filter(slug="migrated")) == 1
         assert len(SingleKeyModel.query.filter(slug="original")) == 0
 
+    @pytest.mark.redis_only(
+        reason="save(migrate_key=True) raises BackendCapabilityError on Postgres in v2 (documented divergence, plan §1.1; pinned by tests/postgres test_migrate_key_raises)"
+    )
     def test_migrate_key_preserves_non_key_fields(self):
         """Key migration should preserve all non-key field values."""
         SingleKeyModel.create(slug="original", title="My Title")

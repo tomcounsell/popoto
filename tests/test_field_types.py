@@ -50,9 +50,6 @@ class EveryNullableTypeModel(popoto.Model):
     time_val = popoto.Field(type=time)
 
 
-@pytest.mark.redis_only(
-    reason="EveryTypeModel includes Bytes/List/Dict/Set/Tuple/Date/Time fields, which arrive on Postgres with M1.1's plain-field breadth"
-)
 def test_every_non_null_field_type_round_trips_through_save_and_load():
     one = EveryTypeModel(
         int_val=1,
@@ -83,9 +80,6 @@ def test_every_non_null_field_type_round_trips_through_save_and_load():
         item.delete()
 
 
-@pytest.mark.redis_only(
-    reason="EveryNullableTypeModel includes bytes/list/dict/set/tuple/date/time fields, which arrive on Postgres with M1.1's plain-field breadth"
-)
 def test_every_nullable_field_type_creates_with_all_values_unset():
     # No assert in the original: the check is that create() with every
     # field left null does not raise, and that the rows delete cleanly.

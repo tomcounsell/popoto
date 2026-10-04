@@ -58,8 +58,16 @@ from ..types import (
     UnitOfWork,
 )
 from ..planning import has_filters
-from .plan import non_null_fields, render_order, render_where, to_db_value
+from .codec import decode_json, encode_json_element
+from .plan import (
+    non_null_fields,
+    render_order,
+    render_where,
+    to_column_value,
+    to_db_value,
+)
 from .schema import (
+    RELATIONSHIP_KINDS,
     UTCOFF_SUFFIX,
     TableSpec,
     compile_table,
@@ -234,6 +242,31 @@ class PostgresUnitOfWork(UnitOfWork):
 
 def _pg_uow(uow: Optional[UnitOfWork]) -> Optional[PostgresUnitOfWork]:
     return uow if isinstance(uow, PostgresUnitOfWork) else None
+
+
+def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
+    """Re-wrap each ``ListField(max_length=N)`` value in a
+    ``CappedListProxy`` after a save, as ``ListField.on_save`` does on Redis,
+    so ``obj.<field>.push()`` keeps working on the saved instance."""
+    if not ts.capped_fields:
+        return
+    from ...fields.shortcuts import CappedListProxy
+
+    for name in ts.capped_fields:
+        value = getattr(obj, name, None)
+        if isinstance(value, CappedListProxy):
+            value._model_instance = obj
+            continue
+        setattr(
+            obj,
+            name,
+            CappedListProxy(
+                data=value or [],
+                model_instance=obj,
+                field_name=name,
+                max_length=obj._meta.fields[name].max_length,
+            ),
+        )
 
 
 # -- the backend --------------------------------------------------------------
@@ -507,6 +540,19 @@ class PostgresBackend:
                     f"{type(obj).__name__}.{name}: Postgres text cannot store NUL "
                     "(\\x00) characters (a documented divergence from Redis)"
                 )
+            if py_type is datetime.time and getattr(value, "tzinfo", None):
+                raise ValueError(
+                    f"{type(obj).__name__}.{name}: a Postgres time column stores "
+                    "wall-clock time only, so an aware time would lose its offset "
+                    "(a documented divergence from Redis); store a naive time, or "
+                    "use a DatetimeField when the offset matters"
+                )
+            if ts.kind(name) in RELATIONSHIP_KINDS:
+                values[name] = self._relationship_key(obj, name, value)
+                continue
+            if py_type is not datetime.datetime:
+                values[name] = to_column_value(ts, name, value)
+                continue
             if py_type is datetime.datetime and isinstance(value, datetime.datetime):
                 offset = value.utcoffset()
                 values[name + UTCOFF_SUFFIX] = (
@@ -516,6 +562,23 @@ class PostgresBackend:
                 values[name + UTCOFF_SUFFIX] = None
             values[name] = to_db_value(py_type, value)
         return values
+
+    @staticmethod
+    def _relationship_key(obj: Any, name: str, value: Any) -> Optional[str]:
+        """The related record's key, as Redis stores it: a lazy key string
+        passes through, a model instance must be one of the field's model
+        (the same ``ModelException`` as ``encode_popoto_model_obj``)."""
+        if value is None or isinstance(value, str):
+            return value
+        field_model = obj._meta.fields[name].model
+        if field_model is not None and not isinstance(value, field_model):
+            from ...exceptions import ModelException
+
+            raise ModelException(
+                f"Relationship field requires {field_model} model instance. "
+                f"got {value} instead"
+            )
+        return str(value.db_key.redis_key)
 
     def save(
         self,
@@ -575,8 +638,24 @@ class PostgresBackend:
                 sql, [new_key] + list(values.values()), uow=uow, write=True
             )
         except psycopg.errors.UniqueViolation as exc:
-            covered = ts.unique_indexes.get(exc.diag.constraint_name or "", ())
-            if len(covered) == 1:
+            constraint = exc.diag.constraint_name or ""
+            covered = ts.unique_indexes.get(constraint, ())
+            if constraint in ts.meta_indexes:
+                # Meta.indexes (is_unique=True): the text pre_save raises on
+                # Redis, worded from the declared tuple.
+                declared = next(
+                    (
+                        names
+                        for names, unique in obj._meta.indexes
+                        if unique and tuple(names) == covered
+                    ),
+                    covered,
+                )
+                shown = ", ".join(str(getattr(obj, f)) for f in covered)
+                message = (
+                    f"Unique index violation on {declared}: ({shown}) already exists"
+                )
+            elif len(covered) == 1:
                 message = (
                     f"Unique constraint violated: {covered[0]}="
                     f"{getattr(obj, covered[0])} already exists on another instance"
@@ -602,6 +681,7 @@ class PostgresBackend:
             }
         obj._db_content = dict(values)
         obj._is_persisted = True
+        _wrap_capped_lists(obj, ts)
         saved_id = RecordId(spec.name, (), new_key)
         if _pg_uow(uow) is not None:
             return SaveOutcome(id=saved_id, result=uow)
@@ -631,6 +711,9 @@ class PostgresBackend:
         offset = naive, returned as naive UTC wall time), and ``_id``."""
         out = dict(zip(cols, row))
         pk = out.pop("_pk")
+        for name, value in out.items():
+            if value is not None and ts.is_json(name):
+                out[name] = decode_json(ts.field_types[name], value)
         for name in ts.datetime_fields:
             if name + UTCOFF_SUFFIX not in out:
                 continue
@@ -786,17 +869,25 @@ class PostgresBackend:
         just those fields (and ``_id``)."""
         ts = self._table(spec)
         plan = self._plan(plan)
+        kinds = {name: fs.kind for name, fs in spec.fields.items()}
         if plan.project == () or (
             plan.source is not None and plan.source.kind == "keys"
         ):
-            rows, _ = self._run(
-                f'SELECT "_pk" FROM {ts.qualified} ORDER BY "_pk" COLLATE "C"'
-            )
+            # Id-only rows. The keys() call carries no filter; a plan with a
+            # where/order/limit (sample_related_keys: ORDER BY random() LIMIT
+            # n) is honoured rather than dropped.
+            where_sql, params = render_where(ts, kinds, plan.where)
+            sql = f'SELECT "_pk" FROM {ts.qualified}{where_sql}'
+            sql += render_order(ts, plan.order_by, non_null_fields(plan.where))
+            if plan.limit:
+                sql += f" LIMIT {int(plan.limit)}"
+            if plan.offset:
+                sql += f" OFFSET {int(plan.offset)}"
+            rows, _ = self._run(sql, params)
             return [
                 {"_id": RecordId(spec.name, (), pk, native=pk.encode())}
                 for (pk,) in rows
             ]
-        kinds = {name: fs.kind for name, fs in spec.fields.items()}
         where_sql, params = render_where(ts, kinds, plan.where)
         cols = self._select_cols(ts, plan.project)
         col_sql = ", ".join(quote_ident(c) for c in cols)
@@ -865,5 +956,62 @@ class PostgresBackend:
     def maintain(self, *a: Any, **kw: Any) -> Any:
         raise self._later("maintain", "M5")
 
-    def field_call(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("field_call", "M2")
+    def field_call(
+        self,
+        spec: ModelSpec,
+        field: str,
+        op: str,
+        /,
+        *args: Any,
+        uow: Optional[UnitOfWork] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """The field-adapter registry (plan §2), keyed by ``(field kind,
+        op)``. M1.1 registers one adapter, ``ListField`` ``push``; the rest
+        arrive with their milestones (M2 onward)."""
+        fs = spec.fields.get(field)
+        kind = fs.kind if fs is not None else None
+        if (
+            fs is not None
+            and kind == "ListField"
+            and op == "push"
+            and fs.options.get("capped")
+        ):
+            return self._capped_push(spec, field, *args, uow=uow, **kwargs)
+        raise self._later(f"field_call({kind}, {op!r})", "M2")
+
+    def _capped_push(
+        self,
+        spec: ModelSpec,
+        field: str,
+        id: RecordId,
+        value: Any,
+        *,
+        max_length: int,
+        uow: Optional[UnitOfWork] = None,
+    ) -> list[Any]:
+        """``CappedListProxy.push`` on Postgres: one ``UPDATE`` prepends the
+        type-tagged element and keeps the first ``max_length`` -- the
+        ``LPUSH`` + ``LTRIM`` pair, atomic in one statement. Returns the
+        stored list, decoded."""
+        from psycopg.types.json import Jsonb
+
+        ts = self._table(spec)
+        col = quote_ident(field)
+        last = max(int(max_length), 1) - 1
+        rows, _ = self._run(
+            f"UPDATE {ts.qualified} SET {col} = jsonb_path_query_array("
+            f"jsonb_build_array(%s::jsonb) || coalesce({col}, '[]'::jsonb), "
+            f"'$[0 to {last}]'), \"_updated_at\" = now() "
+            f'WHERE "_pk" = %s RETURNING {col}',
+            [Jsonb(encode_json_element(value)), id.canonical],
+            uow=uow,
+            write=True,
+        )
+        if not rows:
+            from ...exceptions import ModelException
+
+            raise ModelException(
+                f"push(): {id.canonical} does not exist in Postgres; save() it first"
+            )
+        return decode_json(list, rows[0][0]) or []

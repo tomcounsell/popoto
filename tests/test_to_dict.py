@@ -189,9 +189,6 @@ class TestIncludeExclude:
         d = obj.to_dict(exclude={"nonexistent"})
         assert d == {"name": "hello", "value": "world"}
 
-    @pytest.mark.redis_only(
-        reason="uses a Relationship field, which arrives on Postgres in M1.1 (#759 plan §5)"
-    )
     def test_include_relationship_field(self):
         """include can include a relationship field."""
         author = Author.create(name="Tolkien", bio="Fantasy author")
@@ -201,9 +198,6 @@ class TestIncludeExclude:
         assert "author" in d
         assert "pages" not in d
 
-    @pytest.mark.redis_only(
-        reason="uses a Relationship field, which arrives on Postgres in M1.1 (#759 plan §5)"
-    )
     def test_exclude_relationship_field(self):
         """exclude can exclude a relationship field."""
         author = Author.create(name="Tolkien", bio="Fantasy author")
@@ -218,9 +212,6 @@ class TestIncludeExclude:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason="uses a Relationship field, which arrives on Postgres in M1.1 (#759 plan §5)"
-)
 class TestRelationshipShallow:
     def test_relationship_as_redis_key(self):
         """By default, relationships are serialized as redis_key strings."""
@@ -245,9 +236,6 @@ class TestRelationshipShallow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason="uses a Relationship field, which arrives on Postgres in M1.1 (#759 plan §5)"
-)
 class TestRelationshipExpansion:
     def test_expand_relationship(self):
         """relationships=True produces nested dict for related instance."""
@@ -289,9 +277,6 @@ class TestRelationshipExpansion:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason="every model in the depth chain links through a Relationship field, which arrives on Postgres in M1.1 (#759 plan §5)"
-)
 class TestMaxDepth:
     def test_max_depth_zero(self):
         """max_depth=0 prevents any relationship expansion."""
@@ -356,9 +341,6 @@ class TestEdgeCases:
         d = obj.to_dict(include=set())
         assert d == {}
 
-    @pytest.mark.redis_only(
-        reason="uses a Relationship field, which arrives on Postgres in M1.1 (#759 plan §5)"
-    )
     def test_include_and_exclude_combined(self):
         """When both include and exclude are given, both are applied."""
         author = Author.create(name="Tolkien", bio="Fantasy author")

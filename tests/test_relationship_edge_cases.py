@@ -18,6 +18,12 @@ import pytest
 from src.popoto import Model, KeyField, Field, Relationship
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M1.1, plan §5 M1.1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 def cleanup_test_data():
     """Clean up Redis test data."""
@@ -127,6 +133,9 @@ class TestBasicRelationship(TestRelationshipEdgeCases):
         person.delete()
 
 
+@pytest.mark.redis_only(
+    reason="reads the $RelationshipF: reverse-index Sets through the raw Redis client; Postgres keeps the related key in a column"
+)
 class TestRelationshipIndexCleanup(TestRelationshipEdgeCases):
     """Test that relationship indexes are properly cleaned up."""
 
@@ -306,6 +315,9 @@ class TestPipelineOperations(TestRelationshipEdgeCases):
         group.delete()
 
 
+@pytest.mark.redis_only(
+    reason="calls Relationship.on_save/on_delete directly: the Redis reverse-index hooks, which a Postgres-bound model never runs"
+)
 class TestStringFieldValueHandling(TestRelationshipEdgeCases):
     """
     Test that the fix properly handles string field values.
@@ -400,6 +412,9 @@ class TestStringFieldValueHandling(TestRelationshipEdgeCases):
         person.delete()
 
 
+@pytest.mark.redis_only(
+    reason="calls Relationship.on_save/on_delete directly: the Redis reverse-index hooks, which a Postgres-bound model never runs"
+)
 class TestRedisKeyStringHandling:
     """Test that on_save and on_delete handle redis_key strings correctly."""
 

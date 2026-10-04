@@ -17,6 +17,12 @@ import pytest
 from src.popoto import Field, KeyField, Model, Relationship
 from src.popoto.models.db_key import DB_key
 
+# Backend conformance (#759 M1.1, plan §5 M1.1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class RSNode(Model):
     key = KeyField()
@@ -102,6 +108,9 @@ class TestSampleRelatedKeys:
         # why the str arm cannot use it.
         assert DB_key(target.db_key.redis_key).redis_key != target.db_key.redis_key
 
+    @pytest.mark.redis_only(
+        reason="substitutes the Redis client to make SRANDMEMBER raise; Postgres samples with ORDER BY random() LIMIT n"
+    )
     def test_no_exception_handling_of_its_own(self, hub, monkeypatch):
         """Failures propagate — degradation policy belongs to the caller."""
         from src.popoto import redis_db

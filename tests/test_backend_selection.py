@@ -275,11 +275,11 @@ def test_postgres_model_with_unsupported_field_is_refused_at_declaration(
         raise AssertionError("class creation must not touch Redis")
 
     monkeypatch.setattr(redis_db, "get_REDIS_DB", no_network)
-    with pytest.raises(BackendCapabilityError, match="tags \\(TagField\\)"):
+    with pytest.raises(BackendCapabilityError, match="place \\(GeoField\\)"):
 
-        class SelPgTags(popoto.Model):
+        class SelPgGeo(popoto.Model):
             name = popoto.KeyField()
-            tags = popoto.TagField()
+            place = popoto.GeoField()
 
             class Meta:
                 backend = "postgres"

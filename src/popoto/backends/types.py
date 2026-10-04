@@ -173,6 +173,10 @@ class ModelSpec:
     indexes: tuple[tuple[str, ...], ...]
     backend: Optional[str] = None
     abstract: bool = False
+    unique_indexes: tuple[tuple[str, ...], ...] = ()
+    """The subset of :attr:`indexes` declared unique (``Meta.indexes``'s
+    ``is_unique`` flag). Added in M1.1 beside §2's ``indexes``, which carries
+    the field names only."""
 
 
 # -- predicates and plans -----------------------------------------------------

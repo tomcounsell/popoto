@@ -433,9 +433,30 @@ STATIC_FIELD_KINDS: dict[str, Optional[frozenset[str]]] = {
             # A SortedField that is also part of the key: the same column
             # and B-tree, under the key UNIQUE.
             "SortedKeyField",
+            # M1.1, plain-field breadth (plan §5 M1.1): a typed column with a
+            # B-tree (UNIQUE when unique), text[] + GIN for tags, the target
+            # _pk for a Relationship, jsonb for the collections, bytea/date/
+            # time for the remaining scalars.
+            "IndexedField",
+            "UniqueField",
+            "TagField",
+            "Relationship",
+            "ListField",
+            "DictField",
+            "SetField",
+            "TupleField",
+            "BytesField",
+            "DateField",
+            "TimeField",
         }
     ),
 }
+
+#: ``type=`` values an ``IndexedField`` / ``UniqueField`` may carry on
+#: Postgres: the scalar column types (a B-tree on a collection is refused).
+_POSTGRES_INDEXED_TYPES: frozenset[str] = frozenset(
+    {"int", "float", "str", "bool", "datetime", "Decimal", "date", "time"}
+)
 
 #: ``type=`` values a ``SortedField`` may carry on Postgres: the sortable
 #: types ``SortedFieldMixin.convert_to_numeric`` scores.
@@ -443,9 +464,24 @@ _POSTGRES_SORTED_TYPES: frozenset[str] = frozenset(
     {"int", "float", "Decimal", "datetime", "date", "time"}
 )
 
-#: ``type=`` values a plain ``Field`` may carry on Postgres in M1.
+#: ``type=`` values a plain ``Field`` may carry on Postgres (M1, plus the
+#: M1.1 collection and scalar types).
 _POSTGRES_PLAIN_TYPES: frozenset[str] = frozenset(
-    {"int", "float", "str", "bool", "datetime", "Decimal"}
+    {
+        "int",
+        "float",
+        "str",
+        "bool",
+        "datetime",
+        "Decimal",
+        "date",
+        "time",
+        "bytes",
+        "list",
+        "dict",
+        "set",
+        "tuple",
+    }
 )
 
 #: Field hook methods; a user subclass overriding one is Redis-only (plan
@@ -474,6 +510,10 @@ def _field_spec(name: str, field: Any) -> FieldSpec:
         value = getattr(field, attr, None)
         if value not in (None, (), [], False):
             options[attr] = value
+    if getattr(field, "_capped", False):
+        # ListField(max_length=N): Redis keeps it in its own list key; on
+        # Postgres it is a jsonb column with type-tagged elements.
+        options["capped"] = True
     if base is not cls:
         options["custom_class"] = f"{cls.__module__}.{cls.__qualname__}"
         # Look in the user classes' own namespaces: hooks are classmethods on
@@ -506,6 +546,9 @@ def build_model_spec(meta: Any) -> ModelSpec:
         indexes=tuple(tuple(names) for names, _unique in (meta.indexes or ())),
         backend=getattr(meta, "backend", None),
         abstract=bool(getattr(meta, "abstract", False)),
+        unique_indexes=tuple(
+            tuple(names) for names, unique in (meta.indexes or ()) if unique
+        ),
     )
 
 
@@ -539,6 +582,14 @@ def validate_spec(spec: ModelSpec, backend_name: str) -> None:
         ):
             type_name = getattr(fs.py_type, "__name__", fs.py_type)
             problems.append(f"{fs.name} (Field, type={type_name}) is not supported yet")
+        elif fs.kind in ("IndexedField", "UniqueField") and (
+            fs.py_type is None or fs.py_type.__name__ not in _POSTGRES_INDEXED_TYPES
+        ):
+            type_name = getattr(fs.py_type, "__name__", fs.py_type)
+            problems.append(
+                f"{fs.name} ({fs.kind}, type={type_name}) is not supported: an "
+                "indexed field needs a scalar column type on Postgres"
+            )
         elif fs.kind in ("SortedField", "SortedKeyField") and (
             fs.py_type is None or fs.py_type.__name__ not in _POSTGRES_SORTED_TYPES
         ):
@@ -548,8 +599,6 @@ def validate_spec(spec: ModelSpec, backend_name: str) -> None:
             )
     if spec.ttl is not None:
         problems.append("Meta.ttl (record expiry arrives in M5)")
-    if spec.indexes:
-        problems.append("Meta.indexes (arrives in M1.1)")
     if problems:
         raise BackendCapabilityError(
             f"{spec.name} cannot use the {backend_name!r} backend: "

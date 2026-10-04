@@ -410,6 +410,38 @@ def test_sorted_int_key_q_or_of_score_matches():
     assert sorted(r.code for r in result) == [1, 2]
 
 
+@pytest.mark.parametrize("value, expected", [(True, [1]), (False, [0]), (None, [])])
+def test_sorted_key_equality_with_bool_or_none_is_a_documented_divergence(
+    value, expected, backend_is_redis
+):
+    """``SortedKeyField`` equality with ``True``/``False``/``None``: Redis
+    sends the value to ``ZRANGEBYSCORE`` as text and the server refuses it
+    (``ResponseError: min or max is not a float``); Postgres matches the
+    score ``1``/``0``, and ``None`` matches nothing."""
+    for code in (0, 1, 2):
+        SortedIntKeyed.create(code=code)
+    if backend_is_redis:
+        with pytest.raises(Exception, match="min or max is not a float"):
+            _numeric_codes(SortedIntKeyed, code=value)
+    else:
+        assert _numeric_codes(SortedIntKeyed, code=value) == expected
+
+
+@pytest.mark.parametrize(
+    "values", [[1, 2.0], ["1", 2], [1, decimal.Decimal("2"), 2.5]], ids=repr
+)
+def test_sorted_int_key_in_with_mixed_types(values, backend_is_redis):
+    """``SortedKeyField`` ``__in`` with mixed numeric types: Redis ignores the
+    filter and returns every record (#771, documented below the query-results
+    table); Postgres matches by score, each element cast to the column's type
+    so the list binds as one array (a mixed list used to raise psycopg's
+    ``cannot dump lists of mixed types``)."""
+    for code in (1, 2, 3):
+        SortedIntKeyed.create(code=code)
+    expected = [1, 2, 3] if backend_is_redis else [1, 2]
+    assert _numeric_codes(SortedIntKeyed, code__in=values) == expected
+
+
 @pytest.mark.parametrize(
     "value, expected", [(1, [1.0]), (1.0, [1.0]), (decimal.Decimal("1"), [1.0])]
 )
