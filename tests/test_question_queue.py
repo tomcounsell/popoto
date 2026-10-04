@@ -25,6 +25,13 @@ from src.popoto.redis_db import get_REDIS_DB
 from src.popoto.recipes import question_queue as qq
 from src.popoto.recipes.question_queue import QuestionCandidate
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 AGENT = "qq-agent"
 K = qq.QUESTION_BUDGET_TURNS
 
@@ -211,6 +218,12 @@ class TestProposeConcurrency:
         assert {c.candidate_id for c in got} == {stored[0].candidate_id}
         assert get_REDIS_DB().get(qq._propose_lock_key(AGENT)) is None
 
+    @pytest.mark.redis_only(
+        reason=(
+            "holds the propose lock with a raw Redis SET; on Postgres the lock is a "
+            "popoto_lease row (tests/postgres/test_postgres_question_queue.py::test_a_held_propose_lease_fails_closed)"
+        )
+    )
     def test_busy_propose_lock_fails_closed(self, monkeypatch):
         monkeypatch.setattr(qq, "_PROPOSE_LOCK_ATTEMPTS", 2)
         lock_key = qq._propose_lock_key(AGENT)
@@ -293,6 +306,13 @@ class TestBudget:
         assert [t for t, _ in deliveries] == list(range(0, turns, K))
         assert len({cid for _, cid in deliveries}) == len(deliveries)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the token bucket and its TTL with raw Redis GET/TTL; on Postgres the "
+            "bucket is a popoto_question_bucket row (tests/postgres/test_postgres_question_queue.py::"
+            "test_a_regressed_turn_never_rewinds_the_bucket)"
+        )
+    )
     def test_regressed_turn_no_grant_and_never_rewinds(self):
         keys = self._seed(3, turn=10)
         assert qq.next_question(AGENT, turn=10) is not None
@@ -339,6 +359,12 @@ class TestBudget:
         assert qq.next_question(AGENT, turn=0) is None
         assert get_REDIS_DB().get(qq._bucket_key(AGENT)) is None
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the token bucket with a raw Redis GET; the twin reads the bucket row "
+            "(tests/postgres/test_postgres_question_queue.py::test_the_next_candidate_is_delivered_when_the_first_is_lost)"
+        )
+    )
     def test_delivers_next_candidate_when_first_is_lost(self, monkeypatch):
         keys = self._seed(2)
         real = qq._expire_stale_in
@@ -363,6 +389,13 @@ class TestBudget:
         )
         assert get_REDIS_DB().get(qq._bucket_key(AGENT)) in (b"0", "0")
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects the failure by patching run_lua, which a Postgres-bound queue never "
+            "calls; the twin fails the backend's deliver (tests/postgres/test_postgres_question_queue.py::"
+            "test_a_failing_delivery_fails_closed)"
+        )
+    )
     def test_delivery_script_error_fails_closed(self, monkeypatch):
         """Candidates read fine; only the delivery Lua raises."""
         cand = _confirmation(_fact("lua").db_key.redis_key, turn=0)
@@ -728,6 +761,13 @@ class TestRecordAnswer:
             "used",
         }
 
+    @pytest.mark.redis_only(
+        reason=(
+            "spies on observation._apply_contradicted, the Redis effect path; a "
+            "Postgres-bound ObservationProtocol applies outcomes in its own transaction "
+            "(tests/postgres/test_postgres_question_queue.py::test_an_answer_is_evidence_not_supersession)"
+        )
+    )
     def test_answer_never_sets_superseded_by(self, monkeypatch):
         seen = []
         real = observation._apply_contradicted
@@ -761,6 +801,12 @@ class TestKillSwitchAndFailures:
         monkeypatch.setenv("POPOTO_QUESTION_QUEUE_DISABLE", "0")
         assert qq.next_question(AGENT, turn=0) is not None
 
+    @pytest.mark.redis_only(
+        reason=(
+            "breaks the queue's Redis client, which a Postgres-bound queue does not use; "
+            "the twin breaks the backend (tests/postgres/test_postgres_question_queue.py::test_a_backend_error_fails_closed)"
+        )
+    )
     def test_redis_error_fails_closed(self, monkeypatch):
         k = _fact("rf").db_key.redis_key
         cand = _confirmation(k, turn=0)
@@ -795,6 +841,12 @@ class TestKillSwitchAndFailures:
         assert _reload(pending).status == "pending"
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "pins the msgpack bytes the claim Lua compares against the model's own "
+        "hash encoding; Postgres compares typed columns"
+    )
+)
 def test_claim_lua_matches_model_encoding():
     """The CAS compares msgpack bytes; pin that the model writes the same."""
     k = _fact("enc").db_key.redis_key

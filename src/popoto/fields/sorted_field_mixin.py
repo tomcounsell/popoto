@@ -58,6 +58,27 @@ from ..models.db_key import DB_key
 from ..models.query import QueryException
 from ..redis_db import get_REDIS_DB
 
+
+def _partition_backend(
+    model_instance: typing.Any, field_name: str
+) -> typing.Tuple[typing.Any, typing.Dict[str, typing.Any]]:
+    """The model's backend when it is not Redis (#759 M4), and the
+    partition this instance names: the ``count``/``members``/``score`` reads
+    then go through the backend's sorted-field adapters instead of
+    ``ZCARD``/``ZRANGE``/``ZSCORE``. ``(None, {})`` on Redis."""
+    from ..backends.routing import non_redis_backend
+
+    backend = non_redis_backend(model_instance)
+    if backend is None:
+        return None, {}
+    field = model_instance._meta.fields[field_name]
+    partition = {
+        name: getattr(model_instance, name, None)
+        for name in (getattr(field, "partition_by", None) or ())
+    }
+    return backend, partition
+
+
 if typing.TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
 
@@ -502,6 +523,13 @@ class SortedFieldMixin:
             QueryException: Propagated from the partition key builder.
         """
         key = cls.get_partitioned_sortedset_db_key(model_instance, field_name).redis_key
+        backend, partition = _partition_backend(model_instance, field_name)
+        if backend is not None:
+            return int(
+                backend.field_call(
+                    model_instance._meta.spec, field_name, "count", partition
+                )
+            )
         return int(get_REDIS_DB().zcard(key))
 
     @classmethod
@@ -537,6 +565,19 @@ class SortedFieldMixin:
             QueryException: Propagated from the partition key builder.
         """
         key = cls.get_partitioned_sortedset_db_key(model_instance, field_name).redis_key
+        backend, partition = _partition_backend(model_instance, field_name)
+        if backend is not None:
+            return list(
+                backend.field_call(
+                    model_instance._meta.spec,
+                    field_name,
+                    "members",
+                    partition,
+                    start,
+                    stop,
+                    reverse,
+                )
+            )
         # Resolve the client attribute at call time so test spies and fault
         # injectors patched onto POPOTO_REDIS_DB keep intercepting the read.
         return [
@@ -614,6 +655,21 @@ class SortedFieldMixin:
         # pair it with ``obsolete_redis_key`` for the old one. A read has no
         # such pairing, so it must ask for where the member is now.
         member = model_instance.pk
+        backend, partition = _partition_backend(model_instance, field_name)
+        if backend is not None:
+            from ..backends.types import RecordId
+
+            value = backend.field_call(
+                model_instance._meta.spec,
+                field_name,
+                "score",
+                partition if partitioned else None,
+                RecordId.from_key(model_instance._meta.model_name, member),
+            )
+            if value is None:
+                return None
+            field = model_instance._meta.fields[field_name]
+            return float(cls.convert_to_numeric(field, value))
         # The accessor, not the module-level ``POPOTO_REDIS_DB`` its sibling
         # readers above use: that name is a snapshot this module took at
         # import, and ``set_REDIS_DB_settings()`` rebinds ``redis_db``'s

@@ -29,6 +29,13 @@ from popoto.fields.shortcuts import (  # noqa: E402
 from popoto.recipes import DefaultMemory, SubconsciousMemory  # noqa: E402
 from popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 AGENT = "test-never-record"
 
 # A representative credential for the "nothing persists" sweeps. Distinctive
@@ -71,7 +78,17 @@ def keyspace_contains(needle: str) -> bool:
     Walks every key and decodes by type, so a match inside a hash field, a
     set member, a sorted-set member, a list element, or a plain string is all
     caught. This is the literal form of "never persists in any Redis key".
+
+    On the Postgres conformance leg (#759 M4) the same sweep also covers
+    every table of the leg's schema -- record tables, companions and engine
+    tables, each row as text -- and Redis is still swept too, so the
+    property there is "never persists in either store".
     """
+    from popoto.backends import get_backend
+
+    backend = get_backend()
+    if backend.name != "redis" and _schema_contains(backend, needle):
+        return True
     raw = needle.encode("utf-8")
     for key in POPOTO_REDIS_DB.scan_iter(match="*", count=500):
         key_bytes = key if isinstance(key, bytes) else str(key).encode("utf-8")
@@ -105,6 +122,22 @@ def keyspace_contains(needle: str) -> bool:
                 blob = str(blob).encode("utf-8")
             if raw in blob:
                 return True
+    return False
+
+
+def _schema_contains(backend, needle: str) -> bool:
+    rows, _ = backend._run(
+        "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = %s",
+        [backend.schema],
+    )
+    for (table,) in rows:
+        found, _ = backend._run(
+            f'SELECT 1 FROM "{backend.schema}"."{table}" AS t '
+            "WHERE strpos(t::text, %s) > 0 LIMIT 1",
+            [needle],
+        )
+        if found:
+            return True
     return False
 
 

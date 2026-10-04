@@ -31,6 +31,13 @@ from src.popoto.recipes.memory_lifecycle import (
     MemoryLifecycle,
 )
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Test models
 # ---------------------------------------------------------------------------
@@ -195,6 +202,14 @@ def test_tag_new_sets_tier(lifecycle):
     assert reloaded.tier == "episodic"
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "promotes a KeyField tier, which is a key migration: Postgres refuses "
+        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
+        "the twin promotes a non-key tier on Postgres "
+        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
+    )
+)
 def test_tag_new_sets_semantic_tier(lifecycle):
     """tag_new can set tier to 'semantic'."""
     record = TrackedMemory()
@@ -205,6 +220,14 @@ def test_tag_new_sets_semantic_tier(lifecycle):
     assert reloaded.tier == "semantic"
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "promotes a KeyField tier, which is a key migration: Postgres refuses "
+        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
+        "the twin promotes a non-key tier on Postgres "
+        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
+    )
+)
 def test_tag_new_is_idempotent(lifecycle):
     """Calling tag_new multiple times overwrites — no conflict."""
     record = TrackedMemory()
@@ -231,6 +254,14 @@ def test_tag_new_defaults_to_episodic(lifecycle):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "promotes a KeyField tier, which is a key migration: Postgres refuses "
+        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
+        "the twin promotes a non-key tier on Postgres "
+        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
+    )
+)
 def test_tick_promotes_eligible_episodic():
     """Records meeting all promotion criteria get tier='semantic'."""
     # Use a lifecycle with low thresholds so the test record qualifies
@@ -425,6 +456,14 @@ def test_tick_corpus_filter_excludes_semantic_records():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "promotes a KeyField tier, which is a key migration: Postgres refuses "
+        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
+        "the twin promotes a non-key tier on Postgres "
+        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
+    )
+)
 def test_tick_is_idempotent():
     """Running tick twice produces the same result as once."""
     lifecycle = MemoryLifecycle(
@@ -464,6 +503,14 @@ def test_empty_corpus_tick(lifecycle):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "promotes a KeyField tier, which is a key migration: Postgres refuses "
+        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
+        "the twin promotes a non-key tier on Postgres "
+        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
+    )
+)
 def test_tick_large_corpus():
     """200 records are all promoted in a single tick() pass."""
     lifecycle = MemoryLifecycle(
@@ -498,6 +545,14 @@ def test_tick_large_corpus():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "promotes a KeyField tier, which is a key migration: Postgres refuses "
+        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
+        "the twin promotes a non-key tier on Postgres "
+        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
+    )
+)
 def test_custom_should_promote():
     """Custom should_promote callable overrides default logic."""
 
@@ -618,6 +673,14 @@ def test_assess_returns_lifecycle_state_type(lifecycle):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "promotes a KeyField tier, which is a key migration: Postgres refuses "
+        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
+        "the twin promotes a non-key tier on Postgres "
+        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
+    )
+)
 def test_untracked_model_tick_works():
     """tick() works correctly on models without AccessTrackerMixin."""
     lifecycle = MemoryLifecycle(
@@ -825,6 +888,14 @@ def test_tick_produces_zero_staged_entries_with_partition_filters():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "promotes a KeyField tier, which is a key migration: Postgres refuses "
+        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
+        "the twin promotes a non-key tier on Postgres "
+        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
+    )
+)
 def test_tick_single_pass_hydration():
     """200 records are all promoted in a single-pass tick() (no batch slicing).
 
@@ -908,6 +979,12 @@ def test_forget_guard_skips_record_promoted_to_semantic():
     ), "Re-check-tier guard failed: record was deleted despite tier being semantic in Redis"
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "races the forget with a raw Redis DEL and checks EXISTS; the twin deletes "
+        "the row (test_postgres_recipes.py::test_the_forget_guard_skips_a_vanished_row)"
+    )
+)
 def test_forget_guard_skips_absent_key():
     """Re-check-tier guard: a record already deleted (key absent) is skipped
     without raising an exception.
@@ -1013,7 +1090,20 @@ def _set_confidence(record, confidence, evidence_count, field_name="confidence")
     """
     import msgpack
     import popoto as popoto_pkg
+    from popoto.backends import get_backend
 
+    backend = get_backend(type(record))
+    if backend.name != "redis":
+        # The Postgres leg (#759 M4): the same state, in the field's state
+        # columns (<f>__conf/__n/__corr/__contra) instead of the :data hash.
+        ts = backend._table(type(record)._meta.spec)
+        backend._run(
+            f'UPDATE {ts.qualified} SET "{field_name}__conf" = %s, '
+            f'"{field_name}__n" = %s, "{field_name}__corr" = 0, '
+            f'"{field_name}__contra" = %s WHERE "_pk" = %s',
+            [confidence, evidence_count, evidence_count, record.db_key.redis_key],
+        )
+        return
     field = type(record)._meta.fields[field_name]
     data_key = field.get_data_hash_key(record, field_name)
     popoto_pkg.get_redis().hset(
@@ -1305,6 +1395,13 @@ def test_tombstoned_record_excluded_from_graph_traversal():
     assert lifecycle.tombstone_count() == 1
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "plants the partial entry with a raw HSET/ZADD on the $TOMB keys; the twin "
+        "writes it to popoto_tombstone "
+        "(test_postgres_recipes.py::test_a_partial_tombstone_entry_is_dropped)"
+    )
+)
 def test_partial_tombstone_entry_is_dropped_not_inflated(caplog):
     """A partial msgpack entry is skipped, never inflated into a None-filled Tombstone.
 

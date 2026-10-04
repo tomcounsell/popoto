@@ -107,6 +107,32 @@ def _as_str(value: Any) -> str:
     return value.decode() if isinstance(value, bytes) else str(value)
 
 
+def _record_exists(model_class: Any, redis_key: str, pipeline: Any) -> bool:
+    """Whether a record is stored at ``redis_key``: ``EXISTS`` on Redis.
+
+    On a non-Redis backend (#759 M4) it is that backend's ``exists`` -- run
+    inside the caller's unit of work when one is passed, so two saves of one
+    key in one Postgres ``transaction()`` see each other and the second is
+    refused (the intra-pipeline shape below stays open on Redis only)."""
+    from ..backends.routing import non_redis_backend
+    from ..backends.types import RecordId, UnitOfWork
+
+    backend = non_redis_backend(model_class)
+    if backend is None:
+        return bool(get_REDIS_DB().exists(redis_key))
+    rid = RecordId.from_key(model_class._meta.model_name, redis_key)
+    if isinstance(pipeline, UnitOfWork) and not pipeline.is_redis_pipeline:
+        ts = backend._table(model_class._meta.spec)
+        rows, _ = backend._run(
+            f'SELECT 1 FROM {ts.qualified} WHERE "_pk" = %s',
+            [rid.canonical],
+            uow=pipeline,
+        )
+        return bool(rows)
+    (found,) = backend.exists(model_class._meta.spec, [rid])
+    return bool(found)
+
+
 class AppendOnlyMixin:
     """Model mixin enforcing write-once records and refusing deletes.
 
@@ -199,7 +225,7 @@ class AppendOnlyMixin:
         # Read POPOTO_REDIS_DB directly, never `pipeline`: an EXISTS queued on
         # a pipeline returns the Pipeline object, which is always truthy, and
         # would refuse every save including the first.
-        if get_REDIS_DB().exists(redis_key):
+        if _record_exists(type(self), redis_key, pipeline):
             raise AppendOnlyViolation(
                 f"{model_name} is append-only: a record already exists at "
                 f"{redis_key}. Append a new record instead of overwriting; "

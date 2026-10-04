@@ -39,7 +39,7 @@ Example:
 
 import logging
 from asyncio import to_thread
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union, cast
 
 import redis
 
@@ -1908,7 +1908,6 @@ class Model(metaclass=ModelBase):
                 exempt every record from any idleness-based policy, so the
                 caller decides how to handle it.
         """
-        _require_redis(cls, "idle_seconds", "OBJECT IDLETIME; Postgres: M4")
         key: Optional[str] = redis_key or None
         if key is None:
             if isinstance(db_key, str):
@@ -1916,6 +1915,19 @@ class Model(metaclass=ModelBase):
             else:
                 resolved: DB_key = db_key if db_key else cls(**kwargs).db_key
                 key = resolved.redis_key
+        backend = get_backend(cls)
+        if backend.name != "redis":
+            # #759 M4: whole seconds since the row's last write or confirmed
+            # read (docs/features/postgres-backend.md); None with no row.
+            return cast(
+                Optional[float],
+                backend.field_call(
+                    cls._meta.spec,
+                    "_idle",
+                    "seconds",
+                    RecordId.from_key(cls._meta.model_name, key),
+                ),
+            )
         # The subcommand string goes on the wire verbatim, so its case is
         # load-bearing, not cosmetic: the caller this method was extracted
         # from (recipes/memory_lifecycle.py) sends lowercase "idletime", and
@@ -3721,6 +3733,10 @@ class Model(metaclass=ModelBase):
             k.decode("utf-8") if isinstance(k, bytes) else str(k) for k in redis_keys
         ]
         if not keys:
+            return 0
+        if get_backend(cls).name != "redis":
+            # #759 M4: a non-Redis backend's indexes are transactional with
+            # the row, so a vanished record leaves no membership behind.
             return 0
         meta = cls._meta  # type: ignore[attr-defined]
         pipe = get_REDIS_DB().pipeline()

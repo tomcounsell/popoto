@@ -802,7 +802,7 @@ class MemoryLifecycle:
             # load_raw_hash, not a decoded load: restore() feeds this straight
             # back through decode_popoto_model_hashmap, which needs the bytes
             # exactly as Redis returned them.
-            raw_hash = self.model_class.load_raw_hash(live_key)
+            raw_hash = self._archived_hash(live_key)
         except Exception as exc:
             logger.warning("tombstone: HGETALL failed for %s: %s", live_key, exc)
             return None
@@ -878,6 +878,24 @@ class MemoryLifecycle:
 
         logger.debug("tombstoned %s (reason=%s)", live_key, reason)
         return tomb
+
+    def _archived_hash(self, live_key: str) -> Any:
+        """The record's stored hash, as ``restore()`` will decode it.
+
+        On Redis, ``load_raw_hash``: the bytes exactly as stored. A
+        non-Redis backend (#759 M4) stores typed columns, not a hash, so the
+        stored row is read back (untracked) and encoded the way a Redis save
+        would write it -- the same ``decode_popoto_model_hashmap`` round trip,
+        from the values the backend holds. ``{}`` when the record is gone.
+        """
+        from ..backends import get_backend
+
+        if get_backend(self.model_class).name == "redis":
+            return self.model_class.load_raw_hash(live_key)
+        from ..models.encoding import encode_popoto_model_obj
+
+        stored = self.model_class.query.get(redis_key=live_key, _no_track=True)
+        return {} if stored is None else encode_popoto_model_obj(stored)
 
     def _enforce_tombstone_retention(self) -> int:
         """Age out the oldest tombstones beyond TOMBSTONE_RETENTION_LIMIT.

@@ -63,6 +63,7 @@ from ..types import (
 from ..planning import has_filters
 from .codec import decode_json, encode_json_element
 from .graph import GraphMixin, graph_delete_sql
+from .recipes import RecipeOpsMixin
 from .memory import NOT_HANDLED, PostgresMemoryOps
 from .plan import (
     non_null_fields,
@@ -309,7 +310,7 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 # -- the backend --------------------------------------------------------------
 
 
-class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin):
+class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin):
     """The Postgres implementation of :class:`popoto.backends.Backend`.
 
     Search -- ``keyword_search``, ``vector_search``, ``membership_*`` and the
@@ -317,8 +318,10 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin):
     (#759 M2b). Groups D/E's ranking and memory state (``touch``,
     ``update_confidence``, ``rank_decayed``, ``rank_composite``) come from
     :class:`~.memory.PostgresMemoryOps` (#759 M2a); the co-occurrence graph
-    (``graph_update``, ``graph_expand``) from :class:`~.graph.GraphMixin`
-    (#759 M4)."""
+    (``graph_update``, ``graph_expand``) from :class:`~.graph.GraphMixin`, and
+    the recipe-layer ``field_call`` adapters (``idle_seconds``, a sorted
+    field's partition reads, counters, tombstones, the question queue) from
+    :class:`~.recipes.RecipeOpsMixin` (#759 M4)."""
 
     name = "postgres"
 
@@ -559,6 +562,7 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin):
         with self._lock:
             self._tables.clear()
             self.__dict__.pop("_recall_ready", None)
+            self.__dict__.pop("_engine_ready", None)
 
     # -- A. lifecycle ----------------------------------------------------------
 
@@ -1063,7 +1067,12 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin):
         handled = self._memory_field_call(spec, field, op, args, kwargs, uow)
         if handled is not NOT_HANDLED:
             return handled
-        raise self._later(f"field_call({kind}, {op!r})", "M2")
+        handled = self._recipe_field_call(spec, field, op, args, kwargs, uow)
+        if handled is not NOT_HANDLED:
+            return handled
+        raise BackendCapabilityError(
+            f"PostgresBackend.field_call({kind or field}, {op!r}) has no adapter"
+        )
 
     def _capped_push(
         self,

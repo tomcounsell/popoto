@@ -44,6 +44,13 @@ from popoto.recipes import default_memory as dm_module
 from popoto.recipes.default_memory import EVICTION_COUNTER_PREFIX, DefaultMemory
 from popoto.redis_db import get_REDIS_DB
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 ENV_VAR = "POPOTO_DEFAULT_MEMORY_MAX_RECORDS"
 DM_LOGGER = "POPOTO.DefaultMemory"
 CONSTANTS_LOGGER = "POPOTO.constants"
@@ -149,6 +156,13 @@ def agent(clean_eviction_state):
 
 
 class TestCapResolution:
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the eviction counter with a raw Redis GET; on Postgres it is a "
+            "row of popoto_counter, pinned by tests/postgres/test_postgres_recipes.py::"
+            "test_the_eviction_counter_lives_in_the_backend"
+        )
+    )
     def test_env_unset_enforces_the_default_cap_of_1000(self, agent):
         """No env var -> the shipped 1000-per-agent cap still applies."""
         _seed(agent, 1005)
@@ -306,6 +320,14 @@ class TestFirstEvictionNotice:
         finally:
             _purge(other)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects the failure by patching the Redis client's zrange, which a "
+            "Postgres-bound save never calls; the twin patches the backend's "
+            "members read (test_postgres_recipes.py::"
+            "test_the_eviction_notice_survives_a_failing_members_read)"
+        )
+    )
     def test_notice_survives_a_mid_loop_failure(self, agent, monkeypatch, caplog):
         """The loudest case must not be the quietest log.
 
@@ -351,6 +373,13 @@ class TestEvictionCounter:
 
         assert EVICTION_COUNTER_PREFIX == service.COUNTER_KEY_PREFIX
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the eviction counter with a raw Redis GET; on Postgres it is a "
+            "row of popoto_counter, pinned by tests/postgres/test_postgres_recipes.py::"
+            "test_the_eviction_counter_lives_in_the_backend"
+        )
+    )
     def test_counter_equals_excess_on_the_clean_path(self, agent, monkeypatch):
         monkeypatch.setenv(ENV_VAR, "0")
         _seed(agent, 6)
@@ -364,6 +393,13 @@ class TestEvictionCounter:
         deleted = 7 - _count(agent)
         assert _counter(agent) == deleted
 
+    @pytest.mark.redis_only(
+        reason=(
+            "rotates the Redis zrange reply to reach the own-key branch and reads the "
+            "counter with a raw GET; the twin rotates the backend's members read "
+            "(test_postgres_recipes.py::test_the_eviction_skips_the_saving_record)"
+        )
+    )
     def test_counter_exceeds_deletions_when_own_key_is_in_the_window(
         self, agent, monkeypatch
     ):
@@ -401,6 +437,13 @@ class TestEvictionCounter:
         assert _counter(agent) > deleted
         assert _counter(agent) >= deleted
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects the abort by patching the Redis client's hgetall and reads the "
+            "counter with a raw GET; the twin fails the backend's load "
+            "(test_postgres_recipes.py::test_the_eviction_counter_survives_an_aborted_loop)"
+        )
+    )
     def test_counter_still_incremented_when_the_loop_aborts(self, agent, monkeypatch):
         """A mid-loop error leaves counter > deleted, never the reverse."""
         monkeypatch.setenv(ENV_VAR, "0")
@@ -461,6 +504,13 @@ print("COUNT=%d EVICTED=%s" % (count, int(evicted or 0)))
 """
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "spawns a child interpreter that REDIS_URL binds to Redis, so a Postgres "
+        "leg would run the Redis path again; the child takes no backend from "
+        "the parent's conformance fixture"
+    )
+)
 def test_env_var_disables_eviction_in_subprocess(agent):
     """The switch must work with no Python seam at all.
 
