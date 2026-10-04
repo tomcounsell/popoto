@@ -74,6 +74,7 @@ from .schema import (
     ensure_table,
     quote_ident,
 )
+from .search import SearchMixin, prepare_save, require_extensions
 
 __all__ = [
     "POSTGRES_URL_ENV",
@@ -272,8 +273,12 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 # -- the backend --------------------------------------------------------------
 
 
-class PostgresBackend:
-    """The Postgres implementation of :class:`popoto.backends.Backend`."""
+class PostgresBackend(SearchMixin):
+    """The Postgres implementation of :class:`popoto.backends.Backend`.
+
+    Search -- ``keyword_search``, ``vector_search``, ``membership_*`` and the
+    ``[PG-only]`` ``recall`` -- comes from :class:`.search.SearchMixin`
+    (#759 M2b)."""
 
     name = "postgres"
 
@@ -477,6 +482,7 @@ class PostgresBackend:
             self._check_server()
             ts = compile_table(spec, self.schema)
             with self._connection() as conn:
+                require_extensions(conn, ts)
                 ensure_table(conn, ts, auto=_schema_auto())
             self._ok()
             self._tables[spec.name] = (spec, ts)
@@ -616,7 +622,14 @@ class PostgresBackend:
         # #573: never overwrite a quarantined field's preserved value with a
         # default -- the same guard the Redis path runs before its HSET.
         obj._raise_if_quarantine_blocks(names)
-        values = self._row_values(ts, obj, names)
+        # Side-effect fields (BM25Field, ExistenceFilter, FrequencySketch)
+        # have no column; their rows are written by the search CTEs below.
+        values = self._row_values(ts, obj, [n for n in names if n in ts.field_types])
+        search = (
+            prepare_save(self, ts, obj, fields, values, new_key)
+            if ts.search is not None
+            else None
+        )
         cols = ["_pk"] + list(values)
         col_sql = ", ".join(quote_ident(c) for c in cols)
         placeholders = ", ".join(["%s"] * len(cols))
@@ -627,16 +640,28 @@ class PostgresBackend:
             for c in values
             if c not in ts.key_fields
         )
-        updates = (updates + ", " if updates else "") + '"_updated_at" = now()'
+        # A native write clears _migrated_from (#756's import contract).
+        updates = (updates + ", " if updates else "") + (
+            '"_updated_at" = now(), "_migrated_from" = NULL'
+        )
         sql = (
             f"INSERT INTO {ts.qualified} ({col_sql}) VALUES ({placeholders}) "
             f'ON CONFLICT ("_pk") DO UPDATE SET {updates} RETURNING (xmax = 0)'
         )
+        params = [new_key] + list(values.values())
+        if search is not None and search.ctes:
+            # Postings, document length and membership rows ride in the same
+            # statement as data-modifying CTEs: one round trip, one
+            # transaction, and a scope change moves the postings atomically.
+            sql = (
+                f'WITH "_row" AS ({sql} AS "_ins"), '
+                + ", ".join(search.ctes)
+                + ' SELECT "_ins" FROM "_row"'
+            )
+            params += search.params
         psycopg = _import_psycopg()
         try:
-            rows, _ = self._run(
-                sql, [new_key] + list(values.values()), uow=uow, write=True
-            )
+            rows, _ = self._run(sql, params, uow=uow, write=True)
         except psycopg.errors.UniqueViolation as exc:
             constraint = exc.diag.constraint_name or ""
             covered = ts.unique_indexes.get(constraint, ())
@@ -682,6 +707,10 @@ class PostgresBackend:
         obj._db_content = dict(values)
         obj._is_persisted = True
         _wrap_capped_lists(obj, ts)
+        if search is not None and search.after is not None and _pg_uow(uow) is None:
+            # Piggybacked embedding backfill (#758 D7): after the commit,
+            # bounded by Defaults.PG_BACKFILL_*; never inside a transaction().
+            search.after()
         saved_id = RecordId(spec.name, (), new_key)
         if _pg_uow(uow) is not None:
             return SaveOutcome(id=saved_id, result=uow)
@@ -693,7 +722,9 @@ class PostgresBackend:
         self, ts: TableSpec, fields: Optional[Sequence[str]] = None
     ) -> list[str]:
         if fields is None:
-            return [c.name for c in ts.columns]
+            # Auxiliary columns (an embedding's vector, M2b) are not field
+            # values; reads that hydrate records never fetch them.
+            return [c.name for c in ts.columns if c.role != "aux"]
         cols = ["_pk"]
         for name in fields:
             if name not in ts.field_types:
@@ -816,7 +847,7 @@ class PostgresBackend:
         else:
             expr = f"coalesce({col}, 0) + %s"
         rows, _ = self._run(
-            f'UPDATE {ts.qualified} SET {col} = {expr}, "_updated_at" = now() '
+            f'UPDATE {ts.qualified} SET {col} = {expr}, "_updated_at" = now(), "_migrated_from" = NULL '
             f'WHERE "_pk" = %s RETURNING {col}',
             [delta, id.canonical],
             uow=uow,
@@ -935,23 +966,11 @@ class PostgresBackend:
     def rank_composite(self, *a: Any, **kw: Any) -> Any:
         raise self._later("rank_composite", "M2")
 
-    def vector_search(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("vector_search", "M2")
-
-    def keyword_search(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("keyword_search", "M2")
-
     def graph_update(self, *a: Any, **kw: Any) -> Any:
         raise self._later("graph_update", "M4")
 
     def graph_expand(self, *a: Any, **kw: Any) -> Any:
         raise self._later("graph_expand", "M4")
-
-    def membership_add(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("membership_add", "M2")
-
-    def membership_query(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("membership_query", "M2")
 
     def maintain(self, *a: Any, **kw: Any) -> Any:
         raise self._later("maintain", "M5")
@@ -1002,7 +1021,7 @@ class PostgresBackend:
         rows, _ = self._run(
             f"UPDATE {ts.qualified} SET {col} = jsonb_path_query_array("
             f"jsonb_build_array(%s::jsonb) || coalesce({col}, '[]'::jsonb), "
-            f"'$[0 to {last}]'), \"_updated_at\" = now() "
+            f'\'$[0 to {last}]\'), "_updated_at" = now(), "_migrated_from" = NULL '
             f'WHERE "_pk" = %s RETURNING {col}',
             [Jsonb(encode_json_element(value)), id.canonical],
             uow=uow,

@@ -38,6 +38,14 @@ from src.popoto.fields.existence_filter import (
 from src.popoto.fields.write_filter import WriteFilterMixin  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
+# Backend conformance (#759 M2b, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. On Postgres both fields are
+# exact tables (plan §1.1); TestMembershipExactness pins that strictness
+# against Redis's bounded error.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # --- Test Models ---
 
 
@@ -245,6 +253,11 @@ class TestExistenceFilterDefaultFingerprint:
 class TestExistenceFilterOnDelete:
     """Verify on_delete() is a no-op."""
 
+    @pytest.mark.redis_only(
+        reason="a bloom filter cannot forget a deleted record; Postgres's exact "
+        "token table forgets it on delete (plan §1.1 documented strictness), "
+        "pinned by TestMembershipExactness::test_delete_forgets_on_postgres_only"
+    )
     def test_delete_does_not_remove_from_bloom(self):
         """After deleting a model instance, the Bloom filter still contains its fingerprint."""
         item = BloomModel(name="deleteme", topic="ephemeral")
@@ -991,6 +1004,9 @@ class TestFrequencySketchCMSHashFamily:
             f"Row hashes are not independent."
         )
 
+    @pytest.mark.redis_only(
+        reason="drives the CMS Lua scripts through the raw client (EVAL on $FS: keys); it exercises no backend path, so a Postgres leg would re-run Redis"
+    )
     def test_three_scripts_agree(self):
         """CMS_INCR_LUA, CMS_INCR_MULTI_LUA, and CMS_QUERY_LUA all compute the same columns.
 
@@ -1155,3 +1171,98 @@ class TestFrequencySketchCMSHashFamily:
         # depth=0 is below the minimum
         with pytest.raises(ValueError, match=r"1.*7|7.*1"):
             FrequencySketch(fingerprint_fn=lambda x: str(x), depth=0)
+
+
+# ---------------------------------------------------------------------------
+# Exactness on Postgres vs. bounded error on Redis (#759 M2b, plan §1.1)
+# ---------------------------------------------------------------------------
+
+
+class TinyBloomModel(popoto.Model):
+    """An undersized bloom: 20-item capacity, filled well past it."""
+
+    name = popoto.UniqueKeyField()
+    topic = popoto.Field(type=str)
+    bloom = ExistenceFilter(
+        error_rate=0.2, capacity=20, fingerprint_fn=lambda inst: inst.topic
+    )
+
+
+class NarrowFreqModel(popoto.Model):
+    """A one-row, five-column count-min sketch: collisions are certain."""
+
+    name = popoto.UniqueKeyField()
+    topic = popoto.Field(type=str)
+    freq = FrequencySketch(width=5, depth=1, fingerprint_fn=lambda inst: inst.topic)
+
+
+class TestMembershipExactness:
+    """Postgres stores ExistenceFilter / FrequencySketch as exact tables, a
+    documented strictness (plan §1.1): no false positive and no over-count,
+    where Redis's bloom and count-min sketch have bounded error. Both legs
+    run the same calls; each asserts its own backend's contract."""
+
+    def test_no_false_positives_on_postgres_bounded_on_redis(self, backend_is_redis):
+        # A sized filter (capacity 10,000 at 5%) holding 1,000 items.
+        for i in range(1000):
+            StatisticalBloomModel(name=f"ex-{i}", topic=f"xseen{i:05d}").save()
+        bloom = StatisticalBloomModel.bloom
+        unseen = [f"xnever{i:05d}" for i in range(2000)]
+        hits = bloom.might_exist_batch(StatisticalBloomModel, unseen)
+        false_positives = sum(1 for v in hits.values() if v)
+        # No false negatives on either backend.
+        seen = [f"xseen{i:05d}" for i in range(0, 1000, 37)]
+        assert all(bloom.might_exist_batch(StatisticalBloomModel, seen).values())
+        if backend_is_redis:
+            # Bounded: within 2x of the configured 5%.
+            assert false_positives / len(unseen) <= 0.10
+        else:
+            assert false_positives == 0
+
+    def test_overfilled_bloom_false_positives_on_redis_only(self, backend_is_redis):
+        for i in range(400):
+            TinyBloomModel(name=f"tiny-{i}", topic=f"ytopic{i:04d}").save()
+        # Never saved: the next 400 topics of the same shape.
+        unseen = [f"ytopic{i:04d}" for i in range(400, 800)]
+        hits = TinyBloomModel.bloom.might_exist_batch(TinyBloomModel, unseen)
+        false_positives = sum(1 for v in hits.values() if v)
+        if backend_is_redis:
+            # 400 items in a 66-bit filter sized for 20: these unseen topics
+            # land on set bits. The hashes are deterministic, so this count
+            # is too (measured: all 400).
+            assert false_positives > 0
+        else:
+            assert false_positives == 0
+            assert TinyBloomModel.bloom.might_exist(TinyBloomModel, "ytopic0399")
+
+    def test_frequency_exact_on_postgres_overcounts_on_redis(self, backend_is_redis):
+        true_counts = {}
+        for i in range(30):
+            topic = f"wtopic{i:02d}"
+            for j in range(i % 3 + 1):
+                NarrowFreqModel(name=f"nf-{i}-{j}", topic=topic).save()
+            true_counts[topic] = i % 3 + 1
+        estimates = {
+            t: NarrowFreqModel.freq.get_frequency(NarrowFreqModel, t)
+            for t in true_counts
+        }
+        if backend_is_redis:
+            # Never under; with 30 tokens in 5 counters some share one
+            # (pigeonhole), so some estimate is over.
+            assert all(estimates[t] >= c for t, c in true_counts.items())
+            assert any(estimates[t] > c for t, c in true_counts.items())
+        else:
+            assert estimates == true_counts
+
+    def test_delete_forgets_on_postgres_only(self, backend_is_redis):
+        item = BloomModel(name="forget-me", topic="ephemeral")
+        item.save()
+        assert BloomModel.bloom.might_exist(BloomModel, "ephemeral") is True
+        item.delete()
+        # A bloom cannot forget; the exact token table does.
+        assert BloomModel.bloom.might_exist(BloomModel, "ephemeral") is backend_is_redis
+        # The count-min sketch never decrements, on either backend.
+        freq = FreqModel(name="still-counted", topic="durable")
+        freq.save()
+        freq.delete()
+        assert FreqModel.freq.get_frequency(FreqModel, "durable") == 1

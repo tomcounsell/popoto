@@ -149,6 +149,20 @@ def _decoded_backend(model_class: Any) -> bool:
     return get_backend(model_class).name != "redis"
 
 
+def _hydrate_keys(model_class: Any, keys: Any) -> list[Any]:
+    """Instances for ``keys`` (in order, ``None`` where missing) from a
+    non-Redis backend's ``load`` -- the ranked-list hydration the search
+    paths do with a pipelined ``HGETALL`` on Redis (#759 M2b)."""
+    from .encoding import hydrate_decoded_row
+
+    if not keys:
+        return []
+    rows = get_backend(model_class).load(
+        model_class._meta.spec, _record_ids(model_class, keys)
+    )
+    return [hydrate_decoded_row(model_class, row) for row in rows]
+
+
 def _row_key(row: Any) -> Any:
     """An id-only ``select`` row back to the key ``Query.keys()`` returns:
     the class-set member exactly as Redis replied."""
@@ -1101,6 +1115,26 @@ class QueryBuilder:
         import uuid
         from .encoding import decode_popoto_model_hashmap
 
+        if _decoded_backend(model_class):
+            # Postgres (#759 M2b): ZREVRANGE's order without the temp ZSET --
+            # score descending, equal scores by member bytes descending.
+            ranked = sorted(
+                ((str(k), float(v)) for k, v in similarity_boost.items()),
+                key=lambda kv: (kv[1], kv[0].encode()),
+                reverse=True,
+            )
+            # ZREVRANGE 0 (limit - 1): a limit <= 0 counts from the end.
+            ranked = ranked[:limit] if limit > 0 else ranked[: len(ranked) + limit]
+            if temperature != 1.0:
+                ranked = [(k, s / temperature) for k, s in ranked]
+            if post_filter is not None:
+                ranked = [(k, s) for k, s in ranked if post_filter(k, s)]
+            return [
+                inst
+                for inst in _hydrate_keys(model_class, [k for k, _s in ranked])
+                if inst is not None
+            ]
+
         uid = uuid.uuid4().hex[:8]
         model_name = model_class.__name__
         sim_key = f"$CSQ:{model_name}:sim_only:{uid}"
@@ -1208,6 +1242,20 @@ class QueryBuilder:
         if not scored:
             return []
 
+        if _decoded_backend(model_class):
+            # Postgres (#759 M2b): one SELECT … = ANY for the ranked keys.
+            instances = [
+                inst
+                for inst in _hydrate_keys(model_class, [k for k, _s in scored])
+                if inst is not None
+            ]
+            scores = dict(scored)
+            for inst in instances:
+                inst._bm25_score = scores[inst._redis_key]
+            if not self._no_track:
+                _fire_on_read(model_class, instances)
+            return instances
+
         # Hydrate model instances
         pipe = get_REDIS_DB().pipeline()
         for key, _score in scored:
@@ -1307,7 +1355,10 @@ class QueryBuilder:
                 continue
             list_weight = 1.0 if weights is None else weights.get(list_name, 1.0)
             for rank_idx, (doc_key, _score) in enumerate(ranked_list):
-                doc_key = str(doc_key)
+                # A protocol RecordId fuses as its canonical key (#759 M2b).
+                doc_key = (
+                    doc_key.canonical if isinstance(doc_key, RecordId) else str(doc_key)
+                )
                 rrf_scores[doc_key] = rrf_scores.get(doc_key, 0.0) + (
                     list_weight * (1.0 / (k + rank_idx + 1))
                 )
@@ -1338,6 +1389,23 @@ class QueryBuilder:
                     "unscoped and would fuse across the whole keyspace. Use "
                     "keyword filters, or pass a post_filter callback."
                 )
+        if self._filters and _decoded_backend(model_class):
+            # Postgres (#759 M2b): the builder's filters -- plain fields
+            # included -- compile to one WHERE, and the keys it matches scope
+            # the fused set before the top-K slice, as below for Redis.
+            plan = plan_from_call(
+                QueryCall(query=self._query, kind="filter", kwargs=self._filters)
+            )
+            rows = get_backend(model_class).select(
+                model_class._meta.spec, QueryPlan(where=plan.where, project=())
+            )
+            in_scope_keys = {row["_id"].canonical for row in rows}
+            sorted_results = [
+                (key, score) for key, score in sorted_results if key in in_scope_keys
+            ]
+            if not sorted_results:
+                return []
+        elif self._filters:
             # filter_for_keys_set() returns bytes; the ranked lists carry str.
             allowed_keys = normalize_redis_keys(
                 self._query.filter_for_keys_set(**self._filters)
@@ -1388,7 +1456,12 @@ class QueryBuilder:
 
         # Hydrate model instances
         missing = [(key, s) for key, s in sorted_results if key not in prefetched]
-        if missing:
+        if missing and _decoded_backend(model_class):
+            keys = [key for key, _s in missing]
+            for key, inst in zip(keys, _hydrate_keys(model_class, keys)):
+                if inst is not None:
+                    prefetched[key] = inst
+        elif missing:
             pipe = get_REDIS_DB().pipeline()
             for key, _score in missing:
                 pipe.hgetall(key)
@@ -1454,6 +1527,18 @@ class QueryBuilder:
         except Exception as e:
             logger.warning("_get_vector_scores embedding failed: %s", e)
             return []
+
+        if _decoded_backend(model_class):
+            # Postgres (#759 M2b): the vector arm runs in SQL -- exact, or HNSW
+            # with the recall guard past Defaults.PG_VECTOR_EXACT_MAX --
+            # rather than loading every vector into numpy.
+            scored = get_backend(model_class).vector_search(
+                model_class._meta.spec,
+                embedding_field.name,
+                query_vectors[0],
+                limit=limit,
+            )
+            return [(rid.canonical, score) for rid, score in scored]
 
         try:
             import numpy as np
@@ -3381,6 +3466,82 @@ class Query:
             field=field,
             limit=limit,
         )
+
+    def recall(
+        self,
+        query_text: str,
+        *,
+        scope: Any = None,
+        filters: Optional[dict] = None,
+        tags: Any = None,
+        tags_mode: str = "any",
+        weights: Optional[dict] = None,
+        limit: int = 10,
+        bm25_stats: str = "scope",
+        k: int = 60,
+    ) -> list:
+        """``[PG-only]`` Hybrid recall: BM25, vector and decay arms fused by
+        weighted RRF, ``score = Σ weight / (k + rank)``, returning
+        ``[(instance, score)]`` best first (ties by key, bytewise).
+
+        Postgres only (#759 plan §1.1): on a Redis-bound model it raises
+        :class:`~popoto.backends.BackendCapabilityError`. The BM25 and vector
+        arms and the fusion run in one SQL statement that also returns the
+        fused records' rows, so there is no second hydration round trip.
+
+        Args:
+            query_text: The query. It is tokenized for the BM25 arm (the
+                model's ``BM25Field``) and embedded, with ``input_type=
+                "query"``, for the vector arm (its ``EmbeddingField``); an arm
+                whose field is missing, or whose query is empty or fails to
+                embed, is left out.
+            scope: The model's scope -- the ``partition_by`` of its
+                ``DecayingSortedField`` (or of its first partitioned
+                ``SortedField``): a value, or a mapping for a multi-column
+                scope. ``None`` searches every scope.
+            filters: ``{field: value}`` on ``KeyField``/``IndexedField``/
+                ``Relationship`` fields (a list means any of them).
+            tags: Tags on the model's ``TagField`` (a mapping when it has
+                several), matched with ``tags_mode`` ``"any"`` (``&&``) or
+                ``"all"`` (``@>``).
+            weights: Per-arm RRF weights: ``"bm25"``, ``"vector"``,
+                ``"decay"``; default ``1.0`` each, ``0`` drops the arm.
+            limit: Records returned. Each arm ranks
+                ``max(limit, Defaults.PG_RECALL_ARM_DEPTH)`` deep.
+            bm25_stats: ``"scope"`` (default) computes BM25's ``N``,
+                ``avgdl`` and ``df`` within the scope -- on a shared database
+                one agent's corpus must not skew another's IDF (architect
+                decision 3); ``"corpus"`` uses corpus-wide statistics, which
+                is what ``BM25Field.search`` does on both backends.
+            k: The RRF constant (60, Cormack et al.).
+
+        Every scoping argument is optional, and they compose (``AND``).
+        """
+        backend = get_backend(self.model_class)
+        if backend.name == "redis":
+            raise BackendCapabilityError(
+                f"{self.model_class.__name__}.query.recall() is Postgres-only "
+                "(#759 plan §1.1); on Redis use keyword_search / "
+                "semantic_search and fuse()"
+            )
+        rows = backend.recall(  # type: ignore[attr-defined]
+            self.model_class._meta.spec,
+            query_text,
+            scope=scope,
+            filters=filters,
+            tags=tags,
+            tags_mode=tags_mode,
+            weights=weights,
+            limit=limit,
+            bm25_stats=bm25_stats,
+            k=k,
+        )
+        out = []
+        for row, score in rows:
+            instance = hydrate_decoded_row(self.model_class, row)
+            instance._rrf_score = score
+            out.append((instance, score))
+        return out
 
     def fuse(
         self,

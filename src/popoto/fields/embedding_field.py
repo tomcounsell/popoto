@@ -210,6 +210,19 @@ def _should_version_check(model_name: str) -> bool:
     return False
 
 
+def _search_backend(model_class):
+    """The model's backend when it is not Redis (#759 M2b), else ``None``.
+
+    On Postgres the vector is a ``vector(d)`` column written with the record
+    (``backends/postgres/search.py``): no ``.npy`` file, no ``_index.json``,
+    no cross-process cache to invalidate. The Redis paths never consult it.
+    """
+    from ..backends import get_backend
+
+    backend = get_backend(model_class)
+    return None if backend.name == "redis" else backend
+
+
 def get_default_provider():
     """Get the configured default embedding provider."""
     return _default_embedding_provider
@@ -764,6 +777,10 @@ class EmbeddingField(Field):
         if not _numpy_available:
             return None, []
 
+        backend = _search_backend(model_class)
+        if backend is not None:
+            return cls._load_embeddings_from(backend, model_class)
+
         model_name = model_class.__name__
 
         # Ensure a cross-process invalidation listener is running (pubsub mode;
@@ -872,6 +889,30 @@ class EmbeddingField(Field):
         return matrix, keys
 
     @classmethod
+    def _load_embeddings_from(cls, backend, model_class) -> tuple:
+        """``load_embeddings`` on Postgres (#759 M2b): the vectors come from
+        the ``vector(d)`` column, normalized exactly as the ``.npy`` path
+        normalizes them, keys in ``_pk`` bytewise order. Not cached: the
+        column is the source of truth, so there is nothing to invalidate."""
+        field_name = next(
+            (
+                name
+                for name, field in model_class._meta.fields.items()
+                if isinstance(field, EmbeddingField)
+            ),
+            None,
+        )
+        if field_name is None:
+            return None, []
+        keys, vectors = backend.load_vectors(model_class._meta.spec, field_name)
+        if not vectors:
+            return None, []
+        matrix = np.stack([np.asarray(v, dtype=np.float32) for v in vectors])
+        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1, norms)
+        return matrix / norms, keys
+
+    @classmethod
     def garbage_collect(cls, model_class, min_age_seconds: int = 300):
         """Remove orphaned .npy files not referenced by live model instances.
 
@@ -917,6 +958,10 @@ class EmbeddingField(Field):
             opt-in marker is missing, the embedding directory does not
             exist, or no orphans are found.
         """
+        if _search_backend(model_class) is not None:
+            # Postgres (#758 D7): vectors live in the row and go with it, so
+            # there are no orphan files to collect -- and no file is touched.
+            return 0
         # Opt-in marker: prevent accidental cross-model destruction
         if not getattr(model_class, "__embedding_garbage_collect__", False):
             logger.info(
@@ -1028,6 +1073,8 @@ class EmbeddingField(Field):
         Returns:
             int: Number of tempfiles removed.
         """
+        if _search_backend(model_class) is not None:
+            return 0  # Postgres writes no .npy files, so leaks none (#758 D7)
         model_name = model_class.__name__
         emb_dir = os.path.join(_get_embeddings_dir(), model_name)
         if not os.path.isdir(emb_dir):

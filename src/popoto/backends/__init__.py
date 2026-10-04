@@ -452,6 +452,23 @@ STATIC_FIELD_KINDS: dict[str, Optional[frozenset[str]]] = {
     ),
 }
 
+#: M2b (search, plan §5 M2): the BM25 postings, the pgvector column and the
+#: exact membership tables (:mod:`popoto.backends.postgres.search`), plus
+#: ``ContentField`` as a ``text`` column -- the M2b gate files' models take
+#: their text from one (pulled forward from M5).
+SEARCH_FIELD_KINDS: frozenset[str] = frozenset(
+    {
+        "BM25Field",
+        "EmbeddingField",
+        "ExistenceFilter",
+        "FrequencySketch",
+        "ContentField",
+    }
+)
+STATIC_FIELD_KINDS["postgres"] = (
+    STATIC_FIELD_KINDS["postgres"] or frozenset()
+) | SEARCH_FIELD_KINDS
+
 #: ``type=`` values an ``IndexedField`` / ``UniqueField`` may carry on
 #: Postgres: the scalar column types (a B-tree on a collection is refused).
 _POSTGRES_INDEXED_TYPES: frozenset[str] = frozenset(
@@ -510,6 +527,15 @@ def _field_spec(name: str, field: Any) -> FieldSpec:
         value = getattr(field, attr, None)
         if value not in (None, (), [], False):
             options[attr] = value
+    if base.__name__ in SEARCH_FIELD_KINDS:
+        # The search compilers (postgres/search.py) read the live field at
+        # first use -- its source, provider dimensions, fingerprint_fn --
+        # rather than a snapshot from class creation, when a provider that
+        # popoto.configure() sets later is not known yet.
+        options["field_ref"] = field
+        source = getattr(field, "source", None)
+        if source:
+            options["source"] = source
     if getattr(field, "_capped", False):
         # ListField(max_length=N): Redis keeps it in its own list key; on
         # Postgres it is a jsonb column with type-tagged elements.

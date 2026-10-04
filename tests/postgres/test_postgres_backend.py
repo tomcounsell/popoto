@@ -66,6 +66,9 @@ def test_typed_table_with_engine_columns(pg, pg_schema, admin):
         "seen__utcoff": "integer",
         "_created_at": "timestamp with time zone",
         "_updated_at": "timestamp with time zone",
+        # #756's import contract (M2b): every table carries them.
+        "_migrated_from": "jsonb",
+        "_estimated_fields": "ARRAY",
     }
     (pk,) = admin.execute(f'SELECT _pk FROM "{pg_schema.name}".pg_note').fetchone()
     assert pk == PgNote.query.get(owner="o", slug="s").pk == "PgNote:o:s"

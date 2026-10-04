@@ -746,6 +746,35 @@ class Defaults:
     # statement (inside transaction() these propagate to the caller).
     PG_TRANSACTION_RETRIES = 3
 
+    # -- Postgres search (#759 M2b) --------------------------------------------
+    # Magic numbers for the vector, BM25 and fusion arms on Postgres, pinned
+    # in-repo for tuning (CLAUDE.md "Numeric constants"), not constructor
+    # kwargs. Each is read when a search runs, so a test may patch it.
+    #
+    # The vector arm scans exactly (ORDER BY (v <=> q) + 0, which no HNSW
+    # index can serve) while at most this many rows in scope hold a vector,
+    # and uses the HNSW index above it (#758 D5). Spike-4 measured exact at
+    # 2.6 ms p50 for ~1k rows and 37 ms for ~12k; 5,000 keeps the exact path
+    # inside the 15 ms recall budget on a 1536-d corpus (re-pinned from the
+    # M2b benchmark, PR body).
+    PG_VECTOR_EXACT_MAX = 5000
+    # hnsw.ef_search for the HNSW path, set with SET LOCAL beside
+    # hnsw.iterative_scan = relaxed_order. Spike-4's 0.0-recall query happened
+    # at 100 as well, which is why the recall guard exists: when the HNSW arm
+    # returns fewer rows than min(limit, rows with a vector), it is re-run
+    # exactly.
+    PG_HNSW_EF_SEARCH = 100
+    # How deep each recall() arm ranks before RRF fusion: max(limit, this).
+    PG_RECALL_ARM_DEPTH = 50
+    # Piggybacked embedding backfill (#758 D7): after a save whose own
+    # embedding call succeeded, embed at most this many rows of the same scope
+    # whose vector is NULL or was made by another model...
+    PG_BACKFILL_BATCH = 4
+    # ...and stop after this many wall-clock seconds, whichever comes first. A
+    # provider call that outlives the budget is abandoned, so a slow provider
+    # cannot push save() past it.
+    PG_BACKFILL_BUDGET_SECONDS = 1.0
+
 
 class TemporalPeriod:
     """Named constants for common temporal cycle periods in seconds.

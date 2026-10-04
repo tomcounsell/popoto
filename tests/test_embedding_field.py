@@ -33,6 +33,19 @@ from src.popoto.stores.filesystem import FilesystemStore
 from src.popoto.embeddings import AbstractEmbeddingProvider
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M2b, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. On Postgres the vector is a
+# vector(d) column (plan §3), so the tests about the .npy file store and its
+# _index.json sidecar are Redis-only.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+_NPY_STORE = (
+    "asserts the .npy file store / _index.json sidecar; on Postgres the vector "
+    "is a vector(d) column written with the record (plan §3), and no file exists"
+)
+
 # --- Mock Provider ---
 
 
@@ -148,6 +161,7 @@ class TestEmbeddingFieldSave:
         doc.save()
         assert setup_providers.call_count == 1
 
+    @pytest.mark.redis_only(reason=_NPY_STORE)
     def test_save_stores_npy_file(self):
         doc = EmbDoc(name="emb2", content="Test content")
         doc.save()
@@ -203,6 +217,7 @@ class TestEmbeddingFieldAutoEmbed:
 class TestEmbeddingFieldDelete:
     """Test embedding cleanup on delete."""
 
+    @pytest.mark.redis_only(reason=_NPY_STORE)
     def test_delete_removes_npy_file(self):
         doc = EmbDoc(name="del1", content="Delete me")
         doc.save()
@@ -298,6 +313,7 @@ class TestEmbeddingFieldErrors:
 class TestEmbeddingFilenameLimit:
     """Test SHA-256 hashing prevents filename length errors."""
 
+    @pytest.mark.redis_only(reason=_NPY_STORE)
     def test_long_redis_key_filename(self):
         """A Redis key >125 chars should produce a valid filename via SHA-256."""
         # Use a name long enough that hex encoding would exceed 255 bytes
@@ -318,6 +334,7 @@ class TestEmbeddingFilenameLimit:
 class TestEmbeddingIndex:
     """Test _index.json sidecar operations."""
 
+    @pytest.mark.redis_only(reason=_NPY_STORE)
     def test_index_json_written_on_save(self):
         """Saving a doc should create _index.json with the correct mapping."""
         doc = EmbDoc(name="idx1", content="Index test")
@@ -331,6 +348,7 @@ class TestEmbeddingIndex:
         assert npy_filename in index
         assert index[npy_filename] == redis_key
 
+    @pytest.mark.redis_only(reason=_NPY_STORE)
     def test_index_entry_removed_on_delete(self):
         """Deleting a doc should remove its entry from _index.json."""
         doc = EmbDoc(name="idx2", content="Delete index test")
@@ -350,6 +368,7 @@ class TestEmbeddingIndex:
         index = _read_index("EmbDoc")
         assert npy_filename not in index
 
+    @pytest.mark.redis_only(reason=_NPY_STORE)
     def test_legacy_migration_on_save(self, tmp_path):
         """Saving a key that has a legacy hex-encoded file should migrate it."""
         import hashlib
@@ -396,6 +415,7 @@ class TestEmbeddingIndex:
         index = _read_index("EmbDoc")
         assert new_filename in index
 
+    @pytest.mark.redis_only(reason=_NPY_STORE)
     def test_load_without_index_falls_back(self, tmp_path):
         """Loading embeddings with hex-encoded files but no index should work."""
         from src.popoto.fields.embedding_field import _get_embeddings_dir

@@ -31,6 +31,12 @@ from src.popoto.fields.existence_filter import (  # noqa: E402
 from src.popoto.models.query import QueryException  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
+# Backend conformance (#759 M2b, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # --- Test Models ---
 
 
@@ -249,6 +255,11 @@ class TestBM25FieldUpdateDelete:
         keys_after = [k for k, _s in results_after]
         assert doc.db_key.redis_key not in keys_after
 
+    @pytest.mark.redis_only(
+        reason="reads the $BM25:…:n counter key through the raw client; Postgres "
+        "keeps no counter (N is counted from the document-length table, pinned by "
+        "tests/postgres/test_postgres_search.py::test_delete_decrements_n)"
+    )
     def test_delete_updates_doc_count(self):
         """Deleting a document decrements the corpus doc count."""
         prefix = BM25Doc._meta.fields["content"]._key_prefix(BM25Doc)
