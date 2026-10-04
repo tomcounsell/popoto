@@ -2990,10 +2990,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#supported-fields-m1-m11-m2a-m2b" class="md-nav__link">
+  <a href="#supported-fields-m1-m11-m2a-m2b-m3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Supported fields (M1, M1.1, M2a, M2b)
+        Supported fields (M1, M1.1, M2a, M2b, M3)
       
     </span>
   </a>
@@ -3156,15 +3156,26 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#performance-m1-and-m2a-exit-criteria" class="md-nav__link">
+  <a href="#validity-and-supersession-m3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Performance (M1 and M2a exit criteria)
+        Validity and supersession (M3)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Performance (M1 and M2a exit criteria)">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-m1-m2a-and-m3-exit-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance (M1, M2a and M3 exit criteria)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance (M1, M2a and M3 exit criteria)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3283,10 +3294,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#supported-fields-m1-m11-m2a-m2b" class="md-nav__link">
+  <a href="#supported-fields-m1-m11-m2a-m2b-m3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Supported fields (M1, M1.1, M2a, M2b)
+        Supported fields (M1, M1.1, M2a, M2b, M3)
       
     </span>
   </a>
@@ -3449,15 +3460,26 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#performance-m1-and-m2a-exit-criteria" class="md-nav__link">
+  <a href="#validity-and-supersession-m3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Performance (M1 and M2a exit criteria)
+        Validity and supersession (M3)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Performance (M1 and M2a exit criteria)">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-m1-m2a-and-m3-exit-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance (M1, M2a and M3 exit criteria)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance (M1, M2a and M3 exit criteria)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3503,15 +3525,17 @@ today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.</p>
 <p>This page covers the first Postgres milestones: <strong>plain models</strong> (M1),
 <strong>plain-field breadth</strong> (M1.1), the <strong>ranking and memory-state half of
-Valor's slice</strong> (M2a), <strong>search</strong> (M2b) and <strong><code>ContextAssembler</code></strong> (M2c).
+Valor's slice</strong> (M2a), <strong>search</strong> (M2b), <strong><code>ContextAssembler</code></strong> (M2c) and
+the <strong>validity axis</strong> (M3).
 That means records, queries, <code>Q</code> objects, ordering, counting and atomic
 increments for the field types listed below, including indexed, unique, tag,
-relationship and collection fields, plus decay ranking, confidence, read
-tracking, the write filter, <code>ObservationProtocol</code> and <code>composite_score</code>, BM25
-keyword search, pgvector embeddings, exact membership filters, fusion and
-<code>recall()</code>, and the assembler over all of them. Models that use
-other fields stay on Redis until their milestone. Popoto refuses them when you
-declare them, so they never fail halfway through.</p>
+relationship and collection fields, plus decay ranking, confidence
+(partitioned too), read tracking, the write filter, <code>ObservationProtocol</code> and
+<code>composite_score</code>, BM25 keyword search, pgvector embeddings, exact membership
+filters, fusion and <code>recall()</code>, the assembler over all of them, and
+<code>ValidityField</code> with <code>SupersessionProtocol</code>. Models that use other fields stay
+on Redis until their milestone. Popoto refuses them when you declare them, so
+they never fail halfway through.</p>
 <h2 id="selecting-the-backend">Selecting the backend<a class="headerlink" href="#selecting-the-backend" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[postgres]'</span><span class="w">      </span><span class="c1"># psycopg[binary,pool] + pgvector</span>
 </code></pre></div>
@@ -3566,7 +3590,7 @@ the model's <strong>first</strong> query or save. <code>bind()</code> itself onl
 spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.</p>
-<h2 id="supported-fields-m1-m11-m2a-m2b">Supported fields (M1, M1.1, M2a, M2b)<a class="headerlink" href="#supported-fields-m1-m11-m2a-m2b" title="Permanent link">&para;</a></h2>
+<h2 id="supported-fields-m1-m11-m2a-m2b-m3">Supported fields (M1, M1.1, M2a, M2b, M3)<a class="headerlink" href="#supported-fields-m1-m11-m2a-m2b-m3" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -3647,7 +3671,7 @@ first query does not.</p>
 <td>B-tree <code>(partition cols…, f, _pk COLLATE "C")</code></td>
 </tr>
 <tr>
-<td><code>ConfidenceField</code> (M2a)</td>
+<td><code>ConfidenceField</code> (M2a; <code>partition_by=</code> M3)</td>
 <td><code>double precision</code> for the attribute, plus the state <code>&lt;f&gt;__conf</code> (<code>double precision</code>), <code>&lt;f&gt;__n</code>, <code>&lt;f&gt;__corr</code>, <code>&lt;f&gt;__contra</code> (<code>bigint</code>)</td>
 <td>—</td>
 </tr>
@@ -3670,6 +3694,11 @@ first query does not.</p>
 <td><code>ContentField</code> (M2b, pulled forward from M5)</td>
 <td><code>text</code> holding the content itself (no <code>$CF:</code> reference, no file)</td>
 <td>—</td>
+</tr>
+<tr>
+<td><code>ValidityField</code> (M3)</td>
+<td><code>double precision</code> for the declared value, plus <code>&lt;f&gt;__valid_from</code>, <code>&lt;f&gt;__invalid_at</code>, <code>&lt;f&gt;__ingested_at</code> (<code>double precision</code>; <code>'Infinity'</code> = open) and <code>&lt;f&gt;__supersedes</code>, <code>&lt;f&gt;__superseded_by</code> (<code>text</code>); companion <code>&lt;table&gt;__&lt;f&gt;__open (digest, member)</code></td>
+<td>B-tree on <code>&lt;f&gt;__valid_from</code> and on <code>&lt;f&gt;__invalid_at</code>; the companion's <code>member</code> references <code>_pk</code> <code>ON DELETE CASCADE</code></td>
 </tr>
 </tbody>
 </table>
@@ -3727,7 +3756,9 @@ above the seam as before; its priority tier is not stored (plan §5 M2).
 <code>popoto_recall_proposal</code>, created on first use like <code>popoto_schema</code>. No state
 column is indexed: each index would make every <code>update_confidence</code> or
 <code>confirm_access</code> a non-HOT update, and nothing filters or orders by one alone.
-A partitioned <code>ConfidenceField</code> arrives in M3 and is refused until then.
+A partitioned <code>ConfidenceField</code> (M3) needs nothing more: its state is the
+record's own columns, so its partition is the row's partition columns, and a
+partition change that keeps the key keeps the state.
 <code>PredictionLedgerMixin</code> keeps its ledger in Redis until M5 and is refused on a
 Postgres model too, rather than issuing Redis commands for a record Redis does
 not hold.</p>
@@ -3835,8 +3866,8 @@ the same interleaving goes stale without the lock.</p>
 row takes that record's advisory lock first, not only a save: <code>delete</code>,
 <code>atomic_increment</code>, a capped-list push, <code>touch</code>, <code>update_confidence</code>, the
 access tracker's writes, <code>on_context_used</code>'s <code>FOR UPDATE</code> and an
-<code>ExistenceFilter</code> row. The order is any <code>(model, field)</code> lock (none before
-M3), then the record-key locks sorted by <code>_pk</code>, then the row locks in <code>_pk</code>
+<code>ExistenceFilter</code> row. The order is any <code>(model, field)</code> lock (a
+<code>ValidityField</code>'s, M3), then the record-key locks sorted by <code>_pk</code>, then the row locks in <code>_pk</code>
 order. A record's key lock is always the first lock taken on it, so a
 transaction that runs <code>update_confidence(x, pipeline=tx)</code> and then
 <code>x.save(pipeline=tx)</code> queues a concurrent <code>x.save()</code> behind it instead of
@@ -3956,15 +3987,27 @@ columns: the field's clock, its <code>base_score_field</code>, and <code>&lt;f&g
 modulation when the field resolves a <code>ConfidenceField</code>), computed in the
 fused statement itself over the same scope and filters. It adds no round
 trip.</p>
-<p><strong><code>Query.top_by_relevance(scope=None, limit=10)</code></strong> (<code>[PG-only]</code>, #758 D8)
+<p><strong><code>Query.top_by_relevance(scope=None, limit=10, *, as_of=None)</code></strong> (<code>[PG-only]</code>, #758 D8)
 returns <code>[(instance, score)]</code> ranked by decay × confidence in SQL, the score
 <code>top_by_decay</code> ranks by. It replaces reading a decay sorted set with a raw
 <code>ZREVRANGE</code>. <code>scope</code> is the decay field's <code>partition_by</code> value; <code>None</code> ranks
 every partition together. On a Redis-bound model it raises
 <code>BackendCapabilityError</code>; use <code>top_by_decay</code> there.</p>
+<p><strong>Both read through the validity gate (M3).</strong> On a model with a
+<code>ValidityField</code>, <code>top_by_relevance</code> and <code>recall</code> leave out a record closed at
+or before <code>as_of</code> and one that starts after it, as <code>top_by_decay</code>,
+<code>composite_score</code> and the assembler do. <code>as_of</code> is epoch seconds and defaults
+to now; <code>Query.recall(..., as_of=)</code> and <code>top_by_relevance(..., as_of=)</code> take
+it, so <code>as_of</code> in the past returns the records that were valid then. In
+<code>recall</code> the gate is ANDed onto the domain of <strong>every</strong> arm (BM25, vector,
+decay), so a superseded record cannot enter through the lexical arm either.
+<code>Defaults.VALIDITY_GATING_ENABLED = False</code> turns it off, and a model without a
+<code>ValidityField</code> is unaffected.</p>
 <p><strong><code>composite_score(similarity_boost=…)</code></strong> works on Postgres too (M2b). The
 mapping is one more arm, weight 1.0 and last, as its temporary set is in the
-Redis <code>ZUNIONSTORE</code>. <code>semantic_search(indexes=…)</code> uses it. The order is the
+Redis <code>ZUNIONSTORE</code>. <code>semantic_search(indexes=…)</code> uses it, and on a model
+with a <code>ValidityField</code> the validity mask applies to it as to every arm (M3;
+pinned two-leg by <code>tests/test_semantic_search.py::TestSemanticSearchWithIndexes</code>). The order is the
 same on both backends; with three or more summed arms a score can differ by
 up to 2 ulp, because <code>ZUNIONSTORE</code> adds the smallest input set first while
 Postgres adds the arms in order. <code>co_occurrence_boost</code> waits for
@@ -4004,7 +4047,7 @@ gate, <code>assess_quality</code> and <code>emit_trace</code>, plus <code>assess
 </tr>
 <tr>
 <td>Score proxy (<code>assess_quality</code>, <code>emit_trace</code>, <code>assess</code>)</td>
-<td>the partition's <code>rank_decayed</code> for a decay field, the column for a plain sorted field</td>
+<td>the partition's <code>rank_decayed</code> for a decay field, with the model's validity gate at now (M3: a record closed now or not yet started scores <code>None</code> and counts as stale, as on Redis, which runs <code>DECAY_SCORE_LUA</code> with the gate; pinned two-leg by <code>test_the_score_proxy_gates_on_validity_at_now</code>), the column for a plain sorted field</td>
 </tr>
 <tr>
 <td>Post-effects</td>
@@ -4560,13 +4603,177 @@ cast to the column's type.</p>
 <td>the update runs inside the transaction, so its value is returned and the attribute synced</td>
 </tr>
 <tr>
-<td>A model with a <code>CyclicDecayField</code>, <code>ValidityField</code>, partitioned <code>ConfidenceField</code>, <code>CoOccurrenceField</code> or <code>PredictionLedgerMixin</code> (M2a)</td>
+<td>A model with a <code>CyclicDecayField</code>, <code>CoOccurrenceField</code> or <code>PredictionLedgerMixin</code> (M2a)</td>
 <td>supported</td>
-<td>refused at declaration until M5, M3, M3, M4 and M5 respectively, so <code>ObservationProtocol</code>'s cycle, supersession, auto-discharge and ledger-resolution effects have no Postgres model to act on yet</td>
+<td>refused at declaration until M5, M4 and M5 respectively, so <code>ObservationProtocol</code>'s cycle, auto-discharge and ledger-resolution effects have no Postgres model to act on yet (its supersession effect runs from M3)</td>
+</tr>
+<tr>
+<td><code>execute_supersede(mode="open")</code> naming a member with no record (M3)</td>
+<td><code>ZADD NX</code> indexes the member anyway</td>
+<td>writes nothing: the interval is the record's row. Only a direct <code>execute_supersede</code> call can ask for it. Pinned: <code>tests/postgres/test_postgres_validity.py::test_mode_open_on_a_member_with_no_record_writes_nothing</code></td>
+</tr>
+<tr>
+<td>An open-claim pointer naming a record that does not exist (M3)</td>
+<td>storable (a manual <code>SET</code>, or a partial <code>import_state</code>); <code>supersede</code> reads it as "no incumbent"</td>
+<td>unrepresentable: the pointer table's foreign key refuses it, and deleting a record cascades to its pointers. <code>import_state</code> for a record that is not stored raises <code>ValidityMemberAbsentError</code> (a <code>ValidityError</code>, so a <code>ValueError</code>) chained from the driver's <code>ForeignKeyViolation</code>; Redis's <code>import_state</code> never raises there. Pinned: <code>test_a_pointer_cannot_name_a_record_that_does_not_exist</code></td>
+</tr>
+<tr>
+<td><code>save_and_supersede</code> / <code>save_and_invalidate</code> whose close fails (M3)</td>
+<td><code>MULTI</code>/<code>EXEC</code> keeps the successor's save, and the typed error's text carries redis-py's <code>Command # N (...) of pipeline caused error:</code> prefix</td>
+<td>the whole unit rolls back, so the successor is not saved either; same exception type, and the text is the bare reply line</td>
+</tr>
+<tr>
+<td>A NaN <code>valid_from</code> on save (M3)</td>
+<td>the script's <code>ZADD</code> refuses it: <code>ResponseError: … value is not a valid float</code> from the pipelined <code>EVALSHA</code>, after <code>MULTI</code>/<code>EXEC</code> has written the record's hash, so the record exists with no interval</td>
+<td>refused before anything is written: <code>ModelException("value is not a valid float")</code> -- the same text, popoto's save error (as row (v) of the query table). Stored, a NaN start would sort above every float and hide the record from every gate. Pinned: <code>tests/test_validity_parity.py::TestNanInstants::test_a_nan_valid_from_on_save_is_refused</code></td>
+</tr>
+<tr>
+<td>A NaN instant in <code>supersede</code> / <code>invalidate</code> / <code>execute_supersede</code> (M3)</td>
+<td><code>ResponseError: value is not a valid float script: …</code>. With only <code>valid_from</code> NaN (a real close instant), <code>SUPERSEDE_LUA</code>'s validation phase lets it through and the successor's <code>ZADD</code> fails in the mutation phase, after the incumbent was closed and chained, with the pointer still naming it: half-written state, issue #778</td>
+<td><code>ValueError("value is not a valid float (&lt;instant&gt; is NaN)")</code>: the same text, a different class, raised before the first write, so nothing is written. Pinned: <code>TestNanInstants::test_a_nan_at_is_refused_and_writes_nothing</code> and <code>::test_a_nan_valid_from_alone_in_execute_supersede</code></td>
+</tr>
+<tr>
+<td>A NaN <code>as_of</code> / <code>validity__as_of</code> (M3)</td>
+<td>the range reads (<code>filter</code>, <code>resolve_*_keys</code>, the composite mask) raise <code>ResponseError: min or max is not a float</code>; the decay ranking's gate excludes nothing</td>
+<td><code>QueryException</code> with the same text (as row (v) of the query table); the decay ranking excludes nothing</td>
+</tr>
+<tr>
+<td><code>SupersessionProtocol.supersede</code>/<code>invalidate</code> with the backend's <code>transaction()</code> as <code>pipeline</code> (M3)</td>
+<td>(a Redis pipeline queues the script; the closed key is unknown until <code>execute()</code>)</td>
+<td>runs inside the transaction: the closed key is returned and a typed error raised at the call. A Redis pipeline is refused with <code>ValueError</code> by <code>supersede</code>, <code>invalidate</code> and <code>save_and_*</code> alike: it cannot carry a Postgres write. Pinned: <code>test_a_redis_pipeline_is_refused_by_supersede_and_invalidate</code></td>
 </tr>
 </tbody>
 </table>
-<h2 id="performance-m1-and-m2a-exit-criteria">Performance (M1 and M2a exit criteria)<a class="headerlink" href="#performance-m1-and-m2a-exit-criteria" title="Permanent link">&para;</a></h2>
+<h2 id="validity-and-supersession-m3">Validity and supersession (M3)<a class="headerlink" href="#validity-and-supersession-m3" title="Permanent link">&para;</a></h2>
+<p>A <code>ValidityField</code> keeps the six Redis keys' state on the record's row and in
+one companion table:</p>
+<table>
+<thead>
+<tr>
+<th>Redis key</th>
+<th>Postgres</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>…:valid_from</code> / <code>…:invalid_at</code> / <code>…:ingested_at</code> sorted sets</td>
+<td><code>&lt;f&gt;__valid_from</code> / <code>&lt;f&gt;__invalid_at</code> / <code>&lt;f&gt;__ingested_at</code>, <code>double precision</code> (<code>NULL</code> = absent from that index; <code>'Infinity'</code> = open)</td>
+</tr>
+<tr>
+<td><code>…:chain:fwd</code> / <code>…:chain:rev</code> hashes</td>
+<td><code>&lt;f&gt;__superseded_by</code> / <code>&lt;f&gt;__supersedes</code> on the record</td>
+</tr>
+<tr>
+<td><code>…:open:{digest}</code> strings</td>
+<td><code>&lt;table&gt;__&lt;f&gt;__open (digest PRIMARY KEY, member)</code>, <code>member</code> referencing <code>_pk</code> <code>ON DELETE CASCADE</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why not <code>tstzrange</code>.</strong> The plan proposed one <code>tstzrange</code> column. A
+<code>timestamptz</code> keeps microseconds, so the Redis score <code>1700000000.1234567</code>
+comes back <code>1700000000.123457</code>, two scores one ulp apart become one instant,
+and the gate's <code>invalid_at &lt;= as_of</code> flips for a close one ulp after <code>as_of</code>
+(pinned: <code>tests/postgres/test_postgres_validity.py::test_timestamptz_would_not_hold_the_redis_score</code>,
+<code>tests/test_validity_parity.py::TestExclusionRule::test_the_as_of_bound_is_bit_exact</code>).
+The second reason is a close at the record's own start, which the script
+allows (its check is <code>close &lt; start</code>): <code>tstzrange(t, t)</code> is the canonical
+<code>empty</code> range and keeps neither bound, so the record's start and its recorded
+close are both lost (and <code>lower &gt; upper</code> raises). A range <em>can</em> tell "no
+<code>invalid_at</code> recorded" from "<code>invalid_at</code> is <code>+inf</code>" (<code>upper_inf('[t,)')</code> is
+true, <code>upper_inf('[t,infinity)')</code> false), so that is not a reason; the columns
+spell it <code>NULL</code> vs <code>'Infinity'</code>. So the interval follows M2a's clock decision:
+<code>double precision</code> epoch seconds, bit-identical to the score.</p>
+<p><strong>The exclusion rule</strong> every gate applies -- <code>top_by_decay</code>'s ranking,
+<code>composite_score</code>'s mask, <code>ValidityField.resolve_excluded_keys</code>, the
+assembler -- is <code>invalid_at &lt;= as_of OR valid_from &gt; as_of</code>, with an absent end
+never excluding, as one <code>WHERE</code> term on the row. <code>filter(validity__as_of=t)</code>
+and <code>resolve_valid_keys</code> are the whitelist, <code>valid_from &lt;= t AND invalid_at &gt;
+t</code>, both ends present; <code>__current=False</code> is the members of either index that
+are not valid now. The #631 POC's 17-row table (<code>tests/test_validity_parity.py</code>)
+holds on both backends.</p>
+<p><strong><code>supersede</code></strong> is <code>SUPERSEDE_LUA</code> phase for phase, in one transaction:</p>
+<ol>
+<li><code>pg_advisory_xact_lock(hashtext('popoto:validity:&lt;schema&gt;.&lt;table&gt;.&lt;f&gt;'))</code>
+   -- one lock per model and field, the Redis single thread;</li>
+<li>resolve the incumbent: the named one, else the identity's pointer;</li>
+<li>the record-key locks of the successor and the incumbent, in <code>_pk</code> byte
+   order, then <code>SELECT … ORDER BY _pk COLLATE "C" FOR UPDATE</code> on both rows;</li>
+<li>validate, raising the typed error built from the script's reply line (and
+   so with the same text) and writing nothing: a successor that does not
+   exist, an <em>asserted</em> incumbent that does not exist (a pointer-resolved one
+   is "no incumbent"), a close before the incumbent's start, an asserted
+   <code>valid_from</code> that disagrees with the stored one;</li>
+<li>mutate: close the incumbent if it is open (idempotent), both chain links,
+   open the successor <code>NX</code> (an absent end filled, a closed record never
+   reopened), repoint the pointer.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Reply line</th>
+<th>Exception (a <code>ValueError</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POPOTO_VALIDITY_MEMBER_ABSENT successor &lt;key&gt;</code></td>
+<td><code>ValidityMemberAbsentError</code></td>
+</tr>
+<tr>
+<td><code>POPOTO_VALIDITY_MEMBER_ABSENT incumbent &lt;key&gt;</code></td>
+<td><code>ValidityMemberAbsentError</code></td>
+</tr>
+<tr>
+<td><code>POPOTO_VALIDITY_CLOSE_BEFORE_START</code></td>
+<td><code>ValidityCloseBeforeStartError</code></td>
+</tr>
+<tr>
+<td><code>POPOTO_VALIDITY_VALID_FROM_CONFLICT &lt;stored&gt; &lt;requested&gt;</code> (numbers as Lua's <code>%.14g</code>)</td>
+<td><code>ValidityValidFromConflictError</code></td>
+</tr>
+</tbody>
+</table>
+<p>A save opens the interval inside its upsert, the script's mode <code>'open'</code>, and a
+declared <code>valid_from</code> that disagrees with the stored start fails the upsert's
+guard, so nothing is written (behind the same <code>pre_save_validate</code> check as on
+Redis). <code>chain</code> is one <code>WITH RECURSIVE</code> with the Redis walk's stop rules: a
+missing link, a record already visited, a link naming a record with no
+<code>valid_from</code>.</p>
+<p><strong>Lock order.</strong> Validity writers follow the backend's one lock order (see
+"One lock order for every writer" above): the <code>(model, field)</code> lock, then the
+record-key locks sorted by <code>_pk</code>, then the row locks. <code>supersede</code> takes them
+in that order; <code>save_and_supersede</code> / <code>save_and_invalidate</code> take all of the
+supersede's locks <em>before</em> the save (otherwise the save would hold the
+successor's key and row while a concurrent supersede naming that record holds
+the field lock and waits for them -- pinned:
+<code>test_save_and_supersede_of_an_existing_record_takes_the_supersede_lock_order</code>,
+which deadlocks every round with the pre-lock removed); <code>import_state</code> takes
+the field lock as a pointer writer; and <code>ObservationProtocol.on_context_used</code>
+takes the field lock before locking its batch, with a contradicted record's
+successor locked as part of the batch. So two supersedes never interleave --
+including the crossing chains that deadlocked the #631 POC (<code>d1 → X</code>
+superseded by <code>Y</code> while <code>d2 → Y</code> is superseded by <code>X</code>; <code>TestCrossingChains</code>
+forces the overlap ten times). A plain save does not take the field lock: it
+meets a supersede on the record's key lock, and its upsert re-reads the row
+it waited on. The residual is a caller's own <code>transaction()</code> that locks a
+record and then supersedes while another supersede waits for that record:
+Postgres detects the cycle and aborts one side. Usually the other, earlier
+waiter is the victim and its owned transaction retries, so the caller
+completes; when the caller is the victim it gets <code>BackendRetryableError</code>
+(pinned: <code>test_a_cross_operation_deadlock_is_a_retryable_error</code>).</p>
+<p><strong>The seeded probe.</strong> <code>scripts/probe_validity_parity.py</code> runs the same random
+sequences of saves (declaring and re-declaring starts), supersedes,
+invalidations, direct <code>execute_supersede</code> calls in every mode, <code>save_and_*</code>
+and deletes on both backends, comparing every return value and exception
+(type and text), the intervals, links, pointers and chains, and every gated
+read at the interval ends, <code>±inf</code>, <code>1e308</code> and NaN. Its documented classes are
+the M3 rows of the table above; <code>tests/postgres/test_validity_probe.py</code> runs a
+25-shape slice in CI.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/probe_validity_parity.py<span class="w"> </span>--seeds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--shapes<span class="w"> </span><span class="m">200</span>
+</code></pre></div>
+<h2 id="performance-m1-m2a-and-m3-exit-criteria">Performance (M1, M2a and M3 exit criteria)<a class="headerlink" href="#performance-m1-m2a-and-m3-exit-criteria" title="Permanent link">&para;</a></h2>
 <p><code>scripts/bench_backend_seam.py</code> measures the public API on both backends. It
 seeds 2,000 records, runs <code>ANALYZE</code>, and then makes three runs of 300
 iterations per operation, with the two backends interleaved within each run.
@@ -4574,11 +4781,13 @@ The M1 targets are <code>Model.save()</code> p50 at most 2x Redis and <code>filt
 hydration p50 at most 1x Redis. M2a adds <code>rank_decayed</code> with a base score and
 confidence modulation over all 2,000 records (top 10): Postgres p50 at most
 1x Redis, <code>DECAY_SCORE_LUA</code> against one <code>SELECT</code>; <code>top_by_decay</code> with
-hydration is measured beside it. The PRs that introduced each milestone
+hydration is measured beside it. M3 adds the same ranking with a validity gate
+(a tenth of the records superseded, a twentieth not yet started): Postgres
+p50 at most 1x Redis. The PRs that introduced each milestone
 record the measured numbers and the environment they were taken on.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/14<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_backend_seam.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/14<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_backend_seam.py
 </code></pre></div>
 <h3 id="recall-m2b-exit-criterion"><code>recall()</code> (M2b exit criterion)<a class="headerlink" href="#recall-m2b-exit-criterion" title="Permanent link">&para;</a></h3>
 <p><code>scripts/bench_recall.py</code> seeds a 20,000-row, 1536-dimension corpus through
@@ -4627,8 +4836,8 @@ same index-only count statement went from 0.4 ms to 1.0 ms p50 and every
 arm doubled together. Run alone in one window, the exact arm on the record
 table (TOAST) took p50 7.9 ms, p95 9.1 ms, and on the narrow table p50
 2.9 ms, p95 3.6 ms.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/popoto_bench<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_recall.py<span class="w"> </span><span class="o">[</span>--n<span class="w"> </span><span class="m">20000</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--dim<span class="w"> </span><span class="m">1536</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--keep<span class="w"> </span><span class="p">|</span><span class="w"> </span>--reuse<span class="w"> </span>SCHEMA<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/popoto_bench<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_recall.py<span class="w"> </span><span class="o">[</span>--n<span class="w"> </span><span class="m">20000</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--dim<span class="w"> </span><span class="m">1536</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--keep<span class="w"> </span><span class="p">|</span><span class="w"> </span>--reuse<span class="w"> </span>SCHEMA<span class="o">]</span>
 </code></pre></div>
 
 

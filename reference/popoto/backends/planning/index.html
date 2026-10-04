@@ -3037,6 +3037,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#popoto.backends.planning.validity_cond" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        validity_cond
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#popoto.backends.planning.plan_from_call" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3173,6 +3184,69 @@ own query to find the keys it matches, as Redis's <code>filter_query</code> does
 <div class="doc doc-object doc-function">
 
 
+<h3 id="popoto.backends.planning.validity_cond" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">validity_cond</span><span class="p">(</span><span class="n">field_name</span><span class="p">,</span> <span class="n">param</span><span class="p">,</span> <span class="n">suffix</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span></code>
+
+<a href="#popoto.backends.planning.validity_cond" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p><code>validity__as_of=t</code> / <code>validity__current=…</code> (#759 M3), validated
+as <code>ValidityField.filter_query</code> validates them -- the same
+<code>ValueError</code> text -- and compiled to <code>Cond(field, VALID_AT, (t,
+valid))</code>: <code>valid</code> is <code>False</code> only for <code>__current=False</code>, the
+complement (members of either interval index not valid now).</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/backends/planning.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="k">def</span><span class="w"> </span><span class="nf">validity_cond</span><span class="p">(</span><span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">param</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">suffix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Cond</span><span class="p">:</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="w">    </span><span class="sd">"""``validity__as_of=t`` / ``validity__current=…`` (#759 M3), validated</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">    as ``ValidityField.filter_query`` validates them -- the same</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">    ``ValueError`` text -- and compiled to ``Cond(field, VALID_AT, (t,</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">    valid))``: ``valid`` is ``False`` only for ``__current=False``, the</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">    complement (members of either interval index not valid now)."""</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>    <span class="k">if</span> <span class="n">suffix</span> <span class="o">==</span> <span class="s2">"current"</span><span class="p">:</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">param</span><span class="si">}</span><span class="s2"> filter must be True or False, got </span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>        <span class="k">return</span> <span class="n">Cond</span><span class="p">(</span><span class="n">field_name</span><span class="p">,</span> <span class="n">Op</span><span class="o">.</span><span class="n">VALID_AT</span><span class="p">,</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span> <span class="n">value</span><span class="p">))</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>        <span class="n">t</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">param</span><span class="si">}</span><span class="s2"> filter must be a number of epoch seconds, got </span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">"</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>        <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="k">return</span> <span class="n">Cond</span><span class="p">(</span><span class="n">field_name</span><span class="p">,</span> <span class="n">Op</span><span class="o">.</span><span class="n">VALID_AT</span><span class="p">,</span> <span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="kc">True</span><span class="p">))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h3 id="popoto.backends.planning.plan_from_call" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">plan_from_call</span><span class="p">(</span><span class="n">call</span><span class="p">)</span></code>
 
@@ -3186,30 +3260,7 @@ own query to find the keys it matches, as Redis's <code>filter_query</code> does
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/backends/planning.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-206">206</a></span>
-<span class="normal"><a href="#__codelineno-0-207">207</a></span>
-<span class="normal"><a href="#__codelineno-0-208">208</a></span>
-<span class="normal"><a href="#__codelineno-0-209">209</a></span>
-<span class="normal"><a href="#__codelineno-0-210">210</a></span>
-<span class="normal"><a href="#__codelineno-0-211">211</a></span>
-<span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span>
-<span class="normal"><a href="#__codelineno-0-214">214</a></span>
-<span class="normal"><a href="#__codelineno-0-215">215</a></span>
-<span class="normal"><a href="#__codelineno-0-216">216</a></span>
-<span class="normal"><a href="#__codelineno-0-217">217</a></span>
-<span class="normal"><a href="#__codelineno-0-218">218</a></span>
-<span class="normal"><a href="#__codelineno-0-219">219</a></span>
-<span class="normal"><a href="#__codelineno-0-220">220</a></span>
-<span class="normal"><a href="#__codelineno-0-221">221</a></span>
-<span class="normal"><a href="#__codelineno-0-222">222</a></span>
-<span class="normal"><a href="#__codelineno-0-223">223</a></span>
-<span class="normal"><a href="#__codelineno-0-224">224</a></span>
-<span class="normal"><a href="#__codelineno-0-225">225</a></span>
-<span class="normal"><a href="#__codelineno-0-226">226</a></span>
-<span class="normal"><a href="#__codelineno-0-227">227</a></span>
-<span class="normal"><a href="#__codelineno-0-228">228</a></span>
-<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-229">229</a></span>
 <span class="normal"><a href="#__codelineno-0-230">230</a></span>
 <span class="normal"><a href="#__codelineno-0-231">231</a></span>
 <span class="normal"><a href="#__codelineno-0-232">232</a></span>
@@ -3236,57 +3287,80 @@ own query to find the keys it matches, as Redis's <code>filter_query</code> does
 <span class="normal"><a href="#__codelineno-0-253">253</a></span>
 <span class="normal"><a href="#__codelineno-0-254">254</a></span>
 <span class="normal"><a href="#__codelineno-0-255">255</a></span>
-<span class="normal"><a href="#__codelineno-0-256">256</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-206" name="__codelineno-0-206"></a><span class="k">def</span><span class="w"> </span><span class="nf">plan_from_call</span><span class="p">(</span><span class="n">call</span><span class="p">:</span> <span class="n">QueryCall</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">QueryPlan</span><span class="p">:</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="w">    </span><span class="sd">"""Validate ``call`` the way the query layer does and compile it."""</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="n">meta</span> <span class="o">=</span> <span class="n">call</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>    <span class="n">params</span> <span class="o">=</span> <span class="n">_Params</span><span class="p">(</span><span class="n">meta</span><span class="p">)</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">call</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>    <span class="n">parts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Predicate</span><span class="p">]</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">leaf</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="n">parts</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">_q_predicate</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">q</span><span class="p">)</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="p">(</span><span class="n">call</span><span class="o">.</span><span class="n">q_objects</span> <span class="ow">or</span> <span class="p">()))</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="n">where</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Predicate</span><span class="p">]</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">parts</span><span class="p">:</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>        <span class="n">where</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>        <span class="n">where</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a>        <span class="n">where</span> <span class="o">=</span> <span class="n">And</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">parts</span><span class="p">))</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>    <span class="k">if</span> <span class="n">call</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">"count"</span><span class="p">:</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="k">return</span> <span class="n">QueryPlan</span><span class="p">(</span><span class="n">where</span><span class="o">=</span><span class="n">where</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="n">call</span><span class="p">)</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>    <span class="n">values</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"values"</span><span class="p">)</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>    <span class="k">if</span> <span class="n">values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>        <span class="k">raise</span> <span class="n">_query_exception</span><span class="p">(</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>            <span class="s2">"values takes a tuple. eg. query.filter(values=('name',))"</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="p">)</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>    <span class="n">order_by</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"order_by"</span><span class="p">)</span> <span class="ow">or</span> <span class="n">meta</span><span class="o">.</span><span class="n">order_by</span> <span class="ow">or</span> <span class="s2">""</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>    <span class="n">terms</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">OrderTerm</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="k">if</span> <span class="n">order_by</span><span class="p">:</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="n">descending</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">order_by</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">order_by</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"-"</span><span class="p">)</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="n">name</span> <span class="o">=</span> <span class="n">order_by</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">descending</span> <span class="k">else</span> <span class="n">order_by</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">fields</span><span class="p">:</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>            <span class="k">raise</span> <span class="n">_query_exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">"order_by=</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> must be a field name (str)"</span><span class="p">)</span>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="k">if</span> <span class="n">values</span> <span class="ow">and</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">values</span><span class="p">:</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>            <span class="k">raise</span> <span class="n">_query_exception</span><span class="p">(</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>                <span class="s2">"field must be included in values=(fieldnames) in order to use "</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>                <span class="s2">"order_by"</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>            <span class="p">)</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>        <span class="n">terms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">OrderTerm</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">descending</span><span class="p">))</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"order_by"</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">call</span><span class="o">.</span><span class="n">q_objects</span><span class="p">:</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="c1"># The sorted field's score order is the base order; Meta.order_by</span>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a>        <span class="c1"># re-sorts it stably, so it survives as the tie-break.</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a>        <span class="n">sorted_name</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">sorted_default</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a>        <span class="k">if</span> <span class="n">sorted_name</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="n">terms</span> <span class="ow">and</span> <span class="n">terms</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">field</span> <span class="o">==</span> <span class="n">sorted_name</span><span class="p">):</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a>            <span class="n">terms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a>                <span class="n">OrderTerm</span><span class="p">(</span><span class="n">sorted_name</span><span class="p">,</span> <span class="n">terms</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">descending</span> <span class="k">if</span> <span class="n">terms</span> <span class="k">else</span> <span class="kc">False</span><span class="p">)</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a>            <span class="p">)</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a>    <span class="n">limit</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"limit"</span><span class="p">)</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="k">return</span> <span class="n">QueryPlan</span><span class="p">(</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a>        <span class="n">where</span><span class="o">=</span><span class="n">where</span><span class="p">,</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>        <span class="n">order_by</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">terms</span><span class="p">),</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a>        <span class="n">limit</span><span class="o">=</span><span class="n">limit</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">limit</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">and</span> <span class="n">limit</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a>        <span class="n">project</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="k">if</span> <span class="n">values</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-255" name="__codelineno-0-255"></a>        <span class="n">source</span><span class="o">=</span><span class="n">call</span><span class="p">,</span>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-256">256</a></span>
+<span class="normal"><a href="#__codelineno-0-257">257</a></span>
+<span class="normal"><a href="#__codelineno-0-258">258</a></span>
+<span class="normal"><a href="#__codelineno-0-259">259</a></span>
+<span class="normal"><a href="#__codelineno-0-260">260</a></span>
+<span class="normal"><a href="#__codelineno-0-261">261</a></span>
+<span class="normal"><a href="#__codelineno-0-262">262</a></span>
+<span class="normal"><a href="#__codelineno-0-263">263</a></span>
+<span class="normal"><a href="#__codelineno-0-264">264</a></span>
+<span class="normal"><a href="#__codelineno-0-265">265</a></span>
+<span class="normal"><a href="#__codelineno-0-266">266</a></span>
+<span class="normal"><a href="#__codelineno-0-267">267</a></span>
+<span class="normal"><a href="#__codelineno-0-268">268</a></span>
+<span class="normal"><a href="#__codelineno-0-269">269</a></span>
+<span class="normal"><a href="#__codelineno-0-270">270</a></span>
+<span class="normal"><a href="#__codelineno-0-271">271</a></span>
+<span class="normal"><a href="#__codelineno-0-272">272</a></span>
+<span class="normal"><a href="#__codelineno-0-273">273</a></span>
+<span class="normal"><a href="#__codelineno-0-274">274</a></span>
+<span class="normal"><a href="#__codelineno-0-275">275</a></span>
+<span class="normal"><a href="#__codelineno-0-276">276</a></span>
+<span class="normal"><a href="#__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#__codelineno-0-278">278</a></span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="k">def</span><span class="w"> </span><span class="nf">plan_from_call</span><span class="p">(</span><span class="n">call</span><span class="p">:</span> <span class="n">QueryCall</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">QueryPlan</span><span class="p">:</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="w">    </span><span class="sd">"""Validate ``call`` the way the query layer does and compile it."""</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>    <span class="n">meta</span> <span class="o">=</span> <span class="n">call</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>    <span class="n">params</span> <span class="o">=</span> <span class="n">_Params</span><span class="p">(</span><span class="n">meta</span><span class="p">)</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>    <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">call</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>    <span class="n">parts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Predicate</span><span class="p">]</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">leaf</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>    <span class="n">parts</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">_q_predicate</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">q</span><span class="p">)</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="p">(</span><span class="n">call</span><span class="o">.</span><span class="n">q_objects</span> <span class="ow">or</span> <span class="p">()))</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="n">where</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Predicate</span><span class="p">]</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">parts</span><span class="p">:</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>        <span class="n">where</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>        <span class="n">where</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="n">where</span> <span class="o">=</span> <span class="n">And</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">parts</span><span class="p">))</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>    <span class="k">if</span> <span class="n">call</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">"count"</span><span class="p">:</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>        <span class="k">return</span> <span class="n">QueryPlan</span><span class="p">(</span><span class="n">where</span><span class="o">=</span><span class="n">where</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="n">call</span><span class="p">)</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>    <span class="n">values</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"values"</span><span class="p">)</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>    <span class="k">if</span> <span class="n">values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a>        <span class="k">raise</span> <span class="n">_query_exception</span><span class="p">(</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>            <span class="s2">"values takes a tuple. eg. query.filter(values=('name',))"</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a>        <span class="p">)</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>    <span class="n">order_by</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"order_by"</span><span class="p">)</span> <span class="ow">or</span> <span class="n">meta</span><span class="o">.</span><span class="n">order_by</span> <span class="ow">or</span> <span class="s2">""</span>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a>    <span class="n">terms</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">OrderTerm</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a>    <span class="k">if</span> <span class="n">order_by</span><span class="p">:</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a>        <span class="n">descending</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">order_by</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">order_by</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"-"</span><span class="p">)</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>        <span class="n">name</span> <span class="o">=</span> <span class="n">order_by</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">descending</span> <span class="k">else</span> <span class="n">order_by</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">fields</span><span class="p">:</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a>            <span class="k">raise</span> <span class="n">_query_exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">"order_by=</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> must be a field name (str)"</span><span class="p">)</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a>        <span class="k">if</span> <span class="n">values</span> <span class="ow">and</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">values</span><span class="p">:</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a>            <span class="k">raise</span> <span class="n">_query_exception</span><span class="p">(</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>                <span class="s2">"field must be included in values=(fieldnames) in order to use "</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a>                <span class="s2">"order_by"</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a>            <span class="p">)</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a>        <span class="n">terms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">OrderTerm</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">descending</span><span class="p">))</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"order_by"</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">call</span><span class="o">.</span><span class="n">q_objects</span><span class="p">:</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a>        <span class="c1"># The sorted field's score order is the base order; Meta.order_by</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a>        <span class="c1"># re-sorts it stably, so it survives as the tie-break.</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a>        <span class="n">sorted_name</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">sorted_default</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a>        <span class="k">if</span> <span class="n">sorted_name</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="n">terms</span> <span class="ow">and</span> <span class="n">terms</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">field</span> <span class="o">==</span> <span class="n">sorted_name</span><span class="p">):</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a>            <span class="n">terms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a>                <span class="n">OrderTerm</span><span class="p">(</span><span class="n">sorted_name</span><span class="p">,</span> <span class="n">terms</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">descending</span> <span class="k">if</span> <span class="n">terms</span> <span class="k">else</span> <span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a>            <span class="p">)</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a>    <span class="n">limit</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"limit"</span><span class="p">)</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a>    <span class="k">return</span> <span class="n">QueryPlan</span><span class="p">(</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a>        <span class="n">where</span><span class="o">=</span><span class="n">where</span><span class="p">,</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>        <span class="n">order_by</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">terms</span><span class="p">),</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="n">limit</span><span class="o">=</span><span class="n">limit</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">limit</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">and</span> <span class="n">limit</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>        <span class="n">project</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="k">if</span> <span class="n">values</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a>        <span class="n">source</span><span class="o">=</span><span class="n">call</span><span class="p">,</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3310,13 +3384,13 @@ modifiers, or a <code>Q</code> object).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/backends/planning.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-259">259</a></span>
-<span class="normal"><a href="#__codelineno-0-260">260</a></span>
-<span class="normal"><a href="#__codelineno-0-261">261</a></span>
-<span class="normal"><a href="#__codelineno-0-262">262</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="k">def</span><span class="w"> </span><span class="nf">has_filters</span><span class="p">(</span><span class="n">call</span><span class="p">:</span> <span class="n">QueryCall</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="w">    </span><span class="sd">"""Whether ``call`` filters at all (anything beyond the result</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">    modifiers, or a ``Q`` object)."""</span>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a>    <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">call</span><span class="o">.</span><span class="n">q_objects</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">any</span><span class="p">(</span><span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">RESULT_MODIFIERS</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">call</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-282">282</a></span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span>
+<span class="normal"><a href="#__codelineno-0-284">284</a></span>
+<span class="normal"><a href="#__codelineno-0-285">285</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="k">def</span><span class="w"> </span><span class="nf">has_filters</span><span class="p">(</span><span class="n">call</span><span class="p">:</span> <span class="n">QueryCall</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="w">    </span><span class="sd">"""Whether ``call`` filters at all (anything beyond the result</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">    modifiers, or a ``Q`` object)."""</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>    <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">call</span><span class="o">.</span><span class="n">q_objects</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">any</span><span class="p">(</span><span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">RESULT_MODIFIERS</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">call</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
