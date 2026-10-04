@@ -19,13 +19,18 @@ hold, measured before this module was written (PostgreSQL 18.6):
   one ulp after an ``as_of`` reads as one at it, and the gate's bound is no
   longer bit-exact (``invalid_at <= as_of`` flips). The Redis score is the
   full ``double`` -- the M2a clock decision, for the same reason.
-* **Partial intervals.** A member can sit in one index and not the other
-  (an ``import_state`` shape, or ``filter(validity__current=False)``'s "every
-  member of either index"). The exclusion rule treats an absent end as
-  "never excludes" and ``+inf`` as "open", and the two differ at
-  ``as_of = +inf`` (``+inf <= +inf`` closes an open member; an absent one is
-  never closed). One range value has no spelling for "no upper bound
-  recorded" beside "upper bound ``infinity``".
+* **A close at the record's own start.** ``SUPERSEDE_LUA`` lets a record
+  close at exactly its ``valid_from`` (the check is ``close < start``), and
+  ``tstzrange(t, t)`` is the canonical ``empty`` range, which keeps neither
+  bound: the start the record had, and the close the chain recorded, are
+  both lost. A ``lower > upper`` pair raises outright.
+* **Partial intervals** are not the reason, though they need care: a member
+  can sit in one index and not the other (an ``import_state`` shape), and the
+  exclusion rule treats an absent end as "never excludes" and ``+inf`` as
+  "open" -- they differ at ``as_of = +inf``. A range *can* say that
+  (``upper_inf('[t,)')`` is true, ``upper_inf('[t,infinity)')`` false), so
+  this is no argument against ``tstzrange``; it is how the columns below
+  spell it (``NULL`` vs ``'Infinity'``).
 
 So the interval is three ``double precision`` columns beside the field's own
 column, which keeps the declared value as the Redis hash does:
@@ -59,13 +64,25 @@ rows it reads ``FOR UPDATE`` in ``_pk`` order (``COLLATE "C"``). Two
 supersedes therefore never interleave: two pointer writers, two explicit
 writers, a pointer and an explicit writer, and the crossing chains that
 deadlocked the POC (#750 B1: ``d1 -> X`` superseded by ``Y`` while ``d2 ->
-Y`` is superseded by ``X``) all run one after the other. A save does not take
-the advisory lock; it meets a supersede on the row lock, and its upsert
-re-reads the row it waited on, so it cannot reopen a record the supersede
-closed (plan Race 2). What remains is a caller's own ``transaction()`` that
-locks a row before a supersede on it: Postgres detects that cycle and the
-loser raises :class:`~popoto.backends.BackendRetryableError` (in the caller's
-transaction at once; an owned transaction retries first).
+Y`` is superseded by ``X``) all run one after the other.
+
+That is the head of the backend's one lock order (plan §6, TD-2; M2b's
+:meth:`~popoto.backends.postgres.PostgresBackend._record_locked`): the
+``(model, field)`` lock, then the record-key advisory locks in ``_pk`` byte
+order, then the row locks in ``_pk`` order. Every validity writer follows it:
+``supersede`` (record keys of the successor and the incumbent before its
+``FOR UPDATE``), ``save_and_supersede`` / ``save_and_invalidate`` (all of the
+supersede's locks *before* the save, through the ``lock`` adapter -- the save
+would otherwise take the successor's key and row first and cross a concurrent
+supersede naming it), ``import_state`` (a pointer writer), and
+``ObservationProtocol``'s batch (which locks a contradicted record's successor
+with the batch). A plain save does not take the field lock; it takes its
+record key and meets a supersede there, and its upsert re-reads the row it
+waited on, so it cannot reopen a record the supersede closed (plan Race 2).
+What remains is a caller's own ``transaction()`` that locks a record before a
+supersede on it: Postgres detects that cycle and one side is aborted -- an
+owned transaction retries; in the caller's transaction it is
+:class:`~popoto.backends.BackendRetryableError` at once.
 
 Never imports ``redis``.
 """
@@ -113,6 +130,10 @@ VALIDITY_SUFFIXES: tuple[tuple[str, str], ...] = (
 )
 
 INF = float("inf")
+
+#: The text Redis replies when a ``ZADD`` score is NaN (``SUPERSEDE_LUA``'s
+#: open and close): a NaN instant is refused with it on both backends.
+NAN_SCORE_ERROR = "value is not a valid float"
 
 NOT_HANDLED = object()
 """What :meth:`PostgresValidityOps._validity_field_call` returns for an op
@@ -334,6 +355,18 @@ def save_parts(
                 asserted = True
             except (TypeError, ValueError):
                 valid_from = now
+        if math.isnan(valid_from):
+            # SUPERSEDE_LUA's ``ZADD`` refuses a NaN score, so the Redis save
+            # fails with ``ResponseError: value is not a valid float`` (after
+            # MULTI/EXEC has written the hash, which nothing rolls back). Here
+            # the save is refused before anything is written: the same text,
+            # popoto's save error (the class difference is documented, as
+            # M1's "min or max is not a float" is). Stored, a NaN start would
+            # hide the record from every gate for good -- Postgres orders NaN
+            # above every float.
+            from ...exceptions import ModelException
+
+            raise ModelException(NAN_SCORE_ERROR)
         vf, ia, ig = name + VALID_FROM, name + INVALID_AT, name + INGESTED_AT
         cols[vf] = valid_from
         cols[ig] = now
@@ -399,6 +432,7 @@ class PostgresValidityOps:
     _table: Callable[..., TableSpec]
     _run: Callable[..., Any]
     _atomically: Callable[..., Any]
+    _record_locked: Callable[..., tuple[str, list[Any]]]
 
     # -- plumbing ---------------------------------------------------------------
 
@@ -487,9 +521,11 @@ class PostgresValidityOps:
             ("close_at", close_at),
         ):
             if math.isnan(value):
-                raise ValueError(
-                    f"ValidityField: {label} is NaN, which no interval can hold"
-                )
+                # Redis: the script's ZADD replies ``value is not a valid
+                # float`` (a ResponseError; with only valid_from NaN, after
+                # the incumbent's close -- #778). Here: the same text, a
+                # ValueError, and nothing written.
+                raise ValueError(f"{NAN_SCORE_ERROR} ({label} is NaN)")
         new = successor.canonical if successor is not None else ""
         named_old = incumbent.canonical if incumbent is not None else ""
         ts = self._table(spec, write=True)
@@ -504,14 +540,18 @@ class PostgresValidityOps:
             keys = sorted({k for k in (new, old) if k}, key=_sort_key)
             rows: dict[str, tuple[Any, ...]] = {}
             if keys:
-                found, _ = self._run(
+                # The backend's one lock order (plan §6, TD-2): the
+                # (model, field) lock above, then the record-key locks in
+                # ``_pk`` byte order, then the row locks in ``_pk`` order.
+                sql, params = self._record_locked(
+                    ts,
+                    keys,
                     f'SELECT "_pk", {vf}, {ia}, {ig}, {sup}, {supby} '
                     f'FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[]) '
                     'ORDER BY "_pk" COLLATE "C" FOR UPDATE',
                     [keys],
-                    uow=tx,
-                    write=True,
                 )
+                found, _ = self._run(sql, params, uow=tx, write=True)
                 rows = {row[0]: tuple(row[1:]) for row in found}
 
             # -- VALIDATION PHASE: reads and refusals only --------------------
@@ -621,6 +661,41 @@ class PostgresValidityOps:
         )
         return rows[0][0] if rows else None
 
+    def _supersede_locks(
+        self,
+        spec: ModelSpec,
+        field: str,
+        successor: str,
+        incumbent: str,
+        identity: str,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> None:
+        """Take, inside the caller's transaction ``uow``, every lock a
+        ``supersede`` of ``successor`` over ``incumbent`` (else the record
+        ``identity``'s pointer names) will take, in the backend's order: the
+        ``(model, field)`` lock, then the record-key locks in ``_pk`` byte
+        order. ``save_and_*`` takes them before its save, which would
+        otherwise take the successor's key and row first and so cross a
+        concurrent supersede that holds the field lock and names it (#777
+        review). Advisory locks stack, so the supersede retaking them is a
+        no-op."""
+        from . import _pg_uow
+
+        if _pg_uow(uow) is None:
+            raise BackendCapabilityError(
+                "ValidityField 'lock' runs inside a transaction() only"
+            )
+        ts = self._table(spec, write=True)
+        self._validity_lock(ts, [field], uow)
+        old = incumbent
+        if not old and identity:
+            old = self._pointer_get(ts, field, identity, uow=uow) or ""
+        keys = [k for k in (successor, old) if k]
+        if keys:
+            sql, params = self._record_locked(ts, keys, "SELECT 1", [])
+            self._run(sql, params, uow=uow, write=True)
+
     # -- D. chain -----------------------------------------------------------------
 
     def chain(self, spec: ModelSpec, field: str, id: RecordId) -> list[RecordId]:
@@ -689,6 +764,7 @@ class PostgresValidityOps:
             "export": self._export_state,
             "import": self._import_state,
             "dump": self._dump_state,
+            "lock": self._supersede_locks,
         }
         handler = handlers.get(op)
         if handler is None:
@@ -871,21 +947,33 @@ class PostgresValidityOps:
             if state.get(key):
                 sets.append(f"{_col(field, suffix)} = %s")
                 params.append(str(state[key]))
-        if sets:
-            self._run(
-                f"UPDATE {ts.qualified} SET {', '.join(sets)}, "
-                '"_updated_at" = now() WHERE "_pk" = %s',
-                params + [id.canonical],
-                uow=uow,
-                write=True,
-            )
         digests = [str(d) for d in state.get("open_pointers") or []]
-        if digests:
-            self._run(
-                f"INSERT INTO {pointer_table(ts, field)} (digest, member) "
-                "SELECT d, %s FROM unnest(%s::text[]) AS d "
-                "ON CONFLICT (digest) DO UPDATE SET member = EXCLUDED.member",
-                [id.canonical, digests],
-                uow=uow,
-                write=True,
-            )
+        if not sets and not digests:
+            return
+
+        def work(tx: UnitOfWork) -> None:
+            # A pointer writer, so the supersede lock order: the
+            # (model, field) lock, the record-key lock, then the row (the
+            # UPDATE's, or the pointer's foreign-key check).
+            self._validity_lock(ts, [field], tx)
+            if sets:
+                sql = (
+                    f"UPDATE {ts.qualified} SET {', '.join(sets)}, "
+                    '"_updated_at" = now() WHERE "_pk" = %s'
+                )
+                args: list[Any] = params + [id.canonical]
+            else:
+                sql, args = "SELECT 1", []
+            sql, args = self._record_locked(ts, [id.canonical], sql, args)
+            self._run(sql, args, uow=tx, write=True)
+            if digests:
+                self._run(
+                    f"INSERT INTO {pointer_table(ts, field)} (digest, member) "
+                    "SELECT d, %s FROM unnest(%s::text[]) AS d "
+                    "ON CONFLICT (digest) DO UPDATE SET member = EXCLUDED.member",
+                    [id.canonical, digests],
+                    uow=tx,
+                    write=True,
+                )
+
+        self._atomically(work, uow=uow)

@@ -39,7 +39,12 @@ REDIS_HASH = (
     "reads or writes the Redis companion hash directly; on Postgres the state "
     "is the record's own columns (get_confidence/get_confidence_data cover it)"
 )
-REDIS_KEY_NAME = "asserts the Redis companion-hash key name; Postgres has no such key"
+REDIS_KEY_NAME = (
+    "asserts the string get_data_hash_key builds for the Redis companion hash: "
+    "a pure key-name helper with no Postgres state behind it, so a Postgres "
+    "leg would pass without testing the backend (the partition's state there "
+    "is the record's columns, covered by the get_confidence tests)"
+)
 
 # --- Test Models ---
 

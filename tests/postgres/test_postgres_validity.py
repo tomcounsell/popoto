@@ -271,6 +271,21 @@ def test_a_redis_pipeline_is_refused_by_save_and_supersede(pg):
         )
 
 
+def test_a_redis_pipeline_is_refused_by_supersede_and_invalidate(pg):
+    """As ``save_and_*`` refuses one (#777 review): a Redis pipeline cannot
+    carry a Postgres write, so it is refused rather than run at once."""
+    from popoto.redis_db import get_REDIS_DB
+
+    old, new = _save("old"), _save("new")
+    pipe = get_REDIS_DB().pipeline()
+    with pytest.raises(ValueError, match="unit of work"):
+        SupersessionProtocol.supersede(new, identity_key=("u", "p"), pipeline=pipe)
+    with pytest.raises(ValueError, match="unit of work"):
+        SupersessionProtocol.invalidate(old, pipeline=pipe)
+    assert len(pipe.command_stack) == 0
+    assert _interval(pg, old)[1] == INF
+
+
 def _deadlocks(admin):
     admin.execute("SELECT pg_stat_clear_snapshot()")
     (count,) = admin.execute(
@@ -328,6 +343,86 @@ def test_a_cross_operation_deadlock_is_a_retryable_error(pg, admin):
     while _deadlocks(admin) == before and time.monotonic() < deadline:
         time.sleep(0.1)
     assert _deadlocks(admin) > before, "the interleaving never deadlocked"
+
+
+def _lock_waiters(admin):
+    (count,) = admin.execute(
+        "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+        "AND wait_event_type = 'Lock'"
+    ).fetchone()
+    return int(count)
+
+
+def test_save_and_supersede_of_an_existing_record_takes_the_supersede_lock_order(
+    pg, admin, monkeypatch
+):
+    """#777 review: ``save_and_supersede`` of an existing record used to save
+    (its record-key and row locks) before the supersede took the
+    ``(model, field)`` lock, so a concurrent supersede naming that record --
+    holding the field lock, waiting on the row -- deadlocked against it. It
+    now takes the supersede's locks before the save. Forced: the owner pauses
+    between its save and its close until the other writer is blocked, three
+    rounds; the deadlock counter must not move. (With the pre-lock removed
+    every round deadlocks.)"""
+    original = ValidityField.execute_supersede.__func__
+    paused, release = threading.Event(), threading.Event()
+
+    def pausing(cls, *args, **kwargs):
+        if threading.current_thread().name == "owner":
+            paused.set()
+            release.wait(10)
+        return original(cls, *args, **kwargs)
+
+    monkeypatch.setattr(ValidityField, "execute_supersede", classmethod(pausing))
+    before = _deadlocks(admin)
+    for round_ in range(3):
+        identity = SupersessionProtocol.identity_key("u", f"r{round_}")
+        incumbent = _save(f"p{round_}")
+        SupersessionProtocol.supersede(incumbent, identity_key=identity)
+        x, z = _save(f"x{round_}"), _save(f"z{round_}")
+        paused.clear()
+        release.clear()
+        out: dict[str, object] = {}
+
+        def owner(x=x, identity=identity):
+            x.importance = 2.0
+            try:
+                result = SupersessionProtocol.save_and_supersede(
+                    x, identity_key=identity
+                )
+                out["owner"] = result.closed_key
+            except BaseException as e:  # pragma: no cover - asserted below
+                out["owner"] = e
+
+        def other(x=x, z=z):
+            try:
+                out["other"] = original(
+                    ValidityField,
+                    PgFact,
+                    "validity",
+                    new_member=z.db_key.redis_key,
+                    mode="supersede",
+                    old_member=x.db_key.redis_key,
+                )
+            except BaseException as e:  # pragma: no cover - asserted below
+                out["other"] = e
+
+        first = threading.Thread(target=owner, name="owner")
+        first.start()
+        assert paused.wait(10)
+        second = threading.Thread(target=other, name="other")
+        second.start()
+        deadline = time.monotonic() + 10
+        while _lock_waiters(admin) == 0 and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert _lock_waiters(admin) > 0, "the other writer never blocked"
+        release.set()
+        first.join(30)
+        second.join(30)
+        assert out["owner"] == incumbent.db_key.redis_key, out
+        assert out["other"] == x.db_key.redis_key, out
+        assert SupersessionProtocol.superseded_by(x).name == f"z{round_}"
+    assert _deadlocks(admin) == before
 
 
 # -- the composite mask's control ---------------------------------------------------

@@ -234,10 +234,18 @@ NEEDS_TTL = "uses a Meta.ttl model, which Postgres stores from #759 M5"
 NEEDS_CYCLIC = "uses a CyclicDecayField, which Postgres stores from #759 M5"
 LUA_ONLY = "evaluates or inspects a Redis Lua script; Postgres runs no Lua"
 REDIS_PIPELINE = (
-    "exercises a redis-py pipeline's queue-then-execute; a Redis pipeline handed "
-    "to a Postgres model runs each write at once (a documented divergence), and "
-    "the same-transaction twin on a Postgres unit of work is in "
-    "tests/postgres/test_postgres_validity.py"
+    "exercises a redis-py pipeline's queue-then-execute and asserts on its "
+    "command stack or Redis keys; a Postgres model's save runs at once when "
+    "handed one, and supersede/invalidate/save_and_* refuse one (documented). "
+    "The same-transaction twin on a Postgres unit of work is in "
+    "tests/test_validity_parity.py::TestSameTransactionSuccessor"
+)
+RAW_REDIS = (
+    "issues raw ZADD/ZSCORE/ZRANGEBYSCORE on a scratch key with no model, so "
+    "it never reaches the backend: a Postgres leg would rerun the same Redis "
+    "commands. Postgres's 'Infinity'::float8 sentinel is pinned by "
+    "test_open_sentinel_constant_matches_stored_score and the +inf rows of "
+    "TestExclusionRule (tests/test_validity_parity.py)"
 )
 
 VALIDITY_MODELS = [
@@ -603,17 +611,13 @@ class TestOpenSentinel:
     def teardown_method(self):
         get_REDIS_DB().delete(self.KEY)
 
-    @pytest.mark.redis_only(
-        reason="exercises a Redis sorted set directly; Postgres stores the sentinel as 'Infinity'::float8 (test_open_sentinel_constant_matches_stored_score)"
-    )
+    @pytest.mark.redis_only(reason=RAW_REDIS)
     def test_zadd_zscore_round_trip(self):
         get_REDIS_DB().zadd(self.KEY, {"open": "+inf", "closed": 100.0})
         assert get_REDIS_DB().zscore(self.KEY, "open") == float("inf")
         assert get_REDIS_DB().zscore(self.KEY, "closed") == 100.0
 
-    @pytest.mark.redis_only(
-        reason="exercises a Redis sorted set directly; the Postgres exclusion rule's +inf rows are in tests/postgres/test_postgres_validity.py"
-    )
+    @pytest.mark.redis_only(reason=RAW_REDIS)
     def test_zrangebyscore_treats_inf_as_still_open(self):
         get_REDIS_DB().zadd(self.KEY, {"open": "+inf", "closed": 100.0})
         now = 200.0
@@ -2591,14 +2595,15 @@ class TestMembershipGuardInLua:
             assert _names(IndexedValidFact.query.filter(label="b")) == []
         assert _keyspace_snapshot(IndexedValidFact, "validity") == before
 
-    @pytest.mark.redis_only(reason=REDIS_PIPELINE)
     def test_a_rejected_declared_resave_queues_nothing_onto_a_caller_pipeline(self):
         """The external-pipeline arm of the same guarantee.
 
         Both eager loops sit inside the ``else:`` arm of an external-pipeline
         test that has already returned, so the dispatch has to be the single
         pre-split site — otherwise this arm silently skips validation entirely
-        (round-2 B1).
+        (round-2 B1). On Postgres the refusal comes before the save would run
+        (a Redis pipeline handed to a Postgres save runs at once), so the
+        stored label is the whole check.
         """
         t0 = time.time() - 3600.0
         record = IndexedValidFact(name="r", label="a", validity=t0)
@@ -2614,7 +2619,10 @@ class TestMembershipGuardInLua:
 
         pipe.reset()
         assert IndexedValidFact.query.get(name="r").label == "a"
-        assert not get_REDIS_DB().exists("$IndexF:IndexedValidFact:label:b")
+        if non_redis_backend(IndexedValidFact) is None:
+            assert not get_REDIS_DB().exists("$IndexF:IndexedValidFact:label:b")
+        else:
+            assert _names(IndexedValidFact.query.filter(label="b")) == []
         assert _keyspace_snapshot(IndexedValidFact, "validity") == before
 
     # -- 19. chain(unsaved) == [] (BLOCKER B2) ---------------------------
@@ -3241,9 +3249,6 @@ class TestValidityBenchmark:
         assert p50 < 25.0
 
 
-@pytest.mark.redis_only(
-    reason="export_records/import_records (transfer/) run on Postgres from #759 M5; ValidityField.export_state/import_state on Postgres are pinned in tests/postgres/test_postgres_validity.py"
-)
 class TestTransferRoundTrip:
     """Export -> import must not resurrect superseded records (#580 / #582).
 

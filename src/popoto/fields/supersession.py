@@ -267,6 +267,9 @@ class SupersessionProtocol:
         resolved = _resolve_field_name(new_instance, field_name)
         if resolved is None:
             return None
+        backend = non_redis_backend(new_instance)
+        if backend is not None:
+            _refuse_foreign_pipeline(backend, new_instance, pipeline, "supersede")
         new_member = _member_key(new_instance)
         if new_member is None:
             # Key resolution itself failed, so there is nothing to name in the
@@ -333,6 +336,9 @@ class SupersessionProtocol:
         resolved = _resolve_field_name(instance, field_name)
         if resolved is None:
             return None
+        backend = non_redis_backend(instance)
+        if backend is not None:
+            _refuse_foreign_pipeline(backend, instance, pipeline, "invalidate")
         old_member = _member_key(instance)
         if old_member is None:
             raise ValidityMemberAbsentError(
@@ -808,6 +814,23 @@ def _chain_on_backend(
     return chain
 
 
+def _refuse_foreign_pipeline(
+    backend: Any, instance: Any, pipeline: Any, entry_point: str
+) -> None:
+    """A Redis pipeline cannot carry a write to a non-Redis backend, so every
+    ``SupersessionProtocol`` mutator refuses one rather than running the write
+    at once behind the caller's back (#777 review)."""
+    from ..backends import UnitOfWork
+
+    if pipeline is not None and not isinstance(pipeline, UnitOfWork):
+        raise ValueError(
+            f"SupersessionProtocol.{entry_point}: {type(instance).__name__} "
+            f"is stored on the {backend.name!r} backend, so pipeline must be a "
+            "unit of work from that backend's transaction(), got "
+            f"{type(pipeline).__name__}"
+        )
+
+
 def _save_and_close_on_backend(
     backend: Any,
     new_instance: Any,
@@ -832,17 +855,26 @@ def _save_and_close_on_backend(
     ``closed_key`` is the truth rather than "unknown until you execute".
     Typed validity errors are raised at once on both shapes. A Redis
     pipeline cannot carry a write to this backend and is refused."""
-    from ..backends import UnitOfWork
-
-    if pipeline is not None and not isinstance(pipeline, UnitOfWork):
-        raise ValueError(
-            f"SupersessionProtocol.{entry_point}: {type(new_instance).__name__} "
-            f"is stored on the {backend.name!r} backend, so pipeline must be a "
-            "unit of work from that backend's transaction(), got "
-            f"{type(pipeline).__name__}"
-        )
+    _refuse_foreign_pipeline(backend, new_instance, pipeline, entry_point)
+    try:
+        planned_member = new_instance.db_key.redis_key
+    except Exception:  # an unresolvable key fails the save below, typed
+        planned_member = ""
 
     def work(uow: Any) -> Optional[str]:
+        # The lock order of the supersede below -- the (model, field) lock,
+        # then the record-key locks of the successor and the incumbent --
+        # taken before the save, which would otherwise lock the successor's
+        # key and row first and cross a concurrent supersede that names it.
+        backend.field_call(
+            new_instance._meta.spec,
+            field_name,
+            "lock",
+            planned_member,
+            old_member,
+            identity_digest,
+            uow=uow,
+        )
         saved = new_instance.save(pipeline=uow)
         blocked = getattr(new_instance, "_never_record_verdict", None)
         if not saved or blocked is not None:

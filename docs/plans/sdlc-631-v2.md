@@ -828,8 +828,12 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     instant, and the gate's `invalid_at <= as_of` flips for a close one ulp
     after `as_of` (measured on PostgreSQL 18.6; pinned by
     `test_timestamptz_would_not_hold_the_redis_score` and the bit-exact bound
-    test). A range also cannot tell "no `invalid_at` recorded" from "`+inf`",
-    which the exclusion rule distinguishes at `as_of = +inf`. This is M2a's
+    test). Second, a close at the record's own start (the script allows
+    `close == start`) would be `tstzrange(t, t)`, which collapses to `empty`
+    and keeps neither bound; `lower > upper` raises. (A range *can* tell "no
+    `invalid_at` recorded" from "`+inf`" -- `upper_inf('[t,)')` vs
+    `upper_inf('[t,infinity)')` -- so that was never a reason; the #777 review
+    corrected it.) This is M2a's
     clock decision applied to the interval: `<f>__valid_from`,
     `<f>__invalid_at`, `<f>__ingested_at`, `NULL` = absent from that index,
     `'Infinity'` = open; the declared value keeps `<f>`, as the Redis hash
@@ -846,12 +850,26 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   - **Chain links are `<f>__supersedes` / `<f>__superseded_by` on the row**,
     the double-underscore convention of M1/M2a, and `chain` is one `WITH
     RECURSIVE` over them.
-  - **`supersede` takes the `(model, field)` advisory lock first, then `FOR
-    UPDATE` in `_pk` order**, as this plan said; `ObservationProtocol`'s
-    batch takes the same lock before its row locks. Saves do not take it.
-  - **`semantic_search` / `keyword_search`** are listed here but need M2b's
-    `EmbeddingField` / `BM25Field` columns; they land on whichever of M2b's
-    merge or this PR comes second.
+  - **Every validity writer follows M2b's one lock order** (§6, TD-2): the
+    `(model, field)` advisory lock, then the record-key locks in `_pk` byte
+    order (`_record_locked`), then `FOR UPDATE` in `_pk` order. `supersede`
+    takes them in that order; `save_and_*` takes all of the supersede's locks
+    before its save (the save used to lock the successor first and deadlock
+    against a concurrent supersede naming it, #777 review: 10/10 forced
+    rounds deadlocked without the pre-lock, 0/10 with it); `import_state`
+    takes the field lock as a pointer writer; `ObservationProtocol`'s batch
+    takes the field lock before its row locks and locks a contradicted
+    record's successor with the batch. Plain saves do not take the field
+    lock.
+  - **NaN instants are refused before any write** with Redis's text, `value
+    is not a valid float`: a save declaring a NaN `valid_from`
+    (`ModelException`; Redis's `MULTI`/`EXEC` keeps the hash) and a NaN
+    instant in `supersede` (`ValueError`; Redis can tear the state, #778).
+  - **`composite_score`'s similarity arm is M2b's** (one `jsonb` parameter,
+    `_scores_arm`); #777 had built the same arm as an `unnest` CTE and
+    dropped it at the merge, keeping its validity mask on the arm.
+    `semantic_search` (with and without `indexes=`) and `keyword_search` run on
+    M2b's columns; `test_semantic_search.py` runs on both legs.
 - **Files (gate b).** `test_validity_field.py` (non-Lua tests),
   `test_partitioned_confidence.py`, `test_semantic_search.py`.
 

@@ -256,13 +256,28 @@ def _on_context_used_on_backend(
                     ((_get_instance_key(i), i) for i in by_model[model_cls]),
                     key=lambda kv: kv[0].encode("utf-8", "surrogateescape"),
                 )
+                # A contradicted record's successor is locked with the batch:
+                # its supersession takes the successor's record-key lock, and
+                # taken afterwards that could fall out of _pk byte order (a
+                # concurrent multi-record writer holding it would wait on the
+                # batch). Same model only -- a chain never crosses models.
+                lock_keys = {k for k, _ in keyed}
+                for pk, instance in keyed:
+                    if outcome_map.get(pk, "deferred") != "contradicted":
+                        continue
+                    successor = getattr(instance, "_superseded_by", None)
+                    if isinstance(successor, model_cls):
+                        try:
+                            lock_keys.add(_get_instance_key(successor))
+                        except Exception:  # unresolvable: it degrades later
+                            pass
                 backend.field_call(
                     model_cls._meta.spec,
                     "_observe",
                     "lock",
                     [
                         RecordId.from_key(model_cls._meta.model_name, k)
-                        for k, _ in keyed
+                        for k in sorted(lock_keys)
                     ],
                     uow=tx,
                 )

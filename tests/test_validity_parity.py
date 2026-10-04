@@ -375,6 +375,108 @@ class TestTypedErrors:
             assert issubclass(exc, ValueError)
 
 
+# -- NaN instants (#777 review B1, B2) -------------------------------------------
+
+#: What Redis replies when a ``ZADD`` score is NaN; Postgres refuses with the
+#: same text. The classes differ (documented): Redis raises ``ResponseError``,
+#: Postgres ``ModelException`` on a save and ``ValueError`` on a supersede.
+NAN_TEXT = "value is not a valid float"
+
+
+def _nan_error(backend):
+    import redis
+
+    from src.popoto.exceptions import ModelException
+
+    return (
+        (redis.exceptions.ResponseError,)
+        if backend.is_redis
+        else (
+            ModelException,
+            ValueError,
+        )
+    )
+
+
+class TestNanInstants:
+    def test_a_nan_valid_from_on_save_is_refused(self, backend):
+        """B1: Postgres used to store ``valid_from = NaN``, which sorts above
+        every float and so hid the record from every gate for good. Both legs
+        now refuse it and index no interval. Documented divergence: Redis's
+        MULTI/EXEC has already written the record's hash when the script's
+        ``ZADD`` fails, so the record exists there with no interval; Postgres
+        writes nothing."""
+        with pytest.raises(_nan_error(backend)) as info:
+            ParityClaim(name="n", validity=float("nan")).save()
+        assert NAN_TEXT in str(info.value)
+        if not backend.is_redis:
+            from src.popoto.exceptions import ModelException
+
+            assert type(info.value) is ModelException
+            assert str(info.value) == NAN_TEXT
+        exists = ParityClaim.query.get(name="n") is not None
+        assert exists is backend.is_redis  # the documented divergence
+        assert _interval(ParityClaim(name="n")) == (None, None)
+        assert _names(ParityClaim.query.filter(validity__current=True)) == []
+
+    @pytest.mark.parametrize("entry", ["supersede", "invalidate"])
+    def test_a_nan_at_is_refused_and_writes_nothing(self, backend, entry):
+        """B2: a NaN ``at`` (the close and, for ``supersede``, the start) is
+        refused with Redis's text on both legs, before any write."""
+        identity = SupersessionProtocol.identity_key("u", "plan")
+        old = _save("old")
+        SupersessionProtocol.supersede(old, identity_key=identity)
+        new = _save("new")
+        before = (_interval(old), _interval(new), _links(old), _links(new))
+        with pytest.raises(_nan_error(backend)) as info:
+            if entry == "supersede":
+                SupersessionProtocol.supersede(
+                    new, identity_key=identity, at=float("nan")
+                )
+            else:
+                SupersessionProtocol.invalidate(old, at=float("nan"))
+        assert NAN_TEXT in str(info.value)
+        if not backend.is_redis:
+            assert type(info.value) is ValueError
+            assert str(info.value).startswith(NAN_TEXT)
+        assert (_interval(old), _interval(new), _links(old), _links(new)) == before
+        assert _pointer(identity) == _key(old)
+
+    def test_a_nan_valid_from_alone_in_execute_supersede(self, backend):
+        """B2: ``valid_from`` NaN with a real close instant. Same text on both
+        legs; documented divergence: ``SUPERSEDE_LUA``'s validation phase does
+        not reject NaN, so on Redis the incumbent's close and both chain links
+        are written before the successor's ``ZADD`` fails, and the pointer
+        still names the incumbent -- half-written state, #778. Postgres checks
+        every instant before its first write and writes nothing."""
+        identity = SupersessionProtocol.identity_key("u", "plan")
+        old = _save("old")
+        SupersessionProtocol.supersede(old, identity_key=identity)
+        new = _save("new")
+        new_interval = _interval(new)
+        with pytest.raises(_nan_error(backend)) as info:
+            ValidityField.execute_supersede(
+                ParityClaim,
+                FIELD,
+                new_member=_key(new),
+                mode="supersede",
+                identity_digest=identity,
+                valid_from=float("nan"),
+            )
+        assert NAN_TEXT in str(info.value)
+        assert _pointer(identity) == _key(old)
+        assert _interval(new) == new_interval
+        if backend.is_redis:
+            # #778: torn -- the incumbent is closed and chained.
+            assert _interval(old)[1] != INF
+            assert _links(old) == (_key(new), None)
+        else:
+            assert type(info.value) is ValueError
+            assert _interval(old)[1] == INF
+            assert _links(old) == (None, None)
+            assert _links(new) == (None, None)
+
+
 # -- supersede, mode by mode ----------------------------------------------------
 
 
