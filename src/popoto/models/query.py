@@ -64,6 +64,7 @@ from typing import (
     Optional,
     TypeVar,
     Union,
+    cast,
     overload,
 )
 
@@ -339,6 +340,10 @@ def _fire_on_read(model_class, instances):
         if hasattr(inst, "_redis_key") or hasattr(inst, "db_key")
     ]
     if not valid:
+        return
+    if _decoded_backend(model_class):
+        # #759 M2a: one UPDATE stages every read, rows locked in _pk order.
+        model_class._stage_reads_on_backend(get_backend(model_class), valid)
         return
     pipe = get_REDIS_DB().pipeline()
     for inst in valid:
@@ -665,6 +670,17 @@ class QueryBuilder:
                 f"{', '.join(missing)}"
             )
 
+        if _decoded_backend(model_class):
+            return self._top_by_decay_on_backend(
+                model_class,
+                field,
+                field_name,
+                n,
+                effective_decay_rate,
+                effective_base_score_field,
+                as_of,
+            )
+
         # Use actual field class for key generation (CyclicDecayField has
         # its own field_class_key prefix, distinct from DecayingSortedField)
         sortedset_db_key = field.__class__.get_sortedset_db_key(
@@ -758,6 +774,207 @@ class QueryBuilder:
         if not self._no_track:
             _fire_on_read(model_class, instances)
 
+        return instances
+
+    def _decay_confidence_field(
+        self, model_class: Any, field: Any, field_name: str
+    ) -> Any:
+        """The ``ConfidenceField`` modulating ``field`` on a non-Redis backend,
+        or ``None``: the same resolution and switches as
+        ``confidence_modulation_args``."""
+        from ..fields.constants import Defaults
+        from ..fields.decaying_sorted_field import (
+            resolve_confidence_modulation_field,
+        )
+
+        conf_name, conf_field = resolve_confidence_modulation_field(
+            model_class, field, field_name
+        )
+        if conf_field is None or not Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH:
+            return None
+        return conf_name
+
+    def _top_by_decay_on_backend(
+        self,
+        model_class: Any,
+        field: Any,
+        field_name: str,
+        n: int,
+        decay_rate: Any,
+        base_score_field: Any,
+        as_of: Any,
+    ) -> list[Any]:
+        """``top_by_decay`` on a non-Redis backend (#759 M2a): the backend's
+        ``rank_decayed`` -- one ``SELECT`` with the decay expression in
+        ``ORDER BY`` -- then one ``load`` of the ranked rows, in rank order.
+
+        Only the partition filters scope the scan, as on Redis, where they
+        pick the sorted set and every other filter is ignored. ``as_of`` feeds
+        a validity gate, and no ``ValidityField`` can be declared on a
+        non-Redis model until #759 M3, so there is no gate to pass it to."""
+        import time
+
+        from ..backends.postgres.memory import partition_where
+        from .encoding import hydrate_decoded_row
+
+        backend = get_backend(model_class)
+        spec = model_class._meta.spec
+        scored = backend.rank_decayed(
+            spec,
+            field_name,
+            now=time.time(),
+            n=n,
+            where=partition_where({pf: self._filters[pf] for pf in field.partition_by}),
+            decay_rate=decay_rate,
+            base_score_field=base_score_field or None,
+            confidence_field=self._decay_confidence_field(
+                model_class, field, field_name
+            ),
+        )
+        if not scored:
+            return []
+        rows = backend.load(spec, [rid for rid, _score in scored])
+        instances = [
+            hydrate_decoded_row(model_class, row) for row in rows if row is not None
+        ]
+        if not self._no_track:
+            _fire_on_read(model_class, instances)
+        return instances
+
+    def _composite_terms(
+        self, model_class: Any, indexes: dict[str, float]
+    ) -> list[Any]:
+        """``composite_score``'s indexes as :class:`RankTerm` arms, with the
+        same refusals ``_resolve_index`` raises. Two names that resolve to the
+        same index keep the first one's position and the last one's weight,
+        as the ``{zset_key: weight}`` dict does on Redis."""
+        from ..backends import BackendCapabilityError, RankTerm
+        from ..backends.postgres.memory import partition_where
+        from ..fields.access_tracker import AccessTrackerMixin
+        from ..fields.confidence_field import ConfidenceField
+        from ..fields.decaying_sorted_field import DecayingSortedField
+        from ..fields.sorted_field_mixin import SortedFieldMixin
+        from ..fields.write_filter import WriteFilterMixin
+
+        model_name = model_class.__name__
+        arms: dict[tuple[str, Any], Any] = {}
+        for field_name, weight in indexes.items():
+            if field_name == "priority":
+                if not issubclass(model_class, WriteFilterMixin):
+                    raise QueryException(
+                        f"'{model_name}' does not use WriteFilterMixin; "
+                        f"cannot resolve 'priority' index"
+                    )
+                raise BackendCapabilityError(
+                    "composite_score index 'priority': the WriteFilter priority "
+                    "tier is not stored on Postgres (a no-op there, #759 plan §5 "
+                    "M2)"
+                )
+            if field_name in ("access_count", "access_score"):
+                if not issubclass(model_class, AccessTrackerMixin):
+                    raise QueryException(
+                        f"'{model_name}' does not use AccessTrackerMixin; "
+                        f"cannot resolve '{field_name}' index"
+                    )
+                arms[("access", None)] = RankTerm("access", weight)
+                continue
+            if field_name not in model_class._meta.fields:
+                raise QueryException(
+                    f"'{model_name}' has no field '{field_name}'. "
+                    f"Valid fields: {list(model_class._meta.fields.keys())}"
+                )
+            field = model_class._meta.fields[field_name]
+            if isinstance(field, (DecayingSortedField, SortedFieldMixin)):
+                try:
+                    partition = {pf: self._filters[pf] for pf in field.partition_by}
+                except KeyError:
+                    missing = [
+                        pf for pf in field.partition_by if pf not in self._filters
+                    ]
+                    raise QueryException(
+                        f"composite_score() on '{field_name}' requires "
+                        f"partition filter(s): {', '.join(missing)}"
+                    )
+                if isinstance(field, DecayingSortedField):
+                    conf = self._decay_confidence_field(model_class, field, field_name)
+                    arms[("decay", field_name)] = RankTerm(
+                        "decay",
+                        weight,
+                        field_name,
+                        partition_where(partition),
+                        options={"confidence_field": conf},
+                    )
+                else:
+                    arms[("sorted", field_name)] = RankTerm(
+                        "sorted", weight, field_name, partition_where(partition)
+                    )
+                continue
+            if isinstance(field, ConfidenceField):
+                arms[("confidence", field_name)] = RankTerm(
+                    "confidence", weight, field_name
+                )
+                continue
+            raise QueryException(
+                f"Field '{field_name}' ({type(field).__name__}) does not have "
+                f"a sorted set index and cannot be used in composite_score()"
+            )
+        return list(arms.values())
+
+    def _composite_score_on_backend(
+        self,
+        model_class: Any,
+        indexes: dict[str, float],
+        limit: int,
+        aggregate: str,
+        min_score: Optional[float],
+        post_filter: Any,
+        co_occurrence_boost: Any,
+        similarity_boost: Any,
+        temperature: float,
+        as_of: Optional[float],
+    ) -> list[Any]:
+        """``composite_score`` on a non-Redis backend (#759 M2a): the
+        backend's ``rank_composite`` -- one ``SELECT`` with the weighted
+        aggregate over each arm's domain -- then ``post_filter`` on the
+        temperature-scaled scores and one ``load``, as the Redis path does
+        after its ``ZREVRANGE``."""
+        from ..backends import BackendCapabilityError
+        from .encoding import hydrate_decoded_row
+
+        terms = self._composite_terms(model_class, indexes)
+        if co_occurrence_boost or similarity_boost:
+            raise BackendCapabilityError(
+                "composite_score(co_occurrence_boost=/similarity_boost=) is not "
+                "available on Postgres yet: the similarity arm arrives with the "
+                "#759 M2 vector work, co_occurrence_boost in M4"
+            )
+        if not terms:
+            return []
+        backend = get_backend(model_class)
+        spec = model_class._meta.spec
+        scored = backend.rank_composite(
+            spec,
+            terms,
+            limit=limit,
+            aggregate=cast(Any, aggregate),
+            min_score=min_score,
+            where=None,
+            as_of=as_of,
+            temperature=temperature,
+        )
+        ids = [
+            rid
+            for rid, score in scored
+            if post_filter is None or post_filter(rid.canonical, score)
+        ]
+        if not ids:
+            return []
+        rows = backend.load(spec, ids)
+        instances = [
+            hydrate_decoded_row(model_class, row) for row in rows if row is not None
+        ]
+        if not self._no_track:
+            _fire_on_read(model_class, instances)
         return instances
 
     def composite_score(
@@ -858,6 +1075,21 @@ class QueryBuilder:
 
         if temperature <= 0:
             raise QueryException(f"temperature must be > 0 (got {temperature})")
+
+        if _decoded_backend(model_class):
+            self._validity_as_of = None
+            return self._composite_score_on_backend(
+                model_class,
+                indexes,
+                limit,
+                aggregate,
+                min_score,
+                post_filter,
+                co_occurrence_boost,
+                similarity_boost,
+                temperature,
+                as_of,
+            )
 
         # --- Resolve each index to a Redis sorted set key ---
         resolved_keys = {}  # {redis_zset_key: weight}

@@ -145,9 +145,61 @@ def test_postgres_refuses_fields_beyond_m1_1_naming_each():
         validate_spec(VsWide._meta.spec, "postgres")
     message = str(info.value)
     assert "place (GeoField)" in message
-    assert "relevance (DecayingSortedField)" in message
+    # DecayingSortedField is stored on Postgres from #759 M2a.
+    assert "relevance" not in message
     assert "listed (IndexedField, type=list)" in message
     assert "indexed field needs a scalar column type" in message
+
+
+def test_postgres_accepts_the_m2a_memory_fields_and_refuses_later_ones():
+    """#759 M2a: the decay clock and ConfidenceField are stored on Postgres;
+    a partitioned ConfidenceField (M3) and a CyclicDecayField (M5) are not."""
+
+    class VsMemory(popoto.AccessTrackerMixin, popoto.Model):
+        name = popoto.KeyField()
+        relevance = popoto.DecayingSortedField(base_score_field="name")
+        certainty = popoto.ConfidenceField()
+
+    class VsMemoryLater(popoto.Model):
+        name = popoto.KeyField()
+        project = popoto.KeyField()
+        certainty = popoto.ConfidenceField(partition_by="project")
+        rhythm = popoto.CyclicDecayField()
+
+    validate_spec(VsMemory._meta.spec, "postgres")
+    assert VsMemory._meta.spec.mixins == frozenset({"AccessTrackerMixin"})
+    with pytest.raises(BackendCapabilityError) as info:
+        validate_spec(VsMemoryLater._meta.spec, "postgres")
+    message = str(info.value)
+    assert "certainty (ConfidenceField, partition_by=)" in message
+    assert "partitioned confidence arrives in M3" in message
+    assert "rhythm (CyclicDecayField)" in message
+
+
+def test_postgres_refuses_a_prediction_ledger_at_bind():
+    """#773 review: the ledger lives in Redis structures until M5, so a
+    Postgres model declaring it is refused statically instead of letting
+    ``record_prediction`` / ``auto_resolve`` issue Redis commands for a
+    record Redis does not hold."""
+    from popoto.fields.prediction_ledger import PredictionLedgerMixin
+
+    class VsLedger(PredictionLedgerMixin, popoto.AccessTrackerMixin, popoto.Model):
+        name = popoto.KeyField()
+
+    assert "PredictionLedgerMixin" in VsLedger._meta.spec.mixins
+    validate_spec(VsLedger._meta.spec, "redis")
+    with pytest.raises(BackendCapabilityError) as info:
+        validate_spec(VsLedger._meta.spec, "postgres")
+    message = str(info.value)
+    assert "PredictionLedgerMixin is not supported yet" in message
+    assert "M5" in message and "AccessTrackerMixin" not in message
+    with pytest.raises(BackendCapabilityError, match="PredictionLedgerMixin"):
+
+        class VsLedgerPg(PredictionLedgerMixin, popoto.Model):
+            name = popoto.KeyField()
+
+            class Meta:
+                backend = "postgres"
 
 
 def test_postgres_refuses_hook_overriding_custom_fields_only():

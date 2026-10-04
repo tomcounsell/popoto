@@ -3,8 +3,10 @@
 ``PostgresBackend`` implements protocol groups A-C (lifecycle, records, query)
 natively -- one typed table per model (:mod:`.schema`), ``WHERE`` compiled
 from the query (:mod:`.plan`) -- with no Redis structure emulated and no
-msgpack stored. Groups D-H raise :class:`BackendCapabilityError` until their
-milestone.
+msgpack stored. Since M2a, ``touch``, ``update_confidence``, ``rank_decayed``,
+``rank_composite`` and the memory ``field_call`` adapters come from
+:mod:`.memory`; the rest of groups D-H raise :class:`BackendCapabilityError`
+until their milestone.
 
 Selection (plan §4): ``Meta.backend = "postgres"`` on a model, or
 ``POPOTO_BACKEND=postgres`` for the process, with the DSN from
@@ -47,6 +49,7 @@ from typing import Any, Iterator, Optional, Sequence, Union
 from ...fields.constants import Defaults
 from ..types import (
     BackendCapabilityError,
+    BackendRetryableError,
     BackendUnavailableError,
     Capabilities,
     Expiry,
@@ -59,6 +62,7 @@ from ..types import (
 )
 from ..planning import has_filters
 from .codec import decode_json, encode_json_element
+from .memory import NOT_HANDLED, PostgresMemoryOps
 from .plan import (
     non_null_fields,
     render_order,
@@ -137,6 +141,37 @@ def _import_psycopg() -> Any:
             "pip install 'popoto[postgres]'"
         ) from exc
     return psycopg
+
+
+def _rollback_errors(psycopg: Any) -> tuple[type[BaseException], ...]:
+    """The errors that mean "this transaction was rolled back by a concurrent
+    one; run it again": SQLSTATE class 40's deadlock and serialization
+    failures. psycopg 3 maps 40P01 and 40001 to ``DeadlockDetected`` and
+    ``SerializationFailure``, which are *not* subclasses of its
+    ``TransactionRollback`` (40000), so catching that class alone missed
+    every real deadlock (#759 M2a)."""
+    errors = psycopg.errors
+    return (
+        errors.TransactionRollback,
+        errors.SerializationFailure,
+        errors.DeadlockDetected,
+    )
+
+
+def _retryable(exc: BaseException, attempts: int = 1) -> BackendRetryableError:
+    """The popoto type for a rolled-back transaction (plan §6, TD-2): a
+    deadlock (40P01) or serialization failure (40001, 40000) reaches the
+    caller as :class:`BackendRetryableError`, raised ``from`` the driver
+    error, never as raw psycopg (#759 M2a, review B1). 40003
+    (``StatementCompletionUnknown``) is deliberately not in
+    :func:`_rollback_errors`: the statement may have committed, so it follows
+    :meth:`PostgresBackend._may_retry_broken` (#769)."""
+    sqlstate = getattr(exc, "sqlstate", None) or "40000"
+    times = "" if attempts <= 1 else f" {attempts} times"
+    return BackendRetryableError(
+        f"rolled back by a concurrent transaction{times} "
+        f"(SQLSTATE {sqlstate}: {exc}); retry it"
+    )
 
 
 def _pool_for(dsn: str) -> Any:
@@ -273,12 +308,14 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 # -- the backend --------------------------------------------------------------
 
 
-class PostgresBackend(SearchMixin):
+class PostgresBackend(SearchMixin, PostgresMemoryOps):
     """The Postgres implementation of :class:`popoto.backends.Backend`.
 
     Search -- ``keyword_search``, ``vector_search``, ``membership_*`` and the
     ``[PG-only]`` ``recall`` -- comes from :class:`.search.SearchMixin`
-    (#759 M2b)."""
+    (#759 M2b). Groups D/E's ranking and memory state (``touch``,
+    ``update_confidence``, ``rank_decayed``, ``rank_composite``) come from
+    :class:`~.memory.PostgresMemoryOps` (#759 M2a)."""
 
     name = "postgres"
 
@@ -348,8 +385,11 @@ class PostgresBackend(SearchMixin):
             pool = _pool_for(self.dsn)
             with pool.connection() as conn:
                 yield conn
-        except psycopg.errors.TransactionRollback:
-            raise
+        except _rollback_errors(psycopg) as exc:
+            # Raised by the block (a caller-owned ``transaction()``, including
+            # its COMMIT) or by DDL: the work was rolled back, not lost to an
+            # outage. Not retried here -- the caller owns the transaction.
+            raise _retryable(exc) from exc
         except psycopg.OperationalError as exc:
             raise self._fail(exc, write=write) from exc
 
@@ -379,8 +419,10 @@ class PostgresBackend(SearchMixin):
         if pg is not None:
             try:
                 cur = pg.conn.execute(sql, params)
-            except psycopg.errors.TransactionRollback:
-                raise
+            except _rollback_errors(psycopg) as exc:
+                # The caller owns the transaction, so it decides whether to
+                # run it again: no internal retry, one popoto type.
+                raise _retryable(exc) from exc
             except psycopg.OperationalError as exc:
                 raise self._fail(exc, write=write) from exc
             rows = cur.fetchall() if cur.description else []
@@ -401,10 +443,10 @@ class PostgresBackend(SearchMixin):
                     rowcount = cur.rowcount
                 self._ok()
                 return rows, rowcount
-            except psycopg.errors.TransactionRollback:
+            except _rollback_errors(psycopg) as exc:
                 attempt += 1
                 if attempt >= attempts:
-                    raise
+                    raise _retryable(exc, attempt) from exc
                 time.sleep(random.uniform(0.005, 0.05) * attempt)
             except psycopg.OperationalError as exc:
                 if not reconnected and self._may_retry_broken(conn, exc, write):
@@ -492,6 +534,7 @@ class PostgresBackend(SearchMixin):
         """Drop the in-process memo of checked tables (test isolation)."""
         with self._lock:
             self._tables.clear()
+            self.__dict__.pop("_recall_ready", None)
 
     # -- A. lifecycle ----------------------------------------------------------
 
@@ -518,9 +561,13 @@ class PostgresBackend(SearchMixin):
     def transaction(self) -> Iterator[PostgresUnitOfWork]:
         """One ``READ COMMITTED`` transaction on one pooled connection: every
         write passed this unit of work (``pipeline=uow``) commits together or
-        rolls back together. Deadlock/serialization failures inside it are
-        re-raised for the caller to retry; single-statement writes outside a
-        unit of work are retried automatically."""
+        rolls back together. A deadlock or serialization failure inside it
+        (or at its COMMIT) rolls the whole unit back and raises
+        :class:`~popoto.backends.BackendRetryableError` at once -- it is not
+        retried internally, because only the caller can run its block again.
+        Single statements outside a unit of work are retried automatically
+        (``Defaults.PG_TRANSACTION_RETRIES``) and raise the same type once
+        the retries are spent."""
         with self._connection(write=True) as conn:
             with conn.transaction():
                 ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
@@ -948,23 +995,12 @@ class PostgresBackend(SearchMixin):
             "in this release"
         )
 
-    def touch(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("touch", "M2")
-
-    def update_confidence(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("update_confidence", "M2")
-
     def supersede(self, *a: Any, **kw: Any) -> Any:
         raise self._later("supersede", "M3")
 
     def chain(self, *a: Any, **kw: Any) -> Any:
         raise self._later("chain", "M3")
 
-    def rank_decayed(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("rank_decayed", "M2")
-
-    def rank_composite(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("rank_composite", "M2")
 
     def graph_update(self, *a: Any, **kw: Any) -> Any:
         raise self._later("graph_update", "M4")
@@ -997,6 +1033,9 @@ class PostgresBackend(SearchMixin):
             and fs.options.get("capped")
         ):
             return self._capped_push(spec, field, *args, uow=uow, **kwargs)
+        handled = self._memory_field_call(spec, field, op, args, kwargs, uow)
+        if handled is not NOT_HANDLED:
+            return handled
         raise self._later(f"field_call({kind}, {op!r})", "M2")
 
     def _capped_push(

@@ -43,6 +43,7 @@ from ..exceptions import SkipSaveException
 # issuing commands against the pre-reconfiguration client (#655). The
 # anti-pattern is deliberately described here rather than quoted, so that a
 # grep for it does not match this comment.
+from ..backends.routing import non_redis_backend
 from ..redis_db import get_REDIS_DB
 from .constants import Defaults, _read_tombstone_prior_switch
 from .tombstone_prior import TombstonePriorStore, penalty_for
@@ -251,6 +252,11 @@ class WriteFilterMixin:
             field = type(self)._wf_fingerprint_field()
             if field is None:
                 return score
+            if non_redis_backend(self) is not None:
+                # Burials are recorded by MemoryLifecycle, which reaches
+                # Postgres in #759 M4; until then a record stored there has
+                # none, and the Redis hash is not consulted for it.
+                return score
 
             from .existence_filter import _compute_fingerprint_impl
 
@@ -292,6 +298,10 @@ class WriteFilterMixin:
         score = getattr(self, "_write_filter_score", None)
         if score is None or score < self._wf_priority_threshold:
             return
+        if non_redis_backend(self) is not None:
+            # The priority tier is a no-op off Redis (#759 plan §5 M2): the
+            # gate above the seam still decides whether the record is saved.
+            return
 
         priority_key = self._wf_key("priority")
         redis_key = self._redis_key or self.db_key.redis_key
@@ -309,6 +319,8 @@ class WriteFilterMixin:
         Args:
             pipeline: Optional Redis pipeline for batch operations.
         """
+        if non_redis_backend(self) is not None:
+            return
         priority_key = self._wf_key("priority")
         redis_key = self._redis_key or self.db_key.redis_key
 

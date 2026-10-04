@@ -33,6 +33,14 @@ from src.popoto.fields.validity_field import ValidityField
 from src.popoto.models.query import QueryException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M2a, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+
 # --- Test Models ---
 
 
@@ -205,6 +213,9 @@ class TestTopByDecay:
         DecayWithBase.delete_all()
         PartitionedDecay.delete_all()
 
+    @pytest.mark.redis_only(
+        reason="backdates the decay clock with a raw ZADD on the Redis sorted set; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_basic_ranking(self):
         """More recently saved items rank higher with equal base scores."""
         # Create items with staggered saves
@@ -244,6 +255,9 @@ class TestTopByDecay:
         results = DecayItem.query.top_by_decay("relevance", n=0)
         assert results == []
 
+    @pytest.mark.redis_only(
+        reason="backdates the decay clock with a raw ZADD on the Redis sorted set; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_decay_rate_override(self):
         """Override decay_rate at query time."""
         # Create two items at different times
@@ -358,6 +372,9 @@ class TestTouch:
         with pytest.raises(TypeError):
             item.touch("relevance")
 
+    @pytest.mark.redis_only(
+        reason="backdates the decay clock with a raw ZADD on the Redis sorted set; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_touch_affects_ranking(self):
         """touch() makes item rank higher in top_by_decay."""
         item_a = DecayItem.create(name="touch_a")
@@ -384,6 +401,9 @@ class TestTouch:
 # --- Decay formula verification ---
 
 
+@pytest.mark.redis_only(
+    reason="backdates the decay clock with a raw ZADD on the Redis sorted set; the two-leg version is in tests/test_backend_parity_memory.py"
+)
 class TestDecayFormula:
     """Verify decay computation against hand-computed values."""
 
@@ -450,6 +470,9 @@ class TestDecayFormula:
 # --- Performance benchmarks ---
 
 
+@pytest.mark.redis_only(
+    reason="evaluates DECAY_SCORE_LUA directly against Redis structures; the two-leg version is in tests/test_backend_parity_memory.py"
+)
 class TestDecayBenchmarks:
     """Benchmark top_by_decay on larger sorted sets."""
 
@@ -527,6 +550,9 @@ class TestDecayBenchmarks:
         popoto.POPOTO_REDIS_DB.delete(ss_key.redis_key)
 
 
+@pytest.mark.redis_only(
+    reason="evaluates DECAY_SCORE_LUA directly against Redis structures; the two-leg version is in tests/test_backend_parity_memory.py"
+)
 class TestDecayBenchmarksWithModulation:
     """Same budgets as ``TestDecayBenchmarks``, with modulation ENABLED.
 
@@ -646,6 +672,9 @@ class TestDecayTieOrdering:
         decoded = [x.decode() if isinstance(x, bytes) else x for x in raw]
         return [decoded[i + 1] for i in range(0, len(decoded), 2)]
 
+    @pytest.mark.redis_only(
+        reason="evaluates DECAY_SCORE_LUA directly against Redis structures; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_scores_are_actually_tied(self):
         """All planted members share exactly one score (tie path exercised)."""
         self._plant_tied()
@@ -759,6 +788,9 @@ class TestDecayTieOrderingWithConfidence:
         decoded = [x.decode() if isinstance(x, bytes) else x for x in raw]
         return [decoded[i + 1] for i in range(0, len(decoded), 2)]
 
+    @pytest.mark.redis_only(
+        reason="evaluates DECAY_SCORE_LUA directly against Redis structures; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_no_confidence_members_remain_bit_exactly_tied(self):
         """Zero evidence == c0 for every member, so the tie must survive."""
         self._plant_tied()
@@ -773,6 +805,9 @@ class TestDecayTieOrderingWithConfidence:
         results = DecayConfItem.query.top_by_decay("relevance", n=10)
         assert [r.db_key.redis_key for r in results] == expected
 
+    @pytest.mark.redis_only(
+        reason="plants confidence payloads with a raw HSET and evaluates DECAY_SCORE_LUA directly; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_differing_confidence_members_stop_tying(self):
         """Distinct evidence must produce distinct scores -- no tie left."""
         records = self._plant_tied()
@@ -785,6 +820,9 @@ class TestDecayTieOrderingWithConfidence:
         results = DecayConfItem.query.top_by_decay("relevance", n=10)
         assert [r.name for r in results] == list(reversed(self.NAMES))
 
+    @pytest.mark.redis_only(
+        reason="plants confidence payloads with a raw HSET and evaluates DECAY_SCORE_LUA directly; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_equal_confidence_members_still_tie_and_break_by_key(self):
         """Same evidence => same score => #448 key-ascending decides."""
         records = self._plant_tied()
@@ -797,6 +835,9 @@ class TestDecayTieOrderingWithConfidence:
         results = DecayConfItem.query.top_by_decay("relevance", n=10)
         assert [r.db_key.redis_key for r in results] == expected
 
+    @pytest.mark.redis_only(
+        reason="plants confidence state with a raw HSET on the Redis companion hash; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_deterministic_truncation_at_n_with_modulation(self):
         """Truncation stays deterministic across the n boundary."""
         records = self._plant_tied()
@@ -832,6 +873,9 @@ class DecayValidityItem(popoto.Model):
     validity = ValidityField()
 
 
+@pytest.mark.redis_only(
+    reason="uses a ValidityField, which Postgres stores from #759 M3"
+)
 class TestValidityGating:
     """top_by_decay with the decay-Lua validity gate on and off (#580, D5).
 

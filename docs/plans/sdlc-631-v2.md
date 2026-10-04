@@ -104,7 +104,10 @@ confirmation from #758's author.
 
 **#756** stays a companion: a one-off Redis→Postgres copy for Valor and
 Yudame, not dual-write, read-through or a runtime feature. It targets the DDL
-M2 pins. Under decision 1 it **merges several per-machine Redis stores into
+M2 pins, with the column names and types M2a shipped (§3 table, and the
+M2a departures under §5 M2): `double precision` epoch-second clocks named
+after the field, `<f>__conf`/`__n`/`__corr`/`__contra`, and
+`_access_count`/`_last_accessed`/`_staged_reads`/`_staged_at`. Under decision 1 it **merges several per-machine Redis stores into
 one database**. Proposed rule, to confirm on #756: within a scope, an equal
 `_pk` with an equal payload is deduplicated; a differing payload keeps the
 later `_updated_at` (tie: the greater source id) and logs the loser to
@@ -187,11 +190,11 @@ under both §5 gates (Redis regression, Postgres parity).
 | `CoOccurrenceField.link`/`strengthen`/`unlink`/`weaken_all` | `LINK_WITH_PRUNE_LUA`, `STRENGTHEN_CLAMP_LUA`, `WEAKEN_ALL_LUA` | `graph_update` | edge table upsert; prune by a window rank | M4 |
 | `CoOccurrenceField.propagate`, `recipes/graph_traversal.traverse` | `PROPAGATE_BFS_LUA`, `SRANDMEMBER` | `graph_expand` | `WITH RECURSIVE` with depth/threshold | M4 |
 | `CoOccurrenceField.get_linked` | edge-set read | `graph_expand` (`depth=1`, no threshold; weights come back as scores) | one indexed read of `<model>__<f>_edges` by `src` | M4 |
-| `AccessTrackerMixin` (`on_read`, `confirm_access`, `discard_staged_access`) | `CONFIRM_ACCESS_LUA`, meta hashes | `field_call` | `_access_count`, `_last_accessed` columns + staged-read columns that expire by comparison (#758 D2) | M2 |
+| `AccessTrackerMixin` (`on_read`, `confirm_access`, `discard_staged_access`) | `CONFIRM_ACCESS_LUA`, meta hashes | `field_call` | `_access_count bigint`, `_last_accessed double precision` + `_staged_reads bigint`, `_staged_at double precision` that expire by comparison (#758 D2; M2a) | M2 |
 | `WriteFilterMixin`, `ObservationProtocol`, `NeverRecordMixin`, `AppendOnlyMixin` | Python above storage; `$WF:` priority set | above the seam, plus `field_call` for the priority tier | unchanged | M2 (`NeverRecordMixin`, `AppendOnlyMixin`: M4) |
 | Recipes: `ContextAssembler`, `AdaptiveAssembler`, `DefaultMemory`, `SubconsciousMemory`, `TrajectoryMemory`, `MemoryLifecycle`, `ProvenanceJournal`, `TelemetryRecorder`, `BeliefSheetResolver`, `reconciliation`, `policy_cache` | field/model methods (#630) | none new | follows from M1–M3 | M4 (`ContextAssembler`: M2) |
 | `recipes/question_queue.py` | `_DELIVER/_CLAIM/_RELEASE_LUA` | `field_call` (or a model-level `claim`) | `SELECT … FOR UPDATE SKIP LOCKED` | M4 |
-| `Model.idle_seconds` (`memory_lifecycle`) | `OBJECT IDLETIME` | `field_call` | `now() - _last_accessed` | M4 |
+| `Model.idle_seconds` (`memory_lifecycle`) | `OBJECT IDLETIME` | `field_call` | `extract(epoch from now()) - _last_accessed` (epoch seconds since M2a) | M4 |
 | `Meta.ttl`, `save(ttl=/expire_at=)` | `EXPIRE`/`EXPIREAT` | `save(expiry=)` | `_expires_at` column + read filter + automatic reaper on writes (#755 Q3) | M5 |
 | `popoto.batch()`, `pipeline=` kwarg everywhere | `GuardedPipeline` (`MULTI`/`EXEC`) | `transaction` | one DB transaction | M5 |
 | `async_*` twins, `get_async_redis_db` | `redis.asyncio` | `AsyncBackend` twin | `psycopg.AsyncConnection` pool | M5 |
@@ -356,7 +359,7 @@ firing from there. `src/popoto/backends/postgres/` never imports `redis`, and
 | Method | Redis: delegates to (on `main` today) | Postgres: SQL |
 |---|---|---|
 | `bind` (lazy, first use) | no-op; returns the full capability set | require `server_version_num >= 180000` (else a clear error naming the version found); check `pg_extension`; compile `ModelSpec` → DDL; check the `popoto_schema` fingerprint and version record (§3). Field refusal is the static `validate_spec`, earlier |
-| `transaction` | `batch()` → `GuardedPipeline` (`MULTI`/`EXEC`) | pool connection, one `READ COMMITTED` transaction, atomic on failure (§1.1); rows locked in PK order; `DeadlockDetected`/`SerializationFailure` retried up to 3 times with jitter, then re-raised (TD-2, #758 D2) |
+| `transaction` | `batch()` → `GuardedPipeline` (`MULTI`/`EXEC`) | pool connection, one `READ COMMITTED` transaction, atomic on failure (§1.1); rows locked in PK order; a single statement outside a unit of work retries `DeadlockDetected`/`SerializationFailure` up to `Defaults.PG_TRANSACTION_RETRIES` times with jitter, then raises `BackendRetryableError` chained from the driver error; inside a caller-owned `transaction()` (a statement or its `COMMIT`) the unit rolls back and `BackendRetryableError` is raised at once, never retried, because only the caller can rerun its block; 40003 (completion unknown) is not retryable and follows the #769 dead-connection rule (TD-2, #758 D2; M2a, #773) |
 | `save` | `Model.save` body: `HSET` msgpack, `$Class:` `SADD`, field `on_save` hooks, `INDEX_SWAP_LUA`/`TAG_SWAP_LUA`, `EXPIRE` | `INSERT … ON CONFLICT (_pk) DO UPDATE SET …` + compiler `write_sql` (postings, edges) in one txn |
 | `load` | `Query.get`/`get_many`: `HGETALL`/`HMGET` + `decode_popoto_model_hashmap` | `SELECT <cols> FROM <table> WHERE _pk = ANY($1)` |
 | `delete` | `Model.delete` body: `on_delete` hooks, `DEL`, `SREM` | `DELETE … WHERE _pk = ANY($1)`; companions cascade |
@@ -407,8 +410,8 @@ firing from there. `src/popoto/backends/postgres/` never imports `redis`, and
 | `TagField` | `text[]` | GIN |
 | `Relationship` | `text` (target `_pk`) | B-tree; **no FK by default** (Redis enforces none; circular refs) |
 | `GeoField` | `geography(Point,4326)` | GiST (needs PostGIS) |
-| `DecayingSortedField` | `<f>_at timestamptz` | B-tree `(partition cols…, <f>_at)` |
-| `ConfidenceField` | `<f> double precision`, `<f>_n int`, `<f>_corr int`, `<f>_contra int` | B-tree on `<f>` |
+| `DecayingSortedField` | `<f> double precision` (epoch seconds, the Redis sorted-set score; M2a departure, §5 M2) | B-tree `(partition cols…, <f>, _pk COLLATE "C")` |
+| `ConfidenceField` | `<f> double precision` (the model attribute, as the Redis hash keeps it) + state `<f>__conf double precision`, `<f>__n bigint`, `<f>__corr bigint`, `<f>__contra bigint` (`NULL` = the seed; M2a) | none (M2a departure, §5 M2) |
 | `ValidityField` | `<f> tstzrange`, `<f>_ingested_at timestamptz`, `<f>_identity text`, `<f>_supersedes text`, `<f>_superseded_by text` | GiST on `<f>`; partial `UNIQUE (<f>_identity) WHERE upper_inf(<f>)` replaces the open-pointer STRING |
 | `EmbeddingField` | `vector(d)` (`d` from provider) | HNSW `vector_cosine_ops` past the threshold (needs pgvector) |
 | `BM25Field` | `<f>_len int` + companion `<model>__<f>_postings(scope, term, _pk, tf)` | PK `(scope, term, _pk)` |
@@ -416,7 +419,7 @@ firing from there. `src/popoto/backends/postgres/` never imports `redis`, and
 | `ExistenceFilter` / `FrequencySketch` | companion `(token)` / `(token, count)` | PK |
 | `ContentField` | `text` (or a `ContentStore` reference, as today) | none |
 | `CyclicDecayField` / `TDValueField` | `jsonb` cycles + pressure / `double precision` | none |
-| `AccessTrackerMixin` | `_access_count int`, `_last_accessed timestamptz`, `_staged_reads int`, `_staged_at timestamptz` (#758 D2) | B-tree `(_last_accessed)` |
+| `AccessTrackerMixin` | `_access_count bigint`, `_last_accessed double precision`, `_staged_reads bigint`, `_staged_at double precision` (#758 D2; epoch seconds, M2a) | none (M2a departure, §5 M2) |
 | `DataFrameField` | `bytea` | none |
 | custom `Field` subclass with no compiler | if it overrides no hook: column from `type=`; otherwise `bind()` refuses | decision 4 |
 
@@ -632,7 +635,52 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
 - **Scope: `[PG-only]`** (§1.1): `recall()`, composable scoping, per-scope
   BM25 statistics, `top_by_relevance`, the embedding backfill,
   `_migrated_from`/`_estimated_fields`, and a compiler test pinning the DDL for
-  Valor's `Memory`, which #756 targets.
+  Valor's `Memory`, which #756 targets. That pin uses the column names and
+  types M2a shipped (below), not the ones this plan first proposed.
+- **M2a as shipped (#773): departures from this plan, recorded.** M2a is
+  decay + `touch`, confidence (+ modulation), `AccessTrackerMixin`,
+  `WriteFilterMixin`, `ObservationProtocol`, `RecallProposal` and
+  `composite_score`; search (BM25, embeddings) is M2b.
+  - **Clocks are `double precision` epoch seconds, not `timestamptz`.**
+    `timestamptz` keeps microseconds only, so a clock round-tripped through
+    it is not the Redis sorted-set score, and the decay score computed from
+    it is not bit-identical to `DECAY_SCORE_LUA`'s. The decay clock is the
+    field's own column `<f>` (not `<f>_at`); `_last_accessed` and
+    `_staged_at` are `double precision` too. It does not constrain M3:
+    `tstzrange` lives on `ValidityField`'s own column, and the gate only
+    needs `to_timestamp(as_of)`.
+  - **Confidence state columns are `<f>__conf`, `<f>__n`, `<f>__corr`,
+    `<f>__contra`** (double underscore, the M1 `<f>__utcoff` convention;
+    counts `bigint`), beside `<f>`, which keeps the model attribute as the
+    Redis hash does. `NULL` state is the seed, so a save never writes it and
+    a re-save cannot reset it.
+  - **No state-column indexes** (none on `<f>`, `<f>__conf`,
+    `_last_accessed`). Each would make every `update_confidence` and
+    `confirm_access` a non-HOT update, and no M2a query filters or orders by
+    one alone. Measured in the #773 review (`EXPLAIN ANALYZE`, N=20k, base +
+    confidence, n=10, PostgreSQL 18.6, M1 Max): unpartitioned, a seq scan
+    plus top-N heapsort, 13.7 ms execution, p50 14.9 ms, the clamped
+    subplans never executed; a 5% partition, a bitmap scan on the decay
+    B-tree, 0.86 ms, p50 2.4 ms. With the `OFFSET 0` fence the patch added
+    (the score is evaluated once per row instead of once per sort key), the
+    same shapes measured p50 10.1 ms and 1.6 ms in the patch's run (14.7 ms
+    and 2.6 ms unfenced, same run and machine). Revisit if a later query
+    filters on a state column.
+  - **No `(model, field)` advisory lock for single-row updates.** A
+    confidence update is one `UPDATE … RETURNING`, a `touch` one `UPDATE`,
+    and `on_context_used` locks its batch `FOR UPDATE` in `_pk` order before
+    any effect: row locks alone serialize them. Review measurement: 6
+    processes × 300 mixed calls on 5 shared rows, 0 lost updates. The
+    advisory lock (TD-2) is deferred to M3's `supersede`, the one operation
+    that validates across rows. A cross-transaction deadlock is still
+    possible (a caller's own `transaction()` taking rows in another order);
+    it surfaces as `BackendRetryableError` (§2 `transaction`).
+  - **`RecallProposal` is one engine table per schema**,
+    `popoto_recall_proposal (model, part, member, surfaced_at)` keyed
+    `(model, part, member)`, created on first use under
+    `pg_advisory_xact_lock` like `popoto_schema`, not a companion per model.
+    It carries the model tables' model-name-collision caveat on a shared
+    schema.
 - **Exit criteria.**
   - Gates (a) and (b) on the files below.
     `ContextAssembler(retrieval_mode="auto")` returns the same ranked keys on
@@ -717,7 +765,7 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
 |---|---|---|
 | TD-1, #747 | the phase checker is vacuous | M0(a) |
 | TD-12, TD-15, TD-26, TD-40 | NUL in `text`; UoW rollback; `2**63`; `rank_decayed` raw reply | documented divergences, §1.1 |
-| TD-2, #750 B1 | cross-operation deadlock is detected, not prevented | lock ordering at commit, `(model, field)` lock before row locks, `_pk`-ordered `FOR UPDATE`, typed retryable error (M2) |
+| TD-2, #750 B1 | cross-operation deadlock is detected, not prevented | lock ordering at commit, `_pk`-ordered `FOR UPDATE`, typed retryable error `BackendRetryableError` (M2a, #773: single statements and `on_context_used` retry then raise it; a caller-owned `transaction()` raises it at once); the `(model, field)` lock before row locks is deferred to M3's `supersede` (§5 M2, M2a departures) |
 | TD-3 | one connection per instance; ten threads hung the harness | `psycopg_pool.ConnectionPool`, a connection per transaction, pid check after fork (M1) |
 | TD-8, #750 TD4 | `CREATE OR REPLACE FUNCTION` ×10 on every connection | `popoto_schema` fingerprint, once per process; no PL/pgSQL required by M1 (§3) |
 | TD-10 | 73 `pipeline if pipeline` sites return `None` on an empty Postgres UoW | `UnitOfWork.__bool__ = True`, so the sites are inert; Postgres never hands a UoW to a Redis hook. The sweep is optional hygiene |

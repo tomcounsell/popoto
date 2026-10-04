@@ -38,6 +38,14 @@ from src.popoto.fields.validity_field import ValidityField
 from src.popoto.models.query import QueryBuilder, QueryException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M2a, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+
 # --- Test Models ---
 
 
@@ -121,11 +129,17 @@ class TestCompositeScoreErrors:
         with pytest.raises(QueryException, match="non-empty indexes"):
             CompositeMemory.query.composite_score(indexes={})
 
+    @pytest.mark.redis_only(
+        reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
+    )
     def test_invalid_field_name_raises(self):
         """Field name not on model raises QueryException."""
         with pytest.raises(QueryException, match="has no field"):
             CompositeMemory.query.composite_score(indexes={"nonexistent_field": 1.0})
 
+    @pytest.mark.redis_only(
+        reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
+    )
     def test_plain_field_raises(self):
         """Field without sorted set index raises QueryException."""
         with pytest.raises(QueryException, match="does not have a sorted set"):
@@ -160,6 +174,9 @@ class TestCompositeScoreErrors:
 class TestCompositeScoreEmpty:
     """Test empty result handling."""
 
+    @pytest.mark.redis_only(
+        reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
+    )
     def test_no_instances_returns_empty(self):
         """Query on model with no instances returns empty list."""
         result = CompositeMemory.query.composite_score(indexes={"relevance": 1.0})
@@ -209,6 +226,9 @@ class TestCompositeScoreSingleIndex:
 # --- Two-index synergy tests ---
 
 
+@pytest.mark.redis_only(
+    reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
+)
 class TestCompositeScoreTwoIndex:
     """Test decay + confidence synergy."""
 
@@ -238,6 +258,9 @@ class TestCompositeScoreTwoIndex:
 # --- Three-index synergy tests ---
 
 
+@pytest.mark.redis_only(
+    reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
+)
 class TestCompositeScoreThreeIndex:
     """Test decay + confidence + access frequency synergy."""
 
@@ -275,6 +298,9 @@ class TestCompositeScoreThreeIndex:
 # --- Four-index synergy tests ---
 
 
+@pytest.mark.redis_only(
+    reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
+)
 class TestCompositeScoreFourIndex:
     """Test decay + confidence + access + write filter priority."""
 
@@ -313,6 +339,9 @@ class TestCompositeScoreFourIndex:
 # --- CoOccurrence boost tests ---
 
 
+@pytest.mark.redis_only(
+    reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
+)
 class TestCompositeScoreCoOccurrence:
     """Test CoOccurrence boost injection."""
 
@@ -500,6 +529,7 @@ class TestCompositeScoreLimit:
 # --- Temp key cleanup tests ---
 
 
+@pytest.mark.redis_only(reason="inspects composite_score's $CSQ temp keys in Redis")
 class TestCompositeScoreTempKeys:
     """Test temp key cleanup."""
 
@@ -755,6 +785,9 @@ class ValidityComposite(popoto.Model):
     validity = ValidityField()
 
 
+@pytest.mark.redis_only(
+    reason="uses a ValidityField, which Postgres stores from #759 M3"
+)
 class TestCompositeValidityMask:
     """The ZUNIONSTORE/SUM leak the composite validity mask closes.
 

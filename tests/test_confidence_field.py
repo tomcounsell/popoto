@@ -35,6 +35,14 @@ from src.popoto.fields.cyclic_decay_field import CyclicDecayField
 from src.popoto.fields.constants import TemporalPeriod
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M2a, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+
 # --- Test Models ---
 
 
@@ -196,6 +204,9 @@ class TestConfidenceFieldLifecycle:
         data = ConfidenceField.get_confidence_data(item, "certainty")
         assert data["evidence_count"] == 1  # still has the update
 
+    @pytest.mark.redis_only(
+        reason="reads the Redis companion hash through the raw client; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_on_delete_removes_companion_hash(self):
         """Deleting model removes companion hash entry."""
         item = ConfidenceItem.create(name="test_del")
@@ -366,6 +377,9 @@ class TestCappedBayesianUpdate:
         oracle = (0.5 + sum(signals)) / (len(signals) + 1)
         assert abs(conf - oracle) < 1e-12
 
+    @pytest.mark.redis_only(
+        reason="plants confidence state with a raw HSET on the Redis companion hash; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_cap_forgetting_crosses_half_on_15th_contradiction(self):
         """At the cap, contradictions decay confidence geometrically.
 
@@ -398,6 +412,9 @@ class TestCappedBayesianUpdate:
         assert abs(conf - expected) < 1e-12
         assert conf < 0.5
 
+    @pytest.mark.redis_only(
+        reason="plants confidence state with a raw HSET on the Redis companion hash; the two-leg version is in tests/test_backend_parity_memory.py"
+    )
     def test_custom_evidence_cap_changes_forgetting_rate(self):
         """A smaller evidence_cap forgets faster once at the cap.
 
@@ -460,6 +477,9 @@ class TestCappedBayesianUpdate:
         oracle = (0.5 + sum(signals)) / (len(signals) + 1)
         assert abs(data["confidence"] - oracle) < 1e-12
 
+    @pytest.mark.redis_only(
+        reason="plants an undecodable msgpack payload in the Redis companion hash; a typed Postgres column cannot hold one"
+    )
     def test_corrupt_companion_data_recovers(self):
         """Corrupt companion-hash bytes re-init from defaults on update.
 
@@ -644,6 +664,9 @@ class TestConfidenceFieldErrors:
 
 
 class TestEntrainment:
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_acted_corroborates_confidence(self):
         """ObservationProtocol 'acted' outcome increases confidence."""
         item = ConfidenceWithCyclic.create(name="ent1", content="test")
@@ -655,6 +678,9 @@ class TestEntrainment:
         new_conf = ConfidenceField.get_confidence(item, "certainty")
         assert new_conf > initial_conf
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_contradicted_decreases_confidence(self):
         """ObservationProtocol 'contradicted' outcome decreases confidence."""
         item = ConfidenceWithCyclic.create(name="ent2", content="test")
@@ -666,6 +692,9 @@ class TestEntrainment:
         new_conf = ConfidenceField.get_confidence(item, "certainty")
         assert new_conf < initial_conf
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_dismissed_does_not_change_confidence(self):
         """ObservationProtocol 'dismissed' outcome does NOT change confidence."""
         item = ConfidenceWithCyclic.create(name="ent3", content="test")
@@ -677,6 +706,9 @@ class TestEntrainment:
         new_conf = ConfidenceField.get_confidence(item, "certainty")
         assert new_conf == initial_conf
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_deferred_does_not_change_confidence(self):
         """ObservationProtocol 'deferred' outcome does NOT change confidence."""
         item = ConfidenceWithCyclic.create(name="ent4", content="test")
@@ -701,6 +733,9 @@ class TestEntrainment:
         )
         return pressure_hash_key, member_key
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_auto_discharge_on_low_confidence(self):
         """Confidence clearly below threshold - epsilon auto-discharges pressure."""
         import msgpack
@@ -741,6 +776,9 @@ class TestEntrainment:
         # last_resolved should be within the last minute (was 30 days ago)
         assert time.time() - pdata["last_resolved"] < 60
 
+    @pytest.mark.redis_only(
+        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    )
     def test_no_auto_discharge_within_epsilon_of_threshold(self):
         """The float predecessor of 0.1 does NOT trigger auto-discharge.
 
