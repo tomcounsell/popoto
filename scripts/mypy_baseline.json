@@ -1,6 +1,7 @@
 {
   "_comment": "Baseline for scripts/mypy_ratchet.py (#506). The ceiling is the SUM of 'packages', derived at read time; the total is deliberately not stored here (#677) because two PRs improving different packages merge their per-package lines cleanly while a stored total silently keeps one side's number, loosening the gate (#675). The ceiling is not an equality: the gate fails only when the count is ABOVE it. Packages in 'clean' are pinned at exactly zero. Regenerate with 'python scripts/mypy_ratchet.py --update' and commit this file.",
   "clean": [
+    "backends",
     "integrations",
     "privacy"
   ],
@@ -15,7 +16,7 @@
     "embeddings": 2,
     "extraction": 2,
     "fields": 401,
-    "models": 383,
+    "models": 365,
     "pubsub": 11,
     "recipes": 145,
     "stores": 1,

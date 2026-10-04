@@ -80,8 +80,61 @@ from ..redis_db import (
     normalize_redis_keys,
 )
 from ..fields.constants import Defaults
+from ..backends import (
+    BackendCapabilityError,
+    QueryCall,
+    QueryPlan,
+    RecordId,
+    get_backend,
+)
+from ..backends.redis import RedisHashRow, RedisIdRow, RedisResultRow
 
 logger = logging.getLogger("POPOTO.Query")
+
+
+# -- backend seam helpers (#759 M1a) ------------------------------------------
+
+
+def _record_ids(model_class: Any, keys: Any) -> "list[RecordId]":
+    """Wrap the caller's keys (``str`` or ``bytes``, in order) as ids; each
+    keeps its key object as ``native`` so the wire token is unchanged."""
+    name = model_class._meta.model_name
+    return [RecordId.from_key(name, key) for key in keys]
+
+
+def _raw_hash(row: Any) -> Any:
+    """The hash a Redis ``load`` row carries, as Redis replied, for
+    ``decode_popoto_model_hashmap``. Decoded rows from a non-Redis backend are
+    hydrated in M1b."""
+    if isinstance(row, RedisHashRow):
+        return row.raw
+    raise BackendCapabilityError(
+        "hydrating a decoded Row arrives with the Postgres backend (#759 M1b)"
+    )
+
+
+def _raw_hashes(model_class: Any, rows: Any) -> list[Any]:
+    """``load`` rows back to today's ``hashes_list`` shape: the raw hash per
+    key, ``{}`` where there was no record."""
+    return [{} if row is None else _raw_hash(row) for row in rows]
+
+
+def _row_result(row: Any) -> Any:
+    """What a ``select`` row stands for in today's return value: the hydrated
+    instance or projection dict the Redis backend produced."""
+    if isinstance(row, RedisResultRow):
+        return row.result
+    raise BackendCapabilityError(
+        "hydrating a decoded Row arrives with the Postgres backend (#759 M1b)"
+    )
+
+
+def _row_key(row: Any) -> Any:
+    """An id-only ``select`` row back to the key ``Query.keys()`` returns:
+    the class-set member exactly as Redis replied."""
+    if isinstance(row, RedisIdRow):
+        return row.key
+    return row["_id"].key
 
 
 @dataclass
@@ -2244,9 +2297,15 @@ class Query:
         if redis_key:
             from ..models.encoding import decode_popoto_model_hashmap
 
-            hashmap = get_REDIS_DB().hgetall(redis_key)
-            if not hashmap:
+            # One bare HGETALL on Redis (#759 M1a: via load).
+            (row,) = get_backend(self.model_class).load(
+                self.model_class._meta.spec,
+                [RecordId.from_key(self.model_class._meta.model_name, redis_key)],
+                pipelined=False,
+            )
+            if row is None:
                 return None
+            hashmap = _raw_hash(row)
             instance = decode_popoto_model_hashmap(
                 self.model_class, hashmap, source_redis_key=redis_key
             )
@@ -2315,10 +2374,13 @@ class Query:
 
         from ..models.encoding import decode_popoto_model_hashmap
 
-        pipeline = get_REDIS_DB().pipeline()
-        for key in redis_keys:
-            pipeline.hgetall(key)
-        hashes_list = pipeline.execute()
+        # One pipelined HGETALL per key on Redis (#759 M1a: via load).
+        hashes_list = _raw_hashes(
+            self.model_class,
+            get_backend(self.model_class).load(
+                self.model_class._meta.spec, _record_ids(self.model_class, redis_keys)
+            ),
+        )
 
         results = []
         live_instances = []
@@ -2413,11 +2475,16 @@ class Query:
             )
             return list(get_REDIS_DB().keys(f"*{self.model_class.__name__}*"))
         else:
-            return list(
-                get_REDIS_DB().smembers(
-                    self.model_class._meta.db_class_set_key.redis_key
-                )
+            # Id-only select (#759 M1a): SMEMBERS of the class set on Redis,
+            # keys returned exactly as Redis replied (bytes).
+            rows = get_backend(self.model_class).select(
+                self.model_class._meta.spec,
+                QueryPlan(
+                    project=(),
+                    source=QueryCall(query=self, kind="keys", kwargs=kwargs),
+                ),
             )
+            return [_row_key(row) for row in rows]
 
     def all(self, **kwargs) -> list:
         """Return all instances, with optional ``order_by``, ``limit``, and ``values``.
@@ -3348,146 +3415,23 @@ class Query:
         Returns:
             List of Model instances or dicts
         """
-        # Use _evaluate_filter_args if Q objects present, otherwise filter_for_keys_set
-        if q_objects:
-            self._pushdown_allowed = False
-            # Build the carrier before evaluating, so any geo distances a
-            # leaf's filter_query produces have somewhere to land (a fresh
-            # carrier per call *is* the reset — no separate self._geo_* clear
-            # is needed).
-            state = _PushdownState()
-            db_keys_set = self._evaluate_filter_args(q_objects, kwargs, state=state)
-            # Q objects combine results from multiple filter_for_keys_set calls,
-            # so _sorted_field_order is unreliable — clear it
-            self._sorted_field_order = None
-            self._sorted_field_name = None
-            # Snapshot the seven non-geo fields AFTER the clear so the
-            # "ordering is unreliable" decision travels in the carrier like
-            # every other per-call fact. Fill `state` in place — it already
-            # holds the geo distances the Q evaluation wrote into it, and a
-            # bare no-arg snapshot here would silently drop them.
-            self._snapshot_pushdown_state(into=state)
-        else:
-            # Arm, query and snapshot in one hop that contains no yield point,
-            # so nothing below re-reads bookkeeping off the shared instance.
-            db_keys_set, state = self._filter_keys_with_pushdown(
-                _allow_pushdown, kwargs
-            )
-        if not len(db_keys_set):
-            return []
-
-        # Apply default order_by from Meta if not explicitly provided
-        # but not when sorted field ordering is active (it's a smarter default)
-        if (
-            "order_by" not in kwargs
-            and self.model_class._meta.order_by
-            and not state.sorted_field_order
-        ):
-            kwargs["order_by"] = self.model_class._meta.order_by
-
-        # Use sorted field order if available and no explicit order_by.
-        # Typed Any because db_keys_set carries either the key set or this
-        # ordered list from here on, and hydration accepts both; the carrier
-        # types this precisely where the old getattr() erased it to Any.
-        sorted_field_order: Any = state.sorted_field_order
-        explicit_order_by = kwargs.get("order_by", None)
-        # Meta.order_by is a default - sorted field order takes precedence over it
-        if sorted_field_order and not explicit_order_by:
-            db_keys_set = sorted_field_order  # Use ordered list instead of set
-
-        # Bound the key list before hydration when the range read could not be
-        # bounded itself. filter_for_keys_set has already intersected
-        # _sorted_field_order down to the keys every other index agreed on, so
-        # the AND happened without loading anything and slicing here is sound
-        # even with other indexed filters in play. This is the cut that matters:
-        # it takes hydration from every key in the partition to `limit` HGETALLs.
-        # The Redis-side bound saves transferring the key list, a smaller win.
-        db_keys_set = self._bound_keys_before_hydration(
-            db_keys_set, q_objects, _allow_pushdown, kwargs, state=state
-        )
-
-        # A pending client-side filter must see every candidate before any
-        # truncation: get_many_objects slices KeyField-ordered keys to `limit`
-        # BEFORE hydration, which would cut rows the plain-field filter would
-        # have kept -- filter(kind="x", note="hit", limit=2) on a model whose
-        # Meta.order_by is a KeyField returned the first two keys, filtered
-        # them all away, and answered [] although matches existed further down.
-        # prepare_results re-applies the limit after the client filters run.
-        client_filters_pending = bool(state.pending_client_filters)
-        objects = Query.get_many_objects(
-            self.model_class,
-            db_keys_set,
-            order_by_attr_name=kwargs.get("order_by", None),
-            limit=None if client_filters_pending else kwargs.get("limit", None),
-            values=kwargs.get("values", None),
-        )
-
-        if self._short_result_action(len(objects), _allow_pushdown, state):
-            return self._execute_filter(
+        # Moved to the backend's select (#759 M1a). The Redis backend replays
+        # this call through the filter code that used to live here, so the
+        # key-set evaluation, pushdown retry, hydration, client-side filters,
+        # ordering and on_read are unchanged.
+        plan = QueryPlan(
+            limit=kwargs.get("limit"),
+            project=kwargs.get("values"),
+            source=QueryCall(
+                query=self,
+                kind="filter",
+                kwargs=kwargs,
                 q_objects=q_objects,
-                _no_track=_no_track,
-                _allow_pushdown=False,
-                **kwargs,
-            )
-
-        # Apply client-side filters for plain (unindexed) fields
-        client_filters = state.pending_client_filters
-        if client_filters:
-            filtered = []
-            for obj in objects:
-                match = True
-                for field_name, expected_value in client_filters.items():
-                    if isinstance(obj, dict):
-                        actual = obj.get(field_name)
-                    else:
-                        actual = getattr(obj, field_name, None)
-                    if actual != expected_value:
-                        match = False
-                        break
-                if match:
-                    filtered.append(obj)
-            objects = filtered
-
-        # Attach geo distances to objects if available. Read off the carrier,
-        # not self._geo_distances — the carrier is the one this call's own
-        # key query wrote into, immune to another thread's reset/update.
-        if state.geo_distances:
-            # Normalize distance dict keys to strings for consistent lookup
-            normalized_distances = {}
-            for key, dist in state.geo_distances.items():
-                if isinstance(key, bytes):
-                    normalized_distances[key.decode()] = dist
-                else:
-                    normalized_distances[key] = dist
-
-            for obj in objects:
-                if isinstance(obj, dict):
-                    # When values= is used, obj is a dict - skip distance attachment
-                    continue
-                redis_key = obj.db_key.redis_key
-                if isinstance(redis_key, bytes):
-                    redis_key = redis_key.decode()
-                distance = normalized_distances.get(redis_key)
-                if distance is not None:
-                    obj._geo_distance = distance
-                    obj._geo_distance_unit = state.geo_distance_unit
-
-            # Sort by distance (ascending) to preserve geo-sorted order
-            # Only sort model objects, not dicts
-            model_objects = [o for o in objects if not isinstance(o, dict)]
-            dict_objects = [o for o in objects if isinstance(o, dict)]
-            model_objects.sort(key=lambda o: getattr(o, "_geo_distance", float("inf")))
-            objects = model_objects + dict_objects
-
-        results = self.prepare_results(objects, **kwargs)
-
-        # Fire on_read for AccessTrackerMixin models (skip for value projections)
-        if not _no_track and not kwargs.get("values"):
-            model_results = [r for r in results if not isinstance(r, dict)]
-            if model_results:
-                _fire_on_read(self.model_class, model_results)
-
-        return results
+                options={"_no_track": _no_track, "_allow_pushdown": _allow_pushdown},
+            ),
+        )
+        rows = get_backend(self.model_class).select(self.model_class._meta.spec, plan)
+        return [_row_result(row) for row in rows]
 
     def prepare_results(
         self,
@@ -3599,27 +3543,12 @@ class Query:
             Future optimization: Could use Redis SINTERCARD (Redis 7.0+) for
             filtered counts to avoid materializing the full key set.
         """
-        if not len(kwargs):
-            return int(
-                get_REDIS_DB().scard(self.model_class._meta.db_class_set_key.redis_key)
-                or 0
-            )
-        # allow_pushdown=False preserves today's behavior exactly: count() never
-        # armed the pushdown and must not start, because a bound tally is wrong.
-        db_keys, state = self._filter_keys_with_pushdown(False, kwargs)
-        client_filters = state.pending_client_filters
-        if client_filters:
-            # Must load objects to apply client-side filters
-            objects = Query.get_many_objects(self.model_class, db_keys)
-            return sum(
-                1
-                for obj in objects
-                if all(
-                    getattr(obj, fname, None) == fval
-                    for fname, fval in client_filters.items()
-                )
-            )
-        return len(db_keys)
+        # Moved to the backend's count (#759 M1a); on Redis, SCARD with no
+        # filters, else the filter's key set.
+        return get_backend(self.model_class).count(
+            self.model_class._meta.spec,
+            QueryPlan(source=QueryCall(query=self, kind="count", kwargs=kwargs)),
+        )
 
     @classmethod
     def get_many_objects(
@@ -3627,7 +3556,7 @@ class Query:
         model: "type[Model]",
         db_keys: set,
         order_by_attr_name: str = None,
-        limit: int = None,
+        limit: Optional[int] = None,
         values: tuple = None,
         lazy: bool = True,
     ) -> list:
@@ -3684,7 +3613,6 @@ class Query:
         """
         from .encoding import decode_popoto_model_hashmap
 
-        pipeline = get_REDIS_DB().pipeline()
         reverse_order = False
         # order the hashes list or objects before applying limit
         if order_by_attr_name and order_by_attr_name.startswith("-"):
@@ -3722,16 +3650,23 @@ class Query:
                     for db_key in db_keys
                 ]
             else:
-                [pipeline.hmget(db_key, values) for db_key in db_keys]
-                value_lists = pipeline.execute()
-                hashes_list = [
-                    {field_name: result[i] for i, field_name in enumerate(values)}
-                    for result in value_lists
-                ]
+                # Storage moved to the backend's load (#759 M1a): one
+                # pipelined HMGET per key on Redis.
+                hashes_list = _raw_hashes(
+                    model,
+                    get_backend(model).load(
+                        model._meta.spec,
+                        _record_ids(model, db_keys),
+                        fields=values,
+                    ),
+                )
 
         else:
-            [pipeline.hgetall(db_key) for db_key in db_keys]
-            hashes_list = pipeline.execute()
+            # One pipelined HGETALL per key on Redis (#759 M1a: via load).
+            hashes_list = _raw_hashes(
+                model,
+                get_backend(model).load(model._meta.spec, _record_ids(model, db_keys)),
+            )
 
         if {} in hashes_list:
             # A member whose hash is gone (Meta.ttl expiry, or an external
