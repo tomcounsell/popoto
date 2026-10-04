@@ -2990,10 +2990,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#supported-fields-m1-m11-m2a" class="md-nav__link">
+  <a href="#supported-fields-m1-m11-m2a-m2b" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Supported fields (M1, M1.1, M2a)
+        Supported fields (M1, M1.1, M2a, M2b)
       
     </span>
   </a>
@@ -3008,6 +3008,67 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search-m2b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search (M2b)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Search (M2b)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bm25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BM25
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#embeddings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Embeddings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#membership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Membership
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fusion-and-recall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fusion and recall()
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3091,6 +3152,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Performance (M1 and M2a exit criteria)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recall-m2b-exit-criterion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        recall() (M2b exit criterion)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3194,10 +3272,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#supported-fields-m1-m11-m2a" class="md-nav__link">
+  <a href="#supported-fields-m1-m11-m2a-m2b" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Supported fields (M1, M1.1, M2a)
+        Supported fields (M1, M1.1, M2a, M2b)
       
     </span>
   </a>
@@ -3212,6 +3290,67 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search-m2b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search (M2b)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Search (M2b)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bm25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BM25
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#embeddings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Embeddings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#membership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Membership
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fusion-and-recall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fusion and recall()
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3296,6 +3435,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Performance (M1 and M2a exit criteria)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recall-m2b-exit-criterion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        recall() (M2b exit criterion)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -3324,14 +3480,15 @@
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.</p>
 <p>This page covers the first Postgres milestones: <strong>plain models</strong> (M1),
-<strong>plain-field breadth</strong> (M1.1) and the <strong>ranking and memory-state half of
-Valor's slice</strong> (M2a). That means records, queries, <code>Q</code> objects, ordering,
-counting and atomic increments for the field types listed below, including
-indexed, unique, tag, relationship and collection fields, plus decay ranking,
-confidence, read tracking, the write filter, <code>ObservationProtocol</code> and
-<code>composite_score</code>. Models that use other fields stay on Redis until their
-milestone. Popoto refuses them when you declare them, so they never fail
-halfway through.</p>
+<strong>plain-field breadth</strong> (M1.1), the <strong>ranking and memory-state half of
+Valor's slice</strong> (M2a) and <strong>search</strong> (M2b). That means records, queries, <code>Q</code>
+objects, ordering, counting and atomic increments for the field types listed
+below, including indexed, unique, tag, relationship and collection fields,
+plus decay ranking, confidence, read tracking, the write filter,
+<code>ObservationProtocol</code> and <code>composite_score</code>, and BM25 keyword search, pgvector
+embeddings, exact membership filters, fusion and <code>recall()</code>. Models that use
+other fields stay on Redis until their milestone. Popoto refuses them when you
+declare them, so they never fail halfway through.</p>
 <h2 id="selecting-the-backend">Selecting the backend<a class="headerlink" href="#selecting-the-backend" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[postgres]'</span><span class="w">      </span><span class="c1"># psycopg[binary,pool] + pgvector</span>
 </code></pre></div>
@@ -3386,7 +3543,7 @@ the model's <strong>first</strong> query or save. <code>bind()</code> itself onl
 spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.</p>
-<h2 id="supported-fields-m1-m11-m2a">Supported fields (M1, M1.1, M2a)<a class="headerlink" href="#supported-fields-m1-m11-m2a" title="Permanent link">&para;</a></h2>
+<h2 id="supported-fields-m1-m11-m2a-m2b">Supported fields (M1, M1.1, M2a, M2b)<a class="headerlink" href="#supported-fields-m1-m11-m2a-m2b" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -3471,6 +3628,26 @@ first query does not.</p>
 <td><code>double precision</code> for the attribute, plus the state <code>&lt;f&gt;__conf</code> (<code>double precision</code>), <code>&lt;f&gt;__n</code>, <code>&lt;f&gt;__corr</code>, <code>&lt;f&gt;__contra</code> (<code>bigint</code>)</td>
 <td>—</td>
 </tr>
+<tr>
+<td><code>BM25Field(source=…)</code> (M2b)</td>
+<td>no column of its own: postings <code>&lt;table&gt;__&lt;f&gt;__post (scope, term, _pk, tf)</code> and lengths <code>&lt;table&gt;__&lt;f&gt;__dl (_pk, scope, len)</code></td>
+<td>postings <code>PRIMARY KEY (scope, term, _pk)</code> plus a B-tree on <code>_pk</code>; lengths <code>(scope) INCLUDE (len)</code></td>
+</tr>
+<tr>
+<td><code>EmbeddingField(source=…)</code> (M2b)</td>
+<td><code>&lt;f&gt; bigint</code> (the dimension count Redis stores), <code>&lt;f&gt;__vec vector(d)</code>, <code>&lt;f&gt;__model text</code>, <code>&lt;f&gt;__hash text</code>, plus the narrow vector table <code>&lt;table&gt;__&lt;f&gt;__vec (_pk, scope, v vector(d))</code>, <code>v</code> stored <code>PLAIN</code></td>
+<td>HNSW <code>vector_cosine_ops</code> on <code>&lt;f&gt;__vec</code>; a partial B-tree on rows with no vector, and a B-tree on <code>&lt;f&gt;__model</code> (the backfill's probe); <code>(scope)</code> on the narrow table</td>
+</tr>
+<tr>
+<td><code>ExistenceFilter</code> / <code>FrequencySketch</code> (M2b)</td>
+<td>no column: <code>&lt;table&gt;__&lt;f&gt;__tok (token, _pk)</code> / <code>&lt;table&gt;__&lt;f&gt;__cnt (token, count)</code></td>
+<td><code>PRIMARY KEY (token, _pk)</code> / <code>PRIMARY KEY (token)</code></td>
+</tr>
+<tr>
+<td><code>ContentField</code> (M2b, pulled forward from M5)</td>
+<td><code>text</code> holding the content itself (no <code>$CF:</code> reference, no file)</td>
+<td>—</td>
+</tr>
 </tbody>
 </table>
 <p>Every table also has:</p>
@@ -3480,6 +3657,15 @@ first query does not.</p>
   identical on both backends.</li>
 <li><code>_created_at</code> and <code>_updated_at</code> (<code>timestamptz</code>), which the engine maintains.
   They are Postgres-only.</li>
+<li><code>_migrated_from jsonb</code> and <code>_estimated_fields text[]</code> (M2b), the import
+  contract for the one-off Redis-to-Postgres copy (#756). An importer records
+  where a row came from and which values it inferred. Every native write
+  (<code>save</code>, <code>atomic_increment</code>, <code>push</code>, and the embedding backfill) sets
+  <code>_migrated_from</code> to <code>NULL</code>, so a re-load can guard with
+  <code>WHERE _migrated_from IS NOT NULL</code> and never overwrite a row popoto has
+  written since. The only engine write to <code>_estimated_fields</code> is the
+  backfill's: it removes the embedding field's name, because the vector it
+  writes is derived natively rather than imported.</li>
 </ul>
 <p><code>DatetimeField</code> round-trips the way it does on Redis (#521). An aware value
 comes back with the same UTC offset as a fixed-offset <code>timezone</code>. A naive
@@ -3522,8 +3708,8 @@ A partitioned <code>ConfidenceField</code> arrives in M3 and is refused until th
 <code>PredictionLedgerMixin</code> keeps its ledger in Redis until M5 and is refused on a
 Postgres model too, rather than issuing Redis commands for a record Redis does
 not hold.</p>
-<p>Fields that arrive later: the remaining memory fields (M2b–M4); <code>GeoField</code>, <code>Meta.ttl</code>
-and the rest (M5); an <code>IndexedField</code> on a collection type is refused. A model
+<p>Fields that arrive later: the remaining memory fields (validity,
+co-occurrence; M3–M4); <code>GeoField</code>, <code>Meta.ttl</code> and the rest (M5); an <code>IndexedField</code> on a collection type is refused. A model
 that uses one of them raises
 <code>BackendCapabilityError</code> when you declare it with <code>Meta.backend =
 "postgres"</code>, or on first use when it takes the process default.</p>
@@ -3548,6 +3734,218 @@ under <code>pg_advisory_xact_lock</code>. No manual step is needed. Anything els
 column, a key change, a schema written by a newer popoto, or a table popoto
 did not create. Set <code>POPOTO_SCHEMA_AUTO=0</code> to turn off even the automatic
 create and additive changes.</p>
+<h2 id="search-m2b">Search (M2b)<a class="headerlink" href="#search-m2b" title="Permanent link">&para;</a></h2>
+<p>A model's search fields keep their state in the same database as its
+records, written by the record's own <code>INSERT … ON CONFLICT</code> statement as
+data-modifying CTEs: one round trip, one transaction. A delete cascades to
+the postings and the token rows. Nothing touches Redis or the filesystem.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">popoto</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">memory_id</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">project_key</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span> <span class="n">partition_by</span><span class="o">=</span><span class="s2">"project_key"</span><span class="p">)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">lexical</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"content"</span><span class="p">)</span>     <span class="c1"># provider: 1536 dimensions</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">bloom</span> <span class="o">=</span> <span class="n">ExistenceFilter</span><span class="p">(</span><span class="n">fingerprint_fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="n">m</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">seen</span> <span class="o">=</span> <span class="n">FrequencySketch</span><span class="p">(</span><span class="n">fingerprint_fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="n">m</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="s2">"postgres"</span>
+</code></pre></div>
+<p>compiles to (beside the record table's own columns and indexes):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="ss">"embedding__vec"</span><span class="w"> </span><span class="n">vector</span><span class="p">(</span><span class="mi">1536</span><span class="p">),</span><span class="w"> </span><span class="ss">"embedding__model"</span><span class="w"> </span><span class="nb">text</span><span class="p">,</span><span class="w"> </span><span class="ss">"embedding__hash"</span><span class="w"> </span><span class="nb">text</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="ss">"memory__hnsw__embedding__idx"</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory"</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="k">USING</span><span class="w"> </span><span class="n">hnsw</span><span class="w"> </span><span class="p">(</span><span class="ss">"embedding__vec"</span><span class="w"> </span><span class="n">vector_cosine_ops</span><span class="p">);</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory__lexical__post"</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="ss">"scope"</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w"> </span><span class="ss">"term"</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="ss">"_pk"</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory"</span><span class="w"> </span><span class="p">(</span><span class="ss">"_pk"</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">  </span><span class="ss">"tf"</span><span class="w"> </span><span class="nb">integer</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="ss">"scope"</span><span class="p">,</span><span class="w"> </span><span class="ss">"term"</span><span class="p">,</span><span class="w"> </span><span class="ss">"_pk"</span><span class="p">));</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory__lexical__dl"</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">  </span><span class="ss">"_pk"</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory"</span><span class="w"> </span><span class="p">(</span><span class="ss">"_pk"</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span><span class="p">,</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">  </span><span class="ss">"scope"</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w"> </span><span class="ss">"len"</span><span class="w"> </span><span class="nb">integer</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">);</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory__bloom__tok"</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">  </span><span class="ss">"token"</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">  </span><span class="ss">"_pk"</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory"</span><span class="w"> </span><span class="p">(</span><span class="ss">"_pk"</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span><span class="p">,</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">  </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="ss">"token"</span><span class="p">,</span><span class="w"> </span><span class="ss">"_pk"</span><span class="p">));</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory__seen__cnt"</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">  </span><span class="ss">"token"</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span><span class="w"> </span><span class="ss">"count"</span><span class="w"> </span><span class="nb">bigint</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">);</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory__embedding__vec"</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="w">  </span><span class="ss">"_pk"</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory"</span><span class="w"> </span><span class="p">(</span><span class="ss">"_pk"</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span><span class="p">,</span>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="w">  </span><span class="ss">"scope"</span><span class="w"> </span><span class="nb">text</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w"> </span><span class="ss">"v"</span><span class="w"> </span><span class="n">vector</span><span class="p">(</span><span class="mi">1536</span><span class="p">)</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">);</span>
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="k">ALTER</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="ss">"popoto"</span><span class="p">.</span><span class="ss">"memory__embedding__vec"</span><span class="w"> </span><span class="k">ALTER</span><span class="w"> </span><span class="k">COLUMN</span><span class="w"> </span><span class="ss">"v"</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="k">STORAGE</span><span class="w"> </span><span class="n">PLAIN</span><span class="p">;</span>
+</code></pre></div>
+<p><code>tests/postgres/test_postgres_search.py::test_compiled_search_ddl_is_pinned</code>
+pins the full statement list.</p>
+<p><strong>The scope.</strong> A model's scope is the <code>partition_by</code> of its
+<code>DecayingSortedField</code> (Valor's <code>project_key</code>), else of its first partitioned
+<code>SortedField</code>. With neither, every record is in scope <code>''</code>. A <code>NULL</code> scope
+column is scope <code>''</code> too, so it is never dropped. The scope leads the
+postings key. A save that changes a scope column, including
+<code>save(update_fields=["project_key"])</code>, moves the record's postings and its
+narrow vector row in the same statement.</p>
+<p>The postings, document length and narrow vector row always carry the scope of
+the row that is <em>stored</em> after the save. A scope column the save writes (every
+column on a full save, the listed ones with <code>update_fields</code>) takes the
+instance's value; one it does not write keeps the stored value, read from the
+record row inside the save's own statement, after the record lock. So
+<code>save(update_fields=["text"])</code> on an instance whose <code>project_key</code> was changed
+but never saved, or was changed by another writer after this instance was
+loaded, re-indexes the text in the scope the row actually holds. A scope part
+whose type has no exact SQL spelling of <code>str(value)</code> (anything but <code>str</code>,
+<code>int</code> and <code>bool</code>) is taken from the record's existing side rows, which already
+hold the stored scope. Pinned: <code>tests/postgres/test_postgres_search.py::test_a_partial_save_keeps_the_side_tables_in_the_stored_scope</code>
+and <code>::test_a_partial_save_takes_each_unwritten_scope_column_from_the_store</code>.</p>
+<p><strong>Concurrent saves of one record.</strong> The data-modifying CTEs of a save share
+one snapshot, so under <code>READ COMMITTED</code> a second save of the same record
+whose statement started before the first one committed could not see the
+rows the first one wrote, and would leave them behind. A save therefore
+takes the record's advisory lock first, as its own statement in the same
+message:
+<code>SELECT pg_advisory_xact_lock(hashtextextended('popoto:rec:&lt;table&gt;:&lt;_pk&gt;', 0))</code>.
+The rewrite then takes its snapshot after any earlier writer of that record
+has committed, which also covers two racing first inserts. The backfill
+takes the same locks, sorted by <code>_pk</code>. Pinned by
+<code>test_concurrent_saves_of_one_record_leave_no_stale_rows</code>, which interleaves
+two saves behind a held row lock in 8 runs, and by its control, which shows
+the same interleaving goes stale without the lock.</p>
+<p><strong>One lock order for every writer.</strong> Every statement that writes a record
+row takes that record's advisory lock first, not only a save: <code>delete</code>,
+<code>atomic_increment</code>, a capped-list push, <code>touch</code>, <code>update_confidence</code>, the
+access tracker's writes, <code>on_context_used</code>'s <code>FOR UPDATE</code> and an
+<code>ExistenceFilter</code> row. The order is any <code>(model, field)</code> lock (none before
+M3), then the record-key locks sorted by <code>_pk</code>, then the row locks in <code>_pk</code>
+order. A record's key lock is always the first lock taken on it, so a
+transaction that runs <code>update_confidence(x, pipeline=tx)</code> and then
+<code>x.save(pipeline=tx)</code> queues a concurrent <code>x.save()</code> behind it instead of
+deadlocking with it. Transactions that each take several records in
+different orders can still deadlock; that surfaces as
+<code>BackendRetryableError</code>. Pinned by
+<code>test_a_confidence_update_then_save_cannot_deadlock_a_save</code> and its control.</p>
+<h3 id="bm25">BM25<a class="headerlink" href="#bm25" title="Permanent link">&para;</a></h3>
+<p>The tokens come from popoto's own tokenizer, the one Redis uses; Postgres
+text search is never involved. <code>BM25Field.search</code> computes BM25_SEARCH_LUA's
+formula operation for operation, in double precision:
+<code>idf = ln((N - df + 0.5) / (df + 0.5) + 1)</code> and
+<code>tf · (k1 + 1) / (tf + k1 · (1 - b + b · dl / avgdl))</code>, summed over the query
+terms in query order, with <code>k1 = 1.2</code> and <code>b = 0.75</code>. <code>N</code>, <code>avgdl</code> and <code>df</code>
+are <strong>corpus-wide</strong>, as on Redis. Results come back in the same order (ties
+by key, bytewise) and with Lua's <code>%.14g</code> score representation. The
+statistics are counted live from the document-length table, so there is no
+running <code>avgdl</code> to drift and <code>recompute_stats</code> has nothing to do.
+<code>get_idf</code>, <code>filter_selective_tokens</code> and <code>Query.keyword_search</code> follow.
+<code>BM25Field.search(allowed_keys=)</code> keeps only the best
+<code>max(limit, SCOPED_SEARCH_FETCH_CAP)</code> records overall, which is the window
+Redis's widening loop reaches before it stops.</p>
+<h3 id="embeddings">Embeddings<a class="headerlink" href="#embeddings" title="Permanent link">&para;</a></h3>
+<p><code>EmbeddingField</code> needs the <strong>pgvector</strong> extension. popoto never creates or
+drops an extension, so run <code>CREATE EXTENSION vector</code> in the database (as a
+role allowed to). Its schema must be on the connection's <code>search_path</code>; the
+default, <code>public</code>, is. A model with an <code>EmbeddingField</code> raises
+<code>BackendCapabilityError</code> naming the fix on its first use when either is
+missing. The <code>pgvector/pgvector:pg18</code> image ships the extension.</p>
+<p>The dimension <code>d</code> is read from the field's provider at the model's first
+use. Configure the provider (<code>popoto.configure</code>) before then. With no
+provider the column is an unconstrained <code>vector</code> with no HNSW index, and
+every search is exact.</p>
+<p>A save embeds the source text exactly as <code>on_save</code> does on Redis: a provider
+failure raises <code>RuntimeError</code> and nothing is written. The vector is stored
+as float32, the precision of Redis's <code>.npy</code> files. Reads that hydrate records
+never fetch it. A save that names the source in <code>update_fields</code> re-embeds,
+as it re-indexes BM25.</p>
+<p><strong>The narrow vector table.</strong> Each vector is also kept in
+<code>&lt;table&gt;__&lt;f&gt;__vec (_pk, scope, v)</code>, written in the save statement and
+cascaded on delete. In the record table a 1536-d vector (6 kB) is TOASTed,
+so an exact scan reads two heaps and de-TOASTs every row in scope. The
+narrow table stores <code>v</code> inline (<code>STORAGE PLAIN</code>, up to
+1,900 dimensions, so the row fits an 8 kB page), and a scope's vectors are
+one index range on <code>scope</code> plus their heap pages. The exact path reads it;
+the HNSW index stays on the record table's column. The cost is a second
+copy of every vector, about 6 kB a row at 1536-d.</p>
+<p><strong>The vector arm</strong> (<code>_get_vector_scores</code>, behind <code>ContextAssembler</code>'s hybrid
+path) returns cosine similarity <code>1 - (v &lt;=&gt; q)</code>, positive only, as Redis's
+numpy path does. While at most <code>Defaults.PG_VECTOR_EXACT_MAX</code> (5,000) rows in
+scope hold a vector, it scans them exactly, ordering by <code>(v &lt;=&gt; q) + 0</code>,
+which no index can serve. Above that it uses the HNSW index with
+<code>SET LOCAL hnsw.ef_search = Defaults.PG_HNSW_EF_SEARCH</code> and
+<code>hnsw.iterative_scan = relaxed_order</code>. When HNSW returns fewer rows than
+<code>min(limit, rows with a vector)</code>, the <strong>recall guard</strong> re-runs the arm
+exactly (on the narrow table), so a pathological query costs latency rather
+than coming back empty.
+<code>EmbeddingField.load_embeddings</code> reads the column (normalized as before, in
+<code>_pk</code> order). <code>garbage_collect</code> and <code>sweep_stale_tempfiles</code> return <code>0</code> and
+touch no file: the vector goes with its row.</p>
+<p><strong>Backfill.</strong> After a save whose own embedding succeeded, the engine embeds
+up to <code>Defaults.PG_BACKFILL_BATCH</code> (4) rows of the same scope that have no
+vector, or whose vector another model made. It runs after the commit,
+outside any <code>transaction()</code>, and stops at
+<code>Defaults.PG_BACKFILL_BUDGET_SECONDS</code> (1 s) of wall clock. A provider call
+that outlives the budget is abandoned, so a slow provider cannot hold
+<code>save()</code> past it. A row is written only while its source still hashes to the
+text that was embedded and the row is still in the scope, so a concurrent
+edit is never given a stale vector. It writes the narrow row in the same
+statement, under the same record locks a save takes. Errors are logged and
+swallowed. The busy flag is process-wide: while one backfill's provider
+call is still out (abandoned at the budget but not yet returned), every
+other model's backfill skips.</p>
+<h3 id="membership">Membership<a class="headerlink" href="#membership" title="Permanent link">&para;</a></h3>
+<p><code>ExistenceFilter</code> and <code>FrequencySketch</code> are <strong>exact</strong> on Postgres (a
+documented strictness): <code>might_exist</code> has no false positives, and
+<code>get_frequency</code> returns the true count. The token table holds each live
+record's tokens and forgets a record when it is deleted. The count table
+counts saves and never decrements, as the sketch never does.
+<code>fill_ratio</code> reports the fill a bloom of the field's parameters would have
+after the distinct tokens stored, <code>1 - e^(-k·n/m)</code>.</p>
+<h3 id="fusion-and-recall">Fusion and <code>recall()</code><a class="headerlink" href="#fusion-and-recall" title="Permanent link">&para;</a></h3>
+<p><code>Query.fuse</code> is unchanged Python RRF. On Postgres the builder's filters
+(including plain fields) scope the fused set through one <code>SELECT</code>, and the
+survivors hydrate through one <code>load</code>.</p>
+<p><code>Query.recall()</code> is new and Postgres-only (<code>[PG-only]</code>; on a Redis-bound
+model it raises <code>BackendCapabilityError</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">hits</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">recall</span><span class="p">(</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="s2">"kubernetes upgrade"</span><span class="p">,</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">scope</span><span class="o">=</span><span class="s2">"valor"</span><span class="p">,</span>                       <span class="c1"># the partition_by value</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">filters</span><span class="o">=</span><span class="p">{</span><span class="s2">"agent_id"</span><span class="p">:</span> <span class="s2">"a1"</span><span class="p">},</span>          <span class="c1"># KeyField / IndexedField equality</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"ops"</span><span class="p">],</span> <span class="n">tags_mode</span><span class="o">=</span><span class="s2">"any"</span><span class="p">,</span>       <span class="c1"># the TagField: &amp;&amp; ("any") or @&gt; ("all")</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">weights</span><span class="o">=</span><span class="p">{</span><span class="s2">"bm25"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"vector"</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">},</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">)</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="k">for</span> <span class="n">memory</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">hits</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>The BM25 and vector arms rank <code>max(limit, Defaults.PG_RECALL_ARM_DEPTH)</code>
+deep and are fused by weighted RRF, <code>Σ w / (60 + rank)</code>. A first, index-only
+statement counts the scope's rows with a vector, which picks the vector
+path. On the exact path one SQL statement then runs both arms and the
+fusion, and returns the fused records' rows. On the HNSW path the vector
+arm runs as its own statement, with the recall guard, first. That arm needs
+statement-wide planner settings to keep the planner on the HNSW index, and
+in a combined statement those settings would push the BM25 arm onto a full
+index scan. Its ranking then joins the fused statement as a ranked list.
+A record that leaves the scope between the HNSW statement and the fused one
+is filtered out again in the fused statement, like every ranked list that
+joins it.
+Every scoping argument is optional, and they compose. BM25's statistics are
+<strong>per scope</strong> by default (<code>bm25_stats="scope"</code>): on a shared database, one
+agent's corpus must not skew another's IDF. <code>bm25_stats="corpus"</code> uses the
+corpus-wide statistics <code>BM25Field.search</code> uses.</p>
+<p>A model with one <code>DecayingSortedField</code> adds a third arm, <code>weights["decay"]</code>
+(default 1.0): <code>top_by_decay</code>'s ranking (<code>DECAY_SCORE_LUA</code> over the M2a
+columns: the field's clock, its <code>base_score_field</code>, and <code>&lt;f&gt;__conf</code>
+modulation when the field resolves a <code>ConfidenceField</code>), computed in the
+fused statement itself over the same scope and filters. It adds no round
+trip.</p>
+<p><strong><code>Query.top_by_relevance(scope=None, limit=10)</code></strong> (<code>[PG-only]</code>, #758 D8)
+returns <code>[(instance, score)]</code> ranked by decay × confidence in SQL, the score
+<code>top_by_decay</code> ranks by. It replaces reading a decay sorted set with a raw
+<code>ZREVRANGE</code>. <code>scope</code> is the decay field's <code>partition_by</code> value; <code>None</code> ranks
+every partition together. On a Redis-bound model it raises
+<code>BackendCapabilityError</code>; use <code>top_by_decay</code> there.</p>
+<p><strong><code>composite_score(similarity_boost=…)</code></strong> works on Postgres too (M2b). The
+mapping is one more arm, weight 1.0 and last, as its temporary set is in the
+Redis <code>ZUNIONSTORE</code>. <code>semantic_search(indexes=…)</code> uses it. The order is the
+same on both backends; with three or more summed arms a score can differ by
+up to 2 ulp, because <code>ZUNIONSTORE</code> adds the smallest input set first while
+Postgres adds the arms in order. <code>co_occurrence_boost</code> waits for
+<code>CoOccurrenceField</code> (M4).</p>
 <h2 id="topology-and-the-outage-contract">Topology and the outage contract<a class="headerlink" href="#topology-and-the-outage-contract" title="Permanent link">&para;</a></h2>
 <p>The deployment model is one central Postgres for every agent and machine.
 Each process opens one <code>psycopg_pool.ConnectionPool</code> per DSN, and opens it
@@ -3575,20 +3973,20 @@ though the row is there. Check the row before replaying such a write. Statements
 (<code>Defaults.PG_CONNECT_TIMEOUT_SECONDS</code>, <code>Defaults.PG_STATEMENT_TIMEOUT_MS</code>),
 the call raises <strong><code>BackendUnavailableError</code></strong>. The backend's health record
 tracks the outage:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">backends</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="n">Note</span><span class="p">)</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">backend</span><span class="o">.</span><span class="n">health</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># {'ok': False, 'last_ok_at': ..., 'consecutive_failures': 3,</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1">#  'dropped_writes': 2, 'last_error': 'PoolTimeout: ...'}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">backends</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="n">Note</span><span class="p">)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">backend</span><span class="o">.</span><span class="n">health</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># {'ok': False, 'last_ok_at': ..., 'consecutive_failures': 3,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1">#  'dropped_writes': 2, 'last_error': 'PoolTimeout: ...'}</span>
 </code></pre></div>
 <p>The outage is logged at ERROR once per <code>Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS</code>
 (60 s), however many calls fail within that window. After a successful call
 the record resets, and a recovery is logged at WARNING.</p>
 <h2 id="transactions">Transactions<a class="headerlink" href="#transactions" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">backends</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="n">Note</span><span class="p">)</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>      <span class="c1"># one READ COMMITTED transaction</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># both committed, or (on an exception) neither</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">backends</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="n">Note</span><span class="p">)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>      <span class="c1"># one READ COMMITTED transaction</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># both committed, or (on an exception) neither</span>
 </code></pre></div>
 <p><code>bulk_create</code>, <code>bulk_update</code> and <code>bulk_delete</code> on a Postgres model each run
 inside one <code>transaction()</code>. A unique conflict anywhere in the batch rolls back
@@ -3598,15 +3996,15 @@ statements, which then raise <code>popoto.backends.BackendRetryableError</code>.
 <code>transaction()</code> -- including at its commit -- the whole unit rolls back and
 <code>BackendRetryableError</code> is raised at once, chained from the driver error;
 popoto does not retry a block it does not own:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">BackendRetryableError</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>        <span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>            <span class="o">...</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>        <span class="k">break</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="k">except</span> <span class="n">BackendRetryableError</span><span class="p">:</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>        <span class="k">continue</span>  <span class="c1"># rolled back by a concurrent transaction; safe to rerun</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">BackendRetryableError</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>        <span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>            <span class="o">...</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>        <span class="k">break</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="k">except</span> <span class="n">BackendRetryableError</span><span class="p">:</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>        <span class="k">continue</span>  <span class="c1"># rolled back by a concurrent transaction; safe to rerun</span>
 </code></pre></div>
 <p>Before #759 M2a's patch these reached the caller as raw psycopg
 <code>DeadlockDetected</code> / <code>SerializationFailure</code>. A statement whose completion is
@@ -3619,17 +4017,17 @@ followed by one <code>load</code> of the ranked rows, in rank order; a model wit
 <p><strong><code>rank_decayed</code></strong> is <code>DECAY_SCORE_LUA</code> as a <code>SELECT</code>, operation for
 operation in <code>double precision</code>, so the platform's <code>pow</code> behind <code>power()</code>
 gives the Lua's bits:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="ss">"_pk"</span><span class="p">,</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">       </span><span class="p">((</span><span class="k">CASE</span><span class="w"> </span><span class="k">WHEN</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">THEN</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="k">ELSE</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">END</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">abs</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">        </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="n">greatest</span><span class="p">((</span><span class="err">$</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">86400</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">01</span><span class="p">),</span><span class="w"> </span><span class="o">-</span><span class="err">$</span><span class="n">rate</span><span class="p">))</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">       </span><span class="c1">-- with confidence modulation:</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">       </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="n">greatest</span><span class="p">(</span><span class="n">greatest</span><span class="p">((</span><span class="err">$</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">86400</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">01</span><span class="p">),</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">               </span><span class="o">-</span><span class="p">(</span><span class="err">$</span><span class="n">rate</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">s2</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="err">$</span><span class="n">c0</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">greatest</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">least</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">t</span><span class="p">.</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">)))))</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">                 </span><span class="o">-</span><span class="w"> </span><span class="err">$</span><span class="n">rate</span><span class="p">))</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="ss">"_score"</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">  </span><span class="k">FROM</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="o">&lt;</span><span class="n">model</span><span class="o">&gt;</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">t</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="o">&lt;</span><span class="n">partition</span><span class="w"> </span><span class="n">filters</span><span class="o">&gt;</span>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w"> </span><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="p">(</span><span class="ss">"_score"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'NaN'</span><span class="p">),</span><span class="w"> </span><span class="ss">"_score"</span><span class="w"> </span><span class="k">DESC</span><span class="p">,</span><span class="w"> </span><span class="ss">"_pk"</span><span class="w"> </span><span class="k">COLLATE</span><span class="w"> </span><span class="ss">"C"</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w"> </span><span class="k">LIMIT</span><span class="w"> </span><span class="err">$</span><span class="n">n</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="ss">"_pk"</span><span class="p">,</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">       </span><span class="p">((</span><span class="k">CASE</span><span class="w"> </span><span class="k">WHEN</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">THEN</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="k">ELSE</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">END</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">abs</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">        </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="n">greatest</span><span class="p">((</span><span class="err">$</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">86400</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">01</span><span class="p">),</span><span class="w"> </span><span class="o">-</span><span class="err">$</span><span class="n">rate</span><span class="p">))</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">       </span><span class="c1">-- with confidence modulation:</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">       </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="n">greatest</span><span class="p">(</span><span class="n">greatest</span><span class="p">((</span><span class="err">$</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">86400</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">01</span><span class="p">),</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">               </span><span class="o">-</span><span class="p">(</span><span class="err">$</span><span class="n">rate</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">s2</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="err">$</span><span class="n">c0</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">greatest</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">least</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">t</span><span class="p">.</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">)))))</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">                 </span><span class="o">-</span><span class="w"> </span><span class="err">$</span><span class="n">rate</span><span class="p">))</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="ss">"_score"</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">  </span><span class="k">FROM</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="o">&lt;</span><span class="n">model</span><span class="o">&gt;</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">t</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="o">&lt;</span><span class="n">partition</span><span class="w"> </span><span class="n">filters</span><span class="o">&gt;</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w"> </span><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="p">(</span><span class="ss">"_score"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'NaN'</span><span class="p">),</span><span class="w"> </span><span class="ss">"_score"</span><span class="w"> </span><span class="k">DESC</span><span class="p">,</span><span class="w"> </span><span class="ss">"_pk"</span><span class="w"> </span><span class="k">COLLATE</span><span class="w"> </span><span class="ss">"C"</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w"> </span><span class="k">LIMIT</span><span class="w"> </span><span class="err">$</span><span class="n">n</span>
 </code></pre></div>
 <p><code>b</code> is the base-score column (<code>1.0</code> when there is none, or it is <code>NULL</code>, a
 string or a boolean, as the script's <code>HGET</code> + <code>cmsgpack</code> rule gives; a
@@ -3650,14 +4048,14 @@ clamp saturates where the exact value is still finite; that is the only place
 the two legs can differ. Scores come back rounded through <code>%.14g</code>, which is
 what the Lua's <code>tostring</code> replies with.</p>
 <p><strong><code>update_confidence</code></strong> is <code>CAPPED_BAYESIAN_UPDATE_LUA</code> as one <code>UPDATE</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">UPDATE</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="o">&lt;</span><span class="n">model</span><span class="o">&gt;</span><span class="w"> </span><span class="k">SET</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="n">c__conf</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">greatest</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">least</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">)</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">              </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">))</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="n">least</span><span class="p">(</span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">cap</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">))),</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="n">c__n</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span><span class="n">c__corr</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__corr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&lt;</span><span class="mi">1</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="o">&gt;</span><span class="p">,</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span><span class="n">c__contra</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__contra</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&lt;</span><span class="mi">1</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="o">&gt;</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="ss">"_pk"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">pk</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">RETURNING</span><span class="w"> </span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="n">c__corr</span><span class="p">,</span><span class="w"> </span><span class="n">c__contra</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">UPDATE</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="o">&lt;</span><span class="n">model</span><span class="o">&gt;</span><span class="w"> </span><span class="k">SET</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="n">c__conf</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">greatest</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">least</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">)</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">              </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">))</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="n">least</span><span class="p">(</span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">cap</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">))),</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="n">c__n</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span><span class="n">c__corr</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__corr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&lt;</span><span class="mi">1</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">  </span><span class="n">c__contra</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__contra</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&lt;</span><span class="mi">1</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="o">&gt;</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="ss">"_pk"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">pk</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="n">RETURNING</span><span class="w"> </span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="n">c__corr</span><span class="p">,</span><span class="w"> </span><span class="n">c__contra</span>
 </code></pre></div>
 <p>The arithmetic is the script's, so the stored confidence is bit-identical to
 the Redis one; the returned value is rounded through <code>%.14g</code> as the script's
@@ -3684,9 +4082,9 @@ reads -- and compares <code>rank_decayed</code>, <code>top_by_decay</code>, conf
 read tracking and <code>composite_score</code> between the legs. Its classes and the
 two documented NaN rows are in the PR that introduced M2a;
 <code>tests/postgres/test_memory_probe.py</code> runs a 40-shape slice of it in CI.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/probe_memory_parity.py<span class="w"> </span>--seeds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--shapes<span class="w"> </span><span class="m">200</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/probe_memory_parity.py<span class="w"> </span>--seeds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--shapes<span class="w"> </span><span class="m">200</span>
 </code></pre></div>
 <p><strong><code>ObservationProtocol.on_context_used</code></strong> applies all five outcomes for a
 batch in one transaction: the batch's rows are locked <code>FOR UPDATE</code> in <code>_pk</code>
@@ -3975,6 +4373,56 @@ cast to the column's type.</p>
 <td>run the sync call in a worker thread (the async driver arrives in M5)</td>
 </tr>
 <tr>
+<td><code>ExistenceFilter.might_exist</code> (M2b)</td>
+<td>a bloom filter: false positives are possible, and a deleted record stays "seen"</td>
+<td>exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: <code>test_existence_filter.py::TestMembershipExactness</code></td>
+</tr>
+<tr>
+<td><code>FrequencySketch.get_frequency</code> (M2b)</td>
+<td>a count-min sketch: never under, may be over</td>
+<td>the exact count of saves (never decremented, like the sketch). Pinned: same class</td>
+</tr>
+<tr>
+<td><code>ExistenceFilter.fill_ratio</code> (M2b)</td>
+<td>the fraction of set bits</td>
+<td>an estimate, <code>1 - e^(-k·n/m)</code> for the <code>n</code> distinct tokens stored</td>
+</tr>
+<tr>
+<td><code>save(update_fields=[…])</code> naming a <code>BM25Field</code>'s or <code>EmbeddingField</code>'s <strong>source</strong>, or only a <strong>scope</strong> column (M2b)</td>
+<td>only the listed fields' hooks run, so the BM25 index keeps the old text or scope, and the vector (and its hash) the old text</td>
+<td>re-indexes and re-embeds on the source; moves the postings and the narrow vector row on a scope change. Pinned: <code>test_update_fields_naming_the_source_reindexes</code>, <code>test_update_fields_naming_the_source_re_embeds</code></td>
+</tr>
+<tr>
+<td><code>save(update_fields=[…])</code> naming a partitioned sorted field (<code>DecayingSortedField</code>, <code>SortedField(partition_by=…)</code>) but not its partition column, after an unsaved change to that column (M2b, #774 review)</td>
+<td>the field's hook reads the partition from the instance, so the member moves to the instance's partition sorted set while the hash keeps the old value: <code>filter(agent="B").top_by_decay()</code> finds a record whose <code>agent</code> is <code>"A"</code> (#771)</td>
+<td>the partition is the stored column, so the record stays where the row says; the BM25 postings, document length and narrow vector row follow the stored row too. Pinned: <code>test_backend_parity_memory.py::test_a_partial_save_with_an_unsaved_partition_is_a_documented_divergence</code></td>
+</tr>
+<tr>
+<td><code>EmbeddingField</code> storage (M2b)</td>
+<td>a <code>.npy</code> file per record plus <code>_index.json</code>, and an in-process matrix cache</td>
+<td>the <code>vector(d)</code> column. No file, no cache, and <code>garbage_collect</code> / <code>sweep_stale_tempfiles</code> return <code>0</code>. The tests that assert files are <code>redis_only</code></td>
+</tr>
+<tr>
+<td>Vector-arm ties and precision (M2b)</td>
+<td>equal similarities come back in directory-listing order; numpy float32 dot products</td>
+<td>ties by key, bytewise; pgvector's <code>&lt;=&gt;</code>. Both are float32 accumulations in a different order, so similarities differ by an amount that grows with the dimension. Measured maximum absolute difference over 10,000 vector-query pairs per dimension (clustered Gaussian vectors, PostgreSQL 18.6, pgvector 0.8.7): 2.5e-7 at 2-d, 2.3e-7 at 8-d, 5.3e-7 at 64-d, 8.9e-7 at 256-d, 1.2e-6 at 768-d, 1.4e-6 at 1024-d, 1.7e-6 at 1536-d (the #774 review measured 1.56e-6) and 2.3e-6 at 3072-d. So 1e-6 holds only up to about 256 dimensions; above that, near-ties can order differently</td>
+</tr>
+<tr>
+<td><code>ContentField</code> (M2b)</td>
+<td>a <code>$CF:</code> reference in the hash, with the content in a file store</td>
+<td>the content itself in a <code>text</code> column</td>
+</tr>
+<tr>
+<td><code>BM25Field.recompute_stats</code> (M2b)</td>
+<td>corrects the running <code>avgdl</code>'s floating drift</td>
+<td>a no-op: <code>N</code> and <code>avgdl</code> are counted live</td>
+</tr>
+<tr>
+<td>The <code>$BM25:</code> / <code>$EF:</code> / <code>$FS:</code> keys (M2b)</td>
+<td>the index, readable through the raw client</td>
+<td>not used: postings, length and token tables. The tests that read the keys are <code>redis_only</code></td>
+</tr>
+<tr>
 <td>A reload after <code>touch()</code> (M2a)</td>
 <td><code>touch</code> moves only the sorted-set score, so the hash, and a reload, keep the save-time value</td>
 <td>the clock is the field's column, so a reload sees the touched time. Pinned: <code>test_a_reload_after_touch_is_a_documented_divergence</code></td>
@@ -3990,9 +4438,9 @@ cast to the column's type.</p>
 <td>raises <code>BackendCapabilityError</code>: the priority tier is a no-op on Postgres (plan §5 M2)</td>
 </tr>
 <tr>
-<td><code>composite_score(similarity_boost=/co_occurrence_boost=)</code> (M2a)</td>
+<td><code>composite_score(co_occurrence_boost=)</code> (M2a)</td>
 <td>injects the boost as an arm</td>
-<td>raises <code>BackendCapabilityError</code> until the vector arm (M2) and <code>CoOccurrenceField</code> (M4) arrive</td>
+<td>raises <code>BackendCapabilityError</code> until <code>CoOccurrenceField</code> (M4) arrives. <code>similarity_boost=</code> is an arm on both since M2b; a key with no record cannot take a top-K slot on Postgres, where on Redis it takes one and is then dropped at hydration</td>
 </tr>
 <tr>
 <td>Where a NaN decay score ranks (M2a)</td>
@@ -4031,9 +4479,59 @@ confidence modulation over all 2,000 records (top 10): Postgres p50 at most
 1x Redis, <code>DECAY_SCORE_LUA</code> against one <code>SELECT</code>; <code>top_by_decay</code> with
 hydration is measured beside it. The PRs that introduced each milestone
 record the measured numbers and the environment they were taken on.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/14<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_backend_seam.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/14<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_backend_seam.py
+</code></pre></div>
+<h3 id="recall-m2b-exit-criterion"><code>recall()</code> (M2b exit criterion)<a class="headerlink" href="#recall-m2b-exit-criterion" title="Permanent link">&para;</a></h3>
+<p><code>scripts/bench_recall.py</code> seeds a 20,000-row, 1536-dimension corpus through
+<code>Model.save()</code>: five projects (60 / 20 / 10 / 5 / 5 %), documents of 40-80
+tokens from a 30,000-term Zipf vocabulary, and clustered synthetic vectors.
+It runs <code>VACUUM ANALYZE</code>, then makes three runs of 200
+<code>recall(q, scope=p, limit=10)</code> calls at a 5% and a 60% scope, and times each
+arm alone. The targets are at most 15 ms p95 at 5% scope and at most 60 ms
+p95 at 60% scope. The 5% scope (1,000 vectors) takes the exact path, over
+the narrow vector table; before that table, reading 1,000 TOASTed 6 kB
+vectors from the record table was most of the time, and the 5% p95 sat
+at 13-25 ms. The 60% scope (12,000 vectors) takes HNSW. Each run prints the
+load average.</p>
+<p>Measured for #774 (Apple M1 Max, PostgreSQL 18.6 with <code>shared_buffers</code>
+128 MB, pgvector 0.8.7, one 20k corpus, six invocations of three runs each;
+the machine was shared, load average 4.7-7.5 throughout):</p>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Path</th>
+<th>p50 (typical)</th>
+<th>p95 per run</th>
+<th>Runs within the bar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5%</td>
+<td>exact, narrow table</td>
+<td>5.6-5.9 ms (11.5-13.4 ms in the slow windows)</td>
+<td>6.5-10.8 ms in 13 runs; 16.4-20.2 ms in 5</td>
+<td>13 of 18 (bar 15 ms)</td>
+</tr>
+<tr>
+<td>60%</td>
+<td>HNSW</td>
+<td>9.9-17.8 ms</td>
+<td>16.8-46.3 ms</td>
+<td>18 of 18 (bar 60 ms)</td>
+</tr>
+</tbody>
+</table>
+<p>The five slow 5% runs fell in windows where the whole machine slowed: the
+same index-only count statement went from 0.4 ms to 1.0 ms p50 and every
+arm doubled together. Run alone in one window, the exact arm on the record
+table (TOAST) took p50 7.9 ms, p95 9.1 ms, and on the narrow table p50
+2.9 ms, p95 3.6 ms.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/popoto_bench<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_recall.py<span class="w"> </span><span class="o">[</span>--n<span class="w"> </span><span class="m">20000</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--dim<span class="w"> </span><span class="m">1536</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--keep<span class="w"> </span><span class="p">|</span><span class="w"> </span>--reuse<span class="w"> </span>SCHEMA<span class="o">]</span>
 </code></pre></div>
 
 
