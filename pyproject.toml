@@ -93,6 +93,15 @@ monitoring = [
 mcp = [
     "mcp>=1.2",
 ]
+# The v2 Postgres backend (#759). Imported only when a model is bound to
+# Postgres (Meta.backend = "postgres" or POPOTO_BACKEND=postgres): `import
+# popoto` never imports psycopg. psycopg 3.2 is the first release with
+# server-side pipeline/prepare controls the pool relies on; pgvector arrives
+# with EmbeddingField in M2 but is part of the extra so one install covers it.
+postgres = [
+    "psycopg[binary,pool]>=3.2",
+    "pgvector>=0.3",
+]
 benchmark = [
     "huggingface_hub>=0.23",
     "sentence-transformers>=2.7",

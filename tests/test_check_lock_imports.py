@@ -51,3 +51,23 @@ def test_package_list_excludes_benchmark():
     # `lock-check.yml` syncs with `--no-extra benchmark`; a package from that
     # extra in this list would fail the job on a set the sync never installs.
     assert "benchmark" not in {extra for _, extra in module.PACKAGES}
+
+
+def test_package_list_covers_the_postgres_extra():
+    """#759 M1b: every package the ``postgres`` extra declares is import-checked,
+    including the pool, which is a separate distribution (``psycopg-pool``)."""
+    module = _load_module()
+    postgres = {name for name, extra in module.PACKAGES if extra == "postgres"}
+    assert postgres == {"psycopg", "psycopg_pool", "pgvector"}
+
+
+def test_postgres_extra_declares_what_the_check_imports():
+    """The list is hand-maintained (CLAUDE.md); pin it against pyproject.toml
+    so the extra and the check cannot drift apart silently."""
+    import tomllib
+
+    pyproject = _SCRIPT.parents[1] / "pyproject.toml"
+    extras = tomllib.loads(pyproject.read_text())["project"]["optional-dependencies"]
+    declared = " ".join(extras["postgres"])
+    for dist in ("psycopg", "pool", "pgvector"):
+        assert dist in declared, (dist, extras["postgres"])

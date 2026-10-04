@@ -188,10 +188,10 @@ jobs:
   # tests/test_ci_workflow_redis_url.py requires every job in this file to pin
   # REDIS_URL to popoto_test_db.
   #
-  # Until M1 there is no Postgres backend: the Postgres leg of a model-level
-  # test skips ("Postgres backend arrives in M1 (#759)"), and only the
-  # harness self-tests in tests/conformance/test_harness.py run against the
-  # server.
+  # From M1b the Postgres leg binds PostgresBackend on the session schema, so
+  # every model-level conformance test runs against the server; a test that
+  # only holds on Redis is marked redis_only(reason=...) and skips there.
+  # The `[PG-only]` tests under tests/postgres/ run here too (no Redis leg).
   postgres:
     name: pytest (Postgres)
     runs-on: ubuntu-latest
@@ -241,14 +241,14 @@ jobs:
           cache: "pip"
           cache-dependency-path: pyproject.toml
 
-      # psycopg is installed directly, not through a `postgres` extra: the plan
-      # adds that extra in M1, where code first uses it. Without psycopg every
-      # Postgres leg skips, which would make this job green by vacuity; the
-      # "Verify" step below fails if psycopg cannot reach the service.
+      # The `postgres` extra (#759 M1b) brings psycopg[binary,pool] and
+      # pgvector. Without psycopg every Postgres leg skips, which would make
+      # this job green by vacuity; the "Verify" step below fails if psycopg
+      # cannot reach the service.
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,embeddings,benchmark]" "psycopg[binary]"
+          pip install -e ".[dev,embeddings,benchmark,postgres]"
 
       - name: Verify servers reachable
         run: |
@@ -273,3 +273,6 @@ jobs:
 
       - name: Run conformance tests
         run: pytest -m conformance --tb=short
+
+      - name: Run Postgres-only tests
+        run: pytest tests/postgres --tb=short

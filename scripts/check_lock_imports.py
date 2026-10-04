@@ -56,6 +56,11 @@ PACKAGES: list[tuple[str, str]] = [
     ("anthropic", "anthropic"),
     ("sentry_sdk", "monitoring"),
     ("mcp", "mcp"),
+    # The v2 Postgres backend (#759 M1b). The pool is a separate import
+    # (psycopg-pool), and psycopg[binary] must import its C implementation.
+    ("psycopg", "postgres"),
+    ("psycopg_pool", "postgres"),
+    ("pgvector", "postgres"),
 ]
 
 
