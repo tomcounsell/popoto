@@ -705,6 +705,27 @@ Postgres `transaction()` the check runs on the transaction's connection, so
 two saves of one key in one transaction refuse the second (on Redis the
 "intra-pipeline" shape stays open, as its module docstring records).
 
+**`ProvenanceJournal`** runs its pre-flight unchanged and then appends --
+and, for a closing kind, closes the target's interval -- in **one
+transaction** (`SupersessionProtocol.save_and_invalidate`, M3): its own, or
+the caller's when the backend's unit of work is passed as `pipeline=`. The
+close's outcome is known at the call, so `AnnotationResult.target_closed` is
+the truth (on Redis a caller pipeline reports `None`, "unknown until you
+execute", with a `close_index` to read after `EXEC`), and a close that fails
+rolls the annotation back with it (on Redis the queued annotation is kept:
+the M3 row below). Any other `pipeline=` object, a Redis pipeline included, is
+refused with `ValueError` before anything is written.
+`AppendOnlyMixin.hard_delete` removes the row (its open-claim pointer
+cascades) and clears the `<f>__supersedes` / `<f>__superseded_by` columns of
+the records that named it, the value side of the Redis chain hashes. The
+reconciler's statement-vector cache is `popoto_embedding_cache (model,
+member, vector)`, beside the entries, and `erase_entry` drops it there.
+`JournalEntry` composes `EventStreamMixin`, whose stream is a Redis structure
+until M5: a Postgres-bound journal still `XADD`s its mutation log to Redis
+(best-effort, outside the Postgres transaction), and the reconciler's
+`StreamConsumer` trigger reads it there. Pinned by
+`tests/postgres/test_postgres_journal.py`.
+
 **Not on Postgres yet.** `MemoryTelemetry`'s `AssemblyEvent` declares
 `Meta.ttl`, refused until M5, so a Postgres-bound telemetry recorder fails
 open (it records nothing). `SubconsciousMemory(auditable_extraction=…)` keeps
@@ -993,6 +1014,8 @@ cast to the column's type.
 | A question-queue delivery when another transaction holds a candidate's row (M4) | the script runs after the other write and sees it | `FOR UPDATE SKIP LOCKED`: that candidate is passed over for the next, as one another worker claimed would be. Pinned: `test_postgres_question_queue.py::test_a_candidate_another_writer_holds_is_skipped` |
 | A proposal that duplicates two or more open candidates (M4) | folds into the first in `QuestionCandidate.query.filter(agent_id=…)`'s order: set order | the first in `_pk` order (the "order of results" row above, seen through dedup); the queue probe's `dedup_order` class |
 | `DefaultMemory`'s eviction counter (M4) | a Redis string `MemoryService.status()` reads | a `popoto_counter` row: a Postgres-bound `DefaultMemory` needs no Redis, and the Redis-only `MemoryService` does not report it |
+| `ProvenanceJournal` with a caller `pipeline=` (M4) | a Redis pipeline: the annotation and close are queued, `target_closed` is `None` and `close_index` names the close in `execute()`'s results | the backend's unit of work only (anything else raises `ValueError`): the annotation and close run inside it, `target_closed` is known at the call, `close_index` is `None`. Pinned: `test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close` |
+| `EventStreamMixin` on a Postgres-bound model (`JournalEntry`, M4) | `XADD` in the save's pipeline | `XADD` to Redis after the Postgres write, best-effort and outside its transaction, until the stream moves in M5 |
 | `AppendOnlyMixin`: two saves of one key in one unit of work (M4) | both pass the guard (the documented intra-pipeline shape) | the second is refused (the guard reads inside the transaction). Pinned: `test_postgres_recipes.py::test_append_only_sees_its_own_transaction` |
 | `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` | run the sync call in a worker thread (the async driver arrives in M5) |
 | `ExistenceFilter.might_exist` (M2b) | a bloom filter: false positives are possible, and a deleted record stays "seen" | exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: `test_existence_filter.py::TestMembershipExactness` |
