@@ -185,6 +185,10 @@
          <lastmod>2026-10-04</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/features/postgres-backend/</loc>
+         <lastmod>2026-10-04</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/features/prediction-ledger/</loc>
          <lastmod>2026-10-04</lastmod>
     </url>
@@ -309,11 +313,23 @@
          <lastmod>2026-10-04</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/reference/popoto/backends/planning/</loc>
+         <lastmod>2026-10-04</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/reference/popoto/backends/redis/</loc>
          <lastmod>2026-10-04</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/backends/types/</loc>
+         <lastmod>2026-10-04</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/backends/postgres/plan/</loc>
+         <lastmod>2026-10-04</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/backends/postgres/schema/</loc>
          <lastmod>2026-10-04</lastmod>
     </url>
     <url>

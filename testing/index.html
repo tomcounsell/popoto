@@ -18,7 +18,7 @@
         <link rel="prev" href="../field-authoring/">
       
       
-        <link rel="next" href="../reference/">
+        <link rel="next" href="../features/postgres-backend/">
       
       
         
@@ -363,6 +363,25 @@
   
 
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../features/postgres-backend/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Postgres Backend (v2)
+
+      </a>
+    </li>
   
 
       
@@ -3004,6 +3023,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../features/postgres-backend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Postgres Backend (v2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../reference/" class="md-nav__link">
         
   
@@ -3195,10 +3241,11 @@ of the plugin.</p>
 </code></pre></div>
 <h2 id="backend-conformance-tests-opt-in">Backend Conformance Tests (opt-in)<a class="headerlink" href="#backend-conformance-tests-opt-in" title="Permanent link">&para;</a></h2>
 <p>Popoto v2 adds a Postgres backend behind the same model API
-(<a href="https://github.com/tomcounsell/popoto/issues/759">#759</a>). The plugin carries
-the harness that runs one test against each backend. Until the Postgres backend
-lands (milestone M1), the harness exists so its isolation and opt-in contract
-can be tested on their own. Model code still runs on Redis on every leg.</p>
+(<a href="https://github.com/tomcounsell/popoto/issues/759">#759</a>,
+<a href="../features/postgres-backend/">Postgres Backend</a>). The plugin carries the
+harness that runs one test against each backend: each leg binds its backend
+for the test, so the same test code exercises Redis on the <code>[redis]</code> leg and
+Postgres on the <code>[postgres]</code> leg.</p>
 <p>In a session that opted in (below), a test marked <code>conformance</code> that requests
 the <code>backend</code> fixture runs once per configured backend, with ids <code>[redis]</code> and
 <code>[postgres]</code>. Unmarked tests are never parametrised. A test that requests
@@ -3222,6 +3269,17 @@ Redis only:</p>
 <p>The environment variable overrides the ini option. The valid names are <code>redis</code>
 and <code>postgres</code>. Any other name fails the session at startup, so a typo cannot
 produce a Redis-only run that looks like Postgres coverage.</p>
+<p><strong><code>POSTGRES_URL</code> is the harness's variable, not the library's.</strong> The harness
+reads <code>POSTGRES_URL</code> to find a server for its throwaway <code>popoto_test_&lt;hex&gt;</code>
+schema, and hands the leg's <code>PostgresBackend</code> that DSN explicitly. The library
+itself never reads <code>POSTGRES_URL</code> or <code>DATABASE_URL</code>: outside tests the DSN
+comes only from <code>POPOTO_POSTGRES_URL</code> or an explicit <code>PostgresBackend(dsn=...)</code>
+(see <a href="../features/postgres-backend/#selecting-the-backend">Postgres Backend</a>).</p>
+<p><code>[PG-only]</code> tests (capabilities with no Redis counterpart, such as the outage
+contract and the schema record) live in <code>tests/postgres/</code> and run with plain
+<code>pytest tests/postgres</code>; the ones that need a server take the <code>pg</code> fixture,
+which binds the session schema's backend and skips when <code>POSTGRES_URL</code> is
+unset.</p>
 <p><strong>Projects that do not opt in see no change.</strong> A session opts in by setting
 <code>popoto_test_db</code> / <code>POPOTO_TEST_DB</code> or <code>popoto_conformance_backends</code> /
 <code>POPOTO_CONFORMANCE_BACKENDS</code>. Without one of those, the plugin registers
@@ -3237,18 +3295,21 @@ that resolves for the test is the plugin's. A <code>backend</code> fixture the p
 defines, in a conftest, module or class, shadows the plugin's, as any closer
 fixture does in pytest. A direct <code>parametrize("backend", ...)</code> replaces it. In
 both cases the test is collected as if the plugin were absent.</p>
-<p><strong>What <code>backend</code> is in M0.</strong> The fixture yields a <code>ConformanceBackend</code>
-descriptor, not a backend. It has <code>name</code> (<code>"redis"</code> or <code>"postgres"</code>), plus
-<code>schema</code> and <code>dsn</code> on the Postgres leg, and <code>is_redis</code>. Nothing is bound
-process-wide. A model-level test would therefore exercise Redis on its Postgres
-leg, so that leg <strong>skips</strong> with the reason <code>Postgres backend arrives in M1
-(#759)</code>. Only harness self-tests, marked <code>conformance(harness=True)</code> because
-they inspect the schema rather than models, run their Postgres leg before M1.
-The flag is allowed only in files under <code>tests/conformance/</code>, relative to the
-rootdir. Anywhere else it fails collection, so a model-level test cannot borrow
-it and pass its <code>[postgres]</code> leg while writing to Redis. It is temporary: M1
-deletes <code>harness=True</code> together with the pending-backend skip, once a Postgres
-backend exists for every leg to run against.</p>
+<p><strong>What <code>backend</code> is.</strong> The fixture yields a <code>ConformanceBackend</code> descriptor
+with <code>name</code> (<code>"redis"</code> or <code>"postgres"</code>) and <code>is_redis</code>, plus <code>schema</code>, <code>dsn</code>
+and <code>instance</code> (the bound <code>PostgresBackend</code>) on the Postgres leg. It also
+<strong>binds</strong> that leg's backend as the process default for the test, and as the
+instance <code>Meta.backend = "postgres"</code> resolves to, restoring the previous
+binding on teardown (since #759 M1b). Module-level models therefore run on
+the active leg with no re-declaration. A plugin autouse fixture resolves
+<code>backend</code> before a test module's own autouse fixtures, so a module fixture
+that seeds rows already writes to the leg's backend.</p>
+<p>To run a whole existing test module on both legs, mark it at module level;
+the tests need not request <code>backend</code> themselves:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">pytestmark</span> <span class="o">=</span> <span class="p">[</span><span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">conformance</span><span class="p">,</span> <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">usefixtures</span><span class="p">(</span><span class="s2">"backend"</span><span class="p">)]</span>
+</code></pre></div>
+<p>M0's <code>conformance(harness=True)</code> flag and its "Postgres backend arrives in
+M1" skip are gone: every leg has a backend to run against.</p>
 <p><strong>The Postgres leg skips when it cannot run.</strong> If <code>psycopg</code> is not installed or
 <code>POSTGRES_URL</code> is unset, each <code>[postgres]</code> parameter reports <code>SKIPPED</code> with a
 reason naming what is missing (<code>pytest -rs</code> shows it). <code>psycopg</code> is imported
@@ -3264,12 +3325,15 @@ driver is not installed:</p>
   This refuses <code>public</code>, <code>popoto</code> and <code>popoto_test_prod</code>.</li>
 </ul>
 <p><strong>Isolation</strong> is one schema per session. The harness runs
-<code>CREATE SCHEMA popoto_test_&lt;32 hex&gt;</code> at first use and truncates every table in
-it before each test, as the Postgres counterpart of <code>FLUSHDB</code>. At session end
-it runs <code>DROP SCHEMA ... CASCADE</code>, even when tests failed. The truncate names
-every table in one statement without <code>CASCADE</code>. A foreign key reaching into the
-schema from outside makes it fail rather than empty a table the harness does
-not own. The session-end <code>DROP SCHEMA ... CASCADE</code> is different. It follows
+<code>CREATE SCHEMA popoto_test_&lt;32 hex&gt;</code> at first use and drops every table in it
+before each Postgres-leg test, as the Postgres counterpart of <code>FLUSHDB</code>
+(Redis has no schema to survive a flush, and test modules declare same-named
+models with different fields, so a table must not outlive its test). At
+session end it runs <code>DROP SCHEMA ... CASCADE</code>, even when tests failed. The
+per-test reset names every table in one <code>DROP TABLE</code> without <code>CASCADE</code>. A
+foreign key reaching into the schema from outside makes it fail rather than
+drop a table the harness does not own. (<code>truncate_all()</code> remains available
+for a test that wants to empty tables but keep them.) The session-end <code>DROP SCHEMA ... CASCADE</code> is different. It follows
 dependencies across schemas, so it removes an object elsewhere <em>only if that
 object depends on a test table</em>. On PostgreSQL 18.6, a view in another schema
 that selects from a test table is dropped. A foreign key in another schema that
@@ -3293,10 +3357,10 @@ the <code>backend_is_redis</code> fixture returns <code>True</code> on the Redis
 <code>tests/conformance/test_harness.py</code>.</p>
 <h2 id="manual-test-helpers">Manual Test Helpers<a class="headerlink" href="#manual-test-helpers" title="Permanent link">&para;</a></h2>
 <p>The <code>popoto.testing</code> module provides helpers for non-pytest test runners or manual use:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">use_test_db</span><span class="p">,</span> <span class="n">flush_test_db</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">use_test_db</span><span class="p">(</span><span class="n">db</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>   <span class="c1"># Switch to test DB</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">flush_test_db</span><span class="p">()</span>      <span class="c1"># Clear the test DB</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">use_test_db</span><span class="p">,</span> <span class="n">flush_test_db</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">use_test_db</span><span class="p">(</span><span class="n">db</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>   <span class="c1"># Switch to test DB</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">flush_test_db</span><span class="p">()</span>      <span class="c1"># Clear the test DB</span>
 </code></pre></div>
 <p>These are not needed when using the pytest plugin, which handles both automatically.</p>
 <p><code>flush_test_db()</code> resolves the client to flush via <code>get_REDIS_DB()</code> <strong>at call
@@ -3327,13 +3391,13 @@ scratch area.</p>
 <li>Prefer targeted deletes (scan a narrow key prefix, delete just those
    keys) over any blanket <code>flushdb()</code>/<code>flushall()</code>.</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://localhost:6379/15"</span><span class="w">  </span><span class="c1"># non-zero, before import popoto</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>python<span class="w"> </span>my_repro_script.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REDIS_URL</span><span class="o">=</span><span class="s2">"redis://localhost:6379/15"</span><span class="w">  </span><span class="c1"># non-zero, before import popoto</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>python<span class="w"> </span>my_repro_script.py
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"REDIS_URL"</span><span class="p">,</span> <span class="s2">"redis://localhost:6379/15"</span><span class="p">)</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>  <span class="c1"># must come after the REDIS_URL setdefault above</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"REDIS_URL"</span><span class="p">,</span> <span class="s2">"redis://localhost:6379/15"</span><span class="p">)</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>  <span class="c1"># must come after the REDIS_URL setdefault above</span>
 </code></pre></div>
 <p>Copy <code>scripts/scratch_repro.py</code> as a starting point — it sets <code>REDIS_URL</code>
 before <code>import popoto</code>, refuses to run if the resolved database is 0, and
