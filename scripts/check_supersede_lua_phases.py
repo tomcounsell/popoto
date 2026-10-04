@@ -8,7 +8,7 @@ rather than a comment nobody re-reads.
 
 It prints ``BAD: <reason>`` and exits 1 when:
 
-* the ``-- MUTATION PHASE`` marker is missing;
+* the ``-- MUTATION PHASE`` marker line is missing, or appears more than once;
 * any ``redis.call`` above the marker names a command outside :data:`READ_COMMANDS`
   -- an allowlist of *reads*, deliberately inverted. Enumerating writes instead
   would fail open: the next edit to reach for ``SADD``, ``ZINCRBY``, ``EXPIRE`` or
@@ -32,6 +32,16 @@ SOURCE = pathlib.Path(__file__).resolve().parent.parent / (
 )
 
 MARKER = "-- MUTATION PHASE"
+
+#: The phase boundary is a *line that begins with* :data:`MARKER` at column 0 --
+#: not the first substring match (#747). ``SUPERSEDE_LUA`` legitimately quotes
+#: the marker mid-line inside a validation-phase comment ("above the
+#: `-- MUTATION PHASE` marker below"), and a substring partition split there,
+#: which classified the entire real validation phase as mutation and made this
+#: gate vacuous. A quote cannot start a line with the marker without *being* a
+#: second marker line, and a second marker line is itself a failure, so neither
+#: a quoting comment nor a duplicate can move the boundary silently.
+MARKER_LINE_RE = re.compile(r"^" + re.escape(MARKER) + r"\b", re.MULTILINE)
 
 #: Commands the validation phase is allowed to issue. Everything else counts as
 #: a write. Reads only -- adding to this list is a deliberate act, which is the
@@ -57,10 +67,20 @@ def extract_script(text: str) -> str:
 def check(body: str) -> "list[str]":
     """Return a list of violation strings; empty means the rule holds."""
     problems = []
-    if MARKER not in body:
-        return ["no MUTATION PHASE marker"]
+    markers = list(MARKER_LINE_RE.finditer(body))
+    if not markers:
+        return [
+            "no MUTATION PHASE marker (a line beginning with "
+            f"{MARKER!r} at column 0)"
+        ]
+    if len(markers) > 1:
+        lines = [body.count("\n", 0, m.start()) + 1 for m in markers]
+        return [
+            f"{len(markers)} MUTATION PHASE marker lines (at lines {lines}); "
+            "the phase boundary must be unambiguous"
+        ]
 
-    head, _, _tail = body.partition(MARKER)
+    head = body[: markers[0].start()]
 
     for lineno, line in enumerate(head.splitlines(), 1):
         code = line.split("--", 1)[0]

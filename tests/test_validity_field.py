@@ -1055,6 +1055,96 @@ class TestSupersedeLuaPhaseSplit:
         )
         assert module.check(good) == []
 
+    # -- #747: the boundary is the real marker line, not a quoting comment --
+    #
+    # The tests above use synthetic bodies with one marker each, so they could
+    # not see #747: the real SUPERSEDE_LUA *quotes* the marker mid-line in a
+    # validation-phase comment, and the old substring partition split there.
+    # These plant writes into a copy of the real script text instead.
+
+    _REAL_MARKER_LINE = "-- MUTATION PHASE -- every check above has passed.\n"
+    _PLANTED_WRITE = "redis.call('ZADD', ia_key, 0, 'planted')\n"
+
+    def _real_body(self, module):
+        body = module.extract_script(module.SOURCE.read_text())
+        # Fixture preconditions, asserted rather than assumed: if the script is
+        # reworded these tests must fail loudly, not plant into the wrong place.
+        assert body.count(self._REAL_MARKER_LINE) == 1
+        assert (
+            "`-- MUTATION PHASE` marker" in body
+        ), "the quoting comment these tests exist for is gone; re-derive them"
+        return body
+
+    def test_a_write_in_the_real_validation_phase_is_caught(self):
+        """The #747 reproduction: a ZADD just above the real boundary, i.e.
+        *below* the quoting comment, which the old checker read as mutation."""
+        module = self._load()
+        body = self._real_body(module)
+        bad = body.replace(
+            self._REAL_MARKER_LINE, self._PLANTED_WRITE + self._REAL_MARKER_LINE
+        )
+        problems = module.check(bad)
+        assert problems != []
+        assert any("ZADD" in p for p in problems)
+
+    def test_a_write_inside_the_mode_block_is_caught(self):
+        """Same defect, planted deep in the validation phase (inside the
+        ``mode ~= 'open'`` block, ahead of the EXISTS guards)."""
+        module = self._load()
+        body = self._real_body(module)
+        anchor = "if mode ~= 'open' then\n"
+        assert body.count(anchor) == 1
+        bad = body.replace(anchor, anchor + "  " + self._PLANTED_WRITE)
+        assert any("ZADD" in p for p in module.check(bad))
+
+    def test_a_write_in_the_real_mutation_phase_passes(self):
+        """The control: the same write below the real boundary is legal, so the
+        failures above are about *position*, not about the planted text."""
+        module = self._load()
+        body = self._real_body(module)
+        good = body.replace(
+            self._REAL_MARKER_LINE, self._REAL_MARKER_LINE + self._PLANTED_WRITE
+        )
+        assert module.check(good) == []
+
+    def test_a_quoting_comment_does_not_move_the_boundary(self):
+        """The old shape that fooled the checker, in miniature: a comment that
+        quotes the marker mid-line, then a write, then the real marker."""
+        module = self._load()
+        bad = (
+            "-- No write may appear above the `-- MUTATION PHASE` marker below.\n"
+            "if mode ~= 'open' then\n"
+            "  redis.call('EXISTS', KEYS[1])\n"
+            "end\n"
+            "redis.call('ZADD', KEYS[1], 0, 'x')\n"
+            "-- MUTATION PHASE\n"
+        )
+        assert any("ZADD" in p for p in module.check(bad))
+
+    def test_an_indented_marker_is_not_a_boundary(self):
+        """Column 0 is part of the rule: an indented marker reads as a comment,
+        so a body whose only marker is indented has no boundary at all."""
+        module = self._load()
+        body = (
+            "if mode ~= 'open' then\n"
+            "  redis.call('EXISTS', KEYS[1])\n"
+            "  -- MUTATION PHASE\n"
+            "end\n"
+        )
+        assert module.check(body) != []
+
+    def test_a_second_marker_line_is_rejected(self):
+        """Uniqueness closes the remaining hole: a line-start copy of the marker
+        added above the real one would otherwise become the boundary."""
+        module = self._load()
+        body = self._real_body(module)
+        bad = body.replace(
+            "local closed = ''\n", "local closed = ''\n-- MUTATION PHASE (quoted)\n"
+        )
+        problems = module.check(bad)
+        assert problems != []
+        assert any("marker lines" in p for p in problems)
+
 
 # ---------------------------------------------------------------------------
 # G. Gate-disabled byte parity with the pre-#580 script
