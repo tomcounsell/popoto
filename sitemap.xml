@@ -321,11 +321,19 @@
          <lastmod>2026-10-04</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/reference/popoto/backends/routing/</loc>
+         <lastmod>2026-10-04</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/reference/popoto/backends/types/</loc>
          <lastmod>2026-10-04</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/backends/postgres/codec/</loc>
+         <lastmod>2026-10-04</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/backends/postgres/memory/</loc>
          <lastmod>2026-10-04</lastmod>
     </url>
     <url>

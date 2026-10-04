@@ -2990,10 +2990,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#supported-fields-m1-m11" class="md-nav__link">
+  <a href="#supported-fields-m1-m11-m2a" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Supported fields (M1, M1.1)
+        Supported fields (M1, M1.1, M2a)
       
     </span>
   </a>
@@ -3027,6 +3027,17 @@
     <span class="md-ellipsis">
       
         Transactions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ranking-and-memory-state-m2a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ranking and memory state (M2a)
       
     </span>
   </a>
@@ -3073,10 +3084,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#performance-m1-exit-criteria" class="md-nav__link">
+  <a href="#performance-m1-and-m2a-exit-criteria" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Performance (M1 exit criteria)
+        Performance (M1 and M2a exit criteria)
       
     </span>
   </a>
@@ -3183,10 +3194,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#supported-fields-m1-m11" class="md-nav__link">
+  <a href="#supported-fields-m1-m11-m2a" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Supported fields (M1, M1.1)
+        Supported fields (M1, M1.1, M2a)
       
     </span>
   </a>
@@ -3220,6 +3231,17 @@
     <span class="md-ellipsis">
       
         Transactions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ranking-and-memory-state-m2a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ranking and memory state (M2a)
       
     </span>
   </a>
@@ -3266,10 +3288,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#performance-m1-exit-criteria" class="md-nav__link">
+  <a href="#performance-m1-and-m2a-exit-criteria" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Performance (M1 exit criteria)
+        Performance (M1 and M2a exit criteria)
       
     </span>
   </a>
@@ -3301,12 +3323,15 @@
 (<a href="https://github.com/tomcounsell/popoto/issues/759">#759</a>). Redis keeps
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.</p>
-<p>This page covers the first Postgres milestones: <strong>plain models</strong> (M1) and
-<strong>plain-field breadth</strong> (M1.1). That means records, queries, <code>Q</code> objects,
-ordering, counting and atomic increments for the field types listed below,
-including indexed, unique, tag, relationship and collection fields. Models that use other fields stay on Redis
-until their milestone. Popoto refuses them when you declare them, so they
-never fail halfway through.</p>
+<p>This page covers the first Postgres milestones: <strong>plain models</strong> (M1),
+<strong>plain-field breadth</strong> (M1.1) and the <strong>ranking and memory-state half of
+Valor's slice</strong> (M2a). That means records, queries, <code>Q</code> objects, ordering,
+counting and atomic increments for the field types listed below, including
+indexed, unique, tag, relationship and collection fields, plus decay ranking,
+confidence, read tracking, the write filter, <code>ObservationProtocol</code> and
+<code>composite_score</code>. Models that use other fields stay on Redis until their
+milestone. Popoto refuses them when you declare them, so they never fail
+halfway through.</p>
 <h2 id="selecting-the-backend">Selecting the backend<a class="headerlink" href="#selecting-the-backend" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[postgres]'</span><span class="w">      </span><span class="c1"># psycopg[binary,pool] + pgvector</span>
 </code></pre></div>
@@ -3361,7 +3386,7 @@ the model's <strong>first</strong> query or save. <code>bind()</code> itself onl
 spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.</p>
-<h2 id="supported-fields-m1-m11">Supported fields (M1, M1.1)<a class="headerlink" href="#supported-fields-m1-m11" title="Permanent link">&para;</a></h2>
+<h2 id="supported-fields-m1-m11-m2a">Supported fields (M1, M1.1, M2a)<a class="headerlink" href="#supported-fields-m1-m11-m2a" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -3436,6 +3461,16 @@ first query does not.</p>
 <td>—</td>
 <td>a composite B-tree per entry; <code>UNIQUE</code> when <code>is_unique</code></td>
 </tr>
+<tr>
+<td><code>DecayingSortedField(partition_by=…, base_score_field=…)</code> (M2a)</td>
+<td><code>double precision</code>: the decay clock, in epoch seconds</td>
+<td>B-tree <code>(partition cols…, f, _pk COLLATE "C")</code></td>
+</tr>
+<tr>
+<td><code>ConfidenceField</code> (M2a)</td>
+<td><code>double precision</code> for the attribute, plus the state <code>&lt;f&gt;__conf</code> (<code>double precision</code>), <code>&lt;f&gt;__n</code>, <code>&lt;f&gt;__corr</code>, <code>&lt;f&gt;__contra</code> (<code>bigint</code>)</td>
+<td>—</td>
+</tr>
 </tbody>
 </table>
 <p>Every table also has:</p>
@@ -3469,7 +3504,25 @@ tuple is checked in <code>pre_save</code> by a read through the backend, with th
 <code>ModelException</code> text as Redis and before any write. The <code>UNIQUE</code> index is the
 authority behind it: a write that races past the read, or two conflicting
 saves inside one <code>transaction()</code>, gets the same text from the index.</p>
-<p>Fields that arrive later: the memory fields (M2–M4); <code>GeoField</code>, <code>Meta.ttl</code>
+<p><strong>Memory state (M2a).</strong> A <code>ConfidenceField</code> keeps two things, as it does on
+Redis: the model attribute (the hash value there, its own column here) and
+the evidence state (the companion hash entry there, the four <code>__</code> columns
+here). State that is <code>NULL</code> is the seed Redis writes on save with <code>HSETNX</code>
+(<code>initial_confidence</code> and three zeros), so a save never writes it and a
+re-save never resets it. A model with <code>AccessTrackerMixin</code> gains
+<code>_access_count</code>, <code>_last_accessed</code>, <code>_staged_reads</code> and <code>_staged_at</code>; staged
+reads count only while <code>_staged_at</code> is within <code>_staged_ttl_seconds</code>, which is
+what the Redis list's refreshed <code>EXPIRE</code> means. <code>WriteFilterMixin</code>'s gate runs
+above the seam as before; its priority tier is not stored (plan §5 M2).
+<code>RecallProposal</code> keeps its pending proposals in one engine table per schema,
+<code>popoto_recall_proposal</code>, created on first use like <code>popoto_schema</code>. No state
+column is indexed: each index would make every <code>update_confidence</code> or
+<code>confirm_access</code> a non-HOT update, and nothing filters or orders by one alone.
+A partitioned <code>ConfidenceField</code> arrives in M3 and is refused until then.
+<code>PredictionLedgerMixin</code> keeps its ledger in Redis until M5 and is refused on a
+Postgres model too, rather than issuing Redis commands for a record Redis does
+not hold.</p>
+<p>Fields that arrive later: the remaining memory fields (M2b–M4); <code>GeoField</code>, <code>Meta.ttl</code>
 and the rest (M5); an <code>IndexedField</code> on a collection type is refused. A model
 that uses one of them raises
 <code>BackendCapabilityError</code> when you declare it with <code>Meta.backend =
@@ -3541,7 +3594,109 @@ the record resets, and a recovery is logged at WARNING.</p>
 inside one <code>transaction()</code>. A unique conflict anywhere in the batch rolls back
 the whole batch. Deadlock and serialization failures are retried
 automatically, up to <code>Defaults.PG_TRANSACTION_RETRIES</code> times, for single
-statements. Inside a <code>transaction()</code> they propagate to the caller.</p>
+statements, which then raise <code>popoto.backends.BackendRetryableError</code>. Inside a
+<code>transaction()</code> -- including at its commit -- the whole unit rolls back and
+<code>BackendRetryableError</code> is raised at once, chained from the driver error;
+popoto does not retry a block it does not own:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">BackendRetryableError</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>        <span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>            <span class="o">...</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>        <span class="k">break</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="k">except</span> <span class="n">BackendRetryableError</span><span class="p">:</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>        <span class="k">continue</span>  <span class="c1"># rolled back by a concurrent transaction; safe to rerun</span>
+</code></pre></div>
+<p>Before #759 M2a's patch these reached the caller as raw psycopg
+<code>DeadlockDetected</code> / <code>SerializationFailure</code>. A statement whose completion is
+unknown (SQLSTATE 40003) is not retryable -- it may have committed -- and is
+reported as <code>BackendUnavailableError</code>.</p>
+<h2 id="ranking-and-memory-state-m2a">Ranking and memory state (M2a)<a class="headerlink" href="#ranking-and-memory-state-m2a" title="Permanent link">&para;</a></h2>
+<p>Each operation is one statement. <code>top_by_decay</code> is <code>rank_decayed</code> (below)
+followed by one <code>load</code> of the ranked rows, in rank order; a model with
+<code>AccessTrackerMixin</code> then stages the reads in one more <code>UPDATE</code>.</p>
+<p><strong><code>rank_decayed</code></strong> is <code>DECAY_SCORE_LUA</code> as a <code>SELECT</code>, operation for
+operation in <code>double precision</code>, so the platform's <code>pow</code> behind <code>power()</code>
+gives the Lua's bits:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="ss">"_pk"</span><span class="p">,</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">       </span><span class="p">((</span><span class="k">CASE</span><span class="w"> </span><span class="k">WHEN</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">THEN</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="k">ELSE</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">END</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">abs</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">        </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="n">greatest</span><span class="p">((</span><span class="err">$</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">86400</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">01</span><span class="p">),</span><span class="w"> </span><span class="o">-</span><span class="err">$</span><span class="n">rate</span><span class="p">))</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">       </span><span class="c1">-- with confidence modulation:</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">       </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="n">greatest</span><span class="p">(</span><span class="n">greatest</span><span class="p">((</span><span class="err">$</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">86400</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">01</span><span class="p">),</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">               </span><span class="o">-</span><span class="p">(</span><span class="err">$</span><span class="n">rate</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">s2</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="err">$</span><span class="n">c0</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">greatest</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">least</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">t</span><span class="p">.</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">)))))</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">                 </span><span class="o">-</span><span class="w"> </span><span class="err">$</span><span class="n">rate</span><span class="p">))</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="ss">"_score"</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">  </span><span class="k">FROM</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="o">&lt;</span><span class="n">model</span><span class="o">&gt;</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">t</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="o">&lt;</span><span class="n">partition</span><span class="w"> </span><span class="n">filters</span><span class="o">&gt;</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w"> </span><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="p">(</span><span class="ss">"_score"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'NaN'</span><span class="p">),</span><span class="w"> </span><span class="ss">"_score"</span><span class="w"> </span><span class="k">DESC</span><span class="p">,</span><span class="w"> </span><span class="ss">"_pk"</span><span class="w"> </span><span class="k">COLLATE</span><span class="w"> </span><span class="ss">"C"</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w"> </span><span class="k">LIMIT</span><span class="w"> </span><span class="err">$</span><span class="n">n</span>
+</code></pre></div>
+<p><code>b</code> is the base-score column (<code>1.0</code> when there is none, or it is <code>NULL</code>, a
+string or a boolean, as the script's <code>HGET</code> + <code>cmsgpack</code> rule gives; a
+<code>numeric</code> converts through the same <code>strtod</code> the script's <code>tonumber</code> uses),
+<code>$s2</code> is twice <code>Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH</code>, and <code>$c0</code> the
+confidence field's <code>initial_confidence</code>. Only the partition filters scope the
+scan, as on Redis, where they pick the sorted set.</p>
+<p>Postgres raises <code>value out of range</code> where C's <code>pow</code> and <code>*</code> overflow to
+<code>inf</code> or underflow to <code>0</code> (<code>power(0.01, -155)</code>, <code>1e-300 * 1e-300</code>; the #631
+POC's boundary rows). Rows whose inputs sit in a box where no step can leave
+the <code>double</code> range -- every realistic one -- take the expression above; any
+other row, and every row when the rate or strength is extreme, takes a
+correlated subquery that computes the same steps with each <code>power</code>, <code>*</code> and
+<code>-</code> clamped, so the result is <code>inf</code> or <code>0</code>, with its sign, where the Lua's is.
+Inside a band of 0.003 in log space at each end of the <code>double</code> range (a
+result within 0.25% of <code>DBL_MAX</code>, or between <code>2.47e-324</code> and <code>2.48e-324</code>) the
+clamp saturates where the exact value is still finite; that is the only place
+the two legs can differ. Scores come back rounded through <code>%.14g</code>, which is
+what the Lua's <code>tostring</code> replies with.</p>
+<p><strong><code>update_confidence</code></strong> is <code>CAPPED_BAYESIAN_UPDATE_LUA</code> as one <code>UPDATE</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">UPDATE</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="o">&lt;</span><span class="n">model</span><span class="o">&gt;</span><span class="w"> </span><span class="k">SET</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="n">c__conf</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">greatest</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">least</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">)</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">              </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">))</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="n">least</span><span class="p">(</span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">cap</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">))),</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="n">c__n</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span><span class="n">c__corr</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__corr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&lt;</span><span class="mi">1</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span><span class="n">c__contra</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__contra</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&lt;</span><span class="mi">1</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="o">&gt;</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="ss">"_pk"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">pk</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">RETURNING</span><span class="w"> </span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="n">c__corr</span><span class="p">,</span><span class="w"> </span><span class="n">c__contra</span>
+</code></pre></div>
+<p>The arithmetic is the script's, so the stored confidence is bit-identical to
+the Redis one; the returned value is rounded through <code>%.14g</code> as the script's
+reply is. No row means the record does not exist: the field layer raises the
+same <code>TypeError</code> as on Redis (with a pipeline, the update is skipped, as the
+queued script skips it).</p>
+<p><strong><code>composite_score</code></strong> is one <code>SELECT</code> over the model's rows: each index is an
+arm scoring the records its Redis sorted set would hold (the decay arm the
+partition's clocks, the confidence arm every record, the access arm every
+record read at least once), a record is ranked when any arm holds it, and the
+aggregate runs over the arms that do -- <code>SUM</code> in the indexes' order (a NaN
+step, <code>inf + -inf</code>, becomes 0 as <code>ZUNIONSTORE</code> makes it), <code>MAX</code>/<code>MIN</code>
+ignoring the rest. Ties come back in descending key order, as <code>ZREVRANGE</code>
+gives; <code>min_score</code> applies before <code>temperature</code>, and <code>post_filter</code> after it,
+as on Redis. Two differences stay below the 1e-9 tolerance: Redis's decay arm
+holds the script's <code>%.14g</code>-rounded scores where Postgres uses the full
+<code>double</code>, and Redis adds three or more arms in its own set order rather than
+the indexes', which can move a sum by an ulp.</p>
+<p><strong>The seeded probe.</strong> <code>scripts/probe_memory_parity.py</code> builds the same random
+corpus on both backends -- ages from fresh to centuries, the future, shared
+timestamps and pathological clocks; base scores of every type the script reads,
+from <code>5e-324</code> to <code>1e305</code>; signal sequences; partitions; staged and confirmed
+reads -- and compares <code>rank_decayed</code>, <code>top_by_decay</code>, confidence,
+read tracking and <code>composite_score</code> between the legs. Its classes and the
+two documented NaN rows are in the PR that introduced M2a;
+<code>tests/postgres/test_memory_probe.py</code> runs a 40-shape slice of it in CI.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/probe_memory_parity.py<span class="w"> </span>--seeds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--shapes<span class="w"> </span><span class="m">200</span>
+</code></pre></div>
+<p><strong><code>ObservationProtocol.on_context_used</code></strong> applies all five outcomes for a
+batch in one transaction: the batch's rows are locked <code>FOR UPDATE</code> in <code>_pk</code>
+order first (the plan's §6 lock order), then each instance's effects run in
+that order -- <code>touch</code> for <code>acted</code>, staged reads confirmed (<code>acted</code>, <code>used</code>) or
+discarded (the rest), the confidence signal (<code>acted</code>, <code>contradicted</code>), and its
+proposal resolved. A deadlock or serialization failure retries the whole
+batch up to <code>Defaults.PG_TRANSACTION_RETRIES</code> times and then raises
+<code>BackendRetryableError</code>; inside a <code>transaction()</code> you pass as <code>pipeline</code> it
+raises that error at once, for you to retry.</p>
 <h2 id="documented-divergences">Documented divergences<a class="headerlink" href="#documented-divergences" title="Permanent link">&para;</a></h2>
 <p>Redis behaviour does not change to match Postgres in v2 M1 (plan gate (a)).
 Where a test pins one of these, it pins both behaviours explicitly or carries a
@@ -3819,18 +3974,66 @@ cast to the column's type.</p>
 <td>native <code>redis.asyncio</code></td>
 <td>run the sync call in a worker thread (the async driver arrives in M5)</td>
 </tr>
+<tr>
+<td>A reload after <code>touch()</code> (M2a)</td>
+<td><code>touch</code> moves only the sorted-set score, so the hash, and a reload, keep the save-time value</td>
+<td>the clock is the field's column, so a reload sees the touched time. Pinned: <code>test_a_reload_after_touch_is_a_documented_divergence</code></td>
+</tr>
+<tr>
+<td><code>DecayingSortedField.rank_decayed(zset_key, …)</code> (M2a, TD-40)</td>
+<td>ranks that sorted set</td>
+<td>raises <code>BackendCapabilityError</code> naming <code>top_by_decay</code>, the backend-neutral call</td>
+</tr>
+<tr>
+<td><code>composite_score({"priority": …})</code> (M2a)</td>
+<td>ranks by the WriteFilter priority set</td>
+<td>raises <code>BackendCapabilityError</code>: the priority tier is a no-op on Postgres (plan §5 M2)</td>
+</tr>
+<tr>
+<td><code>composite_score(similarity_boost=/co_occurrence_boost=)</code> (M2a)</td>
+<td>injects the boost as an arm</td>
+<td>raises <code>BackendCapabilityError</code> until the vector arm (M2) and <code>CoOccurrenceField</code> (M4) arrive</td>
+</tr>
+<tr>
+<td>Where a NaN decay score ranks (M2a)</td>
+<td>NaN (<code>0 * inf</code>: a <code>-inf</code> clock with above-prior confidence) makes the script's comparator inconsistent (<code>x &gt; nan</code> is always false), so <code>table.sort</code> places it arbitrarily and can misorder real scores around it</td>
+<td>real scores sorted, NaN last; every member's score is the same on both. Pinned: <code>test_where_a_nan_score_ranks_is_a_documented_divergence</code></td>
+</tr>
+<tr>
+<td>A NaN decay score in <code>composite_score</code> (M2a)</td>
+<td><code>rank_decayed</code> replies <code>nan</code> (<code>0 * inf</code>: a <code>-inf</code> clock with above-prior confidence) and the composite's <code>ZADD</code> refuses it: <code>ResponseError: value is not a valid float</code></td>
+<td>that arm scores 0 for the record, the value <code>ZUNIONSTORE</code> gives a NaN product. Pinned: <code>test_a_nan_decay_score_in_composite_is_a_documented_divergence</code></td>
+</tr>
+<tr>
+<td>The confirmed access log (M2a)</td>
+<td>a capped list of read timestamps (<code>$AT:…:access_log</code>)</td>
+<td>not kept: <code>access_count</code> and <code>last_accessed</code> are. It is read only by <code>export_state</code>, which arrives with <code>transfer/</code> in M5</td>
+</tr>
+<tr>
+<td><code>update_confidence(…, pipeline=uow)</code> with a Postgres <code>transaction()</code> (M2a)</td>
+<td>(a Redis pipeline queues the update and returns <code>None</code>)</td>
+<td>the update runs inside the transaction, so its value is returned and the attribute synced</td>
+</tr>
+<tr>
+<td>A model with a <code>CyclicDecayField</code>, <code>ValidityField</code>, partitioned <code>ConfidenceField</code>, <code>CoOccurrenceField</code> or <code>PredictionLedgerMixin</code> (M2a)</td>
+<td>supported</td>
+<td>refused at declaration until M5, M3, M3, M4 and M5 respectively, so <code>ObservationProtocol</code>'s cycle, supersession, auto-discharge and ledger-resolution effects have no Postgres model to act on yet</td>
+</tr>
 </tbody>
 </table>
-<h2 id="performance-m1-exit-criteria">Performance (M1 exit criteria)<a class="headerlink" href="#performance-m1-exit-criteria" title="Permanent link">&para;</a></h2>
+<h2 id="performance-m1-and-m2a-exit-criteria">Performance (M1 and M2a exit criteria)<a class="headerlink" href="#performance-m1-and-m2a-exit-criteria" title="Permanent link">&para;</a></h2>
 <p><code>scripts/bench_backend_seam.py</code> measures the public API on both backends. It
 seeds 2,000 records, runs <code>ANALYZE</code>, and then makes three runs of 300
 iterations per operation, with the two backends interleaved within each run.
 The M1 targets are <code>Model.save()</code> p50 at most 2x Redis and <code>filter</code> +
-hydration p50 at most 1x Redis. The PR that introduced this page records the
-measured numbers and the environment they were taken on.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/14<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_backend_seam.py
+hydration p50 at most 1x Redis. M2a adds <code>rank_decayed</code> with a base score and
+confidence modulation over all 2,000 records (top 10): Postgres p50 at most
+1x Redis, <code>DECAY_SCORE_LUA</code> against one <code>SELECT</code>; <code>top_by_decay</code> with
+hydration is measured beside it. The PRs that introduced each milestone
+record the measured numbers and the environment they were taken on.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/14<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_backend_seam.py
 </code></pre></div>
 
 
