@@ -280,9 +280,12 @@ def _on_context_used_on_backend(
 def _apply_outcome_on_backend(instance: Any, outcome: str, uow: Any) -> None:
     """The effects matrix for one instance on a non-Redis backend, inside
     ``uow``. Fields and mixins a non-Redis model cannot declare yet
-    (CyclicDecayField, ValidityField, PredictionLedgerMixin) are refused at
-    bind by ``validate_spec``, so they have no effect to apply here -- in
-    particular no Redis command is issued for a ledger (#773 review)."""
+    (CyclicDecayField, PredictionLedgerMixin) are refused at bind by
+    ``validate_spec``, so they have no effect to apply here -- in particular
+    no Redis command is issued for a ledger (#773 review). A
+    ``ValidityField`` (#759 M3) gets ``contradicted``'s supersession, inside
+    the same transaction; the batch's ``(model, field)`` lock was taken
+    before its row locks."""
     from .confidence_field import ConfidenceField
     from .decaying_sorted_field import DecayingSortedField
 
@@ -320,6 +323,8 @@ def _apply_outcome_on_backend(instance: Any, outcome: str, uow: Any) -> None:
                     )
                 except (TypeError, ValueError):
                     pass
+    if outcome == "contradicted":
+        _apply_supersession(instance, uow)
 
 
 def _get_instance_key(instance):
@@ -629,6 +634,18 @@ def _apply_supersession(
     # general case does not exist here.
     for role, obj in (("instance", instance), ("successor", successor)):
         key = getattr(getattr(obj, "db_key", None), "redis_key", None)
+        backend = non_redis_backend(obj) if key else None
+        if backend is not None:
+            # #759 M3: the same probe through the record's own backend.
+            from ..backends import RecordId
+
+            (found,) = backend.exists(
+                obj._meta.spec, [RecordId.from_key(obj._meta.model_name, key)]
+            )
+            if found:
+                continue
+            logger.debug("supersession: %s %r not persisted, degrading", role, key)
+            return
         if not key or not get_REDIS_DB().exists(key):
             logger.debug("supersession: %s %r not persisted, degrading", role, key)
             return

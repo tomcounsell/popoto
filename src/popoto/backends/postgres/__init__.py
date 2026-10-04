@@ -78,6 +78,7 @@ from .schema import (
     ensure_table,
     quote_ident,
 )
+from .validity import ensure_validity_tables, refuse_valid_from_conflict, save_parts
 
 __all__ = [
     "POSTGRES_URL_ENV",
@@ -522,6 +523,9 @@ class PostgresBackend(PostgresMemoryOps):
             ts = compile_table(spec, self.schema)
             with self._connection() as conn:
                 ensure_table(conn, ts, auto=_schema_auto())
+                # M3: a ValidityField's open-pointer table, outside any
+                # transaction that will later hold the model table's locks.
+                ensure_validity_tables(conn, ts, spec)
             self._ok()
             self._tables[spec.name] = (spec, ts)
             return ts
@@ -666,25 +670,33 @@ class PostgresBackend(PostgresMemoryOps):
         # default -- the same guard the Redis path runs before its HSET.
         obj._raise_if_quarantine_blocks(names)
         values = self._row_values(ts, obj, names)
-        cols = ["_pk"] + list(values)
+        # M3: a ValidityField's interval columns, written as SUPERSEDE_LUA's
+        # mode 'open' writes them (.validity.save_parts).
+        state, overrides, guards = save_parts(ts, spec, obj, names)
+        cols = ["_pk"] + list(values) + list(state)
         col_sql = ", ".join(quote_ident(c) for c in cols)
         placeholders = ", ".join(["%s"] * len(cols))
         # Key columns are a function of _pk, so a conflict on _pk means they
         # already hold these values: leave them out of the SET.
         updates = ", ".join(
-            f"{quote_ident(c)} = EXCLUDED.{quote_ident(c)}"
-            for c in values
+            f"{quote_ident(c)} = " + (overrides.get(c) or f"EXCLUDED.{quote_ident(c)}")
+            for c in list(values) + list(state)
             if c not in ts.key_fields
         )
         updates = (updates + ", " if updates else "") + '"_updated_at" = now()'
+        guard = f" WHERE {' AND '.join(guards)}" if guards else ""
         sql = (
             f"INSERT INTO {ts.qualified} ({col_sql}) VALUES ({placeholders}) "
-            f'ON CONFLICT ("_pk") DO UPDATE SET {updates} RETURNING (xmax = 0)'
+            f'ON CONFLICT ("_pk") DO UPDATE SET {updates}{guard} '
+            "RETURNING (xmax = 0)"
         )
         psycopg = _import_psycopg()
         try:
             rows, _ = self._run(
-                sql, [new_key] + list(values.values()), uow=uow, write=True
+                sql,
+                [new_key] + list(values.values()) + list(state.values()),
+                uow=uow,
+                write=True,
             )
         except psycopg.errors.UniqueViolation as exc:
             constraint = exc.diag.constraint_name or ""
@@ -717,6 +729,10 @@ class PostgresBackend(PostgresMemoryOps):
             from ...exceptions import ModelException
 
             raise ModelException(message) from exc
+        if guards and not rows:
+            # The upsert's guard refused a declared valid_from that disagrees
+            # with the stored start (a save racing past pre_save_validate).
+            refuse_valid_from_conflict(self, spec, obj, uow=uow)
         inserted = bool(rows and rows[0][0])
 
         obj._redis_key = new_key
@@ -965,12 +981,6 @@ class PostgresBackend(PostgresMemoryOps):
             "bound to Postgres, which supports records and queries (groups A-C) "
             "in this release"
         )
-
-    def supersede(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("supersede", "M3")
-
-    def chain(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("chain", "M3")
 
     def vector_search(self, *a: Any, **kw: Any) -> Any:
         raise self._later("vector_search", "M2")

@@ -460,6 +460,12 @@ STATIC_FIELD_KINDS: dict[str, Optional[frozenset[str]]] = {
             # columns (.postgres.memory).
             "DecayingSortedField",
             "ConfidenceField",
+            # M3, the memory core Valor does not use (plan §5 M3): the
+            # validity interval and its chain links are columns beside the
+            # field, the open-claim pointers a companion table
+            # (.postgres.validity); a partitioned ConfidenceField keeps its
+            # state in the row, so its partition is the row's own columns.
+            "ValidityField",
         }
     ),
 }
@@ -620,11 +626,6 @@ def validate_spec(spec: ModelSpec, backend_name: str) -> None:
             problems.append(
                 f"{fs.name} ({fs.kind}, type={type_name}) is not supported: an "
                 "indexed field needs a scalar column type on Postgres"
-            )
-        elif fs.kind == "ConfidenceField" and fs.options.get("partition_by"):
-            problems.append(
-                f"{fs.name} (ConfidenceField, partition_by=) is not supported "
-                "yet: partitioned confidence arrives in M3"
             )
         elif fs.kind in ("SortedField", "SortedKeyField") and (
             fs.py_type is None or fs.py_type.__name__ not in _POSTGRES_SORTED_TYPES

@@ -44,6 +44,28 @@ pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
 # --- Test Models ---
 
 
+def _forget_interval(model, instance, field_name="validity"):
+    """Make ``instance`` unmanaged -- absent from every interval index --
+    on a non-Redis leg (#759 M3): its interval columns set to ``NULL``.
+    Returns ``False`` on the Redis leg, whose caller ``ZREM``s instead."""
+    from src.popoto.backends.routing import non_redis_backend
+
+    backend = non_redis_backend(model)
+    if backend is None:
+        return False
+    table = backend._table(model._meta.spec).qualified
+    cols = ", ".join(
+        f'"{field_name}{s}" = NULL'
+        for s in ("__valid_from", "__invalid_at", "__ingested_at")
+    )
+    backend._run(
+        f'UPDATE {table} SET {cols} WHERE "_pk" = %s',
+        [instance.db_key.redis_key],
+        write=True,
+    )
+    return True
+
+
 class DecayItem(popoto.Model):
     name = popoto.UniqueKeyField()
     relevance = DecayingSortedField()
@@ -873,9 +895,6 @@ class DecayValidityItem(popoto.Model):
     validity = ValidityField()
 
 
-@pytest.mark.redis_only(
-    reason="uses a ValidityField, which Postgres stores from #759 M3"
-)
 class TestValidityGating:
     """top_by_decay with the decay-Lua validity gate on and off (#580, D5).
 
@@ -932,8 +951,9 @@ class TestValidityGating:
         old, new = self._pair()
         SupersessionProtocol.invalidate(old)
         keys = ValidityField.get_all_keys(DecayValidityItem, "validity")
-        for key_name in ("valid_from", "invalid_at", "ingested_at"):
-            POPOTO_REDIS_DB.zrem(keys[key_name], new.db_key.redis_key)
+        if not _forget_interval(DecayValidityItem, new):
+            for key_name in ("valid_from", "invalid_at", "ingested_at"):
+                POPOTO_REDIS_DB.zrem(keys[key_name], new.db_key.redis_key)
         results = DecayValidityItem.query.top_by_decay("relevance", n=10)
         assert [r.name for r in results] == ["new"]
 

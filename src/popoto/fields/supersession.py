@@ -73,6 +73,7 @@ from typing import Any, Optional, Sequence, Union
 import redis.client
 import redis.exceptions
 
+from ..backends.routing import non_redis_backend
 from ..redis_db import get_REDIS_DB
 from .validity_field import (
     ValidityField,
@@ -528,11 +529,14 @@ class SupersessionProtocol:
         if resolved is None:
             return []
         model = type(instance)
-        valid_from_key, _ = ValidityField.get_interval_keys(model, resolved)
 
         anchor = _member_key(instance)
         if anchor is None:
             return []
+        backend = non_redis_backend(model)
+        if backend is not None:
+            return _chain_on_backend(backend, instance, resolved, anchor)
+        valid_from_key, _ = ValidityField.get_interval_keys(model, resolved)
         # Membership, not resolvability. ``_member_key`` no longer probes
         # (#588 D1), so the "unsaved instance -> []" contract this method
         # documents has to live here. ``ZSCORE`` rather than ``EXISTS`` on
@@ -671,6 +675,20 @@ def _save_and_close(
             f"{type(new_instance).__name__} declares no ValidityField"
         )
 
+    backend = non_redis_backend(new_instance)
+    if backend is not None:
+        return _save_and_close_on_backend(
+            backend,
+            new_instance,
+            resolved,
+            at=at,
+            pipeline=pipeline,
+            mode=mode,
+            identity_digest=identity_digest,
+            old_member=old_member,
+            entry_point=entry_point,
+        )
+
     owns_pipeline = pipeline is None
     if pipeline is not None:
         _validate_caller_pipeline(pipeline, entry_point)
@@ -764,6 +782,117 @@ def _save_and_close(
     )
 
 
+def _chain_on_backend(
+    backend: Any, instance: Any, field_name: str, anchor: str
+) -> "list[Any]":
+    """:meth:`SupersessionProtocol.chain` on a non-Redis backend (#759 M3):
+    the backend's ``chain`` -- one ``WITH RECURSIVE`` with the Redis walk's
+    stop rules -- hydrated in order, with ``instance`` itself at its own
+    position, as the Redis walk places it."""
+    from ..backends import RecordId
+
+    model = type(instance)
+    ids = backend.chain(
+        model._meta.spec,
+        field_name,
+        RecordId.from_key(model._meta.model_name, anchor),
+    )
+    chain: "list[Any]" = []
+    for rid in ids:
+        if rid.canonical == anchor:
+            chain.append(instance)
+            continue
+        hydrated = _hydrate(model, rid.canonical)
+        if hydrated is not None:
+            chain.append(hydrated)
+    return chain
+
+
+def _save_and_close_on_backend(
+    backend: Any,
+    new_instance: Any,
+    field_name: str,
+    *,
+    at: Optional[float],
+    pipeline: Any,
+    mode: str,
+    identity_digest: str,
+    old_member: str,
+    entry_point: str,
+) -> SupersedeResult:
+    """``save_and_supersede`` / ``save_and_invalidate`` on a non-Redis
+    backend (#759 M3): the save and the close in **one transaction** -- the
+    MULTI/EXEC the Redis path assembles -- so no reader sees both records
+    open or neither present.
+
+    Without a ``pipeline`` the transaction is owned here and retried on a
+    deadlock (then :class:`~popoto.backends.BackendRetryableError`); with
+    the backend's own unit of work the work runs inside the caller's
+    transaction, which commits or rolls back with the caller's block, and
+    ``closed_key`` is the truth rather than "unknown until you execute".
+    Typed validity errors are raised at once on both shapes. A Redis
+    pipeline cannot carry a write to this backend and is refused."""
+    from ..backends import UnitOfWork
+
+    if pipeline is not None and not isinstance(pipeline, UnitOfWork):
+        raise ValueError(
+            f"SupersessionProtocol.{entry_point}: {type(new_instance).__name__} "
+            f"is stored on the {backend.name!r} backend, so pipeline must be a "
+            "unit of work from that backend's transaction(), got "
+            f"{type(pipeline).__name__}"
+        )
+
+    def work(uow: Any) -> Optional[str]:
+        saved = new_instance.save(pipeline=uow)
+        blocked = getattr(new_instance, "_never_record_verdict", None)
+        if not saved or blocked is not None:
+            cause = (
+                f"the never-record firewall ({blocked.reason})"
+                if blocked is not None
+                else "never-record firewall or write filter"
+            )
+            raise SupersedeDeclinedError(
+                f"SupersessionProtocol.{entry_point}: save() of "
+                f"{type(new_instance).__name__} was declined ({cause}), so the "
+                "close would have been queued behind a record that was never "
+                "written.",
+                verdict=blocked,
+            )
+        new_member = _member_key(new_instance)
+        if not new_member:
+            raise ValidityMemberAbsentError(
+                f"SupersessionProtocol.{entry_point}: could not resolve a Redis "
+                f"key for {new_instance!r} after save()"
+            )
+        clock = time.time()
+        instant = clock if at is None else float(at)
+        closed = ValidityField.execute_supersede(
+            new_instance,
+            field_name,
+            new_member=new_member,
+            mode=mode,
+            now=clock,
+            valid_from=instant,
+            ingested_at=clock,
+            close_at=instant,
+            old_member=old_member,
+            identity_digest=identity_digest,
+            assert_valid_from=False,
+            pipeline=uow,
+        )
+        return closed if isinstance(closed, str) else None
+
+    closed = backend.field_call(
+        new_instance._meta.spec, "_observe", "atomically", work, uow=pipeline
+    )
+    return SupersedeResult(
+        instance=new_instance,
+        closed_key=closed or None,
+        pipeline=pipeline,
+        close_index=None,
+    )
+
+
 def _resolve_field_name(instance: Any, field_name: Optional[str]) -> Optional[str]:
     """Return the name of the ``ValidityField`` to act on, or ``None``.
 
@@ -847,8 +976,15 @@ def _closed_key(
     On the pipeline branch the script has not run yet and the return value is
     the pipeline itself, so there is no closed member to report.
     """
-    if pipeline is not None or result is None:
+    if result is None:
         return None
+    if pipeline is not None:
+        from ..backends import UnitOfWork
+
+        # A backend unit of work (#759 M3) runs the supersede inside its
+        # transaction, so the result is known rather than queued.
+        if not isinstance(pipeline, UnitOfWork) or not isinstance(result, str):
+            return None
     return result.decode() if isinstance(result, bytes) else str(result)
 
 
@@ -861,6 +997,20 @@ def _walk_one(instance: Any, field_name: Optional[str], forward: bool) -> Any:
     if member is None:
         return None
     model = type(instance)
+    backend = non_redis_backend(model)
+    if backend is not None:
+        from ..backends import RecordId
+
+        state = backend.field_call(
+            model._meta.spec,
+            resolved,
+            "interval",
+            RecordId.from_key(model._meta.model_name, member),
+        )
+        linked = None
+        if state is not None:
+            linked = state["superseded_by" if forward else "supersedes"]
+        return _hydrate(model, linked) if linked else None
     link_key = (
         ValidityField.get_chain_fwd_key(model, resolved)
         if forward
