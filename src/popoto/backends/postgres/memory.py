@@ -87,8 +87,18 @@ from ..types import (
     Scored,
     UnitOfWork,
 )
-from .plan import render_where
+from .plan import render_where, to_column_value
 from .schema import Column, TableSpec, quote_ident
+from .validity import NOT_HANDLED as _VALIDITY_NOT_HANDLED
+from .validity import (
+    VALIDITY_KIND,
+    PostgresValidityOps,
+    included_sql,
+    range_bound,
+    validity_columns,
+    validity_field_names,
+    validity_indexes,
+)
 
 __all__ = [
     "ACCESS_FIELD",
@@ -227,6 +237,8 @@ def memory_columns(spec: ModelSpec) -> list[Column]:
             )
     if ACCESS_MIXIN in spec.mixins:
         out.extend(Column(c, t, None, "state") for c, t in ACCESS_COLUMNS)
+    # M3: a ValidityField's interval and chain-link columns (.validity).
+    out.extend(validity_columns(spec))
     return out
 
 
@@ -243,6 +255,7 @@ def memory_indexes(
         partition = tuple(fs.options.get("partition_by", ()) or ())
         cols = ", ".join(quote_ident(c) for c in partition + (name,))
         out.append((index_name("sort", name), f'({cols}, "_pk" COLLATE "C")', False))
+    out.extend(validity_indexes(spec, index_name))
     return out
 
 
@@ -269,6 +282,31 @@ def _base_term(ts: TableSpec, spec: ModelSpec, base_field: Optional[str]) -> str
     return f"coalesce(t.{quote_ident(base_field)}::float8, {_ONE})"
 
 
+def partition_match_sql(
+    ts: TableSpec, partition: Optional[Mapping[str, Any]], alias: str = "t"
+) -> str:
+    """``TRUE`` for a row in the partition a query names, as literals (the
+    decay expression carries no parameters). A partitioned
+    ``ConfidenceField`` keeps one companion hash per partition on Redis, and
+    a query reads the one its filters name (#759 M3): a row outside it reads
+    as having no confidence data. Empty when there is no partition."""
+    if not partition:
+        return ""
+    from psycopg import sql
+
+    terms = []
+    for name, value in partition.items():
+        column = f"{alias}.{quote_ident(name)}"
+        stored = to_column_value(ts, name, value)
+        if stored is None:
+            terms.append(f"{column} IS NULL")
+            continue
+        sql_type = ts.column_map()[name]
+        literal = sql.Literal(stored).as_string()
+        terms.append(f"{column} = ({literal})::{sql_type}")
+    return "(" + " AND ".join(terms) + ")"
+
+
 def decay_score_sql(
     ts: TableSpec,
     spec: ModelSpec,
@@ -280,11 +318,14 @@ def decay_score_sql(
     confidence_field: Optional[str],
     strength: float,
     clamped: bool = False,
+    confidence_partition: Optional[Mapping[str, Any]] = None,
 ) -> str:
     """The ``DECAY_SCORE_LUA`` score of one row of ``ts`` (aliased ``t``), as
     one SQL expression with no parameters (every constant is an exact
     ``float8`` literal). ``clamped=True`` returns the clamped expression alone
-    (the tests compare it with the plain one)."""
+    (the tests compare it with the plain one). ``confidence_partition`` is
+    the partition a partitioned confidence field is read from: a row outside
+    it modulates as if it had no confidence data (M3)."""
     f = f"t.{quote_ident(field)}"
     b = _base_term(ts, spec, base_field)
     modulate = bool(confidence_field) and strength != 0
@@ -295,6 +336,9 @@ def decay_score_sql(
         conf_spec = spec.fields[confidence_field]
         c0 = float(conf_spec.options.get("initial_confidence", 0.5))
         conf_col = f"t.{quote_ident(confidence_field + '__conf')}"
+        match = partition_match_sql(ts, confidence_partition)
+        if match:
+            conf_col = f"(CASE WHEN {match} THEN {conf_col} END)"
         cc = f"greatest({_ZERO}, least({_ONE}, coalesce({conf_col}, {_lit(c0)})))"
     s2 = float(strength) * 2
     now_l, rate_l, neg_l = _lit(now), _lit(rate), _lit(-float(rate))
@@ -396,10 +440,12 @@ def _sort_key(key: str) -> bytes:
     return key.encode("utf-8", "surrogateescape")
 
 
-class PostgresMemoryOps:
+class PostgresMemoryOps(PostgresValidityOps):
     """Protocol groups D/E (memory state, ranking) for
     :class:`~popoto.backends.postgres.PostgresBackend`. Relies on the
-    backend's ``_table``, ``_run``, ``transaction`` and ``schema``."""
+    backend's ``_table``, ``_run``, ``transaction`` and ``schema``.
+    ``supersede``, ``chain`` and the validity adapters come from
+    :class:`~.validity.PostgresValidityOps` (M3)."""
 
     # Provided by PostgresBackend.
     schema: str
@@ -513,20 +559,21 @@ class PostgresMemoryOps:
         base_score_field: Optional[str] = None,
         confidence_field: Optional[str] = None,
         validity_field: Optional[str] = None,
+        confidence_partition: Optional[Mapping[str, Any]] = None,
     ) -> Scored:
         """``SELECT _pk, <decay> s … ORDER BY s DESC, _pk COLLATE "C" LIMIT n``.
 
         ``where`` scopes the scan (the partition ``top_by_decay`` resolves);
         ``n=None`` ranks every record; ``confidence_field`` turns modulation
-        on with ``Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH`` read now.
-        ``as_of`` only feeds a validity gate, and a ``ValidityField`` cannot
-        be declared on a Postgres model until M3, so ``validity_field`` is
-        refused rather than silently ignored."""
-        if validity_field:
-            raise BackendCapabilityError(
-                "validity gating (ValidityField) arrives on Postgres in #759 M3"
-            )
+        on with ``Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH`` read now,
+        read from ``confidence_partition`` when that field is partitioned.
+        ``validity_field`` gates the scan at ``as_of`` (``None`` = now) with
+        the exclusion rule ``DECAY_SCORE_LUA`` applies (M3): a record closed
+        at or before ``as_of``, or starting after it, is not ranked; a record
+        with no interval is."""
         fs = self._decay_field(spec, field)
+        if validity_field:
+            self._validity_field(spec, validity_field)
         if n is not None and n <= 0:
             return []
         ts = self._table(spec)
@@ -544,12 +591,18 @@ class PostgresMemoryOps:
             base_field=base_score_field,
             confidence_field=confidence_field,
             strength=float(Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH),
+            confidence_partition=confidence_partition,
         )
         kinds = {name: f.kind for name, f in spec.fields.items()}
         where_sql, params = render_where(ts, kinds, where)
         clause = f"t.{quote_ident(field)} IS NOT NULL"
         if where_sql:
             clause += " AND " + where_sql[len(" WHERE ") :]
+        if validity_field:
+            gate_at = time.time() if as_of is None else float(as_of)
+            gate = included_sql(validity_field, gate_at)
+            if gate != "TRUE":
+                clause += " AND " + gate
         # ``OFFSET 0`` fences the subquery: without it the planner flattens
         # it and copies the score expression into both sort keys (the NaN
         # test and the ``DESC`` key), evaluating it twice per row (#773
@@ -597,6 +650,7 @@ class PostgresMemoryOps:
                 base_field=fs.options.get("base_score_field"),
                 confidence_field=term.options.get("confidence_field"),
                 strength=float(Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH),
+                confidence_partition=term.options.get("confidence_partition"),
             )
             col = f"t.{quote_ident(term.field)}"
             return f"({col} IS NOT NULL AND {domain})", score, params, []
@@ -662,6 +716,7 @@ class PostgresMemoryOps:
         where: Optional[Predicate],
         as_of: Optional[float],
         temperature: float,
+        validity_field: Optional[str] = None,
     ) -> Scored:
         """``composite_score`` as one ``SELECT``: each arm is a score over its
         own domain (the set its ``ZUNIONSTORE`` input would hold), a record is
@@ -669,7 +724,10 @@ class PostgresMemoryOps:
         that do -- ``SUM`` in the arms' order, ``MAX``/``MIN`` ignoring the
         rest. Ordered as ``ZREVRANGE`` orders: score, then ``_pk`` descending
         (``COLLATE "C"``). ``min_score`` is applied before ``temperature``
-        divides the scores, as on Redis."""
+        divides the scores, as on Redis. ``validity_field`` is the validity
+        mask (M3): a record the exclusion rule drops at ``as_of`` (``None`` =
+        now) is not ranked, whichever arms hold it -- the ``ZDIFFSTORE`` the
+        Redis path applies after the union."""
         if limit <= 0 or not terms:
             return []
         ts = self._table(spec)
@@ -687,6 +745,13 @@ class PostgresMemoryOps:
             where_parts.append(domain)
             params.extend(dparams)
         inner_where = " OR ".join(where_parts)
+        if validity_field:
+            self._validity_field(spec, validity_field)
+            gate = included_sql(
+                validity_field, now if as_of is None else range_bound(as_of)
+            )
+            if gate != "TRUE":
+                inner_where = f"({inner_where}) AND {gate}"
         if where is not None:
             gsql, gparams = render_where(ts, kinds, where)
             inner_where = f"({inner_where}) AND {gsql[len(' WHERE '):]}"
@@ -778,6 +843,10 @@ class PostgresMemoryOps:
         fs = spec.fields.get(field)
         if fs is not None and fs.kind == CONFIDENCE_KIND and op == "state":
             return self._confidence_state(spec, field, *args)
+        if fs is not None and fs.kind == VALIDITY_KIND:
+            result = self._validity_field_call(spec, field, op, args, kwargs, uow)
+            if result is not _VALIDITY_NOT_HANDLED:
+                return result
         if fs is not None and fs.kind == CONFIDENCE_KIND and op == "signal_many":
             return self._confidence_signal_many(spec, field, *args, uow=uow, **kwargs)
         return _NOT_HANDLED
@@ -1033,6 +1102,10 @@ class PostgresMemoryOps:
         if not ids:
             return []
         ts = self._table(spec, write=True)
+        # M3: a model with a ValidityField takes its (model, field) lock
+        # first, the order every supersede takes them in, so a contradicted
+        # outcome's supersession cannot deadlock against a concurrent one.
+        self._validity_lock(ts, validity_field_names(spec), uow)
         keys = sorted({rid.canonical for rid in ids}, key=_sort_key)
         sql, params = self._record_locked(
             ts,
@@ -1052,13 +1125,18 @@ class PostgresMemoryOps:
         ``Defaults.PG_TRANSACTION_RETRIES`` times with jitter, then
         :class:`BackendRetryableError` is raised. Inside a caller's own unit
         of work there is no retry: the failure is raised as
-        :class:`BackendRetryableError` for the caller to retry."""
+        :class:`BackendRetryableError` for the caller to retry. The work runs
+        in a SAVEPOINT there, so a refusal (or any exception) the caller
+        catches rolls back exactly this work's writes and leaves the caller's
+        transaction usable -- a caller that catches it and commits never
+        commits half of it."""
         from . import _import_psycopg, _pg_uow, _retryable, _rollback_errors
 
         psycopg = _import_psycopg()
         if _pg_uow(uow) is not None:
             try:
-                return work(uow)  # type: ignore[arg-type]
+                with uow.conn.transaction():  # type: ignore[union-attr]
+                    return work(uow)  # type: ignore[arg-type]
             except _rollback_errors(psycopg) as exc:
                 raise _retryable(exc) from exc
         retries = int(Defaults.PG_TRANSACTION_RETRIES)

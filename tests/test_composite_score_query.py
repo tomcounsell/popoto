@@ -49,6 +49,28 @@ pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
 # --- Test Models ---
 
 
+def _forget_interval(model, instance, field_name="validity"):
+    """Make ``instance`` unmanaged -- absent from every interval index --
+    on a non-Redis leg (#759 M3): its interval columns set to ``NULL``.
+    Returns ``False`` on the Redis leg, whose caller ``ZREM``s instead."""
+    from src.popoto.backends.routing import non_redis_backend
+
+    backend = non_redis_backend(model)
+    if backend is None:
+        return False
+    table = backend._table(model._meta.spec).qualified
+    cols = ", ".join(
+        f'"{field_name}{s}" = NULL'
+        for s in ("__valid_from", "__invalid_at", "__ingested_at")
+    )
+    backend._run(
+        f'UPDATE {table} SET {cols} WHERE "_pk" = %s',
+        [instance.db_key.redis_key],
+        write=True,
+    )
+    return True
+
+
 class CompositeMemory(AccessTrackerMixin, WriteFilterMixin, popoto.Model):
     """Model with all composite-scorable field types."""
 
@@ -785,9 +807,6 @@ class ValidityComposite(popoto.Model):
     validity = ValidityField()
 
 
-@pytest.mark.redis_only(
-    reason="uses a ValidityField, which Postgres stores from #759 M3"
-)
 class TestCompositeValidityMask:
     """The ZUNIONSTORE/SUM leak the composite validity mask closes.
 
@@ -826,6 +845,9 @@ class TestCompositeValidityMask:
         )
         assert [r.name for r in results] == ["new"]
 
+    @pytest.mark.redis_only(
+        reason="disables the Redis composite ZDIFFSTORE mask (QueryBuilder._apply_validity_mask); on Postgres the mask is a WHERE term of the one SELECT, and its control is in tests/postgres/test_postgres_validity.py"
+    )
     def test_control_the_leak_reproduces_with_the_mask_disabled(self, monkeypatch):
         """CONTROL — without this, the test above proves nothing.
 
@@ -851,13 +873,17 @@ class TestCompositeValidityMask:
         """The mask subtracts provably-invalid members; it does not whitelist."""
         old, new = self._closed_but_confident()
         keys = ValidityField.get_all_keys(ValidityComposite, "validity")
-        for name in ("valid_from", "invalid_at", "ingested_at"):
-            POPOTO_REDIS_DB.zrem(keys[name], new.db_key.redis_key)
+        if not _forget_interval(ValidityComposite, new):
+            for name in ("valid_from", "invalid_at", "ingested_at"):
+                POPOTO_REDIS_DB.zrem(keys[name], new.db_key.redis_key)
         results = ValidityComposite.query.composite_score(
             indexes={"relevance": 0.5, "certainty": 0.5}, limit=10
         )
         assert [r.name for r in results] == ["new"]
 
+    @pytest.mark.redis_only(
+        reason="asserts the Redis composite mask cleans its $CSQ temp keys; Postgres creates none"
+    )
     def test_mask_temp_keys_are_cleaned_up(self):
         self._closed_but_confident()
         ValidityComposite.query.composite_score(

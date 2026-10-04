@@ -77,6 +77,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
 import redis.client
 
+from ..backends.routing import non_redis_backend
 from ..models.db_key import DB_key
 from ..redis_db import get_REDIS_DB, scan_keys, run_lua
 from .constants import Defaults
@@ -422,6 +423,49 @@ def _as_str(value: Any) -> str:
     return value.decode() if isinstance(value, bytes) else str(value)
 
 
+# -- a model stored outside Redis (#759 M3) ---------------------------------------
+#
+# Every method below that reads or writes the six Redis keys first asks
+# ``non_redis_backend`` (which issues no Redis command, so a Redis-bound
+# model's wire is unchanged) and, for a model stored elsewhere, goes through
+# that backend instead: ``supersede`` for the script, and the ``ValidityField``
+# ``field_call`` adapters for the reads (``popoto.backends.postgres.validity``).
+
+
+def _record_id(model: Any, member_key: str) -> Any:
+    from ..backends import RecordId
+
+    return RecordId.from_key(model._meta.model_name, member_key)
+
+
+def _backend_interval(
+    backend: Any, model: Any, field_name: str, member_key: str
+) -> "Optional[dict[str, Any]]":
+    """The member's interval and chain links on a non-Redis backend: the five
+    scores and links Redis keeps for it, ``None`` for a record that does not
+    exist."""
+    return cast(
+        "Optional[dict[str, Any]]",
+        backend.field_call(
+            model._meta.spec,
+            field_name,
+            "interval",
+            _record_id(model, member_key),
+        ),
+    )
+
+
+def _backend_members(
+    backend: Any, model: Any, field_name: str, as_of: float, select: str
+) -> "set[str]":
+    return cast(
+        "set[str]",
+        backend.field_call(
+            model._meta.spec, field_name, "members", float(as_of), select=select
+        ),
+    )
+
+
 class ValidityField(Field):
     """Bitemporal validity interval for each record of a model.
 
@@ -540,6 +584,18 @@ class ValidityField(Field):
         on an identity, or it has already been closed and the pointer moved on.
         """
         prefix = cls.get_prefix_db_key(model, field_name).redis_key
+        backend = non_redis_backend(model)
+        if backend is not None:
+            digests = backend.field_call(
+                model._meta.spec,
+                field_name,
+                "pointers",
+                _record_id(model, member_key),
+            )
+            return [
+                cls.get_open_pointer_key(model, field_name, digest)
+                for digest in digests
+            ]
         matched = []
         for pointer_key in scan_keys(f"{prefix}:open:*"):
             pointer_key = _as_str(pointer_key)
@@ -598,6 +654,17 @@ class ValidityField(Field):
             return None
 
         member_key = model_instance.db_key.redis_key
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            return cast(
+                "Optional[dict[str, Any]]",
+                backend.field_call(
+                    model_instance._meta.spec,
+                    field_name,
+                    "export",
+                    _record_id(model_instance, member_key),
+                ),
+            )
         keys = cls.get_all_keys(model_instance, field_name)
 
         valid_from = cast(
@@ -688,6 +755,16 @@ class ValidityField(Field):
             return None
 
         member_key = model_instance.db_key.redis_key
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            backend.field_call(
+                model_instance._meta.spec,
+                field_name,
+                "import",
+                _record_id(model_instance, member_key),
+                dict(state),
+            )
+            return None
         keys = cls.get_all_keys(model_instance, field_name)
 
         valid_from = state.get("valid_from")
@@ -887,6 +964,9 @@ class ValidityField(Field):
             same accepted property tag scoping already has (plan Race 3).
         """
         t = time.time() if as_of is None else float(as_of)
+        backend = non_redis_backend(model)
+        if backend is not None:
+            return _backend_members(backend, model, field_name, t, "valid")
         valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
         # redis-py types every command ``Awaitable[T] | T`` for both the sync and
         # async clients, so mypy cannot see that these are concrete lists on the
@@ -960,6 +1040,9 @@ class ValidityField(Field):
             after the read is not reflected until the next call.
         """
         t = time.time() if as_of is None else float(as_of)
+        backend = non_redis_backend(model)
+        if backend is not None:
+            return _backend_members(backend, model, field_name, t, "excluded")
         valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
         # invalid_at <= t: already closed. The +inf open sentinel never matches.
         # Read before valid_from, the order the assembler established.
@@ -987,16 +1070,22 @@ class ValidityField(Field):
         (it has no interval).
         """
         t = time.time() if as_of is None else float(as_of)
-        valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
-        # redis-py types ZSCORE ``Awaitable[float | None] | float | None`` to cover
-        # the async client; narrow to the sync reply (see the cast note in
-        # :meth:`resolve_valid_keys`).
-        start = cast(
-            "Optional[float]", get_REDIS_DB().zscore(valid_from_key, member_key)
-        )
-        close = cast(
-            "Optional[float]", get_REDIS_DB().zscore(invalid_at_key, member_key)
-        )
+        backend = non_redis_backend(model)
+        if backend is not None:
+            state = _backend_interval(backend, model, field_name, member_key) or {}
+            start = state.get("valid_from")
+            close = state.get("invalid_at")
+        else:
+            valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
+            # redis-py types ZSCORE ``Awaitable[float | None] | float | None``
+            # to cover the async client; narrow to the sync reply (see the
+            # cast note in :meth:`resolve_valid_keys`).
+            start = cast(
+                "Optional[float]", get_REDIS_DB().zscore(valid_from_key, member_key)
+            )
+            close = cast(
+                "Optional[float]", get_REDIS_DB().zscore(invalid_at_key, member_key)
+            )
         if start is None or close is None:
             return False
         if float(close) == Defaults.VALIDITY_OPEN_SENTINEL:
@@ -1101,6 +1190,24 @@ class ValidityField(Field):
                     f"({close_at}) precedes valid_from ({valid_from})"
                 )
 
+        backend = non_redis_backend(model)
+        if backend is not None:
+            return cls._execute_supersede_on_backend(
+                backend,
+                model,
+                field_name,
+                new_member=new_member,
+                mode=mode,
+                now=clock,
+                valid_from=valid_from,
+                ingested_at=ingested_at,
+                close_at=close_at,
+                old_member=old_member,
+                identity_digest=identity_digest,
+                assert_valid_from=assert_valid_from,
+                pipeline=pipeline,
+            )
+
         keys = cls.get_all_keys(model, field_name)
         pointer_key = (
             cls.get_open_pointer_key(model, field_name, identity_digest)
@@ -1132,6 +1239,54 @@ class ValidityField(Field):
         except redis.exceptions.ResponseError as e:
             raise map_lua_error(e) from e
         closed = _as_str(result) if result else ""
+        return closed or None
+
+    @classmethod
+    def _execute_supersede_on_backend(
+        cls,
+        backend: Any,
+        model: "ModelLike",
+        field_name: str,
+        *,
+        new_member: str,
+        mode: str,
+        now: float,
+        valid_from: Optional[float],
+        ingested_at: Optional[float],
+        close_at: Optional[float],
+        old_member: str,
+        identity_digest: str,
+        assert_valid_from: bool,
+        pipeline: Any,
+    ) -> Any:
+        """:meth:`execute_supersede` on a non-Redis backend (#759 M3): the
+        backend's ``supersede``, ``SUPERSEDE_LUA`` phase for phase in one
+        transaction, raising the same typed errors with the same text.
+
+        With the backend's own unit of work the supersede runs inside its
+        transaction, so the closed key is known and returned (where a queued
+        ``EVAL`` returns the pipeline), and an error is typed at once. A
+        Redis pipeline cannot carry the write: it runs now, and the pipeline
+        comes back untouched."""
+        from ..backends import UnitOfWork
+
+        uow = pipeline if isinstance(pipeline, UnitOfWork) else None
+        closed = backend.supersede(
+            model._meta.spec,
+            field_name,
+            successor=_record_id(model, new_member) if new_member else None,
+            incumbent=_record_id(model, old_member) if old_member else None,
+            identity=identity_digest or None,
+            mode=mode,
+            valid_from=valid_from,
+            invalid_at=close_at,
+            now=now,
+            uow=uow,
+            ingested_at=ingested_at,
+            assert_valid_from=assert_valid_from,
+        )
+        if pipeline is not None and uow is None:
+            return pipeline
         return closed or None
 
     # ------------------------------------------------------------------
@@ -1266,9 +1421,14 @@ class ValidityField(Field):
             return
         if not member_key:
             return
-        stored = get_REDIS_DB().zscore(
-            cls.get_valid_from_key(model_instance, field_name), member_key
-        )
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            state = _backend_interval(backend, model_instance, field_name, member_key)
+            stored = None if state is None else state["valid_from"]
+        else:
+            stored = get_REDIS_DB().zscore(
+                cls.get_valid_from_key(model_instance, field_name), member_key
+            )
         if stored is not None and float(stored) != declared:
             raise ValidityValidFromConflictError(
                 f"ValidityField: {model_instance.__class__.__name__}.{field_name} "
@@ -1313,9 +1473,14 @@ class ValidityField(Field):
                     "ValidityField.get_valid_from: pass member_key when the "
                     "first argument is a model class rather than an instance"
                 ) from e
-        score = get_REDIS_DB().zscore(
-            cls.get_valid_from_key(model, field_name), member_key
-        )
+        backend = non_redis_backend(model)
+        if backend is not None:
+            state = _backend_interval(backend, model, field_name, member_key)
+            score = None if state is None else state["valid_from"]
+        else:
+            score = get_REDIS_DB().zscore(
+                cls.get_valid_from_key(model, field_name), member_key
+            )
         return None if score is None else float(score)
 
     @classmethod
@@ -1427,6 +1592,11 @@ class ValidityField(Field):
             ValueError: If ``__current`` is not a bool or ``__as_of`` is not a
                 finite number.
         """
+        backend = non_redis_backend(model)
+        if backend is not None:
+            return cls._filter_query_on_backend(
+                backend, model, field_name, **query_params
+            )
         valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
         results = []
 
@@ -1461,6 +1631,32 @@ class ValidityField(Field):
                     ) from e
                 results.append(cls._members_valid_at(valid_from_key, invalid_at_key, t))
 
+        if not results:
+            return set()
+        matched = results[0]
+        for other in results[1:]:
+            matched &= other
+        return matched
+
+    @classmethod
+    def _filter_query_on_backend(
+        cls, backend: Any, model: Any, field_name: str, **query_params: Any
+    ) -> "set[Any]":
+        """:meth:`filter_query` for a model on a non-Redis backend: the same
+        validation and set algebra over the backend's interval reads, keys
+        as ``bytes`` as the Redis replies are. (``Query.filter`` does not come
+        here on such a backend; the planner compiles the lookups to SQL.)"""
+        from ..backends import QueryPlan
+        from ..backends.planning import validity_cond
+
+        results = []
+        for query_param, query_value in query_params.items():
+            suffix = query_param[len(field_name) + 2 :]
+            if suffix not in ("as_of", "current"):
+                continue
+            cond = validity_cond(field_name, query_param, suffix, query_value)
+            rows = backend.select(model._meta.spec, QueryPlan(where=cond, project=()))
+            results.append({row["_id"].canonical.encode() for row in rows})
         if not results:
             return set()
         matched = results[0]

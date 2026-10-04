@@ -26,6 +26,26 @@ from src.popoto.exceptions import ModelException
 from src.popoto.models.query import QueryException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M3, plan §5 M3 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test. On Postgres a partitioned ConfidenceField
+# keeps its state in the record's row, so the partition is the row's own
+# columns; a test of the Redis companion hashes themselves -- their key
+# names, HGET/HDEL/HSCAN on them, and the migration between them -- carries
+# `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+REDIS_HASH = (
+    "reads or writes the Redis companion hash directly; on Postgres the state "
+    "is the record's own columns (get_confidence/get_confidence_data cover it)"
+)
+REDIS_KEY_NAME = (
+    "asserts the string get_data_hash_key builds for the Redis companion hash: "
+    "a pure key-name helper with no Postgres state behind it, so a Postgres "
+    "leg would pass without testing the backend (the partition's state there "
+    "is the record's columns, covered by the get_confidence tests)"
+)
+
 # --- Test Models ---
 
 
@@ -107,6 +127,7 @@ class TestPartitionInit:
 
 
 class TestPartitionedLifecycle:
+    @pytest.mark.redis_only(reason=REDIS_KEY_NAME)
     def test_on_save_creates_partitioned_hash(self):
         """Saving with partition_by creates hash key with partition value."""
         item = PartitionedConfidence.create(name="t1", project="atlas")
@@ -135,6 +156,7 @@ class TestPartitionedLifecycle:
         assert conf_a > 0.5
         assert conf_b < 0.5
 
+    @pytest.mark.redis_only(reason=REDIS_HASH)
     def test_on_delete_removes_from_partitioned_hash(self):
         """Deleting removes entry from the correct partition hash."""
         item = PartitionedConfidence.create(name="del1", project="atlas")
@@ -150,6 +172,7 @@ class TestPartitionedLifecycle:
         # Verify entry removed
         assert POPOTO_REDIS_DB.hget(data_hash_key, member_key) is None
 
+    @pytest.mark.redis_only(reason=REDIS_KEY_NAME)
     def test_multi_partition_creates_correct_key(self):
         """Multi-field partition creates hash key with all partition values."""
         item = MultiPartitionConfidence.create(
@@ -164,6 +187,9 @@ class TestPartitionedLifecycle:
 
 
 class TestPartitionChange:
+    @pytest.mark.redis_only(
+        reason="changes a key field with save(migrate_key=True), which raises on Postgres in v2 (a documented divergence); a partition change that keeps the key keeps the state in the row (tests/postgres/test_postgres_validity.py)"
+    )
     def test_partition_change_moves_entry(self):
         """Changing partition key moves confidence data to new partition hash."""
         item = PartitionedConfidence.create(name="move1", project="atlas")
@@ -194,6 +220,7 @@ class TestPartitionChange:
 
 
 class TestPartitionedConfidenceOps:
+    @pytest.mark.redis_only(reason=REDIS_HASH)
     def test_update_confidence_writes_to_partition(self):
         """update_confidence writes to the partitioned hash key."""
         item = PartitionedConfidence.create(name="uc1", project="atlas")
@@ -226,6 +253,28 @@ class TestPartitionedConfidenceOps:
         assert data["corroborations"] == 1
         assert data["contradictions"] == 1
 
+    def test_composite_confidence_arm_reads_the_query_partition(self):
+        """The arm is the partition the query names: the one companion hash
+        ``_materialize_confidence_field`` reads on Redis, a ``WHERE`` on the
+        partition column on Postgres."""
+        item_a = PartitionedConfidence.create(name="ca1", project="atlas")
+        item_b = PartitionedConfidence.create(name="cb1", project="bravo")
+        ConfidenceField.update_confidence(item_a, "certainty", signal=0.9)
+        ConfidenceField.update_confidence(item_b, "certainty", signal=0.95)
+
+        results = PartitionedConfidence.query.filter(project="atlas").composite_score(
+            indexes={"certainty": 1.0}, limit=10
+        )
+        assert [r.name for r in results] == ["ca1"]
+
+    def test_composite_confidence_arm_needs_the_partition_filter(self):
+        PartitionedConfidence.create(name="cn1", project="atlas")
+        with pytest.raises(QueryException, match="project"):
+            PartitionedConfidence.query.composite_score(
+                indexes={"certainty": 1.0}, limit=10
+            )
+
+    @pytest.mark.redis_only(reason=REDIS_HASH)
     def test_get_confidence_empty_partition_returns_initial(self):
         """get_confidence on a partition with no entries returns initial_confidence."""
         item = PartitionedConfidence.create(name="empty1", project="atlas")
@@ -255,6 +304,7 @@ class TestBackwardCompatibility:
         conf = ConfidenceField.get_confidence(item, "certainty")
         assert abs(conf - 0.7) < 1e-12
 
+    @pytest.mark.redis_only(reason=REDIS_KEY_NAME)
     def test_unpartitioned_hash_key_unchanged(self):
         """Unpartitioned hash key has no partition suffix."""
         item = UnpartitionedConfidence.create(name="compat2")
@@ -267,6 +317,7 @@ class TestBackwardCompatibility:
             else True
         )
 
+    @pytest.mark.redis_only(reason=REDIS_HASH)
     def test_unpartitioned_on_save_on_delete(self):
         """on_save/on_delete lifecycle works unchanged for unpartitioned."""
         item = UnpartitionedConfidence.create(name="compat3")
@@ -289,6 +340,9 @@ class TestBackwardCompatibility:
 
 
 class TestHSCANUtility:
+    @pytest.mark.redis_only(
+        reason="get_confidence_filtered is an HSCAN over the Redis companion hash; Postgres refuses it with BackendCapabilityError"
+    )
     def test_get_confidence_filtered_all(self):
         """get_confidence_filtered with '*' returns all entries."""
         UnpartitionedConfidence.create(name="hscan1")
@@ -300,6 +354,9 @@ class TestHSCANUtility:
         )
         assert len(result) == 3
 
+    @pytest.mark.redis_only(
+        reason="get_confidence_filtered is an HSCAN over the Redis companion hash; Postgres refuses it with BackendCapabilityError"
+    )
     def test_get_confidence_filtered_pattern(self):
         """get_confidence_filtered with pattern filters results."""
         UnpartitionedConfidence.create(name="alpha1")
@@ -313,6 +370,9 @@ class TestHSCANUtility:
         key = list(result.keys())[0]
         assert "alpha" in key
 
+    @pytest.mark.redis_only(
+        reason="get_confidence_filtered is an HSCAN over the Redis companion hash; Postgres refuses it with BackendCapabilityError"
+    )
     def test_get_confidence_filtered_no_match(self):
         """get_confidence_filtered with no matching pattern returns empty dict."""
         UnpartitionedConfidence.create(name="nomatch1")
@@ -327,6 +387,9 @@ class TestHSCANUtility:
         with pytest.raises(TypeError):
             ConfidenceField.get_confidence_filtered(UnpartitionedConfidence, "name")
 
+    @pytest.mark.redis_only(
+        reason="get_confidence_filtered is an HSCAN over the Redis companion hash; Postgres refuses it with BackendCapabilityError"
+    )
     def test_get_confidence_filtered_returns_data_dict(self):
         """get_confidence_filtered returns confidence data dicts."""
         item = UnpartitionedConfidence.create(name="datacheck1")
@@ -356,6 +419,9 @@ class TestMigrationHelper:
         with pytest.raises(ModelException):
             ConfidenceField.migrate_to_partitioned(PartitionedConfidence, "name")
 
+    @pytest.mark.redis_only(
+        reason="migrate_to_partitioned moves Redis companion-hash entries; Postgres has none and refuses it"
+    )
     def test_migrate_empty_hash(self):
         """migrate_to_partitioned on empty hash returns zero counts."""
         report = ConfidenceField.migrate_to_partitioned(
@@ -364,6 +430,9 @@ class TestMigrationHelper:
         assert report["total"] == 0
         assert report["migrated"] == 0
 
+    @pytest.mark.redis_only(
+        reason="migrate_to_partitioned moves Redis companion-hash entries; Postgres has none and refuses it"
+    )
     def test_migrate_dry_run(self):
         """migrate_to_partitioned dry_run reports without modifying data."""
         # Create items and manually write to unpartitioned hash to simulate legacy
@@ -406,6 +475,9 @@ class TestMigrationHelper:
         # Unpartitioned hash should still exist
         assert POPOTO_REDIS_DB.hlen(unpartitioned_key) == 2
 
+    @pytest.mark.redis_only(
+        reason="migrate_to_partitioned moves Redis companion-hash entries; Postgres has none and refuses it"
+    )
     def test_migrate_actual(self):
         """migrate_to_partitioned moves data from unpartitioned to partitioned."""
         import msgpack

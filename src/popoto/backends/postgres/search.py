@@ -1515,6 +1515,8 @@ class SearchMixin:
         extra_arms: Optional[Mapping[str, Sequence[str]]] = None,
         query_vector: Optional[Sequence[float]] = None,
         decay: Any = None,
+        validity_field: Optional[str] = None,
+        as_of: Optional[float] = None,
     ) -> list[tuple[dict[str, Any], float]]:
         """BM25, vector and decay arms fused by weighted RRF (``Σ w / (k +
         rank)``) in a statement that also returns the fused records' full
@@ -1571,6 +1573,18 @@ class SearchMixin:
         params: list[Any] = []
         arms: list[tuple[str, float]] = []
         cond, cond_params = _cond_text(ts, spec, where)
+        if validity_field:
+            # The validity gate (M3): the exclusion rule every ranking applies,
+            # at ``as_of`` (``None`` = now), ANDed onto every arm's domain. The
+            # narrow-table scope shortcut cannot see the interval columns.
+            from .validity import included_sql
+
+            gate = included_sql(
+                validity_field, time.time() if as_of is None else float(as_of), ""
+            )
+            if gate != "TRUE":
+                cond = gate if cond == "TRUE" else f"({cond}) AND {gate}"
+                scope_only = None
         in_scope = f'"_pk" IN (SELECT "_pk" FROM {ts.qualified} WHERE {cond})'
 
         tokens = tokenize(query_text or "")

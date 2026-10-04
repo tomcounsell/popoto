@@ -37,7 +37,7 @@ from typing import Any, Optional
 
 from .types import And, Cond, Not, Op, Or, OrderTerm, Predicate, QueryCall, QueryPlan
 
-__all__ = ["RESULT_MODIFIERS", "TRUE", "plan_from_call", "has_filters"]
+__all__ = ["RESULT_MODIFIERS", "TRUE", "plan_from_call", "has_filters", "validity_cond"]
 
 RESULT_MODIFIERS = ("limit", "order_by", "values")
 _SUFFIX_OPS = {
@@ -108,6 +108,8 @@ class _Params:
                 )
             return Cond(field_name, Op.EXACT, value)
         suffix = param[len(field_name) + 2 :]
+        if kind == "ValidityField" and suffix in ("as_of", "current"):
+            return validity_cond(field_name, param, suffix, value)
         op = _SUFFIX_OPS.get(suffix)
         if op is None:  # pragma: no cover - a vocabulary we do not know
             raise _query_exception(f"Invalid filter parameters: {param}")
@@ -187,6 +189,27 @@ class _Params:
             if used & set(self.meta.filter_query_params_by_field[field_name]):
                 return field_name
         return None
+
+
+def validity_cond(field_name: str, param: str, suffix: str, value: Any) -> Cond:
+    """``validity__as_of=t`` / ``validity__current=…`` (#759 M3), validated
+    as ``ValidityField.filter_query`` validates them -- the same
+    ``ValueError`` text -- and compiled to ``Cond(field, VALID_AT, (t,
+    valid))``: ``valid`` is ``False`` only for ``__current=False``, the
+    complement (members of either interval index not valid now)."""
+    import time
+
+    if suffix == "current":
+        if not isinstance(value, bool):
+            raise ValueError(f"{param} filter must be True or False, got {value!r}")
+        return Cond(field_name, Op.VALID_AT, (time.time(), value))
+    try:
+        t = float(value)
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            f"{param} filter must be a number of epoch seconds, got {value!r}"
+        ) from e
+    return Cond(field_name, Op.VALID_AT, (t, True))
 
 
 def _q_predicate(params: _Params, q: Any) -> Predicate:

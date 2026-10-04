@@ -412,7 +412,7 @@ firing from there. `src/popoto/backends/postgres/` never imports `redis`, and
 | `GeoField` | `geography(Point,4326)` | GiST (needs PostGIS) |
 | `DecayingSortedField` | `<f> double precision` (epoch seconds, the Redis sorted-set score; M2a departure, §5 M2) | B-tree `(partition cols…, <f>, _pk COLLATE "C")` |
 | `ConfidenceField` | `<f> double precision` (the model attribute, as the Redis hash keeps it) + state `<f>__conf double precision`, `<f>__n bigint`, `<f>__corr bigint`, `<f>__contra bigint` (`NULL` = the seed; M2a) | none (M2a departure, §5 M2) |
-| `ValidityField` | `<f> tstzrange`, `<f>_ingested_at timestamptz`, `<f>_identity text`, `<f>_supersedes text`, `<f>_superseded_by text` | GiST on `<f>`; partial `UNIQUE (<f>_identity) WHERE upper_inf(<f>)` replaces the open-pointer STRING |
+| `ValidityField` | `<f>` (the declared value) + `<f>__valid_from`, `<f>__invalid_at`, `<f>__ingested_at` `double precision` (`'Infinity'` = open), `<f>__supersedes`, `<f>__superseded_by` `text`; companion `<table>__<f>__open (digest, member)` (M3 departure, §5 M3) | B-tree on `<f>__valid_from` and `<f>__invalid_at`; the companion's `member` references `_pk` `ON DELETE CASCADE` |
 | `EmbeddingField` | `<f> bigint` (dimensions) + `<f>__vec vector(d)` (`d` from provider), `<f>__model`, `<f>__hash`; companion `<model>__<f>__vec (_pk, scope, v vector(d))`, `v` `STORAGE PLAIN` (M2b departure, §5 M2) | HNSW `vector_cosine_ops` on `<f>__vec` (needs pgvector); `(scope)` on the companion |
 | `BM25Field` | `<f>_len int` + companion `<model>__<f>_postings(scope, term, _pk, tf)` | PK `(scope, term, _pk)` |
 | `CoOccurrenceField` | companion `<model>__<f>_edges(src, dst, weight)` | PK `(src, dst)`, B-tree `(dst)` |
@@ -855,6 +855,76 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   crossing-chains interleaving (`tests/conformance/test_validity.py::TestConcurrency`,
   archive), re-expressed at model level, passes ten times. `rank_decayed` with
   a validity gate at N=2000: Postgres p50 ≤ Redis p50.
+- **M3 as shipped: departures from this plan, recorded.**
+  - **The interval is three `double precision` columns, not `tstzrange`.**
+    `timestamptz` keeps microseconds: the Redis score `1700000000.1234567`
+    reads back `1700000000.123457`, two scores one ulp apart become one
+    instant, and the gate's `invalid_at <= as_of` flips for a close one ulp
+    after `as_of` (measured on PostgreSQL 18.6; pinned by
+    `test_timestamptz_would_not_hold_the_redis_score` and the bit-exact bound
+    test). Second, a close at the record's own start (the script allows
+    `close == start`) would be `tstzrange(t, t)`, which collapses to `empty`
+    and keeps neither bound; `lower > upper` raises. (A range *can* tell "no
+    `invalid_at` recorded" from "`+inf`" -- `upper_inf('[t,)')` vs
+    `upper_inf('[t,infinity)')` -- so that was never a reason; the #777 review
+    corrected it.) This is M2a's
+    clock decision applied to the interval: `<f>__valid_from`,
+    `<f>__invalid_at`, `<f>__ingested_at`, `NULL` = absent from that index,
+    `'Infinity'` = open; the declared value keeps `<f>`, as the Redis hash
+    does. B-trees on the two gate columns, not GiST.
+  - **The open pointer is a companion table, not a partial `UNIQUE` on an
+    identity column.** One record can be the open claim of several
+    identities, and an `invalidate` leaves the pointer naming the record it
+    closed; a per-row identity column can say neither.
+    `<table>__<f>__open (digest PRIMARY KEY, member)` with `member`
+    referencing `_pk` `ON DELETE CASCADE` is `on_delete`'s pointer cleanup by
+    exact key (no `a`/`ab` over-match). Created with the model's table at
+    first use. Consequence: a pointer naming a record that does not exist
+    cannot be stored (documented divergence).
+  - **Chain links are `<f>__supersedes` / `<f>__superseded_by` on the row**,
+    the double-underscore convention of M1/M2a, and `chain` is one `WITH
+    RECURSIVE` over them.
+  - **Every validity writer follows M2b's one lock order** (§6, TD-2): the
+    `(model, field)` advisory lock, then the record-key locks in `_pk` byte
+    order (`_record_locked`), then `FOR UPDATE` in `_pk` order. `supersede`
+    takes them in that order; `save_and_*` takes all of the supersede's locks
+    before its save (the save used to lock the successor first and deadlock
+    against a concurrent supersede naming it, #777 review: 10/10 forced
+    rounds deadlocked without the pre-lock, 0/10 with it); `import_state`
+    takes the field lock as a pointer writer; `ObservationProtocol`'s batch
+    takes the field lock before its row locks and locks a contradicted
+    record's successor with the batch. Plain saves do not take the field
+    lock.
+  - **NaN instants are refused before any write** with Redis's text, `value
+    is not a valid float`: a save declaring a NaN `valid_from`
+    (`ModelException`; Redis's `MULTI`/`EXEC` keeps the hash) and a NaN
+    instant in `supersede` (`ValueError`; Redis can tear the state, #778).
+  - **`composite_score`'s similarity arm is M2b's** (one `jsonb` parameter,
+    `_scores_arm`); #777 had built the same arm as an `unnest` CTE and
+    dropped it at the merge, keeping its validity mask on the arm.
+    `semantic_search` (with and without `indexes=`) and `keyword_search` run on
+    M2b's columns; `test_semantic_search.py` runs on both legs.
+  - **The gate reaches every Postgres ranking, not only `top_by_decay`.** The
+    assembler's score proxy (`_backend_partition_scores`) passes the model's
+    validity field to `rank_decayed`, so `assess_quality` counts a closed or
+    not-yet-started record as stale exactly as Redis's `DECAY_SCORE_LUA` does
+    (#777 review B1: 0.0/0.0 against Redis's 0.5/1.0 before). The `[PG-only]`
+    `top_by_relevance` and `recall` gate at `as_of` (default now) too; `recall`
+    ANDs it onto every arm's domain. `import_state` for a record that is not
+    stored raises `ValidityMemberAbsentError` (Redis stores the pointer and
+    never raises), not a raw `ForeignKeyViolation`.
+  - **Cost of the owned transaction.** A save that declares `valid_from` on a
+    model with a search field takes its own `BEGIN`/`COMMIT` when no caller
+    transaction is open (inside one it takes a savepoint, and a plain save
+    takes neither). Measured as the p50 of 300 saves, `BM25Field` + decay +
+    `ValidityField` model, PostgreSQL 18.6 on an M1 Max, Postgres on
+    localhost, quiet-machine runs: plain save 0.55-0.62 ms; declared
+    `valid_from` outside a transaction 0.70-0.79 ms (+0.15-0.2 ms, about +25%);
+    declared inside a caller transaction 0.83-1.14 ms (the savepoint).
+    `8e5f22b7` and the fix commit measure the same, as the fix touches no
+    save path (5 interleaved before/after runs); runs while other jobs shared
+    the machine were 2-5x slower on the transactional rows in both. Reproduce
+    with a model of that shape and `time.perf_counter()` around `save()`.
 - **Files (gate b).** `test_validity_field.py` (non-Lua tests),
   `test_partitioned_confidence.py`, `test_semantic_search.py`.
 

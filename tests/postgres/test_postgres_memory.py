@@ -133,16 +133,21 @@ def test_a_plain_model_gains_no_state_columns(pg, admin, pg_schema):
     assert not [c for c in columns if "__" in c or c.startswith(("_access", "_staged"))]
 
 
-def test_partitioned_confidence_is_refused_at_declaration():
-    with pytest.raises(BackendCapabilityError, match="M3"):
+def test_partitioned_confidence_is_accepted_at_declaration():
+    """Refused until #759 M3; the state lives in the row, so the partition is
+    the row's own columns and there is nothing to refuse."""
 
-        class PgPartConf(popoto.Model):
-            name = popoto.KeyField()
-            project = popoto.KeyField()
-            certainty = ConfidenceField(partition_by="project")
+    class PgPartConf(popoto.Model):
+        name = popoto.KeyField()
+        project = popoto.KeyField()
+        certainty = ConfidenceField(partition_by="project")
 
-            class Meta:
-                backend = "postgres"
+        class Meta:
+            backend = "postgres"
+
+    assert PgPartConf._meta.spec.fields["certainty"].options["partition_by"] == (
+        "project",
+    )
 
 
 def test_state_column_collisions_are_refused(pg):
@@ -196,7 +201,7 @@ def test_update_confidence_is_one_update_returning(pg, monkeypatch):
 
 def test_rank_decayed_refusals(pg):
     spec = PgMem._meta.spec
-    with pytest.raises(BackendCapabilityError, match="M3"):
+    with pytest.raises(BackendCapabilityError, match="not a ValidityField"):
         pg.rank_decayed(spec, "relevance", now=time.time(), n=5, validity_field="v")
     with pytest.raises(BackendCapabilityError, match="not a DecayingSortedField"):
         pg.rank_decayed(spec, "weight", now=time.time(), n=5)
