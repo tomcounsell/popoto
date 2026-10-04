@@ -488,3 +488,21 @@ REDIS_URL=redis://localhost:6379/14 \
 POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
     python scripts/bench_backend_seam.py
 ```
+
+### `recall()` (M2b exit criterion)
+
+`scripts/bench_recall.py` seeds a 20,000-row, 1536-dimension corpus through
+`Model.save()`: five projects (60 / 20 / 10 / 5 / 5 %), documents of 40-80
+tokens from a 30,000-term Zipf vocabulary, and clustered synthetic vectors.
+It runs `VACUUM ANALYZE`, then makes three runs of 200
+`recall(q, scope=p, limit=10)` calls at a 5% and a 60% scope, and times each
+arm alone. The targets are at most 15 ms p95 at 5% scope and at most 60 ms
+p95 at 60% scope. The 5% scope (1,000 vectors) takes the exact path, where
+reading 1,000 TOASTed 6 KB vectors is most of the time. The 60% scope
+(12,000 vectors) takes HNSW. The PR that introduced this section records the
+measured numbers and the environment.
+
+```bash
+POPOTO_POSTGRES_URL=postgresql://localhost:5432/popoto_bench \
+    python scripts/bench_recall.py [--n 20000] [--dim 1536] [--keep | --reuse SCHEMA]
+```

@@ -265,6 +265,9 @@ jobs:
           with psycopg.connect(os.environ["POSTGRES_URL"]) as conn:
               (version,) = conn.execute("SELECT version()").fetchone()
               (num,) = conn.execute("SHOW server_version_num").fetchone()
+              # EmbeddingField needs pgvector (#759 M2b). The image ships
+              # it; popoto never creates an extension, the operator does.
+              conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
           print("postgres:", version)
           if int(num) < 180000:
               print("::error::Expected Postgres >= 18, got", num)
