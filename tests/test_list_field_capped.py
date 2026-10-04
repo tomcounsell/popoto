@@ -15,6 +15,12 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 from src import popoto  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
+# Backend conformance (#759 M1.1, plan §5 M1.1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class CappedListModel(popoto.Model):
     name = popoto.KeyField()
@@ -89,6 +95,9 @@ def test_capped_list_push_caps_at_max_length():
     ], f"Expected [9, 8, 7, 6, 5], got {loaded.events}"
 
 
+@pytest.mark.redis_only(
+    reason="checks the separate Redis list key ({key}::events) exists and is deleted; Postgres stores a capped list in its jsonb column"
+)
 def test_capped_list_delete_cleans_redis_key():
     """Deleting a model with capped list should clean up the Redis list key."""
     m = CappedListModel(name="test_del", events=[1, 2, 3])
@@ -184,6 +193,9 @@ def test_push_none_value():
     assert loaded.events == [None], f"Expected [None], got {loaded.events}"
 
 
+@pytest.mark.redis_only(
+    reason="reads the Redis model hash (HGETALL) to show the capped list lives outside it; Postgres has no hash"
+)
 def test_capped_list_not_in_hash():
     """Capped list data should not be stored in the model hash."""
     m = CappedListModel(name="test_hash", events=[1, 2, 3])

@@ -177,7 +177,7 @@ class TestDeleteAll:
         assert len(nearby) == 0
 
     @pytest.mark.redis_only(
-        reason="MenuItem has a Relationship (M1.1) to Restaurant, which has a GeoField (M5) (#759 plan §5)"
+        reason="saves the Restaurant MenuItem relates to, and Restaurant declares a GeoField, which arrives on Postgres in M5 (#759 plan §5)"
     )
     def test_delete_all_with_relationships(self):
         """delete_all() should work with models that have Relationships."""

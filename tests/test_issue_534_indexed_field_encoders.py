@@ -22,6 +22,12 @@ from popoto import AutoKeyField, IndexedField, KeyField, Model, UniqueField
 from popoto.models.encoding import encode_popoto_model_obj
 from popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M1.1, plan §5 M1.1 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class EncoderTypeIndexedModel(Model):
     """Indexed fields for every type in TYPE_ENCODER_DECODERS."""
@@ -72,6 +78,9 @@ def test_indexed_encoder_type_saves_and_round_trips(field_name, value):
     assert getattr(reloaded, field_name) == value
 
 
+@pytest.mark.redis_only(
+    reason="compares the msgpack bytes in the Redis model hash (HGET) with the canonical encoder; Postgres stores a typed column, no msgpack (#759 plan §8)"
+)
 @pytest.mark.parametrize(
     "field_name,value",
     [
@@ -128,6 +137,9 @@ def test_indexed_none_value_still_saves():
     assert reloaded.at is None
 
 
+@pytest.mark.redis_only(
+    reason="reads the msgpack bytes of the Redis model hash (HGET); Postgres stores a typed column, no msgpack (#759 plan §8)"
+)
 def test_indexed_str_value_unaffected():
     """Types outside the registry keep their existing bytes."""
 

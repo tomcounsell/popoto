@@ -43,10 +43,35 @@ class VsPlain(popoto.Model):
 
 
 class VsWide(popoto.Model):
+    """Fields Postgres still refuses after M1.1 (M2/M5 kinds, and an index on
+    a collection)."""
+
+    name = popoto.KeyField()
+    place = popoto.GeoField()
+    relevance = popoto.DecayingSortedField()
+    listed = popoto.IndexedField(type=list, null=True)
+
+
+class VsBreadth(popoto.Model):
+    """The M1.1 plain-field breadth (#759 plan §5 M1.1)."""
+
     name = popoto.KeyField()
     tags = popoto.TagField()
     email = popoto.IndexedField(type=str, null=True)
+    login = popoto.UniqueField(type=str)
     blob = popoto.Field(type=dict, null=True)
+    raw = popoto.BytesField(null=True)
+    things = popoto.ListField(null=True)
+    recent = popoto.ListField(max_length=5)
+    bag = popoto.SetField(null=True)
+    pair = popoto.TupleField(null=True)
+    meta = popoto.DictField(null=True)
+    day = popoto.DateField(null=True)
+    clock = popoto.TimeField(null=True)
+    parent = popoto.Relationship(model=VsPlain, null=True)
+
+    class Meta:
+        indexes = ((("email", "day"), True),)
 
 
 class HookingField(Field):
@@ -96,7 +121,7 @@ def test_spec_rebuilds_after_auto_key_is_added():
 
 
 def test_redis_accepts_everything():
-    for model in (VsPlain, VsWide, VsCustom, VsTtl):
+    for model in (VsPlain, VsWide, VsBreadth, VsCustom, VsTtl):
         validate_spec(model._meta.spec, "redis")
 
 
@@ -104,13 +129,25 @@ def test_postgres_accepts_the_m1_slice():
     validate_spec(VsPlain._meta.spec, "postgres")
 
 
-def test_postgres_refuses_fields_beyond_m1_naming_each():
+def test_postgres_accepts_the_m1_1_breadth():
+    """#759 M1.1 unlocks indexed/unique/tag/relationship/collection/bytes/
+    date/time fields and Meta.indexes."""
+    spec = VsBreadth._meta.spec
+    validate_spec(spec, "postgres")
+    assert spec.indexes == (("email", "day"),)
+    assert spec.unique_indexes == (("email", "day"),)
+    assert spec.fields["recent"].options["capped"] is True
+    assert "capped" not in spec.fields["things"].options
+
+
+def test_postgres_refuses_fields_beyond_m1_1_naming_each():
     with pytest.raises(BackendCapabilityError) as info:
         validate_spec(VsWide._meta.spec, "postgres")
     message = str(info.value)
-    assert "tags (TagField)" in message
-    assert "email (IndexedField)" in message
-    assert "blob (Field, type=dict)" in message
+    assert "place (GeoField)" in message
+    assert "relevance (DecayingSortedField)" in message
+    assert "listed (IndexedField, type=list)" in message
+    assert "indexed field needs a scalar column type" in message
 
 
 def test_postgres_refuses_hook_overriding_custom_fields_only():
@@ -123,7 +160,7 @@ def test_postgres_refuses_hook_overriding_custom_fields_only():
     assert "custom_class" in VsCustom._meta.spec.fields["quiet"].options
 
 
-def test_postgres_refuses_meta_ttl_and_indexes():
+def test_postgres_refuses_meta_ttl_and_accepts_indexes():
     with pytest.raises(BackendCapabilityError, match="Meta.ttl"):
         validate_spec(VsTtl._meta.spec, "postgres")
     spec = ModelSpec(
@@ -134,8 +171,7 @@ def test_postgres_refuses_meta_ttl_and_indexes():
         ttl=None,
         indexes=(("k",),),
     )
-    with pytest.raises(BackendCapabilityError, match="Meta.indexes"):
-        validate_spec(spec, "postgres")
+    validate_spec(spec, "postgres")  # Meta.indexes arrived in M1.1
 
 
 def test_unknown_backend_name():
@@ -144,11 +180,11 @@ def test_unknown_backend_name():
 
 
 def test_explicit_meta_backend_runs_the_check_at_class_creation():
-    with pytest.raises(BackendCapabilityError, match="IndexedField"):
+    with pytest.raises(BackendCapabilityError, match="GeoField"):
 
         class VsPgBad(popoto.Model):
             name = popoto.KeyField()
-            email = popoto.IndexedField(type=str, null=True)
+            place = popoto.GeoField()
 
             class Meta:
                 backend = "postgres"
