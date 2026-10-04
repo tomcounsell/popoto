@@ -8,6 +8,7 @@ Redis's ``all_keys - matches`` keeps the row), ``NULL`` in an ordered column
 """
 
 import datetime
+import decimal
 import math
 
 import pytest
@@ -260,3 +261,75 @@ def test_naive_datetime_equality_is_a_documented_divergence(backend_is_redis):
     assert result == ([] if backend_is_redis else ["aware"])
     aware = naive.replace(tzinfo=utc)
     assert [s.code for s in EdgeStamp.query.filter(at=aware)] == ["aware"]
+
+
+# -- numeric key fields: Redis's key-string semantics (#770 review) -------------
+
+
+class IntKeyed(popoto.Model):
+    code = popoto.KeyField(type=int)
+
+
+class FloatKeyed(popoto.Model):
+    code = popoto.KeyField(type=float)
+
+
+def _numeric_codes(model, **lookup):
+    return sorted(r.code for r in model.query.filter(**lookup))
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ([1, 1.5], [1]),
+        ([1.5, 2], [2]),
+        ([1, decimal.Decimal("1.5")], [1]),
+        ([decimal.Decimal("1"), 2.0], [1]),
+        ([1.0, 3], [3]),
+        ([2.0], []),
+        (["1", 2], [1, 2]),
+        ([1, 1.5, None], [1]),
+        ([], []),
+    ],
+    ids=lambda v: repr(v),
+)
+def test_int_key_in_with_mixed_numeric_types(values, expected):
+    """A key field matches by its key string on Redis, so on
+    ``KeyField(type=int)`` a value matches only when ``str(value)`` is an int's
+    string: ``1`` and ``"1"`` match, ``1.0`` and ``1.5`` do not. Postgres
+    binds the mixture as one array of the column's type and agrees. (It used
+    to raise psycopg ``DataError: cannot dump lists of mixed types``.)"""
+    for code in (1, 2, 3):
+        IntKeyed.create(code=code)
+    assert _numeric_codes(IntKeyed, code__in=values) == expected
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ([1, 1.5], [1.5]),
+        ([1.0], [1.0]),
+        ([1], []),
+        ([decimal.Decimal("1.5"), 3], [1.5]),
+        ([], []),
+    ],
+    ids=lambda v: repr(v),
+)
+def test_float_key_in_with_mixed_numeric_types(values, expected):
+    """On ``KeyField(type=float)`` the stored key string is ``"1.0"``, so
+    ``1`` (``"1"``) matches nothing on Redis, and on Postgres too."""
+    for code in (1.0, 1.5):
+        FloatKeyed.create(code=code)
+    assert _numeric_codes(FloatKeyed, code__in=values) == expected
+
+
+def test_numeric_key_equality_uses_the_key_string():
+    for code in (1, 2):
+        IntKeyed.create(code=code)
+    FloatKeyed.create(code=1.0)
+    assert _numeric_codes(IntKeyed, code=2) == [2]
+    assert _numeric_codes(IntKeyed, code="2") == [2]
+    assert _numeric_codes(IntKeyed, code=2.0) == []
+    assert _numeric_codes(IntKeyed, code=1.5) == []
+    assert _numeric_codes(FloatKeyed, code=1.0) == [1.0]
+    assert _numeric_codes(FloatKeyed, code=1) == []

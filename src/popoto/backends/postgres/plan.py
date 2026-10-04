@@ -101,6 +101,31 @@ def _coerce(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
     return value
 
 
+_NUMERIC_TYPES = (int, float, decimal.Decimal)
+
+
+def _key_value(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
+    """An equality / ``__in`` value for a key field, with Redis's semantics.
+
+    On Redis a key field matches by its *key string*: ``str(value)`` against
+    the ``str()`` of the stored value. For a numeric key column that means a
+    value matches only when its string is the canonical string of a value of
+    the column's type: on ``KeyField(type=int)``, ``1`` and ``"1"`` match 1,
+    but ``1.0`` and ``1.5`` match nothing; on ``KeyField(type=float)``, ``1``
+    matches nothing (``"1" != "1.0"``). Every value that survives is of the
+    column's type, so an ``__in`` list binds as one homogeneous array.
+    """
+    py_type = ts.field_types[field_name]
+    if value is None or kind not in KEY_KINDS or py_type not in _NUMERIC_TYPES:
+        return _coerce(ts, kind, field_name, value)
+    text = str(value)
+    try:
+        parsed = py_type(text)
+    except (ValueError, decimal.InvalidOperation):
+        return _NO_MATCH
+    return parsed if str(parsed) == text else _NO_MATCH
+
+
 def _like_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -115,7 +140,7 @@ def _cond_sql(ts: TableSpec, kinds: dict[str, str], c: Cond, params: list[Any]) 
     if op is Op.ISNULL:
         return f"{col} IS NULL" if c.value else f"{col} IS NOT NULL"
     if op is Op.EXACT:
-        value = _coerce(ts, kind, c.field, c.value)
+        value = _key_value(ts, kind, c.field, c.value)
         if value is _NO_MATCH:
             return "FALSE"
         if value is None:
@@ -125,7 +150,7 @@ def _cond_sql(ts: TableSpec, kinds: dict[str, str], c: Cond, params: list[Any]) 
     if op is Op.IN:
         items = list(c.value or ())
         has_none = any(v is None for v in items)
-        coerced = [_coerce(ts, kind, c.field, v) for v in items if v is not None]
+        coerced = [_key_value(ts, kind, c.field, v) for v in items if v is not None]
         coerced = [v for v in coerced if v is not _NO_MATCH]
         clauses = []
         if coerced:
