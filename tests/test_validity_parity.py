@@ -717,8 +717,25 @@ class TestCrossingChains:
             time.sleep(0.02)
         raise AssertionError(f"{count} writer(s) never blocked; activity: {rows}")
 
+    @staticmethod
+    def _deadlocks(backend):
+        """``pg_stat_database.deadlocks`` for this database (Postgres leg).
+        An owned supersede retries a deadlock away, so the outcome alone
+        cannot show one happened; the counter can (#661: a test must be able
+        to fail). Polled briefly, as the statistics flush asynchronously."""
+        import psycopg
+
+        with psycopg.connect(backend.dsn, autocommit=True) as conn:
+            conn.execute("SELECT pg_stat_clear_snapshot()")
+            (count,) = conn.execute(
+                "SELECT deadlocks FROM pg_stat_database "
+                "WHERE datname = current_database()"
+            ).fetchone()
+        return int(count)
+
     def test_crossing_pointer_chains_both_complete_ten_times(self):
         backend = non_redis_backend(ParityClaim)
+        before = self._deadlocks(backend) if backend is not None else 0
         for i in range(10):
             x, y = _save(f"x{i}"), _save(f"y{i}")
             for record, digest in ((x, "1" * 16), (y, "2" * 16)):
@@ -736,3 +753,6 @@ class TestCrossingChains:
             ]
             results = self._run(calls, hold=(x, y) if backend is not None else ())
             self._outcome(x, y, results, at)
+        if backend is not None:
+            time.sleep(1.0)  # let the statistics collector flush
+            assert self._deadlocks(backend) == before, "a supersede deadlocked"
