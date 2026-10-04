@@ -21628,9 +21628,10 @@ Popoto v2 keeps one model API with two native storage backends behind it
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.
 
-This page covers the first Postgres milestone (M1): **plain models**. That
-means records, queries, `Q` objects, ordering, counting and atomic increments
-for the field types listed below. Models that use other fields stay on Redis
+This page covers the first Postgres milestones: **plain models** (M1) and
+**plain-field breadth** (M1.1). That means records, queries, `Q` objects,
+ordering, counting and atomic increments for the field types listed below,
+including indexed, unique, tag, relationship and collection fields. Models that use other fields stay on Redis
 until their milestone. Popoto refuses them when you declare them, so they
 never fail halfway through.
 
@@ -21683,7 +21684,7 @@ spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.
 
-## Supported fields (M1)
+## Supported fields (M1, M1.1)
 
 | popoto field | Column | Index |
 |---|---|---|
@@ -21693,6 +21694,13 @@ first query does not.
 | `StringField` | `text` | — |
 | `DatetimeField` | `timestamptz` plus `<f>__utcoff integer` (offset in seconds; `NULL` = naive) | — |
 | `Field(type=int/float/str/bool/Decimal/datetime)` | as above | — |
+| `IndexedField(type=T)` / `UniqueField(type=T)` (M1.1) | `T` (a scalar type) | B-tree on the column; `UNIQUE` for a unique field |
+| `TagField` (M1.1) | `text[]`, normalised (sorted, unique, `str(tag)`; untagged is `{}`) | GIN: `__contains` and `__all` are `@>`, `__any` is `&&` |
+| `Relationship(model=M)` (M1.1) | `text` holding the target's `_pk` | B-tree (no foreign key: Redis enforces none, and references may be circular) |
+| `ListField` / `DictField` / `SetField` / `TupleField`, `Field(type=list/dict/set/tuple)` (M1.1) | `jsonb` | — |
+| `ListField(max_length=N)` (M1.1) | `jsonb`, each element type-tagged as `push()` writes it on Redis | — |
+| `BytesField` / `DateField` / `TimeField` (M1.1) | `bytea` / `date` / `time` | — |
+| `Meta.indexes` (M1.1) | — | a composite B-tree per entry; `UNIQUE` when `is_unique` |
 
 Every table also has:
 
@@ -21707,10 +21715,31 @@ comes back with the same UTC offset as a fixed-offset `timezone`. A naive
 value comes back naive. A naive value is stored and compared as UTC, which is
 the same instant `SortedField` scores it as on Redis.
 
-Fields that arrive later: `IndexedField`, `UniqueField`, `TagField`,
-`Relationship`, the collection fields, `BytesField`, `DateField`/`TimeField`,
-and `Meta.indexes` (M1.1); the memory fields (M2–M4); `GeoField`, `Meta.ttl`
-and the rest (M5). A model that uses one of them raises
+**Collections are JSON, never msgpack.** A collection field comes back
+exactly as it comes back from Redis: the field's own type is restored at the
+top level (a `TupleField` is a tuple, a `SetField` a set), nested values
+behave as msgpack does (a nested tuple comes back a list; a tagged
+`Decimal`/`date`/`tuple` element of a capped list comes back typed), and a
+value msgpack cannot pack (a nested `set` or `Decimal`) raises `TypeError` on
+both backends. What JSON lacks and msgpack has is tagged so it survives:
+`bytes`, a non-finite `float`, and a `dict` with non-`str` keys.
+
+**Relationships stay lazy.** The column holds the related record's key
+string. `filter()`/`all()` return it as that string; `get()`/`get_many()`
+resolve it to the related instance, exactly as the Redis read paths do.
+`Relationship.sample_related_keys` is an id-only `SELECT … WHERE f = $key
+ORDER BY random() LIMIT n`, with `SRANDMEMBER`'s count contract (negative
+counts repeat).
+
+**Uniqueness.** A `UniqueField`, `UniqueKeyField` or unique `Meta.indexes`
+tuple is checked in `pre_save` by a read through the backend, with the same
+`ModelException` text as Redis and before any write. The `UNIQUE` index is the
+authority behind it: a write that races past the read, or two conflicting
+saves inside one `transaction()`, gets the same text from the index.
+
+Fields that arrive later: the memory fields (M2–M4); `GeoField`, `Meta.ttl`
+and the rest (M5); an `IndexedField` on a collection type is refused. A model
+that uses one of them raises
 `BackendCapabilityError` when you declare it with `Meta.backend =
 "postgres"`, or on first use when it takes the process default.
 
@@ -21806,11 +21835,16 @@ Where a test pins one of these, it pins both behaviours explicitly or carries a
 
 ### Query results
 
-Each row is pinned on both conformance legs by a test in
-`tests/test_backend_parity_edges.py`. In rows (i)–(iv), (vi) and (vii) Redis's
-result is a bug in its query layer, tracked in #771. The examples use
-`code`/`group` (`KeyField`), `rank` (`SortedField`), `note`/`hits`
-(unindexed) and `at` (an unindexed `DatetimeField`).
+Each row is pinned on both conformance legs: rows (i)–(xi) by a test in
+`tests/test_backend_parity_edges.py`, rows (xii)–(xx) (M1.1) in
+`tests/test_backend_parity_fields.py`. In rows (i)–(iv), (vi), (vii), (xii),
+(xiv), (xv) and (xviii)–(xx) Redis's result is a bug in its query layer,
+tracked in #771. The examples use `code`/`group` (`KeyField`), `rank`
+(`SortedField`), `note`/`hits` (unindexed) and `at` (an unindexed
+`DatetimeField`); the M1.1 rows use `IndexedField`s named by type (`s` str,
+`i` int, `f` float, `dec` Decimal, `dte` date), a `DateField` `day`, a
+`ListField` `lst`, a capped `ListField(max_length=3)` `cap`, a
+`TupleField` `pair` and a `Relationship` `author`/`owner`.
 
 | | Example | Redis (unchanged) | Postgres | Correct |
 |---|---|---|---|---|
@@ -21826,16 +21860,40 @@ result is a bug in its query layer, tracked in #771. The examples use
 | (ix) Equality on `KeyField(type=Decimal)` | `filter(code=Decimal("1.50"))` against a stored `1.5`; `filter(code=2)` against `2.0` | key strings are compared, so both match nothing | `numeric` values are compared, so both match | Postgres |
 | (x) Saving `Decimal("1.5")` and then `Decimal("1.50")` as `KeyField(type=Decimal)` | `create(code=Decimal("1.50"))` after `1.5` | two records (`"1.5"` and `"1.50"`) | unique violation: the values are equal | Postgres |
 | (xi) `KeyField(type=float)` `-0.0` against a stored `0.0` | `filter(code=-0.0)` | `[]`: `"-0.0" != "0.0"` | `[0.0]` | Postgres |
+| (xii) Chained relationship lookup | `filter(author__country="uk")` | `AttributeError`: `filter_query` gets `bytes` keys back and calls `.db_key` on them | resolves the related model's query and matches its keys | Postgres |
+| (xiii) Equality on a collection field with another collection type | `filter(pair=[1, "x"])` on a `TupleField` holding `(1, "x")` | Python equality after hydration: a tuple never equals a list, so `[]` | compares the stored JSON documents, so the list matches (a `SetField` compares as a set) | Postgres is the more useful; neither is wrong by contract |
+| (xiv) `IndexedField` numeric equality across value forms | `filter(i=1.0)` on `1`; `filter(f=1)` or `f="1"` on `1.0`; `filter(dec=Decimal("1.5"))` on `1.50`; `filter(i=True)` on `1`; `i__in=[1, 2.0]` | compares the filter value's key string (`"1.0"` ≠ `"1"`), so `[]`. Save coerces `i=1.0` to `1`, so a record saved with `i=1.0` cannot be found by `filter(i=1.0)` | compares numbers, as Python equality does (`1 == 1.0`, `Decimal("1.5") == Decimal("1.50")`) | Postgres |
+| (xv) `__startswith`/`__endswith` on a row holding `None` | `filter(s__startswith="No")`, `s__endswith="ne"`, `s__startswith=""`, `f__startswith="N"` | the `None` set is named `…:None`, so the glob matches rows holding `None` | `LIKE` never matches `NULL` | Postgres |
+| (xvi) Pattern lookup on a float in `1e15 <= abs(x) < 1e16`, or a `Decimal` Python writes in exponent form | `filter(f__startswith="1000")` on `1e15` | matches the key string `1000000000000000.0` | no match: Postgres renders `1e+15` (and `numeric` never uses exponent form) | Redis (the key string is the lookup's contract; outside this band Postgres renders it exactly) |
+| (xvii) `order_by` on a collection field | `filter(…, order_by="lst")` | sorts as Python does (`[] < [1, 2] < [2]`); `TypeError` for mixed or `dict` elements | `BackendCapabilityError`: `jsonb` orders by length first (`[2] < [1, 2]`), so Postgres refuses rather than return a different order. Sort in Python. | Redis, where it does not raise |
+| (xviii) `order_by` on a `date` column holding `None` (`IndexedField(type=date)`, `DateField`) | `filter(…, order_by="day")` | `TypeError: function missing required argument 'year'`: `None` sorts as the type's zero, `date()` | `NULL` first (last for `-day`) | Postgres |
+| (xix) `order_by` on a `Relationship` | `filter(…, order_by="owner")` | `AttributeError: … '_meta'` | ordered by the stored key string, `NULL` first | Postgres |
+| (xx) A capped `ListField` on a lazy read | `filter(…)`, `all()`; `filter(…, values=("name", "cap"))` | `cap` is `None` (only `get` loads the separate list key); `values=` omits `cap` and logs `quarantined field 'cap'` per row | the stored list, as `get` returns on both | Postgres |
 
 Numeric key fields otherwise follow Redis's key-string rules on both backends
 (`KeyField(type=int)` matches `1` and `"1"` but not `1.0`; an integer beyond
 `bigint` matches nothing), and a `SortedKeyField` matches by score (`2.0`,
 `"01"` and `" 1"` all find `2` and `1`). Redis's `SortedKeyField` `__in`
-ignores the filter and returns every record (#771); Postgres filters.
+ignores the filter and returns every record (#771); Postgres filters, by
+score, with mixed numeric types allowed (pinned:
+`test_sorted_int_key_in_with_mixed_types`). `SortedKeyField` equality with
+`True`, `False` or `None` raises `ResponseError: min or max is not a float` on
+Redis; Postgres matches the score `1`/`0`, and `None` matches nothing (pinned:
+`test_sorted_key_equality_with_bool_or_none_is_a_documented_divergence`).
 
 A lone unindexed-field `Q` (`filter(Q(hits=5))`), one lower plus one upper
 bound on a sorted field, and `values=` that projects the filtered field all
 agree on both backends.
+
+M1.1 cases that agree on both backends, and are pinned as such: a string
+filter on an `IndexedField` of type `bool`, `date` or `datetime` that is the
+stored value's key string (`b="True"`, `dte="2026-01-01"`,
+`dtm="2026-01-01T12:00:00.000000Z"`; `"true"` matches neither); an aware
+`time` filter on a `TimeField`, which matches nothing; `__startswith` /
+`__endswith` on a non-text `IndexedField`, matched against the key string
+(`1.0`, `True`, `2026-01-01`, `1.50`, `…T12:00:00.000000Z`) except row (xvi);
+and `__in` with mixed numeric types (`i__in=[1, Decimal("2")]`), each element
+cast to the column's type.
 
 ### Records and other behaviour
 
@@ -21850,7 +21908,9 @@ agree on both backends.
 | Order of results with no `order_by`, no `Meta.order_by` and no sorted-field filter | set order (arbitrary) | `_pk` in bytewise (`COLLATE "C"`) order |
 | An invalid `order_by=` / `values=` on a query that matches nothing | returns `[]` before validating | raises the same `QueryException` either way |
 | `save(update_fields=…)` on a record that does not exist yet | writes a partial hash that stays out of the class set, so queries do not see it | inserts the row (unlisted columns `NULL`), so queries see it |
-| `UniqueKeyField` conflict | checked by a read in `pre_save` before the write | enforced by a `UNIQUE` index inside the write; same `ModelException` text |
+| `UniqueKeyField` / `UniqueField` / unique `Meta.indexes` conflict | checked by a read in `pre_save` before the write | the same read, through the backend, plus a `UNIQUE` index inside the write as the authority (it also catches two conflicting saves in one `transaction()`); same `ModelException` text either way (`tests/postgres/test_postgres_fields.py`) |
+| An aware `time` in a `TimeField` / `SortedField(type=time)` (M1.1) | stored with its offset (`isoformat()`) | `ValueError` naming the field: a `time` column holds wall-clock time only. Use a `DatetimeField` when the offset matters. Pinned: `tests/postgres/test_postgres_fields.py::test_an_aware_time_is_refused` |
+| `push()` on a capped `ListField` whose record was deleted (M1.1) | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
 | `load_raw_hash`, `idle_seconds`, `Query.keys(catchall=/clean=)` | Redis debug and inspection APIs | raise `BackendCapabilityError` (`idle_seconds` arrives in M4) |
 | `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` | run the sync call in a worker thread (the async driver arrives in M5) |
 

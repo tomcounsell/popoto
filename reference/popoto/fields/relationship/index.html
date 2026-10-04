@@ -3945,7 +3945,49 @@ class level and needs to accept any Model subclass.</p>
 <span class="normal"><a href="#__codelineno-0-631">631</a></span>
 <span class="normal"><a href="#__codelineno-0-632">632</a></span>
 <span class="normal"><a href="#__codelineno-0-633">633</a></span>
-<span class="normal"><a href="#__codelineno-0-634">634</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="k">class</span><span class="w"> </span><span class="nc">Relationship</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+<span class="normal"><a href="#__codelineno-0-634">634</a></span>
+<span class="normal"><a href="#__codelineno-0-635">635</a></span>
+<span class="normal"><a href="#__codelineno-0-636">636</a></span>
+<span class="normal"><a href="#__codelineno-0-637">637</a></span>
+<span class="normal"><a href="#__codelineno-0-638">638</a></span>
+<span class="normal"><a href="#__codelineno-0-639">639</a></span>
+<span class="normal"><a href="#__codelineno-0-640">640</a></span>
+<span class="normal"><a href="#__codelineno-0-641">641</a></span>
+<span class="normal"><a href="#__codelineno-0-642">642</a></span>
+<span class="normal"><a href="#__codelineno-0-643">643</a></span>
+<span class="normal"><a href="#__codelineno-0-644">644</a></span>
+<span class="normal"><a href="#__codelineno-0-645">645</a></span>
+<span class="normal"><a href="#__codelineno-0-646">646</a></span>
+<span class="normal"><a href="#__codelineno-0-647">647</a></span>
+<span class="normal"><a href="#__codelineno-0-648">648</a></span>
+<span class="normal"><a href="#__codelineno-0-649">649</a></span>
+<span class="normal"><a href="#__codelineno-0-650">650</a></span>
+<span class="normal"><a href="#__codelineno-0-651">651</a></span>
+<span class="normal"><a href="#__codelineno-0-652">652</a></span>
+<span class="normal"><a href="#__codelineno-0-653">653</a></span>
+<span class="normal"><a href="#__codelineno-0-654">654</a></span>
+<span class="normal"><a href="#__codelineno-0-655">655</a></span>
+<span class="normal"><a href="#__codelineno-0-656">656</a></span>
+<span class="normal"><a href="#__codelineno-0-657">657</a></span>
+<span class="normal"><a href="#__codelineno-0-658">658</a></span>
+<span class="normal"><a href="#__codelineno-0-659">659</a></span>
+<span class="normal"><a href="#__codelineno-0-660">660</a></span>
+<span class="normal"><a href="#__codelineno-0-661">661</a></span>
+<span class="normal"><a href="#__codelineno-0-662">662</a></span>
+<span class="normal"><a href="#__codelineno-0-663">663</a></span>
+<span class="normal"><a href="#__codelineno-0-664">664</a></span>
+<span class="normal"><a href="#__codelineno-0-665">665</a></span>
+<span class="normal"><a href="#__codelineno-0-666">666</a></span>
+<span class="normal"><a href="#__codelineno-0-667">667</a></span>
+<span class="normal"><a href="#__codelineno-0-668">668</a></span>
+<span class="normal"><a href="#__codelineno-0-669">669</a></span>
+<span class="normal"><a href="#__codelineno-0-670">670</a></span>
+<span class="normal"><a href="#__codelineno-0-671">671</a></span>
+<span class="normal"><a href="#__codelineno-0-672">672</a></span>
+<span class="normal"><a href="#__codelineno-0-673">673</a></span>
+<span class="normal"><a href="#__codelineno-0-674">674</a></span>
+<span class="normal"><a href="#__codelineno-0-675">675</a></span>
+<span class="normal"><a href="#__codelineno-0-676">676</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="k">class</span><span class="w"> </span><span class="nc">Relationship</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
 <a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="w">    </span><span class="sd">"""</span>
 <a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">    A field that stores references to other model instances, analogous to a ForeignKey.</span>
 <a id="__codelineno-0-59" name="__codelineno-0-59"></a>
@@ -4510,20 +4552,62 @@ class level and needs to accept any Model subclass.</p>
 <a id="__codelineno-0-618" name="__codelineno-0-618"></a><span class="sd">            No exception handling by design — a caller that wants to degrade on</span>
 <a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">            a failed read owns that policy and should catch around this call.</span>
 <a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="sd">        """</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a>        <span class="n">related_db_key</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>            <span class="n">related_key</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">related_key</span><span class="p">,</span> <span class="n">DB_key</span><span class="p">)</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>            <span class="k">else</span> <span class="n">DB_key</span><span class="o">.</span><span class="n">from_redis_key</span><span class="p">(</span><span class="n">related_key</span><span class="p">)</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>        <span class="p">)</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>        <span class="n">reverse_index_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a>            <span class="n">related_db_key</span><span class="p">,</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>        <span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>        <span class="n">members</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">srandmember</span><span class="p">(</span><span class="n">reverse_index_key</span><span class="p">,</span> <span class="n">count</span><span class="p">)</span>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a>        <span class="k">return</span> <span class="p">[</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>            <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">member</span><span class="p">)</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a>            <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">members</span> <span class="ow">or</span> <span class="p">[]</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a>        <span class="p">]</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_backend</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="n">get_backend</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="k">if</span> <span class="n">backend</span><span class="o">.</span><span class="n">name</span> <span class="o">!=</span> <span class="s2">"redis"</span><span class="p">:</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>            <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_sample_related_keys_planned</span><span class="p">(</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>                <span class="n">backend</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">related_key</span><span class="p">,</span> <span class="n">count</span>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>            <span class="p">)</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>        <span class="n">related_db_key</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>            <span class="n">related_key</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">related_key</span><span class="p">,</span> <span class="n">DB_key</span><span class="p">)</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>            <span class="k">else</span> <span class="n">DB_key</span><span class="o">.</span><span class="n">from_redis_key</span><span class="p">(</span><span class="n">related_key</span><span class="p">)</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>        <span class="p">)</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>        <span class="n">reverse_index_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>            <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a>            <span class="n">related_db_key</span><span class="p">,</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>        <span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>        <span class="n">members</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">srandmember</span><span class="p">(</span><span class="n">reverse_index_key</span><span class="p">,</span> <span class="n">count</span><span class="p">)</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a>        <span class="k">return</span> <span class="p">[</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>            <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">member</span><span class="p">)</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a>            <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">members</span> <span class="ow">or</span> <span class="p">[]</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a>        <span class="p">]</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_sample_related_keys_planned</span><span class="p">(</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a>        <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a>        <span class="n">backend</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a>        <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a>        <span class="n">related_key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">DB_key</span><span class="p">],</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a>        <span class="n">count</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="w">        </span><span class="sd">""":meth:`sample_related_keys` on a backend without the reverse-index</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">        Set (#759 M1.1): an id-only select ``WHERE &lt;field&gt; = &lt;related key&gt;</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="sd">        ORDER BY random() LIMIT count`` (plan §1, ``OrderTerm`` ``RANDOM``).</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a><span class="sd">        ``SRANDMEMBER``'s count contract is kept: a positive count yields up</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a><span class="sd">        to ``count`` distinct members, ``0`` none, and a negative count</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a><span class="sd">        exactly ``-count`` members with repeats allowed.</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a><span class="sd">        """</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">RANDOM</span><span class="p">,</span> <span class="n">Cond</span><span class="p">,</span> <span class="n">Op</span><span class="p">,</span> <span class="n">QueryPlan</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a>        <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>            <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a>        <span class="n">key</span> <span class="o">=</span> <span class="n">related_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">related_key</span><span class="p">,</span> <span class="n">DB_key</span><span class="p">)</span> <span class="k">else</span> <span class="n">related_key</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a>            <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a>        <span class="n">where</span> <span class="o">=</span> <span class="n">Cond</span><span class="p">(</span><span class="n">field_name</span><span class="p">,</span> <span class="n">Op</span><span class="o">.</span><span class="n">EXACT</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">))</span>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a>        <span class="k">if</span> <span class="n">count</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a>            <span class="n">plan</span> <span class="o">=</span> <span class="n">QueryPlan</span><span class="p">(</span><span class="n">where</span><span class="o">=</span><span class="n">where</span><span class="p">,</span> <span class="n">order_by</span><span class="o">=</span><span class="p">(</span><span class="n">RANDOM</span><span class="p">,),</span> <span class="n">limit</span><span class="o">=</span><span class="n">count</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="p">())</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a>            <span class="n">rows</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span> <span class="n">plan</span><span class="p">)</span>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a>            <span class="k">return</span> <span class="p">[</span><span class="n">row</span><span class="p">[</span><span class="s2">"_id"</span><span class="p">]</span><span class="o">.</span><span class="n">canonical</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a>        <span class="n">rows</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span> <span class="n">QueryPlan</span><span class="p">(</span><span class="n">where</span><span class="o">=</span><span class="n">where</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="p">()))</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a>        <span class="n">members</span> <span class="o">=</span> <span class="p">[</span><span class="n">row</span><span class="p">[</span><span class="s2">"_id"</span><span class="p">]</span><span class="o">.</span><span class="n">canonical</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a>        <span class="k">return</span> <span class="n">random</span><span class="o">.</span><span class="n">choices</span><span class="p">(</span><span class="n">members</span><span class="p">,</span> <span class="n">k</span><span class="o">=-</span><span class="n">count</span><span class="p">)</span> <span class="k">if</span> <span class="n">members</span> <span class="k">else</span> <span class="p">[]</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -6333,7 +6417,14 @@ a failed read owns that policy and should catch around this call.</p>
 <span class="normal"><a href="#__codelineno-0-631">631</a></span>
 <span class="normal"><a href="#__codelineno-0-632">632</a></span>
 <span class="normal"><a href="#__codelineno-0-633">633</a></span>
-<span class="normal"><a href="#__codelineno-0-634">634</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-572" name="__codelineno-0-572"></a><span class="nd">@classmethod</span>
+<span class="normal"><a href="#__codelineno-0-634">634</a></span>
+<span class="normal"><a href="#__codelineno-0-635">635</a></span>
+<span class="normal"><a href="#__codelineno-0-636">636</a></span>
+<span class="normal"><a href="#__codelineno-0-637">637</a></span>
+<span class="normal"><a href="#__codelineno-0-638">638</a></span>
+<span class="normal"><a href="#__codelineno-0-639">639</a></span>
+<span class="normal"><a href="#__codelineno-0-640">640</a></span>
+<span class="normal"><a href="#__codelineno-0-641">641</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-572" name="__codelineno-0-572"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a><span class="k">def</span><span class="w"> </span><span class="nf">sample_related_keys</span><span class="p">(</span>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a>    <span class="bp">cls</span><span class="p">,</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a>    <span class="n">model</span><span class="p">:</span> <span class="s2">"Model"</span><span class="p">,</span>
@@ -6382,20 +6473,27 @@ a failed read owns that policy and should catch around this call.</p>
 <a id="__codelineno-0-618" name="__codelineno-0-618"></a><span class="sd">        No exception handling by design — a caller that wants to degrade on</span>
 <a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">        a failed read owns that policy and should catch around this call.</span>
 <a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="sd">    """</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a>    <span class="n">related_db_key</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>        <span class="n">related_key</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">related_key</span><span class="p">,</span> <span class="n">DB_key</span><span class="p">)</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="k">else</span> <span class="n">DB_key</span><span class="o">.</span><span class="n">from_redis_key</span><span class="p">(</span><span class="n">related_key</span><span class="p">)</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>    <span class="p">)</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>    <span class="n">reverse_index_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a>        <span class="n">related_db_key</span><span class="p">,</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>    <span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>    <span class="n">members</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">srandmember</span><span class="p">(</span><span class="n">reverse_index_key</span><span class="p">,</span> <span class="n">count</span><span class="p">)</span>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a>    <span class="k">return</span> <span class="p">[</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>        <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">member</span><span class="p">)</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a>        <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">members</span> <span class="ow">or</span> <span class="p">[]</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a>    <span class="p">]</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_backend</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="n">get_backend</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>    <span class="k">if</span> <span class="n">backend</span><span class="o">.</span><span class="n">name</span> <span class="o">!=</span> <span class="s2">"redis"</span><span class="p">:</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_sample_related_keys_planned</span><span class="p">(</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>            <span class="n">backend</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">related_key</span><span class="p">,</span> <span class="n">count</span>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="p">)</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>    <span class="n">related_db_key</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>        <span class="n">related_key</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">related_key</span><span class="p">,</span> <span class="n">DB_key</span><span class="p">)</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>        <span class="k">else</span> <span class="n">DB_key</span><span class="o">.</span><span class="n">from_redis_key</span><span class="p">(</span><span class="n">related_key</span><span class="p">)</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>    <span class="p">)</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>    <span class="n">reverse_index_key</span> <span class="o">=</span> <span class="n">DB_key</span><span class="p">(</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">get_special_use_field_db_key</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a>        <span class="n">related_db_key</span><span class="p">,</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>    <span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>    <span class="n">members</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">srandmember</span><span class="p">(</span><span class="n">reverse_index_key</span><span class="p">,</span> <span class="n">count</span><span class="p">)</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a>    <span class="k">return</span> <span class="p">[</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>        <span class="n">member</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">member</span><span class="p">)</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a>        <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">members</span> <span class="ow">or</span> <span class="p">[]</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a>    <span class="p">]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

@@ -2990,10 +2990,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#supported-fields-m1" class="md-nav__link">
+  <a href="#supported-fields-m1-m11" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Supported fields (M1)
+        Supported fields (M1, M1.1)
       
     </span>
   </a>
@@ -3183,10 +3183,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#supported-fields-m1" class="md-nav__link">
+  <a href="#supported-fields-m1-m11" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Supported fields (M1)
+        Supported fields (M1, M1.1)
       
     </span>
   </a>
@@ -3301,9 +3301,10 @@
 (<a href="https://github.com/tomcounsell/popoto/issues/759">#759</a>). Redis keeps
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.</p>
-<p>This page covers the first Postgres milestone (M1): <strong>plain models</strong>. That
-means records, queries, <code>Q</code> objects, ordering, counting and atomic increments
-for the field types listed below. Models that use other fields stay on Redis
+<p>This page covers the first Postgres milestones: <strong>plain models</strong> (M1) and
+<strong>plain-field breadth</strong> (M1.1). That means records, queries, <code>Q</code> objects,
+ordering, counting and atomic increments for the field types listed below,
+including indexed, unique, tag, relationship and collection fields. Models that use other fields stay on Redis
 until their milestone. Popoto refuses them when you declare them, so they
 never fail halfway through.</p>
 <h2 id="selecting-the-backend">Selecting the backend<a class="headerlink" href="#selecting-the-backend" title="Permanent link">&para;</a></h2>
@@ -3360,7 +3361,7 @@ the model's <strong>first</strong> query or save. <code>bind()</code> itself onl
 spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.</p>
-<h2 id="supported-fields-m1">Supported fields (M1)<a class="headerlink" href="#supported-fields-m1" title="Permanent link">&para;</a></h2>
+<h2 id="supported-fields-m1-m11">Supported fields (M1, M1.1)<a class="headerlink" href="#supported-fields-m1-m11" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -3400,6 +3401,41 @@ first query does not.</p>
 <td>as above</td>
 <td>—</td>
 </tr>
+<tr>
+<td><code>IndexedField(type=T)</code> / <code>UniqueField(type=T)</code> (M1.1)</td>
+<td><code>T</code> (a scalar type)</td>
+<td>B-tree on the column; <code>UNIQUE</code> for a unique field</td>
+</tr>
+<tr>
+<td><code>TagField</code> (M1.1)</td>
+<td><code>text[]</code>, normalised (sorted, unique, <code>str(tag)</code>; untagged is <code>{}</code>)</td>
+<td>GIN: <code>__contains</code> and <code>__all</code> are <code>@&gt;</code>, <code>__any</code> is <code>&amp;&amp;</code></td>
+</tr>
+<tr>
+<td><code>Relationship(model=M)</code> (M1.1)</td>
+<td><code>text</code> holding the target's <code>_pk</code></td>
+<td>B-tree (no foreign key: Redis enforces none, and references may be circular)</td>
+</tr>
+<tr>
+<td><code>ListField</code> / <code>DictField</code> / <code>SetField</code> / <code>TupleField</code>, <code>Field(type=list/dict/set/tuple)</code> (M1.1)</td>
+<td><code>jsonb</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>ListField(max_length=N)</code> (M1.1)</td>
+<td><code>jsonb</code>, each element type-tagged as <code>push()</code> writes it on Redis</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>BytesField</code> / <code>DateField</code> / <code>TimeField</code> (M1.1)</td>
+<td><code>bytea</code> / <code>date</code> / <code>time</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>Meta.indexes</code> (M1.1)</td>
+<td>—</td>
+<td>a composite B-tree per entry; <code>UNIQUE</code> when <code>is_unique</code></td>
+</tr>
 </tbody>
 </table>
 <p>Every table also has:</p>
@@ -3414,10 +3450,28 @@ first query does not.</p>
 comes back with the same UTC offset as a fixed-offset <code>timezone</code>. A naive
 value comes back naive. A naive value is stored and compared as UTC, which is
 the same instant <code>SortedField</code> scores it as on Redis.</p>
-<p>Fields that arrive later: <code>IndexedField</code>, <code>UniqueField</code>, <code>TagField</code>,
-<code>Relationship</code>, the collection fields, <code>BytesField</code>, <code>DateField</code>/<code>TimeField</code>,
-and <code>Meta.indexes</code> (M1.1); the memory fields (M2–M4); <code>GeoField</code>, <code>Meta.ttl</code>
-and the rest (M5). A model that uses one of them raises
+<p><strong>Collections are JSON, never msgpack.</strong> A collection field comes back
+exactly as it comes back from Redis: the field's own type is restored at the
+top level (a <code>TupleField</code> is a tuple, a <code>SetField</code> a set), nested values
+behave as msgpack does (a nested tuple comes back a list; a tagged
+<code>Decimal</code>/<code>date</code>/<code>tuple</code> element of a capped list comes back typed), and a
+value msgpack cannot pack (a nested <code>set</code> or <code>Decimal</code>) raises <code>TypeError</code> on
+both backends. What JSON lacks and msgpack has is tagged so it survives:
+<code>bytes</code>, a non-finite <code>float</code>, and a <code>dict</code> with non-<code>str</code> keys.</p>
+<p><strong>Relationships stay lazy.</strong> The column holds the related record's key
+string. <code>filter()</code>/<code>all()</code> return it as that string; <code>get()</code>/<code>get_many()</code>
+resolve it to the related instance, exactly as the Redis read paths do.
+<code>Relationship.sample_related_keys</code> is an id-only <code>SELECT … WHERE f = $key
+ORDER BY random() LIMIT n</code>, with <code>SRANDMEMBER</code>'s count contract (negative
+counts repeat).</p>
+<p><strong>Uniqueness.</strong> A <code>UniqueField</code>, <code>UniqueKeyField</code> or unique <code>Meta.indexes</code>
+tuple is checked in <code>pre_save</code> by a read through the backend, with the same
+<code>ModelException</code> text as Redis and before any write. The <code>UNIQUE</code> index is the
+authority behind it: a write that races past the read, or two conflicting
+saves inside one <code>transaction()</code>, gets the same text from the index.</p>
+<p>Fields that arrive later: the memory fields (M2–M4); <code>GeoField</code>, <code>Meta.ttl</code>
+and the rest (M5); an <code>IndexedField</code> on a collection type is refused. A model
+that uses one of them raises
 <code>BackendCapabilityError</code> when you declare it with <code>Meta.backend =
 "postgres"</code>, or on first use when it takes the process default.</p>
 <h2 id="what-the-schema-looks-like">What the schema looks like<a class="headerlink" href="#what-the-schema-looks-like" title="Permanent link">&para;</a></h2>
@@ -3493,11 +3547,16 @@ statements. Inside a <code>transaction()</code> they propagate to the caller.</p
 Where a test pins one of these, it pins both behaviours explicitly or carries a
 <code>redis_only(reason=...)</code> mark.</p>
 <h3 id="query-results">Query results<a class="headerlink" href="#query-results" title="Permanent link">&para;</a></h3>
-<p>Each row is pinned on both conformance legs by a test in
-<code>tests/test_backend_parity_edges.py</code>. In rows (i)–(iv), (vi) and (vii) Redis's
-result is a bug in its query layer, tracked in #771. The examples use
-<code>code</code>/<code>group</code> (<code>KeyField</code>), <code>rank</code> (<code>SortedField</code>), <code>note</code>/<code>hits</code>
-(unindexed) and <code>at</code> (an unindexed <code>DatetimeField</code>).</p>
+<p>Each row is pinned on both conformance legs: rows (i)–(xi) by a test in
+<code>tests/test_backend_parity_edges.py</code>, rows (xii)–(xx) (M1.1) in
+<code>tests/test_backend_parity_fields.py</code>. In rows (i)–(iv), (vi), (vii), (xii),
+(xiv), (xv) and (xviii)–(xx) Redis's result is a bug in its query layer,
+tracked in #771. The examples use <code>code</code>/<code>group</code> (<code>KeyField</code>), <code>rank</code>
+(<code>SortedField</code>), <code>note</code>/<code>hits</code> (unindexed) and <code>at</code> (an unindexed
+<code>DatetimeField</code>); the M1.1 rows use <code>IndexedField</code>s named by type (<code>s</code> str,
+<code>i</code> int, <code>f</code> float, <code>dec</code> Decimal, <code>dte</code> date), a <code>DateField</code> <code>day</code>, a
+<code>ListField</code> <code>lst</code>, a capped <code>ListField(max_length=3)</code> <code>cap</code>, a
+<code>TupleField</code> <code>pair</code> and a <code>Relationship</code> <code>author</code>/<code>owner</code>.</p>
 <table>
 <thead>
 <tr>
@@ -3593,16 +3652,93 @@ result is a bug in its query layer, tracked in #771. The examples use
 <td><code>[0.0]</code></td>
 <td>Postgres</td>
 </tr>
+<tr>
+<td>(xii) Chained relationship lookup</td>
+<td><code>filter(author__country="uk")</code></td>
+<td><code>AttributeError</code>: <code>filter_query</code> gets <code>bytes</code> keys back and calls <code>.db_key</code> on them</td>
+<td>resolves the related model's query and matches its keys</td>
+<td>Postgres</td>
+</tr>
+<tr>
+<td>(xiii) Equality on a collection field with another collection type</td>
+<td><code>filter(pair=[1, "x"])</code> on a <code>TupleField</code> holding <code>(1, "x")</code></td>
+<td>Python equality after hydration: a tuple never equals a list, so <code>[]</code></td>
+<td>compares the stored JSON documents, so the list matches (a <code>SetField</code> compares as a set)</td>
+<td>Postgres is the more useful; neither is wrong by contract</td>
+</tr>
+<tr>
+<td>(xiv) <code>IndexedField</code> numeric equality across value forms</td>
+<td><code>filter(i=1.0)</code> on <code>1</code>; <code>filter(f=1)</code> or <code>f="1"</code> on <code>1.0</code>; <code>filter(dec=Decimal("1.5"))</code> on <code>1.50</code>; <code>filter(i=True)</code> on <code>1</code>; <code>i__in=[1, 2.0]</code></td>
+<td>compares the filter value's key string (<code>"1.0"</code> ≠ <code>"1"</code>), so <code>[]</code>. Save coerces <code>i=1.0</code> to <code>1</code>, so a record saved with <code>i=1.0</code> cannot be found by <code>filter(i=1.0)</code></td>
+<td>compares numbers, as Python equality does (<code>1 == 1.0</code>, <code>Decimal("1.5") == Decimal("1.50")</code>)</td>
+<td>Postgres</td>
+</tr>
+<tr>
+<td>(xv) <code>__startswith</code>/<code>__endswith</code> on a row holding <code>None</code></td>
+<td><code>filter(s__startswith="No")</code>, <code>s__endswith="ne"</code>, <code>s__startswith=""</code>, <code>f__startswith="N"</code></td>
+<td>the <code>None</code> set is named <code>…:None</code>, so the glob matches rows holding <code>None</code></td>
+<td><code>LIKE</code> never matches <code>NULL</code></td>
+<td>Postgres</td>
+</tr>
+<tr>
+<td>(xvi) Pattern lookup on a float in <code>1e15 &lt;= abs(x) &lt; 1e16</code>, or a <code>Decimal</code> Python writes in exponent form</td>
+<td><code>filter(f__startswith="1000")</code> on <code>1e15</code></td>
+<td>matches the key string <code>1000000000000000.0</code></td>
+<td>no match: Postgres renders <code>1e+15</code> (and <code>numeric</code> never uses exponent form)</td>
+<td>Redis (the key string is the lookup's contract; outside this band Postgres renders it exactly)</td>
+</tr>
+<tr>
+<td>(xvii) <code>order_by</code> on a collection field</td>
+<td><code>filter(…, order_by="lst")</code></td>
+<td>sorts as Python does (<code>[] &lt; [1, 2] &lt; [2]</code>); <code>TypeError</code> for mixed or <code>dict</code> elements</td>
+<td><code>BackendCapabilityError</code>: <code>jsonb</code> orders by length first (<code>[2] &lt; [1, 2]</code>), so Postgres refuses rather than return a different order. Sort in Python.</td>
+<td>Redis, where it does not raise</td>
+</tr>
+<tr>
+<td>(xviii) <code>order_by</code> on a <code>date</code> column holding <code>None</code> (<code>IndexedField(type=date)</code>, <code>DateField</code>)</td>
+<td><code>filter(…, order_by="day")</code></td>
+<td><code>TypeError: function missing required argument 'year'</code>: <code>None</code> sorts as the type's zero, <code>date()</code></td>
+<td><code>NULL</code> first (last for <code>-day</code>)</td>
+<td>Postgres</td>
+</tr>
+<tr>
+<td>(xix) <code>order_by</code> on a <code>Relationship</code></td>
+<td><code>filter(…, order_by="owner")</code></td>
+<td><code>AttributeError: … '_meta'</code></td>
+<td>ordered by the stored key string, <code>NULL</code> first</td>
+<td>Postgres</td>
+</tr>
+<tr>
+<td>(xx) A capped <code>ListField</code> on a lazy read</td>
+<td><code>filter(…)</code>, <code>all()</code>; <code>filter(…, values=("name", "cap"))</code></td>
+<td><code>cap</code> is <code>None</code> (only <code>get</code> loads the separate list key); <code>values=</code> omits <code>cap</code> and logs <code>quarantined field 'cap'</code> per row</td>
+<td>the stored list, as <code>get</code> returns on both</td>
+<td>Postgres</td>
+</tr>
 </tbody>
 </table>
 <p>Numeric key fields otherwise follow Redis's key-string rules on both backends
 (<code>KeyField(type=int)</code> matches <code>1</code> and <code>"1"</code> but not <code>1.0</code>; an integer beyond
 <code>bigint</code> matches nothing), and a <code>SortedKeyField</code> matches by score (<code>2.0</code>,
 <code>"01"</code> and <code>" 1"</code> all find <code>2</code> and <code>1</code>). Redis's <code>SortedKeyField</code> <code>__in</code>
-ignores the filter and returns every record (#771); Postgres filters.</p>
+ignores the filter and returns every record (#771); Postgres filters, by
+score, with mixed numeric types allowed (pinned:
+<code>test_sorted_int_key_in_with_mixed_types</code>). <code>SortedKeyField</code> equality with
+<code>True</code>, <code>False</code> or <code>None</code> raises <code>ResponseError: min or max is not a float</code> on
+Redis; Postgres matches the score <code>1</code>/<code>0</code>, and <code>None</code> matches nothing (pinned:
+<code>test_sorted_key_equality_with_bool_or_none_is_a_documented_divergence</code>).</p>
 <p>A lone unindexed-field <code>Q</code> (<code>filter(Q(hits=5))</code>), one lower plus one upper
 bound on a sorted field, and <code>values=</code> that projects the filtered field all
 agree on both backends.</p>
+<p>M1.1 cases that agree on both backends, and are pinned as such: a string
+filter on an <code>IndexedField</code> of type <code>bool</code>, <code>date</code> or <code>datetime</code> that is the
+stored value's key string (<code>b="True"</code>, <code>dte="2026-01-01"</code>,
+<code>dtm="2026-01-01T12:00:00.000000Z"</code>; <code>"true"</code> matches neither); an aware
+<code>time</code> filter on a <code>TimeField</code>, which matches nothing; <code>__startswith</code> /
+<code>__endswith</code> on a non-text <code>IndexedField</code>, matched against the key string
+(<code>1.0</code>, <code>True</code>, <code>2026-01-01</code>, <code>1.50</code>, <code>…T12:00:00.000000Z</code>) except row (xvi);
+and <code>__in</code> with mixed numeric types (<code>i__in=[1, Decimal("2")]</code>), each element
+cast to the column's type.</p>
 <h3 id="records-and-other-behaviour">Records and other behaviour<a class="headerlink" href="#records-and-other-behaviour" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -3659,9 +3795,19 @@ agree on both backends.</p>
 <td>inserts the row (unlisted columns <code>NULL</code>), so queries see it</td>
 </tr>
 <tr>
-<td><code>UniqueKeyField</code> conflict</td>
+<td><code>UniqueKeyField</code> / <code>UniqueField</code> / unique <code>Meta.indexes</code> conflict</td>
 <td>checked by a read in <code>pre_save</code> before the write</td>
-<td>enforced by a <code>UNIQUE</code> index inside the write; same <code>ModelException</code> text</td>
+<td>the same read, through the backend, plus a <code>UNIQUE</code> index inside the write as the authority (it also catches two conflicting saves in one <code>transaction()</code>); same <code>ModelException</code> text either way (<code>tests/postgres/test_postgres_fields.py</code>)</td>
+</tr>
+<tr>
+<td>An aware <code>time</code> in a <code>TimeField</code> / <code>SortedField(type=time)</code> (M1.1)</td>
+<td>stored with its offset (<code>isoformat()</code>)</td>
+<td><code>ValueError</code> naming the field: a <code>time</code> column holds wall-clock time only. Use a <code>DatetimeField</code> when the offset matters. Pinned: <code>tests/postgres/test_postgres_fields.py::test_an_aware_time_is_refused</code></td>
+</tr>
+<tr>
+<td><code>push()</code> on a capped <code>ListField</code> whose record was deleted (M1.1)</td>
+<td><code>LPUSH</code> recreates an orphan list key</td>
+<td>raises <code>ModelException</code> (<code>UPDATE</code> finds no row). After a successful <code>push()</code> the in-memory list is the stored list, not a local prepend. Pinned: <code>test_push_on_a_record_that_no_longer_exists_raises</code></td>
 </tr>
 <tr>
 <td><code>load_raw_hash</code>, <code>idle_seconds</code>, <code>Query.keys(catchall=/clean=)</code></td>

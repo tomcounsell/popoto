@@ -4416,7 +4416,7 @@ for the first time.</p>
 
 
 <h3 id="popoto.models.encoding.hydrate_decoded_row" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">hydrate_decoded_row</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fields_only</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">hydrate_decoded_row</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fields_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">eager</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
 
 <a href="#popoto.models.encoding.hydrate_decoded_row" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -4435,6 +4435,12 @@ is the key the row was read from (<code>_pk</code>), never a recomputation.</p>
 <p>Fields absent from the row (a projection, or a column the table gained
 after the row was written) take their declared default, matching
 <code>Model.__init__</code> (#380).</p>
+<p><code>eager</code> mirrors the Redis read paths that decode through <code>__init__</code>
+(<code>Query.get</code>, <code>get_many</code>): each <code>Relationship</code> key string is
+resolved to its instance. Lazy reads (<code>filter</code>/<code>all</code>) keep the key
+string, as they do on Redis (#759 M1.1). A capped <code>ListField</code> value is
+wrapped in its <code>CappedListProxy</code> either way, as <code>__init__</code> and
+<code>_load_capped_list_fields</code> do.</p>
 
 
             <details class="mkdocstrings-source">
@@ -4481,8 +4487,29 @@ after the row was written) take their declared default, matching
 <span class="normal"><a href="#__codelineno-0-871">871</a></span>
 <span class="normal"><a href="#__codelineno-0-872">872</a></span>
 <span class="normal"><a href="#__codelineno-0-873">873</a></span>
-<span class="normal"><a href="#__codelineno-0-874">874</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-832" name="__codelineno-0-832"></a><span class="k">def</span><span class="w"> </span><span class="nf">hydrate_decoded_row</span><span class="p">(</span>
-<a id="__codelineno-0-833" name="__codelineno-0-833"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">row</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fields_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="normal"><a href="#__codelineno-0-874">874</a></span>
+<span class="normal"><a href="#__codelineno-0-875">875</a></span>
+<span class="normal"><a href="#__codelineno-0-876">876</a></span>
+<span class="normal"><a href="#__codelineno-0-877">877</a></span>
+<span class="normal"><a href="#__codelineno-0-878">878</a></span>
+<span class="normal"><a href="#__codelineno-0-879">879</a></span>
+<span class="normal"><a href="#__codelineno-0-880">880</a></span>
+<span class="normal"><a href="#__codelineno-0-881">881</a></span>
+<span class="normal"><a href="#__codelineno-0-882">882</a></span>
+<span class="normal"><a href="#__codelineno-0-883">883</a></span>
+<span class="normal"><a href="#__codelineno-0-884">884</a></span>
+<span class="normal"><a href="#__codelineno-0-885">885</a></span>
+<span class="normal"><a href="#__codelineno-0-886">886</a></span>
+<span class="normal"><a href="#__codelineno-0-887">887</a></span>
+<span class="normal"><a href="#__codelineno-0-888">888</a></span>
+<span class="normal"><a href="#__codelineno-0-889">889</a></span>
+<span class="normal"><a href="#__codelineno-0-890">890</a></span>
+<span class="normal"><a href="#__codelineno-0-891">891</a></span>
+<span class="normal"><a href="#__codelineno-0-892">892</a></span>
+<span class="normal"><a href="#__codelineno-0-893">893</a></span>
+<span class="normal"><a href="#__codelineno-0-894">894</a></span>
+<span class="normal"><a href="#__codelineno-0-895">895</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-832" name="__codelineno-0-832"></a><span class="k">def</span><span class="w"> </span><span class="nf">hydrate_decoded_row</span><span class="p">(</span>
+<a id="__codelineno-0-833" name="__codelineno-0-833"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">row</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fields_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">eager</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 <a id="__codelineno-0-834" name="__codelineno-0-834"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
 <a id="__codelineno-0-835" name="__codelineno-0-835"></a><span class="w">    </span><span class="sd">"""Build a model instance (or projection dict) from a *decoded* backend</span>
 <a id="__codelineno-0-836" name="__codelineno-0-836"></a><span class="sd">    row -- the shape a non-Redis backend's ``load``/``select`` returns, field</span>
@@ -4498,32 +4525,53 @@ after the row was written) take their declared default, matching
 <a id="__codelineno-0-846" name="__codelineno-0-846"></a><span class="sd">    Fields absent from the row (a projection, or a column the table gained</span>
 <a id="__codelineno-0-847" name="__codelineno-0-847"></a><span class="sd">    after the row was written) take their declared default, matching</span>
 <a id="__codelineno-0-848" name="__codelineno-0-848"></a><span class="sd">    ``Model.__init__`` (#380).</span>
-<a id="__codelineno-0-849" name="__codelineno-0-849"></a><span class="sd">    """</span>
-<a id="__codelineno-0-850" name="__codelineno-0-850"></a>    <span class="k">if</span> <span class="n">row</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-851" name="__codelineno-0-851"></a>        <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-0-852" name="__codelineno-0-852"></a>    <span class="n">values</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">value</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">row</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">name</span> <span class="o">!=</span> <span class="s2">"_id"</span><span class="p">}</span>
-<a id="__codelineno-0-853" name="__codelineno-0-853"></a>    <span class="k">if</span> <span class="n">fields_only</span><span class="p">:</span>
-<a id="__codelineno-0-854" name="__codelineno-0-854"></a>        <span class="k">return</span> <span class="n">values</span>
-<a id="__codelineno-0-855" name="__codelineno-0-855"></a>    <span class="n">meta</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span>
-<a id="__codelineno-0-856" name="__codelineno-0-856"></a>    <span class="n">instance</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="nb">object</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
-<a id="__codelineno-0-857" name="__codelineno-0-857"></a>    <span class="n">state</span> <span class="o">=</span> <span class="n">instance</span><span class="o">.</span><span class="vm">__dict__</span>
-<a id="__codelineno-0-858" name="__codelineno-0-858"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_corrupt_fields"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-859" name="__codelineno-0-859"></a>    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-860" name="__codelineno-0-860"></a>        <span class="k">if</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">values</span><span class="p">:</span>
-<a id="__codelineno-0-861" name="__codelineno-0-861"></a>            <span class="n">state</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">values</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
-<a id="__codelineno-0-862" name="__codelineno-0-862"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-863" name="__codelineno-0-863"></a>            <span class="n">default</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">default</span><span class="p">()</span> <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">default</span><span class="p">)</span> <span class="k">else</span> <span class="n">field</span><span class="o">.</span><span class="n">default</span>
-<a id="__codelineno-0-864" name="__codelineno-0-864"></a>            <span class="n">state</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">default</span>
-<a id="__codelineno-0-865" name="__codelineno-0-865"></a>    <span class="n">record_id</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"_id"</span><span class="p">)</span>
-<a id="__codelineno-0-866" name="__codelineno-0-866"></a>    <span class="n">key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record_id</span><span class="p">,</span> <span class="s2">"canonical"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-867" name="__codelineno-0-867"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_redis_key"</span><span class="p">]</span> <span class="o">=</span> <span class="n">key</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
-<a id="__codelineno-0-868" name="__codelineno-0-868"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"obsolete_redis_key"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-869" name="__codelineno-0-869"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_db_content"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
-<a id="__codelineno-0-870" name="__codelineno-0-870"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_saved_field_values"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">state</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">fields</span><span class="p">}</span>
-<a id="__codelineno-0-871" name="__codelineno-0-871"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_ttl"</span><span class="p">]</span> <span class="o">=</span> <span class="n">meta</span><span class="o">.</span><span class="n">ttl</span>
-<a id="__codelineno-0-872" name="__codelineno-0-872"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_expire_at"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-873" name="__codelineno-0-873"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_is_persisted"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-874" name="__codelineno-0-874"></a>    <span class="k">return</span> <span class="n">instance</span>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a>
+<a id="__codelineno-0-850" name="__codelineno-0-850"></a><span class="sd">    ``eager`` mirrors the Redis read paths that decode through ``__init__``</span>
+<a id="__codelineno-0-851" name="__codelineno-0-851"></a><span class="sd">    (``Query.get``, ``get_many``): each ``Relationship`` key string is</span>
+<a id="__codelineno-0-852" name="__codelineno-0-852"></a><span class="sd">    resolved to its instance. Lazy reads (``filter``/``all``) keep the key</span>
+<a id="__codelineno-0-853" name="__codelineno-0-853"></a><span class="sd">    string, as they do on Redis (#759 M1.1). A capped ``ListField`` value is</span>
+<a id="__codelineno-0-854" name="__codelineno-0-854"></a><span class="sd">    wrapped in its ``CappedListProxy`` either way, as ``__init__`` and</span>
+<a id="__codelineno-0-855" name="__codelineno-0-855"></a><span class="sd">    ``_load_capped_list_fields`` do.</span>
+<a id="__codelineno-0-856" name="__codelineno-0-856"></a><span class="sd">    """</span>
+<a id="__codelineno-0-857" name="__codelineno-0-857"></a>    <span class="k">if</span> <span class="n">row</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-858" name="__codelineno-0-858"></a>        <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-859" name="__codelineno-0-859"></a>    <span class="n">values</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">value</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">row</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">name</span> <span class="o">!=</span> <span class="s2">"_id"</span><span class="p">}</span>
+<a id="__codelineno-0-860" name="__codelineno-0-860"></a>    <span class="k">if</span> <span class="n">fields_only</span><span class="p">:</span>
+<a id="__codelineno-0-861" name="__codelineno-0-861"></a>        <span class="k">return</span> <span class="n">values</span>
+<a id="__codelineno-0-862" name="__codelineno-0-862"></a>    <span class="n">meta</span> <span class="o">=</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span>
+<a id="__codelineno-0-863" name="__codelineno-0-863"></a>    <span class="n">instance</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="nb">object</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span>
+<a id="__codelineno-0-864" name="__codelineno-0-864"></a>    <span class="n">state</span> <span class="o">=</span> <span class="n">instance</span><span class="o">.</span><span class="vm">__dict__</span>
+<a id="__codelineno-0-865" name="__codelineno-0-865"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_corrupt_fields"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-866" name="__codelineno-0-866"></a>    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-867" name="__codelineno-0-867"></a>        <span class="k">if</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">values</span><span class="p">:</span>
+<a id="__codelineno-0-868" name="__codelineno-0-868"></a>            <span class="n">state</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">values</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
+<a id="__codelineno-0-869" name="__codelineno-0-869"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-870" name="__codelineno-0-870"></a>            <span class="n">default</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">default</span><span class="p">()</span> <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">default</span><span class="p">)</span> <span class="k">else</span> <span class="n">field</span><span class="o">.</span><span class="n">default</span>
+<a id="__codelineno-0-871" name="__codelineno-0-871"></a>            <span class="n">state</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">default</span>
+<a id="__codelineno-0-872" name="__codelineno-0-872"></a>    <span class="n">record_id</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"_id"</span><span class="p">)</span>
+<a id="__codelineno-0-873" name="__codelineno-0-873"></a>    <span class="n">key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record_id</span><span class="p">,</span> <span class="s2">"canonical"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-874" name="__codelineno-0-874"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_redis_key"</span><span class="p">]</span> <span class="o">=</span> <span class="n">key</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">instance</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-875" name="__codelineno-0-875"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"obsolete_redis_key"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-876" name="__codelineno-0-876"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_db_content"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+<a id="__codelineno-0-877" name="__codelineno-0-877"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_ttl"</span><span class="p">]</span> <span class="o">=</span> <span class="n">meta</span><span class="o">.</span><span class="n">ttl</span>
+<a id="__codelineno-0-878" name="__codelineno-0-878"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_expire_at"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-879" name="__codelineno-0-879"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.shortcuts</span><span class="w"> </span><span class="kn">import</span> <span class="n">CappedListProxy</span><span class="p">,</span> <span class="n">ListField</span>
+<a id="__codelineno-0-880" name="__codelineno-0-880"></a>
+<a id="__codelineno-0-881" name="__codelineno-0-881"></a>    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-882" name="__codelineno-0-882"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">ListField</span><span class="p">)</span> <span class="ow">and</span> <span class="n">field</span><span class="o">.</span><span class="n">_capped</span><span class="p">:</span>
+<a id="__codelineno-0-883" name="__codelineno-0-883"></a>            <span class="n">value</span> <span class="o">=</span> <span class="n">state</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
+<a id="__codelineno-0-884" name="__codelineno-0-884"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">CappedListProxy</span><span class="p">):</span>
+<a id="__codelineno-0-885" name="__codelineno-0-885"></a>                <span class="n">state</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">CappedListProxy</span><span class="p">(</span>
+<a id="__codelineno-0-886" name="__codelineno-0-886"></a>                    <span class="n">data</span><span class="o">=</span><span class="n">value</span> <span class="ow">or</span> <span class="p">[],</span>
+<a id="__codelineno-0-887" name="__codelineno-0-887"></a>                    <span class="n">model_instance</span><span class="o">=</span><span class="n">instance</span><span class="p">,</span>
+<a id="__codelineno-0-888" name="__codelineno-0-888"></a>                    <span class="n">field_name</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span>
+<a id="__codelineno-0-889" name="__codelineno-0-889"></a>                    <span class="n">max_length</span><span class="o">=</span><span class="n">field</span><span class="o">.</span><span class="n">max_length</span><span class="p">,</span>
+<a id="__codelineno-0-890" name="__codelineno-0-890"></a>                <span class="p">)</span>
+<a id="__codelineno-0-891" name="__codelineno-0-891"></a>    <span class="k">if</span> <span class="n">eager</span> <span class="ow">and</span> <span class="n">meta</span><span class="o">.</span><span class="n">relationship_field_names</span><span class="p">:</span>
+<a id="__codelineno-0-892" name="__codelineno-0-892"></a>        <span class="n">instance</span><span class="o">.</span><span class="n">_load_relationships</span><span class="p">()</span>
+<a id="__codelineno-0-893" name="__codelineno-0-893"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_saved_field_values"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">state</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">fields</span><span class="p">}</span>
+<a id="__codelineno-0-894" name="__codelineno-0-894"></a>    <span class="n">state</span><span class="p">[</span><span class="s2">"_is_persisted"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-895" name="__codelineno-0-895"></a>    <span class="k">return</span> <span class="n">instance</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
