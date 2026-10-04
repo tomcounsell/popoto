@@ -11,6 +11,11 @@ A :class:`~popoto.backends.types.ModelSpec` compiles to one typed table:
 * engine-owned ``_created_at`` / ``_updated_at`` (``[PG-only]``).
 * ``UNIQUE`` over the key fields, a B-tree per further key field, and a B-tree
   ``(partition cols…, f)`` per ``SortedField``.
+* M1.1 (plain-field breadth): an ``IndexedField`` / ``Relationship`` column
+  gets a B-tree (``UNIQUE`` for a unique field), a ``TagField`` is ``text[]``
+  with a GIN index, the collection fields are ``jsonb`` (:mod:`.codec`),
+  ``BytesField`` is ``bytea``, and ``Meta.indexes`` compiles to composite
+  B-tree / ``UNIQUE`` indexes.
 
 The compiled shape is fingerprinted and recorded in ``popoto_schema`` the
 first time a process binds the model. Create and additive changes (a new
@@ -69,7 +74,23 @@ SQL_TYPES: dict[type, str] = {
     datetime.datetime: "timestamptz",
     datetime.date: "date",
     datetime.time: "time",
+    bytes: "bytea",
+    # Collections are jsonb, never msgpack (plan §3, §8; see .codec).
+    list: "jsonb",
+    tuple: "jsonb",
+    set: "jsonb",
+    dict: "jsonb",
 }
+
+#: Python types whose column is ``jsonb`` (encoded by :mod:`.codec`).
+JSON_TYPES = frozenset({list, tuple, set, dict})
+
+#: Field kinds with a B-tree on their own column (``UNIQUE`` when unique).
+INDEXED_KINDS = frozenset({"IndexedField", "UniqueField"})
+#: Field kinds stored as ``text[]`` with a GIN index (multi-value tags).
+TAG_KINDS = frozenset({"TagField"})
+#: Field kinds holding a related record's ``_pk`` (lazy, as on Redis).
+RELATIONSHIP_KINDS = frozenset({"Relationship"})
 
 #: Field kinds that are key fields (part of ``_pk``).
 KEY_KINDS = frozenset({"KeyField", "UniqueKeyField", "AutoKeyField", "SortedKeyField"})
@@ -133,6 +154,21 @@ class TableSpec:
     field_types: dict[str, type]
     unique_indexes: dict[str, tuple[str, ...]] = dataclass_field(default_factory=dict)
     """Unique index name -> the fields it covers (to name a 23505)."""
+    field_kinds: dict[str, str] = dataclass_field(default_factory=dict)
+    """Field name -> its popoto kind (``FieldSpec.kind``)."""
+    capped_fields: frozenset[str] = frozenset()
+    """``ListField(max_length=N)`` columns: elements are type-tagged (.codec)."""
+    meta_indexes: dict[str, tuple[str, ...]] = dataclass_field(default_factory=dict)
+    """``Meta.indexes`` unique index name -> its fields (to word a 23505)."""
+
+    def kind(self, name: str) -> str:
+        return self.field_kinds.get(name, "Field")
+
+    def is_tag(self, name: str) -> bool:
+        return self.kind(name) in TAG_KINDS
+
+    def is_json(self, name: str) -> bool:
+        return self.field_types.get(name) in JSON_TYPES and not self.is_tag(name)
 
     @property
     def qualified(self) -> str:
@@ -181,6 +217,9 @@ class TableSpec:
 
 def _field_type(spec: ModelSpec, name: str) -> type:
     fs = spec.fields[name]
+    if fs.kind in RELATIONSHIP_KINDS:
+        # The column holds the related record's _pk: a key string.
+        return str
     py_type = fs.py_type or str
     if py_type not in SQL_TYPES:
         raise BackendCapabilityError(
@@ -203,7 +242,10 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
             )
         py_type = _field_type(spec, name)
         field_types[name] = py_type
-        columns.append(Column(name, SQL_TYPES[py_type], name, py_type=py_type))
+        sql_type = SQL_TYPES[py_type]
+        if spec.fields[name].kind in TAG_KINDS:
+            sql_type = "text[]"
+        columns.append(Column(name, sql_type, name, py_type=py_type))
         if py_type is datetime.datetime:
             columns.append(Column(name + UTCOFF_SUFFIX, "integer", name, role="utcoff"))
 
@@ -229,6 +271,29 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
             indexes.append((index_name("uniq", name), f"({quote_ident(name)})", True))
             unique_indexes[index_name("uniq", name)] = (name,)
     for name, fs in sorted(spec.fields.items()):
+        # IndexedField / Relationship: a B-tree on the column (a unique one
+        # already has the UNIQUE above, which serves equality). TagField: GIN,
+        # which serves @> (contains/all) and && (any).
+        if fs.kind in TAG_KINDS:
+            body = f"USING gin ({quote_ident(name)})"
+            indexes.append((index_name(name), body, False))
+        elif (
+            fs.kind in INDEXED_KINDS or fs.kind in RELATIONSHIP_KINDS
+        ) and not fs.options.get("unique"):
+            indexes.append((index_name(name), f"({quote_ident(name)})", False))
+    meta_indexes: dict[str, tuple[str, ...]] = {}
+    unique_meta = {tuple(i) for i in spec.unique_indexes}
+    for names in spec.indexes:
+        # Meta.indexes: a composite B-tree, UNIQUE for is_unique=True. NULLs
+        # stay distinct, as Redis skips a tuple with a None in it.
+        unique = tuple(names) in unique_meta
+        cols = ", ".join(quote_ident(n) for n in names)
+        meta_name = index_name("meta", *names)
+        indexes.append((meta_name, f"({cols})", unique))
+        if unique:
+            unique_indexes[meta_name] = tuple(names)
+            meta_indexes[meta_name] = tuple(names)
+    for name, fs in sorted(spec.fields.items()):
         if fs.kind not in SORTED_KINDS:
             continue
         partition = tuple(fs.options.get("partition_by", ()) or ())
@@ -246,6 +311,11 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
         key_fields=key_fields,
         field_types=field_types,
         unique_indexes=unique_indexes,
+        field_kinds={name: fs.kind for name, fs in spec.fields.items()},
+        capped_fields=frozenset(
+            name for name, fs in spec.fields.items() if fs.options.get("capped")
+        ),
+        meta_indexes=meta_indexes,
     )
 
 

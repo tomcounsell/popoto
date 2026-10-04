@@ -28,9 +28,28 @@ import decimal
 from typing import Any, Optional
 
 from ..types import And, Cond, Not, Op, Or, OrderTerm, Predicate
-from .schema import KEY_KINDS, TableSpec, quote_ident
+from .codec import encode_json
+from .schema import (
+    INDEXED_KINDS,
+    KEY_KINDS,
+    RELATIONSHIP_KINDS,
+    TAG_KINDS,
+    TableSpec,
+    quote_ident,
+)
 
 __all__ = ["render_order", "render_where", "to_db_value"]
+
+#: Kinds whose Redis lookup is by the value's key string (``DB_key``), so
+#: ``filter(code=5)`` finds ``code="5"``: key fields, indexed fields and the
+#: related key a ``Relationship`` stores.
+_KEY_STRING_KINDS = KEY_KINDS | INDEXED_KINDS | RELATIONSHIP_KINDS
+
+
+def _jsonb(value: Any) -> Any:
+    from psycopg.types.json import Jsonb
+
+    return Jsonb(value)
 
 
 def _query_exception(message: str) -> Exception:
@@ -55,6 +74,27 @@ def to_db_value(py_type: type, value: Any) -> Any:
     return value
 
 
+def to_column_value(ts: TableSpec, name: str, value: Any) -> Any:
+    """``value`` of field ``name`` as its column stores it (M1.1): the
+    collections as ``jsonb`` (:mod:`.codec`), a ``TagField`` as its
+    normalised ``text[]``, a ``Relationship`` as the target's key string."""
+    py_type = ts.field_types[name]
+    kind = ts.kind(name)
+    if kind in TAG_KINDS:
+        from ...fields.tag_field import TagFieldMixin
+
+        return TagFieldMixin._normalize(getattr(value, "_data", value))
+    if value is None:
+        return None
+    if kind in RELATIONSHIP_KINDS:
+        return value if isinstance(value, str) else value.db_key.redis_key
+    if ts.is_json(name):
+        return _jsonb(encode_json(py_type, value, capped=name in ts.capped_fields))
+    if py_type is bytes and isinstance(value, (bytearray, memoryview)):
+        return bytes(value)
+    return to_db_value(py_type, value)
+
+
 _NO_MATCH = object()
 
 
@@ -72,7 +112,7 @@ def _coerce(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
     if py_type is str:
         if isinstance(value, str):
             return value
-        return str(value) if kind in KEY_KINDS else _NO_MATCH
+        return str(value) if kind in _KEY_STRING_KINDS else _NO_MATCH
     if py_type in (int, float, decimal.Decimal):
         if isinstance(value, (int, float, decimal.Decimal)) and not isinstance(
             value, bool
@@ -80,7 +120,7 @@ def _coerce(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
             return value
         if isinstance(value, bool):
             return int(value)
-        if kind in KEY_KINDS and isinstance(value, str):
+        if kind in _KEY_STRING_KINDS and isinstance(value, str):
             try:
                 return py_type(value)
             except (ValueError, decimal.InvalidOperation):
@@ -92,13 +132,86 @@ def _coerce(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
         if isinstance(value, (int, float)):
             return datetime.datetime.fromtimestamp(value, datetime.timezone.utc)
         return _NO_MATCH
-    if py_type is datetime.date and isinstance(value, datetime.date):
-        return value
-    if py_type is datetime.time and isinstance(value, datetime.time):
-        return value.replace(tzinfo=None)
+    if py_type is datetime.date:
+        if isinstance(value, datetime.date) and not isinstance(
+            value, datetime.datetime
+        ):
+            return value
+        return _NO_MATCH
+    if py_type is datetime.time:
+        if isinstance(value, datetime.time):
+            return value.replace(tzinfo=None)
+        return _NO_MATCH
+    if py_type is bytes:
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            return bytes(value)
+        return _NO_MATCH
     if py_type is bool:
         return _NO_MATCH
     return value
+
+
+def _tag_values(value: Any) -> list[str]:
+    """Tag lookup values as the strings ``TagFieldMixin._normalize`` stores
+    (``str(tag)``; on Redis the lookup is ``DB_key(prefix, tag)``, the same
+    rendering)."""
+    return [str(v) for v in value]
+
+
+def _tag_sql(field_name: str, col: str, op: Op, value: Any, params: list[Any]) -> str:
+    """``TagField`` lookups on its ``text[]`` column, each GIN-served:
+    ``__contains`` is ``@> ARRAY[v]``, ``__all`` is ``@>``, ``__any`` is
+    ``&&``. An empty ``__any``/``__all`` matches nothing, as the empty
+    ``SUNION``/``SINTER`` short-circuit does on Redis."""
+    if op is Op.CONTAINS:
+        params.append(_tag_values([value]))
+        return f"{col} @> %s::text[]"
+    if op in (Op.ANY, Op.ALL):
+        items = _tag_values(value or ())
+        if not items:
+            return "FALSE"
+        params.append(items)
+        return f"{col} {'&&' if op is Op.ANY else '@>'} %s::text[]"
+    if op is Op.EXACT:
+        # TagFieldMixin raises popoto.exceptions.QueryException for this.
+        from ...exceptions import QueryException as FieldQueryException
+
+        raise FieldQueryException(
+            f"Exact-match filter on TagField '{field_name}' is not "
+            f"supported; use {field_name}__contains (membership), "
+            f"{field_name}__any (any-of) or {field_name}__all (all-of)."
+        )
+    raise _query_exception(f"Invalid filter parameters: {field_name}__{op.value}")
+
+
+def _json_sql(ts: TableSpec, c: Cond, col: str, params: list[Any]) -> str:
+    """Equality on a collection (``jsonb``) column -- what Redis does by
+    Python equality after hydration. A set compares as a set (containment
+    both ways), every other collection by its encoded document."""
+    py_type = ts.field_types[c.field]
+
+    def one(value: Any) -> str:
+        if value is None:
+            return f"{col} IS NULL"
+        if not isinstance(value, (list, tuple, set, dict)):
+            return "FALSE"
+        if py_type is set and not isinstance(value, set):
+            return "FALSE"
+        doc = _jsonb(encode_json(py_type, value, capped=c.field in ts.capped_fields))
+        if py_type is set:
+            params.extend((doc, doc))
+            return f"({col} @> %s AND {col} <@ %s)"
+        params.append(doc)
+        return f"{col} = %s"
+
+    if c.op is Op.EXACT:
+        return one(c.value)
+    if c.op is Op.IN:
+        items = list(c.value or ())
+        return "(" + " OR ".join(one(v) for v in items) + ")" if items else "FALSE"
+    raise _query_exception(
+        f"lookup __{c.op.value} is not supported on a collection field"
+    )
 
 
 def _like_escape(text: str) -> str:
@@ -112,8 +225,12 @@ def _cond_sql(ts: TableSpec, kinds: dict[str, str], c: Cond, params: list[Any]) 
     kind = kinds.get(c.field, "Field")
     sql_type = ts.column_map()[c.field]
     op = c.op
+    if ts.is_tag(c.field):
+        return _tag_sql(c.field, col, op, c.value, params)
     if op is Op.ISNULL:
         return f"{col} IS NULL" if c.value else f"{col} IS NOT NULL"
+    if ts.is_json(c.field):
+        return _json_sql(ts, c, col, params)
     if op is Op.EXACT:
         value = _coerce(ts, kind, c.field, c.value)
         if value is _NO_MATCH:
