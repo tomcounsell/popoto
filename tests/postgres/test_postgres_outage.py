@@ -34,23 +34,53 @@ def _needs_psycopg():
     pytest.importorskip("psycopg_pool")
 
 
-@pytest.fixture
-def unreachable(monkeypatch):
-    """A PostgresBackend on a refused port, bound for the test, with short
-    timeouts so a failure costs well under a second."""
+# Three ways a server is unreachable before the model's first use: a refused
+# port (fails at once), a blackhole address (nothing answers; bounded only by
+# the connect timeout) and a name that does not resolve.
+REFUSED = UNREACHABLE
+BLACKHOLE = "postgresql://10.255.255.1:5432/postgres"
+BAD_DNS = "postgresql://nonexistent.invalid:5432/postgres"
+
+
+def _install(monkeypatch, dsn):
     _needs_psycopg()
     from popoto.backends.postgres import PostgresBackend, close_pools
 
     monkeypatch.setattr(Defaults, "PG_CONNECT_TIMEOUT_SECONDS", 0.3)
-    backend = PostgresBackend(dsn=UNREACHABLE, schema="popoto_outage_probe")
+    backend = PostgresBackend(dsn=dsn, schema="popoto_outage_probe")
     previous = set_backend(backend)
     previous_instance = _swap_instance("postgres", backend)
-    try:
-        yield backend
-    finally:
+
+    def restore():
         _swap_instance("postgres", previous_instance)
         set_backend(previous)
         close_pools()
+
+    return backend, restore
+
+
+@pytest.fixture
+def unreachable(monkeypatch):
+    """A PostgresBackend on a refused port, bound for the test, with short
+    timeouts so a failure costs well under a second."""
+    backend, restore = _install(monkeypatch, UNREACHABLE)
+    try:
+        yield backend
+    finally:
+        restore()
+
+
+@pytest.fixture(
+    params=[REFUSED, BLACKHOLE, BAD_DNS], ids=["refused", "blackhole", "bad-dns"]
+)
+def unreachable_from_start(request, monkeypatch):
+    """A *fresh* backend (nothing bound, no table memo) whose server has
+    never answered: the model's first use is the lazy bind itself."""
+    backend, restore = _install(monkeypatch, request.param)
+    try:
+        yield backend
+    finally:
+        restore()
 
 
 class OutageNote(popoto.Model):
@@ -67,23 +97,33 @@ def test_unreachable_server_raises_backend_unavailable_on_first_use(unreachable)
     assert unreachable.health.consecutive_failures >= 1
 
 
-def test_dropped_writes_are_counted(unreachable):
-    reset_bindings()
-    # Bind succeeds lazily only when the server answers, so prime the table
-    # memo by hand: the write itself is what must fail and be counted.
-    from popoto.backends.postgres.schema import compile_table
+def _bounded(call):
+    started = time.monotonic()
+    with pytest.raises(BackendUnavailableError, match="Postgres is unavailable"):
+        call()
+    elapsed = time.monotonic() - started
+    assert elapsed < 3, f"took {elapsed:.1f}s: the connect timeout was not applied"
 
-    spec = OutageNote._meta.spec
-    unreachable._tables[spec.name] = (spec, compile_table(spec, unreachable.schema))
-    unreachable._server_checked = True
-    for _ in range(2):
-        with pytest.raises(BackendUnavailableError):
-            OutageNote(key="k").save()
-    assert unreachable.health.dropped_writes == 2
-    with pytest.raises(BackendUnavailableError):
-        OutageNote.query.count()
-    assert unreachable.health.dropped_writes == 2  # a read is not a write
-    assert unreachable.health.as_dict()["consecutive_failures"] == 3
+
+def test_dropped_writes_are_counted_from_the_first_use(unreachable_from_start):
+    """#769 review blocker 1: the M1 exit scenario. The server is unreachable
+    before the model was ever used, so every call's first step is the lazy
+    table/server check -- a read. A save that fails there is still a dropped
+    write; a query or count that fails there is not."""
+    backend = unreachable_from_start
+    reset_bindings()
+    assert backend._tables == {} and backend._server_checked is False
+    _bounded(lambda: OutageNote(key="k").save())
+    assert backend.health.dropped_writes == 1
+    _bounded(lambda: OutageNote.create(key="k2"))
+    assert backend.health.dropped_writes == 2
+    _bounded(lambda: list(OutageNote.query.filter(key="k")))
+    _bounded(lambda: OutageNote.query.count())
+    _bounded(lambda: OutageNote.query.get(key="k"))
+    health = backend.health.as_dict()
+    assert health["dropped_writes"] == 2, "a failed read was counted as a write"
+    assert health["consecutive_failures"] == 5
+    assert health["ok"] is False and health["last_error"]
 
 
 def test_error_is_logged_once_per_window(unreachable, caplog, monkeypatch):
@@ -109,6 +149,110 @@ def test_statement_timeout_raises_backend_unavailable(pg, monkeypatch):
     monkeypatch.setattr(Defaults, "PG_STATEMENT_TIMEOUT_MS", 30000)
     rows, _ = pg._run("SELECT 1")
     assert rows == [(1,)] and pg.health.ok
+
+
+def _pool_pid(pg):
+    rows, _ = pg._run("SELECT pg_backend_pid()")
+    return rows[0][0]
+
+
+def test_stale_pooled_connection_after_a_restart_is_not_a_dropped_write(pg, admin):
+    """#769 review blocker 2: a server restart, failover or idle reaper kills
+    the pool's backends while the server stays up. The next save must use a
+    live connection, not fail on the dead one and count a dropped write."""
+    from popoto.backends.postgres import close_pools
+
+    close_pools()  # a fresh pool, so the one pooled connection is the one killed
+    OutageNote.create(key="before")
+    pid = _pool_pid(pg)
+    admin.execute("SELECT pg_terminate_backend(%s)", (pid,))
+    for _ in range(50):
+        admin.execute("SELECT pg_stat_clear_snapshot()")
+        alive = admin.execute(
+            "SELECT 1 FROM pg_stat_activity WHERE pid = %s", (pid,)
+        ).fetchone()
+        if alive is None:
+            break
+        time.sleep(0.02)
+    dropped = pg.health.dropped_writes
+    OutageNote.create(key="after")
+    assert pg.health.dropped_writes == dropped
+    assert pg.health.ok and pg.health.consecutive_failures == 0
+    assert _pool_pid(pg) != pid
+    assert {n.key for n in OutageNote.query.all()} == {"before", "after"}
+
+
+def test_a_read_whose_connection_dies_mid_statement_is_retried_once(pg, admin):
+    """The pool's checkout check cannot catch a backend killed *during* a
+    statement. A read cannot have committed anything, so it runs once more on
+    a fresh connection."""
+    import threading
+
+    OutageNote.create(key="x")
+    killed = []
+
+    def kill_when_sleeping():
+        for _ in range(300):
+            row = admin.execute(
+                "SELECT pid FROM pg_stat_activity WHERE pid <> pg_backend_pid() "
+                "AND query LIKE '%%pg_sleep(0.5), 7%%' AND state = 'active'"
+            ).fetchone()
+            if row:
+                admin.execute("SELECT pg_terminate_backend(%s)", (row[0],))
+                killed.append(row[0])
+                return
+            time.sleep(0.01)
+
+    killer = threading.Thread(target=kill_when_sleeping)
+    killer.start()
+    rows, _ = pg._run("SELECT pg_sleep(0.5), 7")
+    killer.join()
+    assert killed, "the statement was never seen running"
+    assert rows[0][1] == 7
+    assert pg.health.ok and pg.health.dropped_writes == 0
+
+
+class _Conn:
+    def __init__(self, broken):
+        self.closed = False
+        self.broken = broken
+
+
+class _Err(Exception):
+    def __init__(self, sqlstate):
+        super().__init__("boom")
+        self.sqlstate = sqlstate
+
+
+@pytest.mark.parametrize(
+    "conn, sqlstate, write, retry",
+    [
+        # a failed connect (no connection handed out) is an outage: no retry
+        (None, None, False, False),
+        # a live connection with a statement-level error: not a reconnect case
+        (_Conn(broken=False), "57014", False, False),
+        # a dead connection under a read: always safe to run again
+        (_Conn(broken=True), None, False, True),
+        # a write the server failed (57P01 AdminShutdown): rolled back, retry
+        (_Conn(broken=True), "57P01", True, True),
+        # a write whose reply was lost: it may have committed, never retried
+        (_Conn(broken=True), None, True, False),
+    ],
+    ids=[
+        "connect-failed",
+        "conn-alive",
+        "read",
+        "write-server-failed",
+        "write-unknown",
+    ],
+)
+def test_only_statements_that_cannot_have_committed_are_retried(
+    conn, sqlstate, write, retry
+):
+    _needs_psycopg()
+    from popoto.backends.postgres import PostgresBackend
+
+    assert PostgresBackend._may_retry_broken(conn, _Err(sqlstate), write) is retry
 
 
 def test_server_below_18_is_refused_at_bind(pg, monkeypatch):
@@ -192,11 +336,14 @@ def test_declaring_a_postgres_model_never_dials_and_first_use_raises():
             Remote(key="a").save()
         except popoto.backends.BackendUnavailableError as exc:
             print("UNAVAILABLE:", type(exc).__name__)
+        health = popoto.backends.get_backend(Remote).health
+        print("DROPPED:", health.dropped_writes)
         """,
         POPOTO_POSTGRES_URL=UNREACHABLE,
     )
     assert proc.returncode == 0, proc.stderr
     assert "UNAVAILABLE: BackendUnavailableError" in proc.stdout
+    assert "DROPPED: 1" in proc.stdout
 
 
 def test_library_reads_only_popoto_postgres_url(monkeypatch):

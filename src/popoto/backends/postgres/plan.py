@@ -33,6 +33,7 @@ from .schema import (
     INDEXED_KINDS,
     KEY_KINDS,
     RELATIONSHIP_KINDS,
+    SORTED_KINDS,
     TAG_KINDS,
     TableSpec,
     quote_ident,
@@ -282,9 +283,27 @@ def _cond_sql(ts: TableSpec, kinds: dict[str, str], c: Cond, params: list[Any]) 
 def _range_value(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:
     """A range bound. ``±inf`` passes through for numeric columns (Postgres
     compares ``bigint``/``numeric`` against ``'Infinity'::float8``), which is
-    what makes ``score__lte=inf`` behave as it does on Redis."""
+    what makes ``score__lte=inf`` behave as it does on Redis.
+
+    On a ``SortedField`` a numeric *string* bound is parsed, because Redis
+    sends the bound to ``ZRANGEBYSCORE`` as text and the server parses it
+    (``score__lte="3"`` matches on both). ``None`` or a non-numeric string
+    matches nothing here, where Redis raises ``ResponseError: min or max is
+    not a float`` (a documented divergence)."""
     if value is None:
         return _NO_MATCH
+    py_type = ts.field_types[field_name]
+    if (
+        kind in SORTED_KINDS
+        and isinstance(value, str)
+        and py_type in (int, float, decimal.Decimal)
+    ):
+        try:
+            return (
+                decimal.Decimal(value) if py_type is decimal.Decimal else float(value)
+            )
+        except (ValueError, decimal.InvalidOperation):
+            return _NO_MATCH
     if isinstance(value, float) and value in (float("inf"), float("-inf")):
         if ts.field_types[field_name] in (int, float, decimal.Decimal):
             return value

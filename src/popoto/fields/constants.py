@@ -742,7 +742,8 @@ class Defaults:
     # An outage is logged at ERROR once per this many seconds, however many
     # calls fail inside the window (the health record still counts each).
     PG_OUTAGE_LOG_WINDOW_SECONDS = 60.0
-    # Deadlock / serialization-failure retries inside transaction().
+    # Deadlock / serialization-failure retries for a single autocommit
+    # statement (inside transaction() these propagate to the caller).
     PG_TRANSACTION_RETRIES = 3
 
 

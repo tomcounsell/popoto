@@ -13,10 +13,11 @@ Selection (plan §4): ``Meta.backend = "postgres"`` on a model, or
 never read. ``POPOTO_POSTGRES_SCHEMA`` names the schema (default ``popoto``);
 ``POPOTO_SCHEMA_AUTO=0`` turns off automatic create/additive DDL.
 
-Nothing here touches the network until a model's first backend use
-(``bind``), and ``psycopg`` is imported only then: ``import popoto`` and
-defining a ``Meta.backend = "postgres"`` model need neither the driver nor
-the server.
+Nothing here touches the network until a model's first operation (``bind``
+itself only compiles the table spec; the server and table checks run inside
+that first save or query, so an outage there is charged to it), and
+``psycopg`` is imported only then: ``import popoto`` and defining a
+``Meta.backend = "postgres"`` model need neither the driver nor the server.
 
 Topology (plan §3): one ``psycopg_pool.ConnectionPool`` per (DSN, pid),
 ``max_size`` ``Defaults.PG_POOL_MAX_SIZE``. No session state is ever set:
@@ -156,6 +157,11 @@ def _pool_for(dsn: str) -> Any:
                 min_size=0,
                 max_size=int(Defaults.PG_POOL_MAX_SIZE),
                 timeout=timeout,
+                # Validate each connection on checkout (one empty-query round
+                # trip): a server restart, failover or idle reaper leaves the
+                # pool holding dead sockets, and without this every one of
+                # them would fail one call on a healthy server.
+                check=ConnectionPool.check_connection,
                 open=True,
                 kwargs={
                     "autocommit": True,
@@ -278,18 +284,31 @@ class PostgresBackend:
         self._tables: dict[str, tuple[ModelSpec, TableSpec]] = {}
         self._server_checked = False
         self._lock = threading.RLock()
+        self._intent = threading.local()
 
     def __repr__(self) -> str:
         return f"<PostgresBackend schema={self.schema!r}>"
 
     # -- plumbing -------------------------------------------------------------
 
+    @contextlib.contextmanager
+    def _write_intent(self, write: bool) -> Iterator[None]:
+        """Classify every failure inside the block by the *triggering*
+        operation: the lazy table/server check a save runs first reads, but a
+        save that fails there is still a dropped write."""
+        previous = getattr(self._intent, "write", False)
+        self._intent.write = previous or write
+        try:
+            yield
+        finally:
+            self._intent.write = previous
+
     def _fail(self, exc: BaseException, *, write: bool) -> BackendUnavailableError:
         h = self.health
         h.ok = False
         h.consecutive_failures += 1
         h.last_error = f"{type(exc).__name__}: {exc}"
-        if write:
+        if write or getattr(self._intent, "write", False):
             h.dropped_writes += 1
         now = time.monotonic()
         window = float(Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS)
@@ -346,7 +365,9 @@ class PostgresBackend:
         Inside a Postgres unit of work it runs on the transaction's
         connection. Otherwise it is one message -- ``SET LOCAL
         statement_timeout`` plus the statement, one implicit transaction --
-        retried on a deadlock or serialization failure.
+        retried on a deadlock or serialization failure, and retried once on a
+        fresh connection when the pooled one turns out to be dead and the
+        statement cannot have committed (:meth:`_may_retry_broken`).
         """
         psycopg = _import_psycopg()
         pg = _pg_uow(uow)
@@ -361,9 +382,13 @@ class PostgresBackend:
             return rows, cur.rowcount
         attempts = int(Defaults.PG_TRANSACTION_RETRIES) + 1
         prefix = self._statement_prefix()
-        for attempt in range(attempts):
+        attempt = 0
+        reconnected = False
+        while True:
+            conn: Any = None
             try:
-                with self._connection(write=write) as conn:
+                pool = _pool_for(self.dsn)
+                with pool.connection() as conn:
                     cur = conn.execute(prefix + sql, params)
                     while cur.nextset():
                         pass
@@ -372,12 +397,39 @@ class PostgresBackend:
                 self._ok()
                 return rows, rowcount
             except psycopg.errors.TransactionRollback:
-                if attempt + 1 >= attempts:
+                attempt += 1
+                if attempt >= attempts:
                     raise
-                time.sleep(random.uniform(0.005, 0.05) * (attempt + 1))
+                time.sleep(random.uniform(0.005, 0.05) * attempt)
             except psycopg.OperationalError as exc:
+                if not reconnected and self._may_retry_broken(conn, exc, write):
+                    reconnected = True
+                    logger.warning(
+                        "popoto Postgres: pooled connection was dead (%s: %s); "
+                        "retrying once on a fresh connection",
+                        type(exc).__name__,
+                        exc,
+                    )
+                    continue
                 raise self._fail(exc, write=write) from exc
-        raise AssertionError("unreachable")  # pragma: no cover
+
+    @staticmethod
+    def _may_retry_broken(conn: Any, exc: BaseException, write: bool) -> bool:
+        """Whether a failed autocommit statement may run again, once.
+
+        Only for a connection-level failure on a connection the pool handed
+        out (never a failed connect: that is an outage, and retrying would
+        double its timeout), and only when the statement cannot have
+        committed: a read always qualifies; a write only when the server
+        itself reported an error for it (``sqlstate`` set, e.g. 57P01
+        ``AdminShutdown`` from a terminated backend), because the implicit
+        transaction of a statement the server failed is rolled back. A write
+        whose reply was simply lost (no ``sqlstate``) may have committed, so
+        it is not retried: it raises and counts as a dropped write.
+        """
+        if conn is None or not (conn.closed or conn.broken):
+            return False
+        return not write or getattr(exc, "sqlstate", None) is not None
 
     def _check_server(self) -> None:
         if self._server_checked:
@@ -404,13 +456,20 @@ class PostgresBackend:
         )
         return int(rows[0][0]), str(rows[0][1])
 
-    def _table(self, spec: ModelSpec) -> TableSpec:
+    def _table(self, spec: ModelSpec, *, write: bool = False) -> TableSpec:
         """The model's table, created or checked on first use and again
         whenever its spec object changes (``_auto_key`` is added to a model
-        at its first instantiation, after a query may already have bound it)."""
+        at its first instantiation, after a query may already have bound it).
+
+        ``write`` names the operation that needs the table: when the server
+        is unreachable at this first check, a write counts as dropped."""
         cached = self._tables.get(spec.name)
         if cached is not None and cached[0] is spec:
             return cached[1]
+        with self._write_intent(write):
+            return self._check_table(spec)
+
+    def _check_table(self, spec: ModelSpec) -> TableSpec:
         with self._lock:
             cached = self._tables.get(spec.name)
             if cached is not None and cached[0] is spec:
@@ -431,10 +490,16 @@ class PostgresBackend:
     # -- A. lifecycle ----------------------------------------------------------
 
     def bind(self, spec: ModelSpec) -> Capabilities:
-        """Lazy, first backend use per model: connect, check the server
-        version (>= 18) and encoding (UTF8), then create or check the table
-        and its ``popoto_schema`` record."""
-        self._table(spec)
+        """Validate ``spec`` against the type map and report capabilities,
+        without touching the network.
+
+        The server checks -- connect, version (>= 18), encoding (UTF8), then
+        create or check the table and its ``popoto_schema`` record -- run
+        inside the model's first operation (:meth:`_table`), so an outage at
+        that moment is attributed to the operation that hit it: a first
+        ``save()`` against an unreachable server is a dropped write, a first
+        query is not."""
+        compile_table(spec, self.schema)
         return Capabilities(
             backend=self.name,
             groups=POSTGRES_CAPABILITIES_GROUPS,
@@ -538,7 +603,7 @@ class PostgresBackend:
         if expiry is not None:
             raise BackendCapabilityError("save(expiry=) arrives on Postgres in M5")
         spec = obj._meta.spec
-        ts = self._table(spec)
+        ts = self._table(spec, write=True)
         new_key = obj.db_key.redis_key
         old_key = obj._redis_key
         if old_key and old_key != new_key and obj._saved_field_values:
@@ -703,7 +768,7 @@ class PostgresBackend:
         the instances' saved state (``objs=``) as the Redis path does."""
         if not ids:
             return 0
-        ts = self._table(spec)
+        ts = self._table(spec, write=True)
         keys = [rid.canonical for rid in ids]
         rows, count = self._run(
             f'DELETE FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])',
@@ -743,7 +808,7 @@ class PostgresBackend:
         Lua goes to float (a documented divergence)."""
         import decimal
 
-        ts = self._table(spec)
+        ts = self._table(spec, write=True)
         py_type = ts.field_types[field]
         col = quote_ident(field)
         if py_type is int and isinstance(delta, (float, decimal.Decimal)):
