@@ -1123,13 +1123,18 @@ class PostgresMemoryOps(PostgresValidityOps):
         ``Defaults.PG_TRANSACTION_RETRIES`` times with jitter, then
         :class:`BackendRetryableError` is raised. Inside a caller's own unit
         of work there is no retry: the failure is raised as
-        :class:`BackendRetryableError` for the caller to retry."""
+        :class:`BackendRetryableError` for the caller to retry. The work runs
+        in a SAVEPOINT there, so a refusal (or any exception) the caller
+        catches rolls back exactly this work's writes and leaves the caller's
+        transaction usable -- a caller that catches it and commits never
+        commits half of it."""
         from . import _import_psycopg, _pg_uow, _retryable, _rollback_errors
 
         psycopg = _import_psycopg()
         if _pg_uow(uow) is not None:
             try:
-                return work(uow)  # type: ignore[arg-type]
+                with uow.conn.transaction():  # type: ignore[union-attr]
+                    return work(uow)  # type: ignore[arg-type]
             except _rollback_errors(psycopg) as exc:
                 raise _retryable(exc) from exc
         retries = int(Defaults.PG_TRANSACTION_RETRIES)

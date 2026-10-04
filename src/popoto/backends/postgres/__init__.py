@@ -744,18 +744,20 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
         sql, params = self._record_locked(ts, [new_key], sql, params)
         psycopg = _import_psycopg()
         try:
-            if guards and search is not None and search.ctes and _pg_uow(uow) is None:
+            if guards and search is not None and search.ctes:
                 # A guarded upsert (a declared valid_from, M3) with search
                 # CTEs: the CTEs run even when the guard refuses the row, so
                 # the refusal must roll them back -- one owned transaction
-                # (retried as _run would be) that raises before it commits.
+                # (retried as _run would be), or a SAVEPOINT inside the
+                # caller's, that raises before it commits. A caller that
+                # catches the refusal and commits keeps nothing of this save.
                 def guarded(tx: UnitOfWork) -> list[tuple[Any, ...]]:
                     found, _ = self._run(sql, params, uow=tx, write=True)
                     if not found:
                         refuse_valid_from_conflict(self, spec, obj, uow=tx)
                     return found
 
-                rows = self._atomically(guarded)
+                rows = self._atomically(guarded, uow=uow)
             else:
                 rows, _ = self._run(sql, params, uow=uow, write=True)
         except psycopg.errors.UniqueViolation as exc:
