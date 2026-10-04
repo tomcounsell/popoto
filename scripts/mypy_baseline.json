@@ -16,9 +16,9 @@
     "embeddings": 2,
     "extraction": 2,
     "fields": 401,
-    "models": 365,
+    "models": 364,
     "pubsub": 11,
-    "recipes": 145,
+    "recipes": 143,
     "stores": 1,
     "streams": 10,
     "utils": 20
