@@ -264,7 +264,9 @@ def test_a_redis_pipeline_is_refused_by_save_and_supersede(pg):
 
     with pytest.raises(ValueError, match="unit of work"):
         SupersessionProtocol.save_and_supersede(
-            PgFact(name="x"), identity_key=("u", "p"), pipeline=get_REDIS_DB().pipeline()
+            PgFact(name="x"),
+            identity_key=("u", "p"),
+            pipeline=get_REDIS_DB().pipeline(),
         )
 
 
@@ -343,9 +345,17 @@ def test_without_the_mask_the_closed_member_leaks_through_the_confidence_arm(pg)
         RankTerm("confidence", 0.5, "certainty"),
     ]
     kwargs = dict(
-        limit=10, aggregate="SUM", min_score=None, where=None, as_of=None, temperature=1.0
+        limit=10,
+        aggregate="SUM",
+        min_score=None,
+        where=None,
+        as_of=None,
+        temperature=1.0,
     )
-    leaked = [rid.canonical for rid, _ in pg.rank_composite(PgFact._meta.spec, terms, **kwargs)]
+    leaked = [
+        rid.canonical
+        for rid, _ in pg.rank_composite(PgFact._meta.spec, terms, **kwargs)
+    ]
     masked = [
         rid.canonical
         for rid, _ in pg.rank_composite(

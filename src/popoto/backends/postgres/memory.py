@@ -94,6 +94,7 @@ from .validity import (
     VALIDITY_KIND,
     PostgresValidityOps,
     included_sql,
+    range_bound,
     validity_columns,
     validity_field_names,
     validity_indexes,
@@ -710,7 +711,9 @@ class PostgresMemoryOps(PostgresValidityOps):
         inner_where = " OR ".join(where_parts)
         if validity_field:
             self._validity_field(spec, validity_field)
-            gate = included_sql(validity_field, now if as_of is None else as_of)
+            gate = included_sql(
+                validity_field, now if as_of is None else range_bound(as_of)
+            )
             if gate != "TRUE":
                 inner_where = f"({inner_where}) AND {gate}"
         if where is not None:

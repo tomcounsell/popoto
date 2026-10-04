@@ -262,6 +262,22 @@ def included_sql(field: str, as_of: Optional[float], alias: str = "t") -> str:
     return f"NOT {excluded_sql(field, float(as_of), alias)}"
 
 
+def range_bound(as_of: Any) -> float:
+    """``as_of`` as a range-read bound, refused as Redis refuses it: a NaN
+    bound makes ``ZRANGEBYSCORE``/``ZRANGESTORE`` reply ``min or max is not
+    a float``, so the reads that are range reads on Redis (the filters, the
+    resolvers, the composite mask) raise ``QueryException`` with that text
+    here -- the same text, a different class (M1's divergence (v)). The decay
+    ranking's gate is a Lua comparison instead, and a NaN there excludes
+    nothing on both (:func:`included_sql`)."""
+    t = float(as_of)
+    if math.isnan(t):
+        from ...models.query import QueryException
+
+        raise QueryException("min or max is not a float")
+    return t
+
+
 def validity_cond_sql(field: str, value: Any) -> str:
     """``filter(validity__as_of=t)`` / ``validity__current=…``, compiled by
     :mod:`popoto.backends.planning` to ``Cond(field, VALID_AT, (t, valid))``.
@@ -271,7 +287,7 @@ def validity_cond_sql(field: str, value: Any) -> str:
     intersects. ``valid=False`` (``__current=False``): the members of either
     index that are not valid at ``t``, the Redis complement."""
     t, valid = value
-    a = _lit(t)
+    a = _lit(range_bound(t))
     vf = _col(field, VALID_FROM)
     ia = _col(field, INVALID_AT)
     is_valid = f"({vf} <= {a} AND {ia} > {a})"
@@ -756,7 +772,7 @@ class PostgresValidityOps:
         invalid_at > t``, both present) or ``resolve_excluded_keys``
         (``select="excluded"``: the exclusion rule)."""
         ts = self._table(spec)
-        t = float(as_of)
+        t = range_bound(as_of)
         if select == "valid":
             clause = validity_cond_sql(field, (t, True))
         elif select == "excluded":

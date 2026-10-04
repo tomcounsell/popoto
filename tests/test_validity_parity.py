@@ -109,7 +109,10 @@ def _set_interval(record, *, valid_from="keep", invalid_at="keep"):
     backend = non_redis_backend(model)
     if backend is not None:
         sets, params = [], []
-        for suffix, value in (("__valid_from", valid_from), ("__invalid_at", invalid_at)):
+        for suffix, value in (
+            ("__valid_from", valid_from),
+            ("__invalid_at", invalid_at),
+        ):
             if value == "keep":
                 continue
             sets.append(f'"{FIELD}{suffix}" = %s')
@@ -704,7 +707,10 @@ class TestCrossingChains:
                 r
                 for r in rows
                 if r[0] == "Lock"
-                and ("pg_advisory_xact_lock" in (r[1] or "") or "FOR UPDATE" in (r[1] or ""))
+                and (
+                    "pg_advisory_xact_lock" in (r[1] or "")
+                    or "FOR UPDATE" in (r[1] or "")
+                )
             ]
             if len(blocked) >= count:
                 return
