@@ -49,6 +49,7 @@ import logging
 import time
 from typing import Any
 
+from ..backends.routing import non_redis_backend
 from ..redis_db import get_REDIS_DB
 from .constants import Defaults
 
@@ -204,6 +205,11 @@ class ObservationProtocol:
                     f"Valid outcomes: {sorted(VALID_OUTCOMES)}"
                 )
 
+        backend_items = [i for i in instances if non_redis_backend(i) is not None]
+        if backend_items:
+            _on_context_used_on_backend(backend_items, outcome_map, pipeline)
+            instances = [i for i in instances if non_redis_backend(i) is None]
+
         for instance in instances:
             pk = _get_instance_key(instance)
             outcome = outcome_map.get(pk, "deferred")
@@ -211,6 +217,117 @@ class ObservationProtocol:
 
             # Resolve any pending proposal for this instance
             RecallProposal.resolve(instance, outcome, pipeline=pipeline)
+
+
+def _on_context_used_on_backend(
+    instances: Any, outcome_map: Any, pipeline: Any = None
+) -> None:
+    """``on_context_used`` for records stored outside Redis (#759 M2a).
+
+    All five outcomes, for every instance, in **one transaction per
+    backend**: each model's rows are locked ``FOR UPDATE`` in ``_pk`` order
+    first, then the effects run in that order -- ``touch`` for ``acted``, the
+    staged reads confirmed (``acted``, ``used``) or discarded (the rest), the
+    confidence signal (``acted``, ``contradicted``), and the proposal resolved.
+    A deadlock or serialization failure retries the whole unit and then
+    raises ``BackendRetryableError``. A backend unit of work passed as
+    ``pipeline`` is used as the transaction instead (no retry).
+
+    Unsaved instances degrade exactly as on Redis: their effects are skipped
+    and the rest of the batch still lands.
+    """
+    from ..backends import UnitOfWork
+
+    uow = pipeline if isinstance(pipeline, UnitOfWork) else None
+    groups: dict[int, Any] = {}
+    for instance in instances:
+        backend = non_redis_backend(instance)
+        groups.setdefault(id(backend), (backend, {}))[1].setdefault(
+            type(instance), []
+        ).append(instance)
+
+    for backend, by_model in groups.values():
+
+        def work(tx: Any, by_model: Any = by_model, backend: Any = backend) -> None:
+            from ..backends import RecordId
+
+            for model_cls in sorted(by_model, key=lambda m: m._meta.model_name):
+                keyed = sorted(
+                    ((_get_instance_key(i), i) for i in by_model[model_cls]),
+                    key=lambda kv: kv[0].encode("utf-8", "surrogateescape"),
+                )
+                backend.field_call(
+                    model_cls._meta.spec,
+                    "_observe",
+                    "lock",
+                    [
+                        RecordId.from_key(model_cls._meta.model_name, k)
+                        for k, _ in keyed
+                    ],
+                    uow=tx,
+                )
+                for pk, instance in keyed:
+                    outcome = outcome_map.get(pk, "deferred")
+                    _apply_outcome_on_backend(instance, outcome, tx)
+                    RecallProposal.resolve(instance, outcome, pipeline=tx)
+
+        some_model = next(iter(by_model))
+        backend.field_call(
+            some_model._meta.spec, "_observe", "atomically", work, uow=uow
+        )
+
+
+def _apply_outcome_on_backend(instance: Any, outcome: str, uow: Any) -> None:
+    """The effects matrix for one instance on a non-Redis backend, inside
+    ``uow``. Fields a non-Redis model cannot declare yet (CyclicDecayField,
+    ValidityField) have no effect to apply; a PredictionLedgerMixin is
+    resolved as on Redis."""
+    from .confidence_field import ConfidenceField
+    from .decaying_sorted_field import DecayingSortedField
+
+    fields = instance._meta.fields
+    tracked = hasattr(instance, "confirm_access") and callable(instance.confirm_access)
+
+    if outcome == "acted":
+        for field_name, field in fields.items():
+            if isinstance(field, DecayingSortedField):
+                try:
+                    instance.touch(field_name, pipeline=uow)
+                except (TypeError, ValueError):
+                    pass
+    if outcome in ("acted", "used"):
+        if tracked:
+            try:
+                instance.confirm_access(pipeline=uow)
+            except (TypeError, ValueError):
+                pass
+    elif hasattr(instance, "discard_staged_access") and callable(
+        instance.discard_staged_access
+    ):
+        instance.discard_staged_access(pipeline=uow)
+
+    signal = {
+        "acted": ACTED_CONFIDENCE_SIGNAL,
+        "contradicted": CONTRADICTED_CONFIDENCE_SIGNAL,
+    }.get(outcome)
+    if signal is not None:
+        for field_name, field in fields.items():
+            if isinstance(field, ConfidenceField):
+                try:
+                    ConfidenceField.update_confidence(
+                        instance, field_name, signal=signal, pipeline=uow
+                    )
+                except (TypeError, ValueError):
+                    pass
+
+    if outcome != "deferred":
+        from .prediction_ledger import PredictionLedgerMixin
+
+        if isinstance(instance, PredictionLedgerMixin):
+            try:
+                PredictionLedgerMixin.auto_resolve(instance, outcome)
+            except (TypeError, ValueError):
+                pass
 
 
 def _get_instance_key(instance):
@@ -576,6 +693,14 @@ def _apply_used(instance, pipeline):
             pass  # Graceful degradation
 
 
+def _uow_of(pipeline: Any) -> Any:
+    """A backend unit of work passed as ``pipeline=`` (a Redis pipeline
+    cannot carry a Postgres write: the write runs at once)."""
+    from ..backends import UnitOfWork
+
+    return pipeline if isinstance(pipeline, UnitOfWork) else None
+
+
 class RecallProposal:
     """Internal tracking for proactively surfaced memories.
 
@@ -622,6 +747,18 @@ class RecallProposal:
 
         now = time.time()
         model_class = type(instances[0])
+        backend = non_redis_backend(model_class)
+        if backend is not None:
+            backend.field_call(
+                model_class._meta.spec,
+                "_recall",
+                "add",
+                partition or "default",
+                [_get_instance_key(i) for i in instances],
+                now,
+                uow=_uow_of(pipeline),
+            )
+            return
         key = cls._pending_key(model_class, partition)
 
         db = pipeline if pipeline is not None else get_REDIS_DB()
@@ -652,6 +789,17 @@ class RecallProposal:
             int: Number of members removed (0 or 1).
         """
         model_class = type(instance)
+        backend = non_redis_backend(model_class)
+        if backend is not None:
+            removed = backend.field_call(
+                model_class._meta.spec,
+                "_recall",
+                "remove",
+                partition or "default",
+                _get_instance_key(instance),
+                uow=_uow_of(pipeline),
+            )
+            return pipeline if pipeline is not None else removed
         key = cls._pending_key(model_class, partition)
         member_key = _get_instance_key(instance)
 
@@ -677,6 +825,16 @@ class RecallProposal:
         if ttl is None:
             ttl = cls.DEFAULT_TTL
 
+        backend = non_redis_backend(model_class)
+        if backend is not None:
+            return backend.field_call(
+                model_class._meta.spec,
+                "_recall",
+                "expire",
+                partition or "default",
+                time.time() - ttl,
+                uow=_uow_of(pipeline),
+            )
         key = cls._pending_key(model_class, partition)
         cutoff = time.time() - ttl
 
@@ -703,6 +861,11 @@ class RecallProposal:
         Returns:
             list: List of (member_key_str, surfaced_at_float) tuples.
         """
+        backend = non_redis_backend(model_class)
+        if backend is not None:
+            return backend.field_call(
+                model_class._meta.spec, "_recall", "pending", partition or "default"
+            )
         key = cls._pending_key(model_class, partition)
         results = get_REDIS_DB().zrange(key, 0, -1, withscores=True)
         return [

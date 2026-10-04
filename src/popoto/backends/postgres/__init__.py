@@ -3,8 +3,10 @@
 ``PostgresBackend`` implements protocol groups A-C (lifecycle, records, query)
 natively -- one typed table per model (:mod:`.schema`), ``WHERE`` compiled
 from the query (:mod:`.plan`) -- with no Redis structure emulated and no
-msgpack stored. Groups D-H raise :class:`BackendCapabilityError` until their
-milestone.
+msgpack stored. Since M2a, ``touch``, ``update_confidence``, ``rank_decayed``,
+``rank_composite`` and the memory ``field_call`` adapters come from
+:mod:`.memory`; the rest of groups D-H raise :class:`BackendCapabilityError`
+until their milestone.
 
 Selection (plan §4): ``Meta.backend = "postgres"`` on a model, or
 ``POPOTO_BACKEND=postgres`` for the process, with the DSN from
@@ -59,6 +61,7 @@ from ..types import (
 )
 from ..planning import has_filters
 from .codec import decode_json, encode_json_element
+from .memory import NOT_HANDLED, PostgresMemoryOps
 from .plan import (
     non_null_fields,
     render_order,
@@ -136,6 +139,21 @@ def _import_psycopg() -> Any:
             "pip install 'popoto[postgres]'"
         ) from exc
     return psycopg
+
+
+def _rollback_errors(psycopg: Any) -> tuple[type[BaseException], ...]:
+    """The errors that mean "this transaction was rolled back by a concurrent
+    one; run it again": SQLSTATE class 40's deadlock and serialization
+    failures. psycopg 3 maps 40P01 and 40001 to ``DeadlockDetected`` and
+    ``SerializationFailure``, which are *not* subclasses of its
+    ``TransactionRollback`` (40000), so catching that class alone missed
+    every real deadlock (#759 M2a)."""
+    errors = psycopg.errors
+    return (
+        errors.TransactionRollback,
+        errors.SerializationFailure,
+        errors.DeadlockDetected,
+    )
 
 
 def _pool_for(dsn: str) -> Any:
@@ -272,8 +290,12 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 # -- the backend --------------------------------------------------------------
 
 
-class PostgresBackend:
-    """The Postgres implementation of :class:`popoto.backends.Backend`."""
+class PostgresBackend(PostgresMemoryOps):
+    """The Postgres implementation of :class:`popoto.backends.Backend`.
+
+    Groups D/E's ranking and memory state (``touch``, ``update_confidence``,
+    ``rank_decayed``, ``rank_composite``) come from
+    :class:`~.memory.PostgresMemoryOps` (#759 M2a)."""
 
     name = "postgres"
 
@@ -343,7 +365,7 @@ class PostgresBackend:
             pool = _pool_for(self.dsn)
             with pool.connection() as conn:
                 yield conn
-        except psycopg.errors.TransactionRollback:
+        except _rollback_errors(psycopg):
             raise
         except psycopg.OperationalError as exc:
             raise self._fail(exc, write=write) from exc
@@ -374,7 +396,7 @@ class PostgresBackend:
         if pg is not None:
             try:
                 cur = pg.conn.execute(sql, params)
-            except psycopg.errors.TransactionRollback:
+            except _rollback_errors(psycopg):
                 raise
             except psycopg.OperationalError as exc:
                 raise self._fail(exc, write=write) from exc
@@ -396,7 +418,7 @@ class PostgresBackend:
                     rowcount = cur.rowcount
                 self._ok()
                 return rows, rowcount
-            except psycopg.errors.TransactionRollback:
+            except _rollback_errors(psycopg):
                 attempt += 1
                 if attempt >= attempts:
                     raise
@@ -486,6 +508,7 @@ class PostgresBackend:
         """Drop the in-process memo of checked tables (test isolation)."""
         with self._lock:
             self._tables.clear()
+            self.__dict__.pop("_recall_ready", None)
 
     # -- A. lifecycle ----------------------------------------------------------
 
@@ -917,23 +940,11 @@ class PostgresBackend:
             "in this release"
         )
 
-    def touch(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("touch", "M2")
-
-    def update_confidence(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("update_confidence", "M2")
-
     def supersede(self, *a: Any, **kw: Any) -> Any:
         raise self._later("supersede", "M3")
 
     def chain(self, *a: Any, **kw: Any) -> Any:
         raise self._later("chain", "M3")
-
-    def rank_decayed(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("rank_decayed", "M2")
-
-    def rank_composite(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("rank_composite", "M2")
 
     def vector_search(self, *a: Any, **kw: Any) -> Any:
         raise self._later("vector_search", "M2")
@@ -978,6 +989,9 @@ class PostgresBackend:
             and fs.options.get("capped")
         ):
             return self._capped_push(spec, field, *args, uow=uow, **kwargs)
+        handled = self._memory_field_call(spec, field, op, args, kwargs, uow)
+        if handled is not NOT_HANDLED:
+            return handled
         raise self._later(f"field_call({kind}, {op!r})", "M2")
 
     def _capped_push(

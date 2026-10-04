@@ -18,8 +18,11 @@ the moved filter body); for every other backend it populates ``where`` /
 ``order_by`` / ``limit`` / ``project`` with
 :func:`popoto.backends.planning.plan_from_call`. Groups D-H are declared here
 so the protocol is complete; on Redis they are not routed yet (the field and
-model code keeps calling today's implementation directly), and Postgres
-raises :class:`BackendCapabilityError` for them until their milestone.
+model code keeps calling today's implementation directly). On Postgres, M2a
+implements ``touch``, ``update_confidence``, ``rank_decayed`` and
+``rank_composite`` -- the field and model layer branches to them only for a
+non-Redis model (:mod:`popoto.backends.routing`) -- and the rest raise
+:class:`BackendCapabilityError` until their milestone.
 
 Selection (plan §4)
 -------------------
@@ -65,6 +68,7 @@ from .types import (
     And,
     BackendCapabilityError,
     BackendError,
+    BackendRetryableError,
     BackendUnavailableError,
     Capabilities,
     ComputedCol,
@@ -80,6 +84,7 @@ from .types import (
     Predicate,
     QueryCall,
     QueryPlan,
+    RankTerm,
     RecordId,
     Row,
     SaveOutcome,
@@ -97,6 +102,7 @@ __all__ = [
     "Backend",
     "BackendCapabilityError",
     "BackendError",
+    "BackendRetryableError",
     "BackendUnavailableError",
     "Capabilities",
     "ComputedCol",
@@ -112,6 +118,7 @@ __all__ = [
     "Predicate",
     "QueryCall",
     "QueryPlan",
+    "RankTerm",
     "RecordId",
     "Row",
     "SaveOutcome",
@@ -448,6 +455,11 @@ STATIC_FIELD_KINDS: dict[str, Optional[frozenset[str]]] = {
             "BytesField",
             "DateField",
             "TimeField",
+            # M2a, Valor's ranking and memory state (plan §5 M2): the decay
+            # clock is the field's own column, confidence adds four state
+            # columns (.postgres.memory).
+            "DecayingSortedField",
+            "ConfidenceField",
         }
     ),
 }
@@ -510,6 +522,14 @@ def _field_spec(name: str, field: Any) -> FieldSpec:
         value = getattr(field, attr, None)
         if value not in (None, (), [], False):
             options[attr] = value
+    for attr in ("decay_rate", "base_score_field", "initial_confidence"):
+        # M2a memory fields: what the Postgres ranking and confidence SQL
+        # needs from the field definition (.postgres.memory).
+        value = getattr(field, attr, None)
+        if value is not None and not callable(value):
+            options[attr] = value
+    if getattr(field, "evidence_cap", None) is not None:
+        options["evidence_cap"] = field.evidence_cap
     if getattr(field, "_capped", False):
         # ListField(max_length=N): Redis keeps it in its own list key; on
         # Postgres it is a jsonb column with type-tagged elements.
@@ -549,6 +569,7 @@ def build_model_spec(meta: Any) -> ModelSpec:
         unique_indexes=tuple(
             tuple(names) for names, unique in (meta.indexes or ()) if unique
         ),
+        mixins=frozenset(getattr(meta, "mixins", ()) or ()),
     )
 
 
@@ -589,6 +610,11 @@ def validate_spec(spec: ModelSpec, backend_name: str) -> None:
             problems.append(
                 f"{fs.name} ({fs.kind}, type={type_name}) is not supported: an "
                 "indexed field needs a scalar column type on Postgres"
+            )
+        elif fs.kind == "ConfidenceField" and fs.options.get("partition_by"):
+            problems.append(
+                f"{fs.name} (ConfidenceField, partition_by=) is not supported "
+                "yet: partitioned confidence arrives in M3"
             )
         elif fs.kind in ("SortedField", "SortedKeyField") and (
             fs.py_type is None or fs.py_type.__name__ not in _POSTGRES_SORTED_TYPES

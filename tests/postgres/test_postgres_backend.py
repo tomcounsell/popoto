@@ -306,7 +306,8 @@ def test_redis_only_apis_refuse_instead_of_reading_redis(pg, call):
 
 
 def test_later_groups_raise_capability_error(pg):
-    for method in ("touch", "rank_decayed", "supersede", "graph_expand", "maintain"):
+    # touch / rank_decayed arrived in M2a (tests/postgres/test_postgres_memory.py).
+    for method in ("supersede", "graph_expand", "maintain"):
         with pytest.raises(BackendCapabilityError, match="arrives in"):
             getattr(pg, method)(PgNote._meta.spec, "score")
 

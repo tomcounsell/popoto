@@ -26,6 +26,14 @@ import pytest  # noqa: E402
 from src import popoto  # noqa: E402
 from src.popoto.fields.write_filter import WriteFilterMixin  # noqa: E402
 
+# Backend conformance (#759 M2a, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+
 # --- Test Models ---
 
 
@@ -132,6 +140,9 @@ class TestWriteFilterGate:
         assert result is False
         assert FilteredItem.query.count() == 0
 
+    @pytest.mark.redis_only(
+        reason="reads the WriteFilter priority ZSET; the priority tier is a no-op on Postgres (plan §5 M2)"
+    )
     def test_above_min_below_priority_persisted(self):
         """Score >= WF_MIN_THRESHOLD and < priority -> record saved, not in priority set."""
         item = FilteredItem(name="mid", importance=0.5)
@@ -142,6 +153,9 @@ class TestWriteFilterGate:
         priority_key = "$WF:FilteredItem:priority"
         assert redis.zscore(priority_key, item._redis_key) is None
 
+    @pytest.mark.redis_only(
+        reason="reads the WriteFilter priority ZSET; the priority tier is a no-op on Postgres (plan §5 M2)"
+    )
     def test_above_priority_persisted_and_tagged(self):
         """Score >= 0.7 -> record saved AND in priority set."""
         item = FilteredItem(name="high", importance=0.9)
@@ -161,6 +175,9 @@ class TestWriteFilterGate:
         assert result is not False
         assert FilteredItem.query.count() == 1
 
+    @pytest.mark.redis_only(
+        reason="reads the WriteFilter priority ZSET; the priority tier is a no-op on Postgres (plan §5 M2)"
+    )
     def test_boundary_exactly_priority_threshold(self):
         """Score exactly 0.7 -> persisted AND in priority set."""
         item = FilteredItem(name="boundary_high", importance=0.7)
@@ -184,6 +201,9 @@ class TestWriteFilterGate:
         result = item.save()
         assert result is False
 
+    @pytest.mark.redis_only(
+        reason="reads the WriteFilter priority ZSET; the priority tier is a no-op on Postgres (plan §5 M2)"
+    )
     def test_score_above_one(self):
         """Score > 1.0 -> treated as above priority threshold."""
         item = FilteredItem(name="super", importance=1.5)
@@ -238,6 +258,9 @@ class TestCustomThresholds:
         result = item.save()
         assert result is False
 
+    @pytest.mark.redis_only(
+        reason="reads the WriteFilter priority ZSET; the priority tier is a no-op on Postgres (plan §5 M2)"
+    )
     def test_custom_between_thresholds(self):
         """Custom thresholds: 0.6 is between 0.5 and 0.9 -> saved, no priority."""
         item = FilteredItemCustomThresholds(name="custom_mid", importance=0.6)
@@ -247,6 +270,9 @@ class TestCustomThresholds:
         priority_key = "$WF:FilteredItemCustomThresholds:priority"
         assert redis.zscore(priority_key, item._redis_key) is None
 
+    @pytest.mark.redis_only(
+        reason="reads the WriteFilter priority ZSET; the priority tier is a no-op on Postgres (plan §5 M2)"
+    )
     def test_custom_priority_threshold(self):
         """Custom priority_threshold=0.9 -> 0.95 is priority."""
         item = FilteredItemCustomThresholds(name="custom_high", importance=0.95)
@@ -279,6 +305,9 @@ class TestPipelineMode:
         # Pipeline should be empty (no commands queued)
         assert len(results) == 0
 
+    @pytest.mark.redis_only(
+        reason="counts commands queued on a Redis pipeline; a Postgres model's write runs at once (documented divergence)"
+    )
     def test_pipeline_persist(self):
         """Pipeline mode: above threshold queues save commands."""
         redis = popoto.get_redis()
@@ -291,6 +320,9 @@ class TestPipelineMode:
         assert len(results) > 0
 
 
+@pytest.mark.redis_only(
+    reason="reads the WriteFilter priority ZSET; the priority tier is a no-op on Postgres (plan §5 M2)"
+)
 class TestDeleteCleanup:
     def setup_method(self):
         FilteredItem.delete_all()
@@ -346,6 +378,9 @@ class TestSynergyDecayingSortedField:
         assert FilteredWithDecay.query.count() == 1
 
 
+@pytest.mark.redis_only(
+    reason="reads the WriteFilter priority ZSET; the priority tier is a no-op on Postgres (plan §5 M2)"
+)
 class TestSynergyAccessTracker:
     def setup_method(self):
         FilteredWithTracker.delete_all()

@@ -248,6 +248,17 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
         columns.append(Column(name, sql_type, name, py_type=py_type))
         if py_type is datetime.datetime:
             columns.append(Column(name + UTCOFF_SUFFIX, "integer", name, role="utcoff"))
+    # M2a: state columns the memory fields and mixins keep beside the field
+    # values (confidence state, access tracking), from .memory.
+    from .memory import memory_columns, memory_indexes
+
+    taken = {c.name for c in columns}
+    for state_col in memory_columns(spec):
+        if state_col.name in taken or state_col.name in reserved:
+            raise BackendCapabilityError(
+                f"{spec.name}: column {state_col.name} collides with a field"
+            )
+        columns.append(state_col)
 
     indexes: list[tuple[str, str, bool]] = []
     unique_indexes: dict[str, tuple[str, ...]] = {}
@@ -302,6 +313,7 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
         cols = ", ".join(quote_ident(c) for c in partition + (name,))
         body = f'({cols}, "_pk" COLLATE "C")'
         indexes.append((index_name("sort", name), body, False))
+    indexes.extend(memory_indexes(spec, index_name))
     return TableSpec(
         model=spec.name,
         schema=schema,

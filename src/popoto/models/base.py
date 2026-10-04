@@ -248,6 +248,7 @@ class ModelOptions:
         # Storage backend (#759): "redis" | "postgres", or None for the
         # process default (POPOTO_BACKEND, else "redis").
         self.backend: Optional[str] = None
+        self.mixins: frozenset[str] = frozenset()
         self._spec: "Optional[ModelSpec]" = None
 
     def add_field(self, field_name: str, field: Field):
@@ -507,6 +508,14 @@ class ModelBase(type):
         options.order_by = getattr(attr_meta, "order_by", None)
         options.ttl = getattr(attr_meta, "ttl", None)
         options.indexes = getattr(attr_meta, "indexes", ())
+        # Popoto mixins in the MRO (#759 M2a): a mixin that keeps per-record
+        # state (AccessTrackerMixin) needs columns of its own on Postgres.
+        options.mixins = frozenset(
+            klass.__name__
+            for klass in new_class.__mro__
+            if klass.__name__.endswith("Mixin")
+            and (klass.__module__ or "").startswith(("popoto.", "src.popoto."))
+        )
 
         # Validate order_by field exists
         if options.order_by:
@@ -568,6 +577,12 @@ class ModelBase(type):
         options.meta = attr_meta or getattr(new_class, "Meta", None)
         options.base_meta = getattr(new_class, "_meta", None)
         new_class._meta = options
+        for _field in options.fields.values():
+            # A field that must know its model to refuse a Redis-only call on
+            # another backend (DecayingSortedField.rank_decayed, #759 M2a).
+            bind_owner = getattr(_field, "_bind_owner", None)
+            if bind_owner is not None:
+                bind_owner(new_class)
         new_class.objects = new_class.query = Query(new_class)
         return new_class
 
@@ -2183,6 +2198,23 @@ class Model(metaclass=ModelBase):
 
         now = time.time()
         redis_key = self._redis_key or self.db_key.redis_key
+
+        backend = get_backend(type(self))
+        if backend.name != "redis":
+            # #759 M2a: one UPDATE of the clock column. A Redis pipeline
+            # handed to a Postgres model cannot carry it, so the write runs at
+            # once and the pipeline comes back untouched, as save() does.
+            backend.touch(
+                self._meta.spec,
+                RecordId.from_key(self._meta.model_name, redis_key),
+                field_name,
+                at=now,
+                uow=_as_uow(pipeline),
+            )
+            setattr(self, field_name, now)
+            if self._saved_field_values is not None:
+                self._saved_field_values[field_name] = now
+            return pipeline if pipeline is not None else now
 
         sortedset_db_key = field.__class__.get_partitioned_sortedset_db_key(
             self, field_name

@@ -30,6 +30,7 @@ import logging
 import time
 from typing import Any
 
+from ..backends.routing import non_redis_backend
 from ..redis_db import get_REDIS_DB, run_lua
 
 logger = logging.getLogger("POPOTO.AccessTracker")
@@ -51,6 +52,14 @@ redis.call('HSET', KEYS[3], 'last_accessed', staged[#staged])
 redis.call('DEL', KEYS[1])
 return #staged
 """
+
+
+def _uow_of(pipeline: Any) -> Any:
+    """A backend unit of work passed as ``pipeline=`` (a Redis pipeline
+    cannot carry a Postgres write: the write runs at once)."""
+    from ..backends import UnitOfWork
+
+    return pipeline if isinstance(pipeline, UnitOfWork) else None
 
 
 class AccessTrackerMixin:
@@ -220,6 +229,18 @@ class AccessTrackerMixin:
                 provided, the RPUSH and EXPIRE are queued in the same pipeline
                 call so they execute atomically.
         """
+        backend = non_redis_backend(self)
+        if backend is not None:
+            # #759 M2a: _staged_reads/_staged_at on the record's own row.
+            self._access_call(
+                backend,
+                "stage",
+                {self._at_member(): 1},
+                now=time.time(),
+                ttl=self._staged_ttl_seconds,
+                uow=_uow_of(pipeline),
+            )
+            return
         ts = str(time.time())
         staged_key = self._at_key("staged")
         if pipeline:
@@ -262,6 +283,27 @@ class AccessTrackerMixin:
         except Exception:
             raise TypeError("confirm_access() requires a saved model instance")
 
+        backend = non_redis_backend(self)
+        if backend is not None:
+            # #759 M2a: one UPDATE promotes the live staged reads.
+            promoted = self._access_call(
+                backend,
+                "confirm",
+                self._at_record_id(),
+                now=time.time(),
+                ttl=self._staged_ttl_seconds,
+                uow=_uow_of(pipeline),
+            )
+            if promoted is None:
+                raise TypeError("confirm_access() requires a saved model instance")
+            if promoted == 0:
+                logger.debug(
+                    "AccessTracker: staged key empty/expired at confirm for %s — "
+                    "read dropped (TTL contract)",
+                    self._at_member(),
+                )
+            return promoted
+
         # Check if the model has been saved (has a valid redis key in the DB)
         if not get_REDIS_DB().exists(redis_key):
             raise TypeError("confirm_access() requires a saved model instance")
@@ -293,6 +335,12 @@ class AccessTrackerMixin:
         Args:
             pipeline: Optional Redis pipeline for batch operations.
         """
+        backend = non_redis_backend(self)
+        if backend is not None:
+            self._access_call(
+                backend, "discard", self._at_record_id(), uow=_uow_of(pipeline)
+            )
+            return
         staged_key = self._at_key("staged")
         if pipeline:
             pipeline.delete(staged_key)
@@ -306,6 +354,9 @@ class AccessTrackerMixin:
         Returns:
             int: The cumulative access count, or 0 if never confirmed.
         """
+        backend = non_redis_backend(self)
+        if backend is not None:
+            return self._access_state(backend)[0]
         meta_key = self._at_key("meta")
         raw = get_REDIS_DB().hget(meta_key, "access_count")
         if raw is None:
@@ -319,11 +370,61 @@ class AccessTrackerMixin:
         Returns:
             float or None: Unix timestamp, or None if never confirmed.
         """
+        backend = non_redis_backend(self)
+        if backend is not None:
+            return self._access_state(backend)[1]
         meta_key = self._at_key("meta")
         raw = get_REDIS_DB().hget(meta_key, "last_accessed")
         if raw is None:
             return None
         return float(raw)
+
+    # -- non-Redis backends (#759 M2a) -------------------------------------
+
+    def _at_member(self) -> Any:
+        """The key this instance's tracking is filed under (as _at_key)."""
+        model: Any = self
+        return model._redis_key or model.db_key.redis_key
+
+    def _at_record_id(self) -> Any:
+        from ..backends import RecordId
+
+        model: Any = self
+        return RecordId.from_key(model._meta.model_name, self._at_member())
+
+    def _access_call(self, backend: Any, op: str, *args: Any, **kwargs: Any) -> Any:
+        model: Any = self
+        return backend.field_call(model._meta.spec, "_access", op, *args, **kwargs)
+
+    def _access_state(self, backend: Any) -> Any:
+        """``(access_count, last_accessed, live staged reads)`` from the
+        record's row; a missing record reads as never accessed."""
+        return self._access_call(
+            backend,
+            "state",
+            self._at_record_id(),
+            now=time.time(),
+            ttl=self._staged_ttl_seconds,
+        )
+
+    @classmethod
+    def _stage_reads_on_backend(cls, backend: Any, instances: Any) -> None:
+        """Stage one read per instance in one statement (the bulk
+        ``_fire_on_read`` path), rows locked in ``_pk`` order."""
+        counts: dict[str, int] = {}
+        for inst in instances:
+            key = inst._at_member()
+            counts[key] = counts.get(key, 0) + 1
+        if counts:
+            model: Any = cls
+            backend.field_call(
+                model._meta.spec,
+                "_access",
+                "stage",
+                counts,
+                now=time.time(),
+                ttl=cls._staged_ttl_seconds,
+            )
 
     def _delete_access_tracker_keys(self, pipeline=None):
         """Remove all access tracker Redis keys for this instance.
