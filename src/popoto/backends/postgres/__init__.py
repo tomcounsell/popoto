@@ -78,6 +78,7 @@ from .schema import (
     ensure_table,
     quote_ident,
 )
+from .search import SearchMixin, prepare_save, record_lock_sql, require_extensions
 from .validity import ensure_validity_tables, refuse_valid_from_conflict, save_parts
 
 __all__ = [
@@ -308,11 +309,13 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 # -- the backend --------------------------------------------------------------
 
 
-class PostgresBackend(PostgresMemoryOps):
+class PostgresBackend(SearchMixin, PostgresMemoryOps):
     """The Postgres implementation of :class:`popoto.backends.Backend`.
 
-    Groups D/E's ranking and memory state (``touch``, ``update_confidence``,
-    ``rank_decayed``, ``rank_composite``) come from
+    Search -- ``keyword_search``, ``vector_search``, ``membership_*`` and the
+    ``[PG-only]`` ``recall`` -- comes from :class:`.search.SearchMixin`
+    (#759 M2b). Groups D/E's ranking and memory state (``touch``,
+    ``update_confidence``, ``rank_decayed``, ``rank_composite``) come from
     :class:`~.memory.PostgresMemoryOps` (#759 M2a)."""
 
     name = "postgres"
@@ -391,6 +394,23 @@ class PostgresBackend(PostgresMemoryOps):
         except psycopg.OperationalError as exc:
             raise self._fail(exc, write=write) from exc
 
+    def _record_locked(
+        self, ts: TableSpec, pks: Sequence[str], sql: str, params: Sequence[Any]
+    ) -> tuple[str, list[Any]]:
+        """``sql`` preceded by the record-key advisory locks of ``pks``
+        (:func:`~.search.record_lock_sql`), in the same message: no extra
+        round trip.
+
+        Every statement that writes (and so row-locks) a record goes through
+        this, so the whole backend has one lock order (plan §6, TD-2): any
+        ``(model, field)`` lock, then the record-key locks in ``_pk`` byte
+        order, then the row locks in ``_pk`` order. A transaction that row-
+        locked a record (``update_confidence``) and then saves it already
+        holds the record's key lock, so it can no longer cross a concurrent
+        save that took the key lock and waits on the row (#774 review)."""
+        lock_sql, lock_params = record_lock_sql(ts, pks)
+        return lock_sql + sql, list(lock_params) + list(params)
+
     def _statement_prefix(self) -> str:
         ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
         return f"SET LOCAL statement_timeout = {ms}; " if ms > 0 else ""
@@ -423,6 +443,10 @@ class PostgresBackend(PostgresMemoryOps):
                 raise _retryable(exc) from exc
             except psycopg.OperationalError as exc:
                 raise self._fail(exc, write=write) from exc
+            # A multi-statement message (a lock, then the statement) replies
+            # with the last statement's result, as on the autocommit path.
+            while cur.nextset():
+                pass
             rows = cur.fetchall() if cur.description else []
             return rows, cur.rowcount
         attempts = int(Defaults.PG_TRANSACTION_RETRIES) + 1
@@ -522,6 +546,7 @@ class PostgresBackend(PostgresMemoryOps):
             self._check_server()
             ts = compile_table(spec, self.schema)
             with self._connection() as conn:
+                require_extensions(conn, ts)
                 ensure_table(conn, ts, auto=_schema_auto())
                 # M3: a ValidityField's open-pointer table, outside any
                 # transaction that will later hold the model table's locks.
@@ -669,10 +694,17 @@ class PostgresBackend(PostgresMemoryOps):
         # #573: never overwrite a quarantined field's preserved value with a
         # default -- the same guard the Redis path runs before its HSET.
         obj._raise_if_quarantine_blocks(names)
-        values = self._row_values(ts, obj, names)
+        # Side-effect fields (BM25Field, ExistenceFilter, FrequencySketch)
+        # have no column; their rows are written by the search CTEs below.
+        values = self._row_values(ts, obj, [n for n in names if n in ts.field_types])
         # M3: a ValidityField's interval columns, written as SUPERSEDE_LUA's
         # mode 'open' writes them (.validity.save_parts).
         state, overrides, guards = save_parts(ts, spec, obj, names)
+        search = (
+            prepare_save(self, ts, obj, fields, values, new_key)
+            if ts.search is not None
+            else None
+        )
         cols = ["_pk"] + list(values) + list(state)
         col_sql = ", ".join(quote_ident(c) for c in cols)
         placeholders = ", ".join(["%s"] * len(cols))
@@ -683,21 +715,36 @@ class PostgresBackend(PostgresMemoryOps):
             for c in list(values) + list(state)
             if c not in ts.key_fields
         )
-        updates = (updates + ", " if updates else "") + '"_updated_at" = now()'
+        # A native write clears _migrated_from (#756's import contract).
+        updates = (updates + ", " if updates else "") + (
+            '"_updated_at" = now(), "_migrated_from" = NULL'
+        )
         guard = f" WHERE {' AND '.join(guards)}" if guards else ""
         sql = (
             f"INSERT INTO {ts.qualified} ({col_sql}) VALUES ({placeholders}) "
             f'ON CONFLICT ("_pk") DO UPDATE SET {updates}{guard} '
             "RETURNING (xmax = 0)"
         )
+        params = [new_key] + list(values.values()) + list(state.values())
+        if search is not None and search.ctes:
+            # Postings, document length and membership rows ride in the same
+            # statement as data-modifying CTEs: one round trip, one
+            # transaction, and a scope change moves the postings atomically.
+            sql = (
+                f'WITH "_row" AS ({sql} AS "_ins"), '
+                + ", ".join(search.ctes)
+                + ' SELECT "_ins" FROM "_row"'
+            )
+            params += search.params
+        # The record-key lock goes first, as a statement of its own: the
+        # search CTEs' snapshot is then taken after any concurrent writer of
+        # this record committed, and every writer of a record takes it before
+        # the row (record_lock_sql: one lock order, plan §6). The reply is the
+        # last statement's.
+        sql, params = self._record_locked(ts, [new_key], sql, params)
         psycopg = _import_psycopg()
         try:
-            rows, _ = self._run(
-                sql,
-                [new_key] + list(values.values()) + list(state.values()),
-                uow=uow,
-                write=True,
-            )
+            rows, _ = self._run(sql, params, uow=uow, write=True)
         except psycopg.errors.UniqueViolation as exc:
             constraint = exc.diag.constraint_name or ""
             covered = ts.unique_indexes.get(constraint, ())
@@ -747,6 +794,10 @@ class PostgresBackend(PostgresMemoryOps):
         obj._db_content = dict(values)
         obj._is_persisted = True
         _wrap_capped_lists(obj, ts)
+        if search is not None and search.after is not None and _pg_uow(uow) is None:
+            # Piggybacked embedding backfill (#758 D7): after the commit,
+            # bounded by Defaults.PG_BACKFILL_*; never inside a transaction().
+            search.after()
         saved_id = RecordId(spec.name, (), new_key)
         if _pg_uow(uow) is not None:
             return SaveOutcome(id=saved_id, result=uow)
@@ -758,7 +809,9 @@ class PostgresBackend(PostgresMemoryOps):
         self, ts: TableSpec, fields: Optional[Sequence[str]] = None
     ) -> list[str]:
         if fields is None:
-            return [c.name for c in ts.columns]
+            # Auxiliary columns (an embedding's vector, M2b) are not field
+            # values; reads that hydrate records never fetch them.
+            return [c.name for c in ts.columns if c.role != "aux"]
         cols = ["_pk"]
         for name in fields:
             if name not in ts.field_types:
@@ -835,12 +888,13 @@ class PostgresBackend(PostgresMemoryOps):
             return 0
         ts = self._table(spec, write=True)
         keys = [rid.canonical for rid in ids]
-        rows, count = self._run(
+        sql, params = self._record_locked(
+            ts,
+            keys,
             f'DELETE FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])',
             [keys],
-            uow=uow,
-            write=True,
         )
+        rows, count = self._run(sql, params, uow=uow, write=True)
         for obj in options.get("objs") or ():
             obj._db_content = dict()
             obj._saved_field_values = dict()
@@ -880,13 +934,14 @@ class PostgresBackend(PostgresMemoryOps):
             expr = f"coalesce({col}, 0) + %s::numeric"
         else:
             expr = f"coalesce({col}, 0) + %s"
-        rows, _ = self._run(
-            f'UPDATE {ts.qualified} SET {col} = {expr}, "_updated_at" = now() '
+        sql, params = self._record_locked(
+            ts,
+            [id.canonical],
+            f'UPDATE {ts.qualified} SET {col} = {expr}, "_updated_at" = now(), "_migrated_from" = NULL '
             f'WHERE "_pk" = %s RETURNING {col}',
             [delta, id.canonical],
-            uow=uow,
-            write=True,
         )
+        rows, _ = self._run(sql, params, uow=uow, write=True)
         if not rows:
             from ...exceptions import ModelException
 
@@ -982,23 +1037,11 @@ class PostgresBackend(PostgresMemoryOps):
             "in this release"
         )
 
-    def vector_search(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("vector_search", "M2")
-
-    def keyword_search(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("keyword_search", "M2")
-
     def graph_update(self, *a: Any, **kw: Any) -> Any:
         raise self._later("graph_update", "M4")
 
     def graph_expand(self, *a: Any, **kw: Any) -> Any:
         raise self._later("graph_expand", "M4")
-
-    def membership_add(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("membership_add", "M2")
-
-    def membership_query(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("membership_query", "M2")
 
     def maintain(self, *a: Any, **kw: Any) -> Any:
         raise self._later("maintain", "M5")
@@ -1049,15 +1092,16 @@ class PostgresBackend(PostgresMemoryOps):
         ts = self._table(spec)
         col = quote_ident(field)
         last = max(int(max_length), 1) - 1
-        rows, _ = self._run(
+        sql, params = self._record_locked(
+            ts,
+            [id.canonical],
             f"UPDATE {ts.qualified} SET {col} = jsonb_path_query_array("
             f"jsonb_build_array(%s::jsonb) || coalesce({col}, '[]'::jsonb), "
-            f"'$[0 to {last}]'), \"_updated_at\" = now() "
+            f'\'$[0 to {last}]\'), "_updated_at" = now(), "_migrated_from" = NULL '
             f'WHERE "_pk" = %s RETURNING {col}',
             [Jsonb(encode_json_element(value)), id.canonical],
-            uow=uow,
-            write=True,
         )
+        rows, _ = self._run(sql, params, uow=uow, write=True)
         if not rows:
             from ...exceptions import ModelException
 

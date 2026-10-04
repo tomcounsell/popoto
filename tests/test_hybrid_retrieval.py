@@ -18,6 +18,12 @@ from src import popoto  # noqa: E402
 from src.popoto.fields.bm25_field import BM25Field  # noqa: E402
 from src.popoto.models.query import QueryException  # noqa: E402
 
+# Backend conformance (#759 M2b, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # --- Test Model ---
 
 
@@ -176,6 +182,11 @@ class TestHybridRetrieval:
         )
         assert len(results) > 0
 
+    @pytest.mark.redis_only(
+        reason="reads the $BM25 forward index (tf:<key>) and dl ZSET through the "
+        "raw client; Postgres keeps postings rows instead, pinned by "
+        "tests/postgres/test_postgres_search.py::test_postings_hold_raw_term_counts"
+    )
     def test_bm25_term_frequency_greater_than_one(self):
         """BM25 correctly records tf > 1 for repeated terms.
 

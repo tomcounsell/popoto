@@ -451,6 +451,7 @@ class PostgresMemoryOps(PostgresValidityOps):
     schema: str
     _table: Callable[..., TableSpec]
     _run: Callable[..., Any]
+    _record_locked: Callable[..., tuple[str, list[Any]]]
     transaction: Callable[..., Any]
 
     # -- D. memory state --------------------------------------------------------
@@ -469,13 +470,14 @@ class PostgresMemoryOps(PostgresValidityOps):
         (Redis would re-add an orphan member, which ranking then drops)."""
         ts = self._table(spec, write=True)
         col = quote_ident(field)
-        self._run(
+        sql, params = self._record_locked(
+            ts,
+            [id.canonical],
             f'UPDATE {ts.qualified} SET {col} = %s, "_updated_at" = now() '
             f'WHERE "_pk" = %s',
             [float(at), id.canonical],
-            uow=uow,
-            write=True,
         )
+        self._run(sql, params, uow=uow, write=True)
         return float(at)
 
     def update_confidence(
@@ -522,7 +524,8 @@ class PostgresMemoryOps(PostgresValidityOps):
             f'"_updated_at" = now() WHERE "_pk" = %s '
             f"RETURNING {conf}, {n}, {corr}, {contra}"
         )
-        rows, _ = self._run(sql, [id.canonical], uow=uow, write=True)
+        sql, params = self._record_locked(ts, [id.canonical], sql, [id.canonical])
+        rows, _ = self._run(sql, params, uow=uow, write=True)
         if not rows:
             return None
         value, evidence, corroborations, contradictions = rows[0]
@@ -628,8 +631,11 @@ class PostgresMemoryOps(PostgresValidityOps):
         term: RankTerm,
         kinds: Mapping[str, str],
         now: float,
-    ) -> tuple[str, str, list[Any]]:
-        """``(domain, score, domain params)`` for one composite arm."""
+    ) -> tuple[str, str, list[Any], list[Any]]:
+        """``(domain, score, domain params, score params)`` for one composite
+        arm."""
+        if term.scores is not None:
+            return self._scores_arm(term)
         domain_sql, params = render_where(ts, dict(kinds), term.where)
         domain = domain_sql[len(" WHERE ") :] if domain_sql else "TRUE"
         if term.kind == "decay":
@@ -647,39 +653,56 @@ class PostgresMemoryOps(PostgresValidityOps):
                 confidence_partition=term.options.get("confidence_partition"),
             )
             col = f"t.{quote_ident(term.field)}"
-            return f"({col} IS NOT NULL AND {domain})", score, params
+            return f"({col} IS NOT NULL AND {domain})", score, params, []
         if term.kind == "confidence":
             assert term.field is not None
             fs = spec.fields[term.field]
             ic = _lit(float(fs.options.get("initial_confidence", 0.5)))
             conf = f"t.{quote_ident(term.field + '__conf')}"
-            return f"({domain})", f"coalesce({conf}, {ic})", params
+            return f"({domain})", f"coalesce({conf}, {ic})", params, []
         if term.kind == "access":
             return (
                 f'(coalesce(t."_access_count", 0) > 0 AND {domain})',
                 't."_access_count"::float8',
                 params,
+                [],
             )
         if term.kind == "sorted":
             assert term.field is not None
             col = f"t.{quote_ident(term.field)}"
-            return f"({col} IS NOT NULL AND {domain})", f"{col}::float8", params
-        if term.kind == "similarity" and term.scores is not None:
-            # A caller-supplied {key: score} arm (``semantic_search``'s
-            # similarity_boost, #759 M3): the scores ride in a CTE that
-            # rank_composite names after the arm, so the arm itself carries
-            # no parameters. Keys with no record are not ranked (Redis ranks
-            # them and then hydrates nothing for them).
-            cte = term.options["cte"]
-            return (
-                f't."_pk" IN (SELECT k FROM {cte})',
-                f'(SELECT v.s FROM {cte} AS v WHERE v.k = t."_pk")',
-                [],
-            )
+            return f"({col} IS NOT NULL AND {domain})", f"{col}::float8", params, []
         raise BackendCapabilityError(
             f"composite_score arm {term.kind!r} is not available on Postgres yet "
-            "(similarity arrives with the M2 vector work, co_occurrence_boost in "
-            "M4)"
+            "(co_occurrence_boost arrives in M4)"
+        )
+
+    @staticmethod
+    def _scores_arm(term: RankTerm) -> tuple[str, str, list[Any], list[Any]]:
+        """A caller-supplied ``{key: score}`` arm (``similarity_boost``, or
+        BM25 scores): the temp ``ZADD`` set of the Redis path, as one
+        ``jsonb`` object parameter looked up per row (a binary search on the
+        object's sorted keys). Only records that exist can rank -- a key with
+        no row is dropped at hydration on Redis too, after taking a slot."""
+        import json
+
+        def enc(value: Any) -> Any:
+            value = float(value)
+            # JSON has no inf/nan; their text form casts back to float8.
+            return (
+                value
+                if math.isfinite(value)
+                else repr(value).replace("inf", "Infinity").replace("nan", "NaN")
+            )
+
+        blob = json.dumps(
+            {str(k): enc(v) for k, v in (term.scores or {}).items()},
+            allow_nan=False,
+        )
+        return (
+            '(%s::jsonb ? t."_pk")',
+            '((%s::jsonb ->> t."_pk")::float8)',
+            [blob],
+            [blob],
         )
 
     def rank_composite(
@@ -710,38 +733,15 @@ class PostgresMemoryOps(PostgresValidityOps):
         ts = self._table(spec)
         kinds = {name: f.kind for name, f in spec.fields.items()}
         now = time.time()
-        ctes: list[str] = []
-        cte_params: list[Any] = []
-        arm_terms: list[RankTerm] = []
-        for i, term in enumerate(terms):
-            if term.kind == "similarity" and term.scores is not None:
-                # Each caller-supplied arm is one CTE of (key, score), as the
-                # Redis path ZADDs it into a temp sorted set.
-                cte = f"arm{i}"
-                ctes.append(
-                    f"{cte}(k, s) AS (SELECT * FROM unnest(%s::text[], %s::float8[]))"
-                )
-                items = [(str(k), float(v)) for k, v in term.scores.items()]
-                cte_params.append([k for k, _v in items])
-                cte_params.append([v for _k, v in items])
-                term = RankTerm(
-                    term.kind,
-                    term.weight,
-                    term.field,
-                    term.where,
-                    term.scores,
-                    dict(term.options, cte=cte),
-                )
-            arm_terms.append(term)
-        terms = arm_terms
         arms = [self._arm(ts, spec, term, kinds, now) for term in terms]
         select = []
         params: list[Any] = []
-        for i, (domain, score, dparams) in enumerate(arms):
+        for i, (domain, score, dparams, sparams) in enumerate(arms):
             select.append(f"CASE WHEN {domain} THEN {score} END AS a{i}")
             params.extend(dparams)
+            params.extend(sparams)
         where_parts = []
-        for domain, _score, dparams in arms:
+        for domain, _score, dparams, _sparams in arms:
             where_parts.append(domain)
             params.extend(dparams)
         inner_where = " OR ".join(where_parts)
@@ -767,8 +767,12 @@ class PostgresMemoryOps(PostgresValidityOps):
         agg = aggregate.upper()
         named = [f"w.w{i}" for i in range(len(weighted))]
         if agg == "SUM":
-            # ZUNIONSTORE adds the arms one at a time and turns a NaN sum
-            # (inf + -inf) into 0 at each step.
+            # Summed in the arms' order, turning a NaN sum (inf + -inf) into
+            # 0 at each step as ZUNIONSTORE does. ZUNIONSTORE itself adds the
+            # smallest input set first, not in argument order, so with three
+            # or more arms the order is identical and a score can differ from
+            # Redis's by a few ulp (<= 2 in the #774 review's probe), not bit
+            # for bit.
             total = f"coalesce({named[0]}, {_ZERO})"
             for w in named[1:]:
                 step = f"({total} + coalesce({w}, {_ZERO}))"
@@ -788,9 +792,6 @@ class PostgresMemoryOps(PostgresValidityOps):
             f'FROM (SELECT t."_pk", {", ".join(select)} FROM {ts.qualified} AS t '
             f"WHERE {inner_where} OFFSET 0) AS x OFFSET 0) AS w) AS y"
         )
-        if ctes:
-            sql = f"WITH {', '.join(ctes)} {sql}"
-            params = cte_params + params
         if min_score is not None:
             sql += f' WHERE y."_score" >= {_lit(float(min_score))}'
         sql += f' ORDER BY y."_score" DESC, y."_pk" COLLATE "C" DESC LIMIT {int(limit)}'
@@ -900,9 +901,10 @@ class PostgresMemoryOps(PostgresValidityOps):
             f'"_staged_at" = {_lit(float(now))} '
             f'FROM locked JOIN v ON v.pk = locked."_pk" WHERE t."_pk" = locked."_pk"'
         )
-        _, count = self._run(
-            sql, [keys, keys, [int(counts[k]) for k in keys]], uow=uow, write=True
+        sql, params = self._record_locked(
+            ts, keys, sql, [keys, keys, [int(counts[k]) for k in keys]]
         )
+        _, count = self._run(sql, params, uow=uow, write=True)
         return int(count or 0)
 
     def _access_confirm(
@@ -931,7 +933,8 @@ class PostgresMemoryOps(PostgresValidityOps):
             f'WHERE t."_pk" = %s RETURNING CASE WHEN old."_staged_at" > {cut} '
             f'THEN coalesce(old."_staged_reads", 0) ELSE 0 END'
         )
-        rows, _ = self._run(sql, [id.canonical], uow=uow, write=True)
+        sql, params = self._record_locked(ts, [id.canonical], sql, [id.canonical])
+        rows, _ = self._run(sql, params, uow=uow, write=True)
         if not rows:
             return None
         return int(rows[0][0])
@@ -940,13 +943,14 @@ class PostgresMemoryOps(PostgresValidityOps):
         self, spec: ModelSpec, id: RecordId, *, uow: Optional[UnitOfWork] = None
     ) -> None:
         ts = self._table(spec, write=True)
-        self._run(
+        sql, params = self._record_locked(
+            ts,
+            [id.canonical],
             f'UPDATE {ts.qualified} SET "_staged_reads" = NULL, "_staged_at" = NULL '
             f'WHERE "_pk" = %s AND "_staged_at" IS NOT NULL',
             [id.canonical],
-            uow=uow,
-            write=True,
         )
+        self._run(sql, params, uow=uow, write=True)
 
     def _access_state(
         self,
@@ -1090,8 +1094,9 @@ class PostgresMemoryOps(PostgresValidityOps):
         *,
         uow: Optional[UnitOfWork] = None,
     ) -> list[str]:
-        """``SELECT … FOR UPDATE`` in ``_pk`` order: the row-lock half of the
-        plan's §6 lock order, taken before any effect writes."""
+        """The record-key locks, then ``SELECT … FOR UPDATE``, both in
+        ``_pk`` order and in one message: the plan's §6 lock order, taken
+        before any effect writes."""
         if not ids:
             return []
         ts = self._table(spec, write=True)
@@ -1100,13 +1105,14 @@ class PostgresMemoryOps(PostgresValidityOps):
         # outcome's supersession cannot deadlock against a concurrent one.
         self._validity_lock(ts, validity_field_names(spec), uow)
         keys = sorted({rid.canonical for rid in ids}, key=_sort_key)
-        rows, _ = self._run(
+        sql, params = self._record_locked(
+            ts,
+            keys,
             f'SELECT "_pk" FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[]) '
             'ORDER BY "_pk" COLLATE "C" FOR UPDATE',
             [keys],
-            uow=uow,
-            write=True,
         )
+        rows, _ = self._run(sql, params, uow=uow, write=True)
         return [row[0] for row in rows]
 
     def _atomically(

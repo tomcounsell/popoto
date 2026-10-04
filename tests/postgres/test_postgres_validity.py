@@ -146,7 +146,8 @@ def test_timestamptz_would_not_hold_the_redis_score(pg, admin):
 def test_a_save_writes_the_interval_in_the_upsert(pg, monkeypatch):
     seen = _statements(monkeypatch, pg)
     record = _save("a")
-    writes = [s for s in seen if s.startswith("INSERT")]
+    # The upsert follows the record-key lock in the same message (M2b).
+    writes = [s for s in seen if "INSERT INTO" in s and "ON CONFLICT" in s]
     assert len(writes) == 1 and '"validity__valid_from"' in writes[0]
     vf, ia, ig = _interval(pg, record)
     assert ia == INF and vf == ig

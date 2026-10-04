@@ -41,6 +41,25 @@ from src.popoto.embeddings import AbstractEmbeddingProvider
 from src.popoto.redis_db import POPOTO_REDIS_DB
 from src.popoto.stores.filesystem import FilesystemStore
 
+# Backend conformance (#759 M2b, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend. On Postgres the vector lives in the
+# row and goes with it (#758 D7): garbage_collect / sweep_stale_tempfiles
+# return 0 without touching a file, so the tests that assert a file was
+# collected, or that read the $Class set, are Redis-only; the ones asserting
+# 0 / nothing touched hold on both legs.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
+_NPY_GC = (
+    "asserts .npy files are collected; on Postgres vectors live in the row, so "
+    "garbage_collect / sweep_stale_tempfiles return 0 and touch no file (#758 D7, "
+    "pinned by tests/postgres/test_postgres_search.py::"
+    "test_gc_is_a_no_op_on_postgres)"
+)
+_CLASS_SET = (
+    "_compute_expected_keep reads the $Class set through the raw client; a "
+    "Postgres model has no class set (its GC is a no-op, #758 D7)"
+)
+
 
 class _MockProvider(AbstractEmbeddingProvider):
     def __init__(self, dim=4):
@@ -124,6 +143,7 @@ def _make_npy(path: str, mtime_offset_seconds: float = 0.0) -> None:
 
 
 class TestComputeExpectedKeep:
+    @pytest.mark.redis_only(reason=_CLASS_SET)
     def test_uses_canonical_class_set_key(self):
         """B-A regression pin: canonical key is ``$Class:{Name}``.
 
@@ -144,6 +164,7 @@ class TestComputeExpectedKeep:
         finally:
             doc.delete()
 
+    @pytest.mark.redis_only(reason=_CLASS_SET)
     def test_legacy_memory_all_key_returns_empty(self):
         """B-A regression pin: ensure the legacy ``Memory:_all`` key is empty.
 
@@ -163,6 +184,7 @@ class TestComputeExpectedKeep:
         finally:
             doc.delete()
 
+    @pytest.mark.redis_only(reason=_CLASS_SET)
     def test_empty_class_returns_empty_set(self):
         # No saves — class set is empty
         assert _compute_expected_keep(GcMemory) == set()
@@ -196,6 +218,7 @@ class TestOptInMarker:
         ), "garbage_collect must NEVER unlink for non-opted-in models"
         assert os.path.exists(stray), "stray file must survive"
 
+    @pytest.mark.redis_only(reason=_NPY_GC)
     def test_marker_set_enables_gc(self):
         emb_dir = _emb_dir_for(GcMemory)
         os.makedirs(emb_dir, exist_ok=True)
@@ -213,6 +236,7 @@ class TestOptInMarker:
 
 
 class TestGarbageCollect:
+    @pytest.mark.redis_only(reason=_NPY_GC)
     def test_orphans_removed_live_records_kept(self):
         live = GcMemory(name="alive", content="present")
         live.save()
@@ -264,6 +288,7 @@ class TestGarbageCollect:
         assert removed == 0, "garbage_collect must not touch tmp*.npy files"
         assert os.path.exists(tmpfile)
 
+    @pytest.mark.redis_only(reason=_NPY_GC)
     def test_index_reconciled(self):
         emb_dir = _emb_dir_for(GcMemory)
         os.makedirs(emb_dir, exist_ok=True)
@@ -283,6 +308,7 @@ class TestGarbageCollect:
 
 
 class TestSweepStaleTempfiles:
+    @pytest.mark.redis_only(reason=_NPY_GC)
     def test_old_tmp_removed(self):
         emb_dir = _emb_dir_for(GcMemory)
         os.makedirs(emb_dir, exist_ok=True)

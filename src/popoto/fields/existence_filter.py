@@ -65,6 +65,7 @@ Example:
 
 import logging
 import math
+from typing import Any
 
 import redis
 
@@ -268,6 +269,26 @@ for row = 0, d - 1 do
 end
 return min_count or 0
 """
+
+
+def _search_backend(model_class: Any) -> Any:
+    """The model's backend when it is not Redis (#759 M2b), else ``None``.
+
+    On Postgres both fields are exact tables (plan §1.1): ``might_exist`` has
+    no false positives and ``get_frequency`` no over-count, where the bloom
+    and count-min sketch below allow both. The Redis paths never consult it.
+    """
+    from ..backends import get_backend
+
+    backend = get_backend(model_class)
+    return None if backend.name == "redis" else backend
+
+
+def _query_tokens(fingerprint: Any) -> list[str]:
+    """The tokens a query checks: ``tokenize``, else the raw lowercased
+    string -- what ``on_save`` stores as its fallback."""
+    query_str = str(fingerprint)
+    return tokenize(query_str) or [query_str.lower()]
 
 
 def _compute_fingerprint_impl(field, model_instance):
@@ -477,6 +498,14 @@ class ExistenceFilter(Field):
         Returns:
             bool: True if possibly present, False if definitely absent.
         """
+        backend = _search_backend(model_class)
+        if backend is not None:
+            return backend.membership_query(
+                model_class._meta.spec,
+                self.name,  # type: ignore[attr-defined]
+                _query_tokens(fingerprint),
+                mode="any",
+            )
         key = f"$EF:{model_class.__name__}:{self.name}"
         m, k = self._compute_params()
         query_str = str(fingerprint)
@@ -522,8 +551,15 @@ class ExistenceFilter(Field):
             float: Ratio of set bits to total bits (0.0 to 1.0).
                 Returns 0.0 if the Bloom filter key doesn't exist yet.
         """
+        m, k = self._compute_params()
+        backend = _search_backend(model_class)
+        if backend is not None:
+            # Postgres has no bit array. Report the fill a bloom of these
+            # parameters would have after the distinct tokens actually stored,
+            # 1 - e^(-k n / m): the same capacity signal, 0.0 when empty.
+            n = backend.membership_size(model_class._meta.spec, self.name)  # type: ignore[attr-defined]
+            return 1.0 - math.exp(-k * n / m) if m > 0 else 0.0
         key = f"$EF:{model_class.__name__}:{self.name}"
-        m, _ = self._compute_params()
         set_bits = get_REDIS_DB().bitcount(key)
         return set_bits / m if m > 0 else 0.0
 
@@ -576,10 +612,17 @@ class ExistenceFilter(Field):
         if not all_tokens:
             return {fp: False for fp in fingerprint_order}
 
-        # Single Lua EVAL for all tokens
-        raw_results = run_lua(
-            get_REDIS_DB(), BLOOM_EXISTS_BATCH_LUA, 1, key, m, k, *all_tokens
-        )
+        backend = _search_backend(model_class)
+        if backend is not None:
+            # Postgres: one exact lookup for every token.
+            raw_results = backend.membership_query(
+                model_class._meta.spec, self.name, all_tokens, mode="each"  # type: ignore[attr-defined]
+            )
+        else:
+            # Single Lua EVAL for all tokens
+            raw_results = run_lua(
+                get_REDIS_DB(), BLOOM_EXISTS_BATCH_LUA, 1, key, m, k, *all_tokens
+            )
 
         # Map token results back to fingerprints (ANY token hit = fingerprint hit)
         result = {fp: False for fp in fingerprint_order}
@@ -780,6 +823,15 @@ class FrequencySketch(Field):
             int: Approximate frequency count. Returns 0 if the fingerprint
                 has never been seen or the CMS key doesn't exist yet.
         """
+        backend = _search_backend(model_class)
+        if backend is not None:
+            counts = backend.membership_query(
+                model_class._meta.spec,
+                self.name,  # type: ignore[attr-defined]
+                _query_tokens(fingerprint),
+                mode="count",
+            )
+            return min(counts) if counts else 0
         key = f"$FS:{model_class.__name__}:{self.name}"
         query_str = str(fingerprint)
         tokens = tokenize(query_str)

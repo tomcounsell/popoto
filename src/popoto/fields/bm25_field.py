@@ -48,6 +48,16 @@ logger = logging.getLogger("POPOTO.BM25Field")
 #: times larger. Magic number for experimental tuning, not user config.
 SCOPED_SEARCH_WIDEN_FACTOR = 4
 
+
+def _search_backend(model_class: Any) -> Any:
+    """The model's backend when it is not Redis (#759 M2b), else ``None``:
+    the Redis paths below are unchanged and never consult it."""
+    from ..backends import get_backend
+
+    backend = get_backend(model_class)
+    return None if backend.name == "redis" else backend
+
+
 #: Hard ceiling on that widening window. A caller whose scope holds almost
 #: nothing would otherwise scan the whole corpus on every query; at the cap the
 #: result is honestly short rather than silently empty.
@@ -576,6 +586,19 @@ class BM25Field(Field):
             if not allowed_keys:
                 return []
 
+        backend = _search_backend(model_class)
+        if backend is not None:
+            # Postgres (#759 M2b): the same formula over the postings table,
+            # corpus-wide statistics, order and %.14g scores; allowed_keys
+            # keeps the window the widening loop below reaches.
+            return backend.bm25_search(
+                model_class._meta.spec,
+                field_name,
+                query_tokens,
+                limit=limit,
+                allowed=allowed_keys,
+            )
+
         def _run(fetch_limit: int) -> list[tuple[str, float]]:
             argv = [
                 inv_prefix,
@@ -645,6 +668,10 @@ class BM25Field(Field):
         field = model_class._meta.fields.get(field_name)
         if not isinstance(field, BM25Field):
             return
+        if _search_backend(model_class) is not None:
+            # Postgres keeps no running N/avgdl: both are computed from the
+            # document-length table by every search, so there is no drift.
+            return
 
         prefix = field._key_prefix(model_class)
         dl_key = f"{prefix}:dl"
@@ -700,6 +727,10 @@ class BM25Field(Field):
             tokens = [tokens]
         if not tokens:
             return {}
+
+        backend = _search_backend(model_class)
+        if backend is not None:
+            return backend.bm25_idf(model_class._meta.spec, field_name, list(tokens))
 
         prefix = field._key_prefix(model_class)
         n_key = f"{prefix}:n"

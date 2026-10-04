@@ -59,6 +59,13 @@ that finds a newer version in ``popoto_schema`` refuses to write."""
 ENGINE_COLUMNS: tuple[tuple[str, str], ...] = (
     ("_created_at", "timestamptz NOT NULL DEFAULT now()"),
     ("_updated_at", "timestamptz NOT NULL DEFAULT now()"),
+    # #756's import contract (plan §3, M2 ``[PG-only]``): an importer records
+    # where a row came from and which values it inferred. Every native write
+    # sets _migrated_from to NULL, so a delta re-load can guard with
+    # "WHERE _migrated_from IS NOT NULL" and never overwrite a row popoto has
+    # since written; _estimated_fields is never touched by the engine.
+    ("_migrated_from", "jsonb"),
+    ("_estimated_fields", "text[]"),
 )
 """Engine-owned columns on every table (plan §1.1, ``[PG-only]``)."""
 
@@ -96,6 +103,9 @@ RELATIONSHIP_KINDS = frozenset({"Relationship"})
 KEY_KINDS = frozenset({"KeyField", "UniqueKeyField", "AutoKeyField", "SortedKeyField"})
 #: Field kinds that keep a sorted index.
 SORTED_KINDS = frozenset({"SortedField", "SortedKeyField"})
+#: Side-effect fields with no column of their own (M2b): their state lives
+#: in companion tables (``.search``).
+COLUMNLESS_KINDS = frozenset({"BM25Field", "ExistenceFilter", "FrequencySketch"})
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -160,6 +170,13 @@ class TableSpec:
     """``ListField(max_length=N)`` columns: elements are type-tagged (.codec)."""
     meta_indexes: dict[str, tuple[str, ...]] = dataclass_field(default_factory=dict)
     """``Meta.indexes`` unique index name -> its fields (to word a 23505)."""
+    companions: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    """Companion tables (M2b): ``(name, DDL statements)``, each statement
+    idempotent (``IF NOT EXISTS``), created with the table and on an additive
+    migration. Part of the fingerprint when present."""
+    search: Any = None
+    """The compiled search layout (:class:`.search.SearchLayout`) for a model
+    with BM25 / embedding / membership fields, else ``None``."""
 
     def kind(self, name: str) -> str:
         return self.field_kinds.get(name, "Field")
@@ -185,15 +202,19 @@ class TableSpec:
         return {c.name: c.sql_type for c in self.columns}
 
     def fingerprint(self) -> str:
-        payload = json.dumps(
-            {
-                "format": SCHEMA_FORMAT_VERSION,
-                "columns": sorted(self.column_map().items()),
-                "indexes": sorted([list(i) for i in self.indexes]),
-            },
-            sort_keys=True,
-        )
+        shape: dict[str, Any] = {
+            "format": SCHEMA_FORMAT_VERSION,
+            "columns": sorted(self.column_map().items()),
+            "indexes": sorted([list(i) for i in self.indexes]),
+            "engine": [name for name, _ in ENGINE_COLUMNS],
+        }
+        if self.companions:
+            shape["companions"] = [[n, list(s)] for n, s in self.companions]
+        payload = json.dumps(shape, sort_keys=True)
         return hashlib.sha256(payload.encode()).hexdigest()
+
+    def companion_sql(self) -> list[str]:
+        return [stmt for _name, stmts in self.companions for stmt in stmts]
 
     def create_sql(self) -> list[str]:
         cols = ['"_pk" text PRIMARY KEY']
@@ -205,6 +226,7 @@ class TableSpec:
         cols += [f"{quote_ident(name)} {decl}" for name, decl in ENGINE_COLUMNS]
         stmts = [f"CREATE TABLE {self.qualified} ({', '.join(cols)})"]
         stmts += [self.index_sql(i) for i in self.indexes]
+        stmts += self.companion_sql()
         return stmts
 
     def index_sql(self, index: tuple[str, str, bool]) -> str:
@@ -240,6 +262,10 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
             raise BackendCapabilityError(
                 f"{spec.name}.{name} collides with an engine-owned column"
             )
+        if spec.fields[name].kind in COLUMNLESS_KINDS:
+            # Side-effect fields (M2b): no value of their own, only companion
+            # tables, which compile_search adds below.
+            continue
         py_type = _field_type(spec, name)
         field_types[name] = py_type
         sql_type = SQL_TYPES[py_type]
@@ -313,6 +339,14 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
         cols = ", ".join(quote_ident(c) for c in partition + (name,))
         body = f'({cols}, "_pk" COLLATE "C")'
         indexes.append((index_name("sort", name), body, False))
+    # M2b: BM25 / embedding / membership fields add auxiliary columns, an HNSW
+    # index and companion tables (imported here: search imports this module).
+    from .search import compile_search
+
+    search = compile_search(spec, schema, table, index_name)
+    if search is not None:
+        columns.extend(search.columns)
+        indexes.extend(search.indexes)
     indexes.extend(memory_indexes(spec, index_name))
     return TableSpec(
         model=spec.name,
@@ -328,6 +362,8 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
             name for name, fs in spec.fields.items() if fs.options.get("capped")
         ),
         meta_indexes=meta_indexes,
+        companions=search.companions if search is not None else (),
+        search=search,
     )
 
 
@@ -494,6 +530,15 @@ def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
             if c.name not in theirs
         ]
         ddl += [ts.index_sql(i) for i in ts.indexes if tuple(i) not in their_idx]
+        # Engine columns added since the table was created (M2b's
+        # _migrated_from / _estimated_fields), and companion tables: both
+        # idempotent, so re-issuing an existing one is a no-op.
+        ddl += [
+            f"ALTER TABLE {ts.qualified} ADD COLUMN IF NOT EXISTS "
+            f"{quote_ident(name)} {decl}"
+            for name, decl in ENGINE_COLUMNS
+        ]
+        ddl += ts.companion_sql()
         for stmt in ddl:
             cur.execute(stmt)
         _record(cur, ts, ddl, insert=False)
