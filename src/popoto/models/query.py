@@ -2331,7 +2331,7 @@ class Query:
                     self.model_class, hashmap, source_redis_key=redis_key
                 )
             else:  # a decoded row (Postgres, #759 M1b)
-                instance = hydrate_decoded_row(self.model_class, row)
+                instance = hydrate_decoded_row(self.model_class, row, eager=True)
             if not _no_track:
                 _fire_on_read(self.model_class, [instance])
 
@@ -2402,7 +2402,9 @@ class Query:
             self.model_class._meta.spec, _record_ids(self.model_class, redis_keys)
         )
         if _is_decoded(rows):  # Postgres (#759 M1b): one SELECT … = ANY
-            results = [hydrate_decoded_row(self.model_class, row) for row in rows]
+            results = [
+                hydrate_decoded_row(self.model_class, row, eager=True) for row in rows
+            ]
             live = [r for r in results if r is not None]
             if live:
                 _fire_on_read(self.model_class, live)
@@ -3721,7 +3723,9 @@ class Query:
             )
             if _is_decoded(rows):  # Postgres (#759 M1b)
                 return [
-                    hydrate_decoded_row(model, row) for row in rows if row is not None
+                    hydrate_decoded_row(model, row, eager=not lazy)
+                    for row in rows
+                    if row is not None
                 ]
             hashes_list = _raw_hashes(model, rows)
 

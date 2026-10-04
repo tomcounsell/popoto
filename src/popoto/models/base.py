@@ -692,39 +692,7 @@ class Model(metaclass=ModelBase):
 
         # load relationships
         if len(self._meta.relationship_field_names):
-            global RELATED_MODEL_LOAD_SEQUENCE
-            is_parent_model = len(RELATED_MODEL_LOAD_SEQUENCE) == 0
-            for field_name in self._meta.relationship_field_names:
-                if (
-                    f"{self.__class__.__name__}.{field_name}"
-                    in RELATED_MODEL_LOAD_SEQUENCE
-                ):
-                    continue
-                RELATED_MODEL_LOAD_SEQUENCE.add(
-                    f"{self.__class__.__name__}.{field_name}"
-                )
-
-                field_value = getattr(self, field_name)
-                if isinstance(field_value, Model):
-                    setattr(self, field_name, field_value)
-                elif isinstance(field_value, str):
-                    setattr(
-                        self,
-                        field_name,
-                        self._meta.fields[field_name].model.query.get(
-                            redis_key=field_value
-                        ),
-                    )
-
-                # todo: lazy load the instance from the db
-                elif not field_value:
-                    setattr(self, field_name, None)
-                else:
-                    raise ModelException(
-                        f"{field_name} expects model instance or redis_key"
-                    )
-            if is_parent_model:
-                RELATED_MODEL_LOAD_SEQUENCE = set()
+            self._load_relationships()
 
         # Wrap capped ListField values in CappedListProxy
         from ..fields.shortcuts import ListField, CappedListProxy
@@ -1129,6 +1097,101 @@ class Model(metaclass=ModelBase):
 
         return True
 
+    def _load_relationships(self) -> None:
+        """Resolve each ``Relationship`` key string to its instance, guarded
+        against cycles by ``RELATED_MODEL_LOAD_SEQUENCE``.
+
+        What ``__init__`` does when a Redis read decodes eagerly (``get``,
+        ``get_many``); a decoded-row backend's eager reads call it too
+        (``hydrate_decoded_row(eager=True)``, #759 M1.1). Lazy reads leave the
+        key string in place.
+        """
+        global RELATED_MODEL_LOAD_SEQUENCE
+        is_parent_model = len(RELATED_MODEL_LOAD_SEQUENCE) == 0
+        for field_name in self._meta.relationship_field_names:
+            if f"{self.__class__.__name__}.{field_name}" in RELATED_MODEL_LOAD_SEQUENCE:
+                continue
+            RELATED_MODEL_LOAD_SEQUENCE.add(f"{self.__class__.__name__}.{field_name}")
+
+            field_value = getattr(self, field_name)
+            if isinstance(field_value, Model):
+                setattr(self, field_name, field_value)
+            elif isinstance(field_value, str):
+                setattr(
+                    self,
+                    field_name,
+                    self._meta.fields[field_name].model.query.get(
+                        redis_key=field_value
+                    ),
+                )
+
+            # todo: lazy load the instance from the db
+            elif not field_value:
+                setattr(self, field_name, None)
+            else:
+                raise ModelException(
+                    f"{field_name} expects model instance or redis_key"
+                )
+        if is_parent_model:
+            RELATED_MODEL_LOAD_SEQUENCE = set()
+
+    def _backend_unique_conflict(self) -> Optional[str]:
+        """``pre_save``'s two uniqueness reads -- unique ``Meta.indexes``
+        tuples, then unique fields -- through the model's (non-Redis)
+        backend's ``select`` (#759 M1.1). Returns the message Redis raises for
+        the first conflict, or ``None``.
+
+        A tuple with a ``None`` in it is skipped (NULLs are distinct), as is
+        a value that is ``None``. A sole key field or an auto field is not
+        read: the first conflicts only with its own record (an upsert), and
+        the second is a generated UUID whose UNIQUE index stays the backstop.
+        """
+        from ..backends import And, Cond, Op, QueryPlan
+
+        backend = get_backend(type(self))
+        spec = self._meta.spec
+        own = {key for key in (self._redis_key, self.db_key.redis_key) if key}
+
+        def taken(conds: "list[Any]") -> bool:
+            where = conds[0] if len(conds) == 1 else And(tuple(conds))
+            rows = backend.select(
+                spec, QueryPlan(where=where, limit=len(own) + 1, project=())
+            )
+            return any(row["_id"].canonical not in own for row in rows)
+
+        indexes: "tuple[tuple[Any, bool], ...]" = tuple(self._meta.indexes)
+        for field_names, is_unique in indexes:
+            if not is_unique:
+                continue
+            values = [getattr(self, name, None) for name in field_names]
+            if any(value is None for value in values):
+                continue
+            if taken([Cond(n, Op.EXACT, v) for n, v in zip(field_names, values)]):
+                shown = ", ".join(str(getattr(self, name)) for name in field_names)
+                return (
+                    f"Unique index violation on {field_names}: ({shown}) already exists"
+                )
+
+        sole_key = (
+            next(iter(self._meta.key_field_names))
+            if len(self._meta.key_field_names) == 1
+            else None
+        )
+        for field_name, field in self._meta.fields.items():
+            if not getattr(field, "unique", False):
+                continue
+            if field_name == sole_key or field_name in self._meta.auto_field_names:
+                continue
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            if taken([Cond(field_name, Op.EXACT, value)]):
+                return (
+                    f"Unique constraint violated: {field_name}={value} "
+                    f"already exists on another instance"
+                )
+        return None
+
     def pre_save(
         self,
         pipeline: redis.client.Pipeline = None,
@@ -1201,8 +1264,30 @@ class Model(metaclass=ModelBase):
                 raise ModelException(error_message)
             return False
 
+        # On any other backend the same two uniqueness reads go through the
+        # backend's own select (#759 M1.1): the same check, the same text, at
+        # the same point -- before any write. The backend's UNIQUE indexes
+        # remain the authority for a write that races past this read.
+        if (
+            self._meta.indexes
+            or any(getattr(f, "unique", False) for f in self._meta.fields.values())
+        ) and get_backend(type(self)).name != "redis":
+            error_message = self._backend_unique_conflict()
+            if error_message is None:
+                pass
+            elif ignore_errors:
+                logger.error(error_message)
+                return False
+            else:
+                raise ModelException(error_message)
+            _unique_reads_on_redis = False
+        else:
+            _unique_reads_on_redis = True
+
         # Check unique indexes
         for field_names, is_unique in self._meta.indexes:
+            if not _unique_reads_on_redis:
+                break
             if not is_unique:
                 continue  # Only check unique indexes
 
@@ -1240,17 +1325,14 @@ class Model(metaclass=ModelBase):
 
         # Check unique field constraints (individual fields with unique=True)
         # Uses SCARD + SISMEMBER instead of SMEMBERS for ~20x faster lookups.
-        # Redis only: on Postgres a UNIQUE index enforces this inside the
-        # write, and reading Redis sets here would consult the wrong store
-        # (#759 M1b).
-        _unique_on_redis = None
+        # Redis only: another backend ran the same check above through its
+        # own select, and reading Redis sets here would consult the wrong
+        # store (#759 M1b, M1.1).
         for field_name, field in self._meta.fields.items():
+            if not _unique_reads_on_redis:
+                break
             if not getattr(field, "unique", False):
                 continue
-            if _unique_on_redis is None:
-                _unique_on_redis = get_backend(type(self)).name == "redis"
-            if not _unique_on_redis:
-                break
             field_value = getattr(self, field_name)
             if field_value is None:
                 continue

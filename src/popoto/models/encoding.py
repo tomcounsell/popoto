@@ -830,7 +830,7 @@ def decode_lazy_field(value_bytes: bytes):
 
 
 def hydrate_decoded_row(
-    model_class: Any, row: Any, *, fields_only: bool = False
+    model_class: Any, row: Any, *, fields_only: bool = False, eager: bool = False
 ) -> Any:
     """Build a model instance (or projection dict) from a *decoded* backend
     row -- the shape a non-Redis backend's ``load``/``select`` returns, field
@@ -846,6 +846,13 @@ def hydrate_decoded_row(
     Fields absent from the row (a projection, or a column the table gained
     after the row was written) take their declared default, matching
     ``Model.__init__`` (#380).
+
+    ``eager`` mirrors the Redis read paths that decode through ``__init__``
+    (``Query.get``, ``get_many``): each ``Relationship`` key string is
+    resolved to its instance. Lazy reads (``filter``/``all``) keep the key
+    string, as they do on Redis (#759 M1.1). A capped ``ListField`` value is
+    wrapped in its ``CappedListProxy`` either way, as ``__init__`` and
+    ``_load_capped_list_fields`` do.
     """
     if row is None:
         return None
@@ -867,8 +874,22 @@ def hydrate_decoded_row(
     state["_redis_key"] = key if key is not None else instance.db_key.redis_key
     state["obsolete_redis_key"] = None
     state["_db_content"] = dict()
-    state["_saved_field_values"] = {name: state[name] for name in meta.fields}
     state["_ttl"] = meta.ttl
     state["_expire_at"] = None
+    from ..fields.shortcuts import CappedListProxy, ListField
+
+    for field_name, field in meta.fields.items():
+        if isinstance(field, ListField) and field._capped:
+            value = state[field_name]
+            if not isinstance(value, CappedListProxy):
+                state[field_name] = CappedListProxy(
+                    data=value or [],
+                    model_instance=instance,
+                    field_name=field_name,
+                    max_length=field.max_length,
+                )
+    if eager and meta.relationship_field_names:
+        instance._load_relationships()
+    state["_saved_field_values"] = {name: state[name] for name in meta.fields}
     state["_is_persisted"] = True
     return instance
