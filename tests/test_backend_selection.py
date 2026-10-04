@@ -283,3 +283,14 @@ def test_postgres_model_with_unsupported_field_is_refused_at_declaration(
 
             class Meta:
                 backend = "postgres"
+
+
+def test_session_pin_is_gated_on_the_plugin_opt_in(unpinned):
+    """A downstream session that never opted in keeps its runtime selection:
+    the pin is a no-op for ``test_db=None`` and pins for an opted-in DB."""
+    from popoto.pytest_plugin import _pin_session_backend_to_redis
+
+    _pin_session_backend_to_redis(None)
+    assert backends._default is None
+    _pin_session_backend_to_redis(11)
+    assert backends._default == "redis"

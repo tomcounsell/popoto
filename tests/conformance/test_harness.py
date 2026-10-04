@@ -16,11 +16,16 @@ Three layers:
    descriptor's DSN, is truncated without ``CASCADE``, and ``public`` /
    ``popoto`` are refused *before* any connection.
 3. **The downstream shape** (unmarked, subprocess): a project that never opts
-   in collects exactly as it does with the plugin disabled; with neither
-   conformance opt-in a conformance test collects as ``[redis]`` only; with
-   the opt-in the Postgres leg *skips* with a reason naming what is missing; a
-   reasonless ``redis_only`` is a collection error. These run as subprocesses
-   so the parent session's own configuration does not leak in.
+   in collects exactly as it does with the plugin disabled -- including one
+   with its own ``conformance``/``redis_only`` markers and ``backend``
+   fixture or parametrisation, which also wins in an opted-in session -- and
+   has no ``backend`` fixture at all; with neither conformance opt-in a
+   conformance test collects as ``[redis]`` only; with the opt-in the
+   Postgres leg *skips* with a reason naming what is missing; a reasonless
+   ``redis_only`` and a ``harness=True`` outside ``tests/conformance/`` are
+   collection errors; a db-less ``POSTGRES_URL`` is refused even without
+   ``psycopg``. These run as subprocesses so the parent session's own
+   configuration does not leak in.
 
 Never touches database 0 or schema ``public``: every Redis command goes
 through the plugin-bound client and every Postgres statement through a
@@ -29,6 +34,7 @@ through the plugin-bound client and every Postgres statement through a
 
 from __future__ import annotations
 
+import functools
 import os
 import subprocess
 import sys
@@ -92,7 +98,8 @@ def test_redis_only_marker_skips_every_other_leg(backend):
 
 def test_unmarked_test_requesting_backend_gets_redis(backend):
     """No ``conformance`` marker: ``backend`` is the Redis descriptor, once,
-    whatever the session's opt-in says."""
+    whichever conformance legs are configured. (This repo opts in through
+    ``popoto_test_db``; without an opt-in the fixture would not exist.)"""
     assert backend == ConformanceBackend(name="redis")
 
 
@@ -368,9 +375,11 @@ def _run_pytest(
     files: dict[str, str],
     *args: str,
     expect_rc: int | None = 0,
+    ini: str = "[pytest]\n",
 ) -> str:
     """Run pytest on a scratch project in ``tmp_path``, which carries its own
-    empty ``pytest.ini`` so this repo's ``pyproject.toml`` never applies."""
+    ``pytest.ini`` (empty by default) so this repo's ``pyproject.toml`` never
+    applies. ``files`` keys are paths relative to ``tmp_path``."""
     env = dict(os.environ)
     env["REDIS_URL"] = _test_redis_url()
     env["POPOTO_TEST_DB"] = str(_test_db())
@@ -381,9 +390,11 @@ def _run_pytest(
             env.pop(name, None)
         else:
             env[name] = value
-    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    (tmp_path / "pytest.ini").write_text(ini)
     for relpath, source in files.items():
-        (tmp_path / relpath).write_text(source)
+        target = tmp_path / relpath
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source)
     result = subprocess.run(
         [
             sys.executable,
@@ -474,6 +485,139 @@ def test_downstream_project_that_never_opted_in_collects_identically(tmp_path):
     ), with_plugin
 
 
+# #763 review B1: a project that never opted in and uses the generic
+# ``conformance`` marker for its *own* suite. Each case declares its markers
+# under ``--strict-markers``, so it collects cleanly with the plugin disabled;
+# the plugin must leave every id -- and the run -- exactly as it was.
+_OWN_MARKERS_INI = textwrap.dedent("""
+    [pytest]
+    markers =
+        conformance: our own DB-driver conformance suite
+        redis_only: our own meaning -- needs a redis service
+    addopts = --strict-markers
+    """)
+
+_OWN_PARAMETRISED_BACKEND = textwrap.dedent("""
+    import pytest
+
+    @pytest.fixture(params=["sqlite", "duckdb"])
+    def backend(request):
+        return request.param
+    """)
+
+_DOWNSTREAM_CONFORMANCE_CASES = {
+    "own_parametrised_backend_fixture": (
+        {
+            "conftest.py": _OWN_PARAMETRISED_BACKEND,
+            "test_x.py": textwrap.dedent("""
+                import pytest
+
+                @pytest.mark.conformance
+                def test_x(backend):
+                    assert backend in ("sqlite", "duckdb")
+                """),
+        },
+        ["test_x.py::test_x[duckdb]", "test_x.py::test_x[sqlite]"],
+    ),
+    "parametrize_backend_directly": (
+        {
+            "test_x.py": textwrap.dedent("""
+                import pytest
+
+                @pytest.mark.conformance
+                @pytest.mark.parametrize("backend", ["mysql", "pg"])
+                def test_x(backend):
+                    assert backend in ("mysql", "pg")
+                """),
+        },
+        ["test_x.py::test_x[mysql]", "test_x.py::test_x[pg]"],
+    ),
+    "own_reasonless_redis_only": (
+        {
+            "conftest.py": _OWN_PARAMETRISED_BACKEND,
+            "test_x.py": textwrap.dedent("""
+                import pytest
+
+                @pytest.mark.conformance
+                @pytest.mark.redis_only
+                def test_x():
+                    pass
+
+                @pytest.mark.conformance
+                @pytest.mark.redis_only
+                def test_y(backend):
+                    pass
+                """),
+        },
+        [
+            "test_x.py::test_x",
+            "test_x.py::test_y[duckdb]",
+            "test_x.py::test_y[sqlite]",
+        ],
+    ),
+    "own_unparametrised_backend_fixture": (
+        {
+            "test_x.py": textwrap.dedent("""
+                import pytest
+
+                @pytest.fixture
+                def backend():
+                    return "my-own-backend"
+
+                @pytest.mark.conformance
+                def test_x(backend):
+                    assert backend == "my-own-backend"
+                """),
+        },
+        ["test_x.py::test_x"],
+    ),
+}
+
+
+@pytest.mark.parametrize("opted_in", [False, True], ids=["never-opted-in", "opted-in"])
+@pytest.mark.parametrize("case", sorted(_DOWNSTREAM_CONFORMANCE_CASES))
+def test_downstream_conformance_marker_of_their_own_is_left_alone(
+    tmp_path, case, opted_in
+):
+    """#763 review B1. The plugin parametrises ``backend`` -- and enforces
+    ``redis_only(reason=)`` -- only in a session that opted in, and only where
+    the ``backend`` that resolves is the plugin's own. Each case collects the
+    same ids as with ``-p no:popoto`` (an unparametrised fixture of the
+    project's own keeps ``test_x``, not ``test_x[redis]``), and runs green --
+    without the opt-in, and with it (``POPOTO_TEST_DB`` and both conformance
+    legs set), where the project's own ``backend`` still wins."""
+    files, expected = _DOWNSTREAM_CONFORMANCE_CASES[case]
+    env: dict[str, str | None] = (
+        {"POPOTO_CONFORMANCE_BACKENDS": "redis,postgres"}
+        if opted_in
+        else {"POPOTO_TEST_DB": None}
+    )
+    run = functools.partial(_run_pytest, tmp_path, env, files, ini=_OWN_MARKERS_INI)
+    with_plugin = run("--collect-only", "-q")
+    without = run("--collect-only", "-q", "-p", "no:popoto")
+    assert _collected_ids(with_plugin) == _collected_ids(without), with_plugin
+    assert _collected_ids(with_plugin) == sorted(expected), with_plugin
+    out = run("-q")
+    assert f"{len(expected)} passed" in out, out
+
+
+def test_backend_fixture_is_not_registered_without_the_opt_in(tmp_path):
+    """#763 review N3: in a session that never opted in, ``backend`` is not a
+    fixture at all, so a test requesting it gets pytest's own error rather
+    than a Redis descriptor nobody asked for."""
+    source = "def test_x(backend):\n    pass\n"
+    for extra in ((), ("-p", "no:popoto")):
+        out = _run_pytest(
+            tmp_path,
+            {"POPOTO_TEST_DB": None},
+            {"test_x.py": source},
+            "test_x.py",
+            *extra,
+            expect_rc=1,
+        )
+        assert "fixture 'backend' not found" in out, out
+
+
 def test_downstream_default_is_redis_only(tmp_path):
     out = _run_probe(tmp_path, {})
     assert "test_probe[redis] PASSED" in out, out
@@ -509,6 +653,9 @@ _HARNESS_PROBE = textwrap.dedent("""
         assert backend is not None
     """)
 
+# harness=True is confined to tests/conformance/ (#763 review N2).
+_HARNESS_PATH = "tests/conformance/test_probe_conformance.py"
+
 
 def test_opted_in_without_postgres_url_skips_with_a_visible_reason(tmp_path):
     shim = tmp_path / "shim"
@@ -517,8 +664,8 @@ def test_opted_in_without_postgres_url_skips_with_a_visible_reason(tmp_path):
     out = _run_pytest(
         tmp_path,
         {"POPOTO_CONFORMANCE_BACKENDS": "redis,postgres", "PYTHONPATH": str(shim)},
-        {"test_probe_conformance.py": _HARNESS_PROBE},
-        "test_probe_conformance.py",
+        {_HARNESS_PATH: _HARNESS_PROBE},
+        _HARNESS_PATH,
         "-v",
         "-rs",
     )
@@ -543,8 +690,8 @@ def test_opted_in_without_psycopg_skips_with_a_visible_reason(tmp_path):
             "POSTGRES_URL": "postgresql://localhost:5432/postgres",
             "PYTHONPATH": str(shim),
         },
-        {"test_probe_conformance.py": _HARNESS_PROBE},
-        "test_probe_conformance.py",
+        {_HARNESS_PATH: _HARNESS_PROBE},
+        _HARNESS_PATH,
         "-v",
         "-rs",
     )
@@ -567,14 +714,61 @@ def test_db_less_postgres_url_is_refused_not_skipped(tmp_path):
             "POSTGRES_URL": "postgresql://no-such-host.invalid:5432",
             "PYTHONPATH": str(shim),
         },
-        {"test_probe_conformance.py": _HARNESS_PROBE},
-        "test_probe_conformance.py",
+        {_HARNESS_PATH: _HARNESS_PROBE},
+        _HARNESS_PATH,
         "-v",
         expect_rc=1,
     )
     assert "test_probe[redis] PASSED" in out, out
     assert "PostgresIsolationRefusedError" in out, out
     assert "names no database" in out, out
+
+
+def test_db_less_postgres_url_is_refused_even_without_psycopg(tmp_path):
+    """#763 review N1: the URL check needs no driver, so it runs first. A
+    db-less ``POSTGRES_URL`` is a refusal whether or not ``psycopg`` imports --
+    never the "not installed" skip that would hide it."""
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "psycopg.py").write_text(
+        "raise ImportError('psycopg hidden by the conformance harness test')\n"
+    )
+    out = _run_pytest(
+        tmp_path,
+        {
+            "POPOTO_CONFORMANCE_BACKENDS": "redis,postgres",
+            "POSTGRES_URL": "postgresql://localhost:5432",
+            "PYTHONPATH": str(shim),
+        },
+        {_HARNESS_PATH: _HARNESS_PROBE},
+        _HARNESS_PATH,
+        "-v",
+        "-rs",
+        expect_rc=1,
+    )
+    assert "test_probe[redis] PASSED" in out, out
+    assert "PostgresIsolationRefusedError" in out, out
+    assert "names no database" in out, out
+    assert "psycopg is not installed" not in out, out
+
+
+def test_harness_flag_outside_tests_conformance_is_a_collection_error(tmp_path):
+    """#763 review N2: ``conformance(harness=True)`` runs a Postgres leg that
+    model code would silently satisfy on Redis, so it is confined to the
+    harness's own directory. Anywhere else it fails collection, naming the
+    test and the rule."""
+    out = _run_pytest(
+        tmp_path,
+        {"POPOTO_CONFORMANCE_BACKENDS": "redis,postgres"},
+        {"tests/test_probe_conformance.py": _HARNESS_PROBE},
+        "tests/test_probe_conformance.py",
+        expect_rc=None,
+    )
+    assert "ERROR collecting" in out or "errors during collection" in out, out
+    assert "tests/test_probe_conformance.py::test_probe" in out, out
+    assert (
+        "conformance(harness=True) is only allowed under tests/conformance/" in out
+    ), out
 
 
 def test_unknown_backend_name_fails_the_session(tmp_path):
