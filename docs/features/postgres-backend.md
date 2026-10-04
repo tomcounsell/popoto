@@ -253,7 +253,10 @@ Numeric key fields otherwise follow Redis's key-string rules on both backends
 `"01"` and `" 1"` all find `2` and `1`). Redis's `SortedKeyField` `__in`
 ignores the filter and returns every record (#771); Postgres filters, by
 score, with mixed numeric types allowed (pinned:
-`test_sorted_int_key_in_with_mixed_types`).
+`test_sorted_int_key_in_with_mixed_types`). `SortedKeyField` equality with
+`True`, `False` or `None` raises `ResponseError: min or max is not a float` on
+Redis; Postgres matches the score `1`/`0`, and `None` matches nothing (pinned:
+`test_sorted_key_equality_with_bool_or_none_is_a_documented_divergence`).
 
 A lone unindexed-field `Q` (`filter(Q(hits=5))`), one lower plus one upper
 bound on a sorted field, and `values=` that projects the filtered field all
