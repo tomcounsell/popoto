@@ -13,7 +13,6 @@ import math
 import threading
 import time
 
-import psycopg
 import pytest
 
 import popoto
@@ -33,6 +32,9 @@ from popoto.backends import (
 )
 from popoto.backends.postgres import memory
 from popoto.backends.postgres.memory import decay_score_sql, lua_tostring
+
+# The Redis and Valkey CI jobs do not install the postgres extra.
+psycopg = pytest.importorskip("psycopg")
 
 DAY = 86400.0
 
