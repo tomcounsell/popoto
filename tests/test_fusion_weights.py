@@ -24,6 +24,14 @@ from src.popoto.recipes.context_assembler import (  # noqa: E402
     _fusion_weights,
 )
 
+import pytest  # noqa: E402
+
+# Backend conformance (#759 M2b, plan §5 M2 gate (b)). `_fusion_weights` is
+# a pure function of the query text, so both legs run the same assertions
+# with no storage involved -- the Postgres hybrid path (recall's weights=)
+# takes its weights from this same function.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class TestFusionWeightsRegimeSelection:
     def test_name_anchored_query_is_keyword_lean(self):

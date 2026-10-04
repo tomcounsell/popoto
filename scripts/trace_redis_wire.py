@@ -37,6 +37,7 @@ from __future__ import annotations
 import itertools
 import os
 import sys
+import tempfile
 import time
 import uuid
 from datetime import datetime
@@ -47,6 +48,11 @@ _URL = os.environ.get("REDIS_URL", "")
 if not _URL or _URL.rstrip("/").endswith("/0") or _URL.count("/") < 3:
     sys.exit("refusing to run: set REDIS_URL to a non-zero database, e.g. /11")
 
+# The M2b embedding scenarios: no pub/sub listener thread (its SUBSCRIBE would
+# land in the trace at a nondeterministic point) and a throwaway file store.
+os.environ.setdefault("POPOTO_EMBEDDING_INVALIDATION", "none")
+os.environ["POPOTO_CONTENT_PATH"] = tempfile.mkdtemp(prefix="popoto-trace-")
+
 _uuid_counter = itertools.count(1)
 uuid.uuid4 = lambda: uuid.UUID(int=next(_uuid_counter))  # type: ignore[assignment]
 _FROZEN = 1_760_000_000.0
@@ -56,6 +62,13 @@ import redis.connection  # noqa: E402
 
 import popoto  # noqa: E402
 from popoto import Q  # noqa: E402
+from popoto.embeddings import AbstractEmbeddingProvider  # noqa: E402
+from popoto.fields.bm25_field import BM25Field  # noqa: E402
+from popoto.fields.embedding_field import EmbeddingField  # noqa: E402
+from popoto.fields.existence_filter import (  # noqa: E402
+    ExistenceFilter,
+    FrequencySketch,
+)
 from popoto.redis_db import get_REDIS_DB  # noqa: E402
 
 if get_REDIS_DB().connection_pool.connection_kwargs.get("db", 0) == 0:
@@ -328,7 +341,10 @@ def save_ignore_errors():
     u = TrShort(name="bad", note="ok")
     u.note = "too long"
     pipe = get_REDIS_DB().pipeline()
-    return [u.save(ignore_errors=True), u.save(ignore_errors=True, pipeline=pipe) is pipe]
+    return [
+        u.save(ignore_errors=True),
+        u.save(ignore_errors=True, pipeline=pipe) is pipe,
+    ]
 
 
 @scenario
@@ -666,6 +682,169 @@ def delete_all_shapes():
         TrUser.delete_all(),
         TrTtl.delete_all(),
         TrUser.query.count(),
+    ]
+
+
+# -- M2b: search (#759 M2b) ---------------------------------------------------
+#
+# M2b adds a Postgres branch ahead of the Redis code in BM25Field,
+# ExistenceFilter, FrequencySketch, EmbeddingField and the QueryBuilder's
+# keyword_search / fuse / vector paths. These scenarios run after the M1 ones
+# (so the M1 prefix of the trace is unchanged) and pin that the Redis wire of
+# every one of those paths is unchanged too.
+
+
+class _TrProvider(AbstractEmbeddingProvider):
+    def embed(self, texts, input_type=None):
+        return [
+            [float((sum(map(ord, t)) * (i + 3)) % 17 - 8) for i in range(4)]
+            for t in texts
+        ]
+
+    @property
+    def dimensions(self):
+        return 4
+
+    @property
+    def max_batch_size(self):
+        return 8
+
+
+class TrDoc(popoto.Model):
+    name = popoto.KeyField()
+    owner = popoto.KeyField()
+    note = popoto.Field(type=str, null=True)
+    text = popoto.StringField(default="")
+    content = BM25Field(source="text")
+    bloom = ExistenceFilter(
+        error_rate=0.05, capacity=1000, fingerprint_fn=lambda inst: inst.text
+    )
+    freq = FrequencySketch(fingerprint_fn=lambda inst: inst.text)
+
+
+class TrEmb(popoto.Model):
+    __embedding_garbage_collect__ = True
+    name = popoto.KeyField()
+    text = popoto.StringField(default="")
+    embedding = EmbeddingField(source="text", provider=_TrProvider())
+
+
+MODELS = MODELS + (TrDoc, TrEmb)
+
+_DOCS = (
+    ("d1", "ann", "x", "redis cluster failover sentinel redis"),
+    ("d2", "bob", "y", "redis deployment production guide"),
+    ("d3", "ann", "x", "python machine learning guide"),
+    ("d4", "bob", None, ""),
+)
+
+
+@scenario
+def m2b_bm25_save_and_search():
+    for name, owner, note, text in _DOCS:
+        TrDoc(name=name, owner=owner, note=note, text=text).save()
+    allowed = {"TrDoc:d2:bob", b"TrDoc:d3:ann"}
+    return [
+        BM25Field.search(TrDoc, "content", "redis guide", limit=10),
+        BM25Field.search(TrDoc, "content", "redis guide", limit=1),
+        BM25Field.search(TrDoc, "content", "redis guide", allowed_keys=allowed),
+        BM25Field.search(TrDoc, "content", "redis", allowed_keys=set()),
+        BM25Field.search(TrDoc, "content", "the and", limit=10),
+    ]
+
+
+@scenario
+def m2b_bm25_idf_and_stats():
+    out = [
+        BM25Field.get_idf(TrDoc, "content", ["redis", "guide", "absent"]),
+        BM25Field.get_idf(TrDoc, "content", "redis"),
+        BM25Field.filter_selective_tokens(
+            TrDoc, "content", ["redis", "guide", "absent"], min_idf=0.5
+        ),
+    ]
+    BM25Field.recompute_stats(TrDoc, "content")
+    return out
+
+
+@scenario
+def m2b_bm25_update_delete():
+    d = TrDoc.query.get(name="d3", owner="ann")
+    d.text = "python redis tutorial"
+    d.save()
+    d.note = "z"
+    d.save(update_fields=["note"])
+    TrDoc.query.get(name="d2", owner="bob").delete()
+    return BM25Field.search(TrDoc, "content", "redis python", limit=10)
+
+
+@scenario
+def m2b_keyword_search():
+    return [
+        (i._redis_key, i._bm25_score)
+        for i in TrDoc.query.keyword_search("redis sentinel", limit=5)
+    ]
+
+
+@scenario
+def m2b_bloom_and_sketch():
+    return [
+        TrDoc.bloom.might_exist(TrDoc, "redis"),
+        TrDoc.bloom.might_exist(TrDoc, "absentword"),
+        TrDoc.bloom.might_exist(TrDoc, ""),
+        TrDoc.bloom.definitely_missing(TrDoc, "kubernetes"),
+        TrDoc.bloom.might_exist_batch(TrDoc, ["redis", "nope", "redis", "a b"]),
+        TrDoc.bloom.might_exist_count(TrDoc, ["redis", "python", "nope"]),
+        TrDoc.bloom.fill_ratio(TrDoc),
+        TrDoc.freq.get_frequency(TrDoc, "redis"),
+        TrDoc.freq.get_frequency(TrDoc, "redis tutorial"),
+        TrDoc.freq.get_frequency(TrDoc, ""),
+    ]
+
+
+@scenario
+def m2b_fuse():
+    keyword = BM25Field.search(TrDoc, "content", "redis python guide", limit=10)
+    other = [("TrDoc:d4:bob", 1.0), ("TrDoc:d1:ann", 0.5)]
+
+    def names(results):
+        return [(i._redis_key, i._rrf_score) for i in results]
+
+    out = [
+        names(TrDoc.query.fuse(keyword=keyword, other=other, limit=3)),
+        names(
+            TrDoc.query.fuse(
+                keyword=keyword, other=other, weights={"other": 0.5}, limit=5
+            )
+        ),
+        names(TrDoc.query.filter(owner="ann").fuse(keyword=keyword, other=other)),
+        names(TrDoc.query.filter(note="x").fuse(keyword=keyword, other=other)),
+        names(
+            TrDoc.query.fuse(
+                keyword=keyword, post_filter=lambda k, s: "d1" not in k, limit=5
+            )
+        ),
+    ]
+    try:
+        TrDoc.query.filter(Q(owner="ann")).fuse(keyword=keyword)
+    except Exception as exc:  # noqa: BLE001 - recorded
+        out.append(f"!! {type(exc).__name__}")
+    return out
+
+
+@scenario
+def m2b_embeddings():
+    from popoto.models.query import QueryBuilder
+
+    for name, text in (("e1", "alpha beta"), ("e2", "gamma"), ("e3", "alpha")):
+        TrEmb(name=name, text=text).save()
+    matrix, keys = EmbeddingField.load_embeddings(TrEmb)
+    return [
+        sorted(keys),
+        QueryBuilder(TrEmb.query)._get_vector_scores("alpha", limit=2),
+        [i._redis_key for i in TrEmb.query.semantic_search("alpha beta", limit=2)],
+        EmbeddingField.garbage_collect(TrEmb),
+        EmbeddingField.sweep_stale_tempfiles(TrEmb),
+        TrEmb.query.get(name="e2").delete(),
     ]
 
 

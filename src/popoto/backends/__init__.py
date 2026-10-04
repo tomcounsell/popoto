@@ -464,6 +464,22 @@ STATIC_FIELD_KINDS: dict[str, Optional[frozenset[str]]] = {
     ),
 }
 
+#: M2b (search, plan §5 M2): the BM25 postings, the pgvector column and the
+#: exact membership tables (:mod:`popoto.backends.postgres.search`), plus
+#: ``ContentField`` as a ``text`` column -- the M2b gate files' models take
+#: their text from one (pulled forward from M5).
+SEARCH_FIELD_KINDS: frozenset[str] = frozenset(
+    {
+        "BM25Field",
+        "EmbeddingField",
+        "ExistenceFilter",
+        "FrequencySketch",
+        "ContentField",
+    }
+)
+STATIC_FIELD_KINDS["postgres"] = (
+    STATIC_FIELD_KINDS["postgres"] or frozenset()
+) | SEARCH_FIELD_KINDS
 #: Popoto mixins a Postgres model may not declare yet, with the milestone that
 #: brings each. ``PredictionLedgerMixin`` keeps its ledger in Redis structures
 #: (``RESOLVE_PREDICTION_LUA``); on a Postgres model ``record_prediction`` and
@@ -532,6 +548,15 @@ def _field_spec(name: str, field: Any) -> FieldSpec:
         value = getattr(field, attr, None)
         if value not in (None, (), [], False):
             options[attr] = value
+    if base.__name__ in SEARCH_FIELD_KINDS:
+        # The search compilers (postgres/search.py) read the live field at
+        # first use -- its source, provider dimensions, fingerprint_fn --
+        # rather than a snapshot from class creation, when a provider that
+        # popoto.configure() sets later is not known yet.
+        options["field_ref"] = field
+        source = getattr(field, "source", None)
+        if source:
+            options["source"] = source
     for attr in ("decay_rate", "base_score_field", "initial_confidence"):
         # M2a memory fields: what the Postgres ranking and confidence SQL
         # needs from the field definition (.postgres.memory).

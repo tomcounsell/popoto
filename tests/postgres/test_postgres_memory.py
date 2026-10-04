@@ -31,6 +31,7 @@ from popoto.backends import (
     get_backend,
 )
 from popoto.backends.postgres import memory
+from popoto.fields.bm25_field import BM25Field
 from popoto.backends.postgres.memory import decay_score_sql, lua_tostring
 
 # The Redis and Valkey CI jobs do not install the postgres extra.
@@ -83,6 +84,17 @@ def _statements(monkeypatch, backend):
 
     monkeypatch.setattr(backend, "_run", run)
     return seen
+
+
+LOCK = "SELECT pg_advisory_xact_lock(hashtextextended("
+
+
+def _body(sql):
+    """A statement without its leading record-key lock (plan §6: every
+    writer of a record row takes that lock first, in the same message)."""
+    if sql.startswith(LOCK) or sql.startswith("SELECT count(pg_advisory_xact_lock("):
+        return sql.split("; ", 1)[1]
+    return sql
 
 
 def _backdate(backend, record, ts):
@@ -170,14 +182,16 @@ def test_top_by_decay_is_rank_load_and_stage(pg, monkeypatch):
     PgMem.create(name="a", agent="x")
     seen = _statements(monkeypatch, pg)
     assert [r.name for r in PgMem.query.filter(agent="x").top_by_decay(n=5)] == ["a"]
-    assert [s.split()[0] for s in seen] == ["SELECT", "SELECT", "WITH"]
+    assert [_body(s).split()[0] for s in seen] == ["SELECT", "SELECT", "WITH"]
+    assert seen[2].startswith(LOCK)  # one record staged: one key lock
 
 
 def test_update_confidence_is_one_update_returning(pg, monkeypatch):
     record = PgMem.create(name="c", agent="x")
     seen = _statements(monkeypatch, pg)
     assert ConfidenceField.update_confidence(record, "certainty", 0.9) == 0.7
-    assert len(seen) == 1 and seen[0].startswith("UPDATE") and "RETURNING" in seen[0]
+    assert len(seen) == 1 and seen[0].startswith(LOCK)
+    assert _body(seen[0]).startswith("UPDATE") and "RETURNING" in seen[0]
 
 
 def test_rank_decayed_refusals(pg):
@@ -285,8 +299,11 @@ def test_on_context_used_locks_rows_in_pk_order_first(pg, monkeypatch):
     ObservationProtocol.on_context_used(
         records, {r.db_key.redis_key: "acted" for r in records}
     )
+    assert seen[0].startswith("SELECT count(pg_advisory_xact_lock(")
     assert "FOR UPDATE" in seen[0] and 'ORDER BY "_pk" COLLATE "C"' in seen[0]
-    touched = [s for s in seen if s.startswith("UPDATE") and '"relevance" =' in s]
+    touched = [
+        s for s in seen if _body(s).startswith("UPDATE") and '"relevance" =' in s
+    ]
     assert len(touched) == 3
 
 
@@ -339,6 +356,105 @@ def test_crossing_batches_do_not_deadlock(pg):
     assert errors == []
     data = ConfidenceField.get_confidence_data(records[0], "certainty")
     assert data["evidence_count"] == 20
+
+
+class PgSearchMem(popoto.Model):
+    """A memory model whose save rewrites companion rows (BM25 postings), the
+    shape #774's record-key lock was added for."""
+
+    name = popoto.UniqueKeyField()
+    text = popoto.StringField(default="")
+    content = BM25Field(source="text")
+    certainty = ConfidenceField()
+
+
+def _confidence_then_save_vs_save(pg, mode, saves_only=None, monkeypatch=None):
+    """#774 review, blocker 2: a caller's transaction row-locks X
+    (``update_confidence``) and then saves X, while a plain save of X runs
+    (``mode="auto"``, with the internal retry off so a deadlock surfaces) or
+    a save of X in its own ``transaction()`` (``mode="tx"``). Returns each
+    side's outcome."""
+    from popoto.fields.constants import Defaults
+
+    PgSearchMem.create(name="x", text="alpha beta")
+    first = PgSearchMem.query.get(name="x")
+    second = PgSearchMem.query.get(name="x")
+    if monkeypatch is not None:
+        monkeypatch.setattr(Defaults, "PG_TRANSACTION_RETRIES", 0)
+    if saves_only is not None:
+        # The control: the record-key lock on saves only (the 2d95561a code),
+        # so the confidence update takes the row without the key lock.
+        real = pg._record_locked
+
+        def locked(ts, pks, sql, params):
+            if "INSERT INTO" in sql:
+                return real(ts, pks, sql, params)
+            return sql, list(params)
+
+        monkeypatch.setattr(pg, "_record_locked", locked)
+    holding = threading.Event()
+    results = {}
+
+    def caller():
+        try:
+            with pg.transaction() as tx:
+                ConfidenceField.update_confidence(first, "certainty", 0.9, pipeline=tx)
+                holding.set()
+                time.sleep(0.5)  # the other save now waits on X
+                first.text = "kappa lambda"
+                first.save(pipeline=tx)
+            results["caller"] = "ok"
+        except Exception as exc:  # noqa: BLE001 - asserted on below
+            holding.set()
+            results["caller"] = exc
+
+    def other():
+        holding.wait(5)
+        time.sleep(0.1)
+        try:
+            second.text = "sigma tau"
+            if mode == "tx":
+                with pg.transaction() as tx:
+                    second.save(pipeline=tx)
+            else:
+                second.save()
+            results["other"] = "ok"
+        except Exception as exc:  # noqa: BLE001 - asserted on below
+            results["other"] = exc
+
+    threads = [threading.Thread(target=caller), threading.Thread(target=other)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    return results
+
+
+@pytest.mark.parametrize("mode", ["auto", "tx"])
+def test_a_confidence_update_then_save_cannot_deadlock_a_save(pg, monkeypatch, mode):
+    """Every writer of a record row takes the record-key lock first (plan
+    §6), so the caller's transaction already holds X's key lock when it
+    saves, and the other save queues behind it instead of crossing it."""
+    results = _confidence_then_save_vs_save(pg, mode, monkeypatch=monkeypatch)
+    assert results == {"caller": "ok", "other": "ok"}
+    record = PgSearchMem.query.get(name="x")
+    assert record.text == "sigma tau"  # the queued save ran second
+    assert (
+        ConfidenceField.get_confidence_data(record, "certainty")["evidence_count"] == 1
+    )
+
+
+@pytest.mark.parametrize("mode", ["auto", "tx"])
+def test_the_same_race_deadlocks_with_the_key_lock_on_saves_only(pg, monkeypatch, mode):
+    """The control: with the key lock on saves only, the same interleaving
+    deadlocks -- so the test above can tell the two lock orders apart."""
+    results = _confidence_then_save_vs_save(
+        pg, mode, saves_only=True, monkeypatch=monkeypatch
+    )
+    errors = [r for r in results.values() if r != "ok"]
+    assert len(errors) == 1, results
+    assert isinstance(errors[0], BackendRetryableError)
+    assert isinstance(errors[0].__cause__, psycopg.errors.DeadlockDetected)
 
 
 def test_a_unit_of_work_carries_the_confidence_update(pg):

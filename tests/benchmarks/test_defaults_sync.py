@@ -223,6 +223,15 @@ class TestDefaultsSync:
             "PG_STATEMENT_TIMEOUT_MS",
             "PG_OUTAGE_LOG_WINDOW_SECONDS",
             "PG_TRANSACTION_RETRIES",
+            # Postgres search constants (#759 M2b): read from Defaults when a
+            # search or save runs (tests monkeypatch them to force the HNSW
+            # path or a short backfill budget), and they shape a Postgres
+            # query plan or a latency bound, not a Redis-side retrieval score.
+            "PG_VECTOR_EXACT_MAX",
+            "PG_HNSW_EF_SEARCH",
+            "PG_RECALL_ARM_DEPTH",
+            "PG_BACKFILL_BATCH",
+            "PG_BACKFILL_BUDGET_SECONDS",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs
