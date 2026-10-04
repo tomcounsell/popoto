@@ -270,6 +270,20 @@ def compile_search(
             if layout.hnsw:
                 body = f"USING hnsw ({quote_ident(layout.vec)} vector_cosine_ops)"
                 indexes.append((index_name("hnsw", name), body, False))
+            # The backfill's probe runs after every embedding save, so it must
+            # not scan the table: rows with no vector sit in a partial index
+            # (normally empty), and "made by another model" is two range
+            # scans of the model column's B-tree.
+            indexes.append(
+                (
+                    index_name("unembedded", name),
+                    f'("_pk") WHERE {quote_ident(layout.vec)} IS NULL',
+                    False,
+                )
+            )
+            indexes.append(
+                (index_name("model", name), f"({quote_ident(layout.model)})", False)
+            )
             embedding[name] = layout
         elif fs.kind == "ExistenceFilter":
             tok_name, tok = companion(f"{name}__tok")
@@ -313,6 +327,15 @@ def compile_search(
     )
 
 
+VECTOR_EXTENSION_SQL = (
+    "SELECT n.nspname, n.nspname = ANY(current_schemas(false)) "
+    "FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace "
+    "WHERE e.extname = 'vector'"
+)
+"""Where pgvector is installed, and whether that schema is on the
+``search_path``; no row when it is not installed."""
+
+
 def require_extensions(conn: Any, ts: TableSpec) -> None:
     """Raise :class:`BackendCapabilityError` when ``ts`` needs pgvector and
     the database does not have it (plan §3, "Extensions and capabilities").
@@ -325,11 +348,7 @@ def require_extensions(conn: Any, ts: TableSpec) -> None:
     layout = ts.search
     if layout is None or not layout.embedding:
         return
-    row = conn.execute(
-        "SELECT n.nspname, n.nspname = ANY(current_schemas(false)) "
-        "FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace "
-        "WHERE e.extname = 'vector'"
-    ).fetchone()
+    row = conn.execute(VECTOR_EXTENSION_SQL).fetchone()
     fields = ", ".join(sorted(layout.embedding))
     if row is None:
         raise BackendCapabilityError(
@@ -350,7 +369,7 @@ def require_extensions(conn: Any, ts: TableSpec) -> None:
 # -- helpers ------------------------------------------------------------------
 
 
-def _vector_literal(vector: Sequence[float]) -> str:
+def _vector_literal(vector: Any) -> str:
     """pgvector's text form, with each value rounded to float32 first -- the
     precision Redis's ``.npy`` files store, and pgvector's own."""
     import numpy as np
@@ -402,7 +421,9 @@ def _kinds(spec: ModelSpec) -> dict[str, str]:
     return {name: fs.kind for name, fs in spec.fields.items()}
 
 
-def _cond_text(ts: TableSpec, spec: ModelSpec, where: Optional[Predicate]) -> tuple:
+def _cond_text(
+    ts: TableSpec, spec: ModelSpec, where: Optional[Predicate]
+) -> tuple[str, list[Any]]:
     """``(sql, params)`` for a predicate on the record table, unqualified
     columns, ``("TRUE", [])`` for none."""
     from .plan import render_where
@@ -557,7 +578,7 @@ def prepare_save(
     return SavePlan(ctes=ctes, params=params, after=after)
 
 
-def _embed_for_save(obj: Any, emb: EmbeddingLayout) -> Optional[tuple]:
+def _embed_for_save(obj: Any, emb: EmbeddingLayout) -> Optional[tuple[Any, int]]:
     """``EmbeddingField.on_save``'s decisions, minus the ``.npy`` file:
     ``(vector, dims)``, or ``None`` when it would skip."""
     field_ref = emb.field_ref
@@ -644,13 +665,16 @@ def backfill(
         )
         cond, cond_params = _cond_text(ts, spec, scope)
         src = quote_ident(source)
+        mcol = quote_ident(emb.model)
+        # "IS DISTINCT FROM" spelled as what the two indexes serve: the
+        # partial index (no vector), IS NULL and two range scans (the model).
         rows, _ = backend._run(
             f'SELECT "_pk", {src}::text FROM {ts.qualified} WHERE '
-            f"({quote_ident(emb.vec)} IS NULL OR "
-            f"{quote_ident(emb.model)} IS DISTINCT FROM %s) "
+            f"({quote_ident(emb.vec)} IS NULL OR {mcol} IS NULL OR {mcol} < %s "
+            f"OR {mcol} > %s) "
             f"AND {src} IS NOT NULL AND {src}::text <> '' AND \"_pk\" <> %s "
             f'AND {cond} ORDER BY "_pk" COLLATE "C" LIMIT %s',
-            [model, pk] + cond_params + [batch],
+            [model, model, pk] + cond_params + [batch],
         )
         if not rows:
             return 0
@@ -1046,7 +1070,9 @@ class SearchMixin:
             "SET LOCAL hnsw.iterative_scan = relaxed_order; "
         )
 
-    def load_vectors(self, spec: ModelSpec, field: str) -> tuple[list[str], list]:
+    def load_vectors(
+        self, spec: ModelSpec, field: str
+    ) -> tuple[list[str], list[list[float]]]:
         """Every stored vector of ``field``: ``(keys, vectors)`` in ``_pk``
         bytewise order (``EmbeddingField.load_embeddings`` on Postgres)."""
         ts, emb = self._embedding(spec, field)

@@ -1534,7 +1534,7 @@ class QueryBuilder:
             # rather than loading every vector into numpy.
             scored = get_backend(model_class).vector_search(
                 model_class._meta.spec,
-                embedding_field.name,
+                embedding_field.name,  # type: ignore[attr-defined]
                 query_vectors[0],
                 limit=limit,
             )
@@ -3472,14 +3472,14 @@ class Query:
         query_text: str,
         *,
         scope: Any = None,
-        filters: Optional[dict] = None,
+        filters: Optional[dict[str, Any]] = None,
         tags: Any = None,
         tags_mode: str = "any",
-        weights: Optional[dict] = None,
+        weights: Optional[dict[str, float]] = None,
         limit: int = 10,
         bm25_stats: str = "scope",
         k: int = 60,
-    ) -> list:
+    ) -> list[tuple[Any, float]]:
         """``[PG-only]`` Hybrid recall: BM25, vector and decay arms fused by
         weighted RRF, ``score = Σ weight / (k + rank)``, returning
         ``[(instance, score)]`` best first (ties by key, bytewise).

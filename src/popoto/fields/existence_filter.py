@@ -65,6 +65,7 @@ Example:
 
 import logging
 import math
+from typing import Any
 
 import redis
 
@@ -270,7 +271,7 @@ return min_count or 0
 """
 
 
-def _search_backend(model_class):
+def _search_backend(model_class: Any) -> Any:
     """The model's backend when it is not Redis (#759 M2b), else ``None``.
 
     On Postgres both fields are exact tables (plan §1.1): ``might_exist`` has
@@ -283,7 +284,7 @@ def _search_backend(model_class):
     return None if backend.name == "redis" else backend
 
 
-def _query_tokens(fingerprint):
+def _query_tokens(fingerprint: Any) -> list[str]:
     """The tokens a query checks: ``tokenize``, else the raw lowercased
     string -- what ``on_save`` stores as its fallback."""
     query_str = str(fingerprint)
@@ -501,7 +502,7 @@ class ExistenceFilter(Field):
         if backend is not None:
             return backend.membership_query(
                 model_class._meta.spec,
-                self.name,
+                self.name,  # type: ignore[attr-defined]
                 _query_tokens(fingerprint),
                 mode="any",
             )
@@ -556,7 +557,7 @@ class ExistenceFilter(Field):
             # Postgres has no bit array. Report the fill a bloom of these
             # parameters would have after the distinct tokens actually stored,
             # 1 - e^(-k n / m): the same capacity signal, 0.0 when empty.
-            n = backend.membership_size(model_class._meta.spec, self.name)
+            n = backend.membership_size(model_class._meta.spec, self.name)  # type: ignore[attr-defined]
             return 1.0 - math.exp(-k * n / m) if m > 0 else 0.0
         key = f"$EF:{model_class.__name__}:{self.name}"
         set_bits = get_REDIS_DB().bitcount(key)
@@ -615,7 +616,7 @@ class ExistenceFilter(Field):
         if backend is not None:
             # Postgres: one exact lookup for every token.
             raw_results = backend.membership_query(
-                model_class._meta.spec, self.name, all_tokens, mode="each"
+                model_class._meta.spec, self.name, all_tokens, mode="each"  # type: ignore[attr-defined]
             )
         else:
             # Single Lua EVAL for all tokens
@@ -826,7 +827,7 @@ class FrequencySketch(Field):
         if backend is not None:
             counts = backend.membership_query(
                 model_class._meta.spec,
-                self.name,
+                self.name,  # type: ignore[attr-defined]
                 _query_tokens(fingerprint),
                 mode="count",
             )

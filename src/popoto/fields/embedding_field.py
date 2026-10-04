@@ -210,7 +210,7 @@ def _should_version_check(model_name: str) -> bool:
     return False
 
 
-def _search_backend(model_class):
+def _search_backend(model_class: Any) -> Any:
     """The model's backend when it is not Redis (#759 M2b), else ``None``.
 
     On Postgres the vector is a ``vector(d)`` column written with the record
@@ -889,7 +889,9 @@ class EmbeddingField(Field):
         return matrix, keys
 
     @classmethod
-    def _load_embeddings_from(cls, backend, model_class) -> tuple:
+    def _load_embeddings_from(
+        cls, backend: Any, model_class: Any
+    ) -> tuple[Any, list[str]]:
         """``load_embeddings`` on Postgres (#759 M2b): the vectors come from
         the ``vector(d)`` column, normalized exactly as the ``.npy`` path
         normalizes them, keys in ``_pk`` bytewise order. Not cached: the

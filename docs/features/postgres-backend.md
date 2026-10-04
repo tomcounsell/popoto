@@ -5,12 +5,14 @@ Popoto v2 keeps one model API with two native storage backends behind it
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.
 
-This page covers the first Postgres milestones: **plain models** (M1) and
-**plain-field breadth** (M1.1). That means records, queries, `Q` objects,
-ordering, counting and atomic increments for the field types listed below,
-including indexed, unique, tag, relationship and collection fields. Models that use other fields stay on Redis
-until their milestone. Popoto refuses them when you declare them, so they
-never fail halfway through.
+This page covers the first Postgres milestones: **plain models** (M1),
+**plain-field breadth** (M1.1) and **search** (M2b). That means records,
+queries, `Q` objects, ordering, counting and atomic increments for the field
+types listed below, including indexed, unique, tag, relationship and
+collection fields, plus BM25 keyword search, pgvector embeddings, exact
+membership filters, fusion and `recall()`. Models that use other fields stay
+on Redis until their milestone. Popoto refuses them when you declare them, so
+they never fail halfway through.
 
 ## Selecting the backend
 
@@ -78,6 +80,10 @@ first query does not.
 | `ListField(max_length=N)` (M1.1) | `jsonb`, each element type-tagged as `push()` writes it on Redis | — |
 | `BytesField` / `DateField` / `TimeField` (M1.1) | `bytea` / `date` / `time` | — |
 | `Meta.indexes` (M1.1) | — | a composite B-tree per entry; `UNIQUE` when `is_unique` |
+| `BM25Field(source=…)` (M2b) | no column of its own: postings `<table>__<f>__post (scope, term, _pk, tf)` and lengths `<table>__<f>__dl (_pk, scope, len)` | postings `PRIMARY KEY (scope, term, _pk)` plus a B-tree on `_pk`; lengths `(scope) INCLUDE (len)` |
+| `EmbeddingField(source=…)` (M2b) | `<f> bigint` (the dimension count Redis stores), `<f>__vec vector(d)`, `<f>__model text`, `<f>__hash text` | HNSW `vector_cosine_ops`; a partial B-tree on rows with no vector, and a B-tree on `<f>__model` (the backfill's probe) |
+| `ExistenceFilter` / `FrequencySketch` (M2b) | no column: `<table>__<f>__tok (token, _pk)` / `<table>__<f>__cnt (token, count)` | `PRIMARY KEY (token, _pk)` / `PRIMARY KEY (token)` |
+| `ContentField` (M2b, pulled forward from M5) | `text` holding the content itself (no `$CF:` reference, no file) | — |
 
 Every table also has:
 
@@ -86,6 +92,13 @@ Every table also has:
   identical on both backends.
 - `_created_at` and `_updated_at` (`timestamptz`), which the engine maintains.
   They are Postgres-only.
+- `_migrated_from jsonb` and `_estimated_fields text[]` (M2b), the import
+  contract for the one-off Redis-to-Postgres copy (#756). An importer records
+  where a row came from and which values it inferred. Every native write
+  (`save`, `atomic_increment`, `push`) sets `_migrated_from` to `NULL`, so a
+  re-load can guard with `WHERE _migrated_from IS NOT NULL` and never
+  overwrite a row popoto has written since. The engine never touches
+  `_estimated_fields`.
 
 `DatetimeField` round-trips the way it does on Redis (#521). An aware value
 comes back with the same UTC offset as a fixed-offset `timezone`. A naive
@@ -114,8 +127,9 @@ tuple is checked in `pre_save` by a read through the backend, with the same
 authority behind it: a write that races past the read, or two conflicting
 saves inside one `transaction()`, gets the same text from the index.
 
-Fields that arrive later: the memory fields (M2–M4); `GeoField`, `Meta.ttl`
-and the rest (M5); an `IndexedField` on a collection type is refused. A model
+Fields that arrive later: the rest of the memory fields (decay, confidence,
+validity, co-occurrence; M2–M4); `GeoField`, `Meta.ttl` and the rest (M5); an
+`IndexedField` on a collection type is refused. A model
 that uses one of them raises
 `BackendCapabilityError` when you declare it with `Meta.backend =
 "postgres"`, or on first use when it takes the process default.
@@ -145,6 +159,162 @@ under `pg_advisory_xact_lock`. No manual step is needed. Anything else raises
 column, a key change, a schema written by a newer popoto, or a table popoto
 did not create. Set `POPOTO_SCHEMA_AUTO=0` to turn off even the automatic
 create and additive changes.
+
+## Search (M2b)
+
+A model's search fields keep their state in the same database as its
+records, written by the record's own `INSERT … ON CONFLICT` statement as
+data-modifying CTEs: one round trip, one transaction. A delete cascades to
+the postings and the token rows. Nothing touches Redis or the filesystem.
+
+```python
+class Memory(popoto.Model):
+    memory_id = popoto.AutoKeyField()
+    project_key = popoto.Field(type=str)
+    relevance = popoto.SortedField(type=float, partition_by="project_key")
+    content = popoto.StringField(default="")
+    lexical = BM25Field(source="content")
+    embedding = EmbeddingField(source="content")     # provider: 1536 dimensions
+    bloom = ExistenceFilter(fingerprint_fn=lambda m: m.content)
+    seen = FrequencySketch(fingerprint_fn=lambda m: m.content)
+
+    class Meta:
+        backend = "postgres"
+```
+
+compiles to (beside the record table's own columns and indexes):
+
+```sql
+"embedding__vec" vector(1536), "embedding__model" text, "embedding__hash" text
+CREATE INDEX "memory__hnsw__embedding__idx" ON "popoto"."memory"
+    USING hnsw ("embedding__vec" vector_cosine_ops);
+CREATE TABLE "popoto"."memory__lexical__post" (
+  "scope" text NOT NULL, "term" text NOT NULL,
+  "_pk" text NOT NULL REFERENCES "popoto"."memory" ("_pk") ON DELETE CASCADE,
+  "tf" integer NOT NULL, PRIMARY KEY ("scope", "term", "_pk"));
+CREATE TABLE "popoto"."memory__lexical__dl" (
+  "_pk" text PRIMARY KEY REFERENCES "popoto"."memory" ("_pk") ON DELETE CASCADE,
+  "scope" text NOT NULL, "len" integer NOT NULL);
+CREATE TABLE "popoto"."memory__bloom__tok" (
+  "token" text NOT NULL,
+  "_pk" text NOT NULL REFERENCES "popoto"."memory" ("_pk") ON DELETE CASCADE,
+  PRIMARY KEY ("token", "_pk"));
+CREATE TABLE "popoto"."memory__seen__cnt" (
+  "token" text PRIMARY KEY, "count" bigint NOT NULL);
+```
+
+`tests/postgres/test_postgres_search.py::test_compiled_search_ddl_is_pinned`
+pins the full statement list.
+
+**The scope.** A model's scope is the `partition_by` of its
+`DecayingSortedField` (Valor's `project_key`), else of its first partitioned
+`SortedField`. With neither, every record is in scope `''`. A `NULL` scope
+column is scope `''` too, so it is never dropped. The scope leads the
+postings key. A save that changes a scope column, including
+`save(update_fields=["project_key"])`, moves the record's postings in the
+same statement.
+
+### BM25
+
+The tokens come from popoto's own tokenizer, the one Redis uses; Postgres
+text search is never involved. `BM25Field.search` computes BM25_SEARCH_LUA's
+formula operation for operation, in double precision:
+`idf = ln((N - df + 0.5) / (df + 0.5) + 1)` and
+`tf · (k1 + 1) / (tf + k1 · (1 - b + b · dl / avgdl))`, summed over the query
+terms in query order, with `k1 = 1.2` and `b = 0.75`. `N`, `avgdl` and `df`
+are **corpus-wide**, as on Redis. Results come back in the same order (ties
+by key, bytewise) and with Lua's `%.14g` score representation. The
+statistics are counted live from the document-length table, so there is no
+running `avgdl` to drift and `recompute_stats` has nothing to do.
+`get_idf`, `filter_selective_tokens` and `Query.keyword_search` follow.
+`BM25Field.search(allowed_keys=)` keeps only the best
+`max(limit, SCOPED_SEARCH_FETCH_CAP)` records overall, which is the window
+Redis's widening loop reaches before it stops.
+
+### Embeddings
+
+`EmbeddingField` needs the **pgvector** extension. popoto never creates or
+drops an extension, so run `CREATE EXTENSION vector` in the database (as a
+role allowed to). Its schema must be on the connection's `search_path`; the
+default, `public`, is. A model with an `EmbeddingField` raises
+`BackendCapabilityError` naming the fix on its first use when either is
+missing. The `pgvector/pgvector:pg18` image ships the extension.
+
+The dimension `d` is read from the field's provider at the model's first
+use. Configure the provider (`popoto.configure`) before then. With no
+provider the column is an unconstrained `vector` with no HNSW index, and
+every search is exact.
+
+A save embeds the source text exactly as `on_save` does on Redis: a provider
+failure raises `RuntimeError` and nothing is written. The vector is stored
+as float32, the precision of Redis's `.npy` files. Reads that hydrate records
+never fetch it.
+
+**The vector arm** (`_get_vector_scores`, behind `ContextAssembler`'s hybrid
+path) returns cosine similarity `1 - (v <=> q)`, positive only, as Redis's
+numpy path does. While at most `Defaults.PG_VECTOR_EXACT_MAX` (5,000) rows in
+scope hold a vector, it scans them exactly, ordering by `(v <=> q) + 0`,
+which no index can serve. Above that it uses the HNSW index with
+`SET LOCAL hnsw.ef_search = Defaults.PG_HNSW_EF_SEARCH` and
+`hnsw.iterative_scan = relaxed_order`. When HNSW returns fewer rows than
+`min(limit, rows with a vector)`, the **recall guard** re-runs the arm
+exactly, so a pathological query costs latency rather than coming back empty.
+`EmbeddingField.load_embeddings` reads the column (normalized as before, in
+`_pk` order). `garbage_collect` and `sweep_stale_tempfiles` return `0` and
+touch no file: the vector goes with its row.
+
+**Backfill.** After a save whose own embedding succeeded, the engine embeds
+up to `Defaults.PG_BACKFILL_BATCH` (4) rows of the same scope that have no
+vector, or whose vector another model made. It runs after the commit,
+outside any `transaction()`, and stops at
+`Defaults.PG_BACKFILL_BUDGET_SECONDS` (1 s) of wall clock. A provider call
+that outlives the budget is abandoned, so a slow provider cannot hold
+`save()` past it. A row is written only while its source still hashes to the
+text that was embedded, so a concurrent edit is never given a stale vector.
+Errors are logged and swallowed.
+
+### Membership
+
+`ExistenceFilter` and `FrequencySketch` are **exact** on Postgres (a
+documented strictness): `might_exist` has no false positives, and
+`get_frequency` returns the true count. The token table holds each live
+record's tokens and forgets a record when it is deleted. The count table
+counts saves and never decrements, as the sketch never does.
+`fill_ratio` reports the fill a bloom of the field's parameters would have
+after the distinct tokens stored, `1 - e^(-k·n/m)`.
+
+### Fusion and `recall()`
+
+`Query.fuse` is unchanged Python RRF. On Postgres the builder's filters
+(including plain fields) scope the fused set through one `SELECT`, and the
+survivors hydrate through one `load`.
+
+`Query.recall()` is new and Postgres-only (`[PG-only]`; on a Redis-bound
+model it raises `BackendCapabilityError`):
+
+```python
+hits = Memory.query.recall(
+    "kubernetes upgrade",
+    scope="valor",                       # the partition_by value
+    filters={"agent_id": "a1"},          # KeyField / IndexedField equality
+    tags=["ops"], tags_mode="any",       # the TagField: && ("any") or @> ("all")
+    weights={"bm25": 1.0, "vector": 0.4},
+    limit=10,
+)
+for memory, score in hits: ...
+```
+
+The BM25 and vector arms rank `max(limit, Defaults.PG_RECALL_ARM_DEPTH)`
+deep and are fused by weighted RRF, `Σ w / (60 + rank)`. One SQL statement
+does all of it and returns the fused records' rows. The vector arm chooses
+between exact and HNSW, and runs the recall guard, inside that statement.
+Each branch is gated by a one-time filter on the scope's vector count. Every
+scoping argument is optional, and they compose. BM25's statistics are
+**per scope** by default (`bm25_stats="scope"`): on a shared database, one
+agent's corpus must not skew another's IDF. `bm25_stats="corpus"` uses the
+corpus-wide statistics `BM25Field.search` uses. A model with a
+`DecayingSortedField` adds a third arm from `rank_decayed` when its backend
+provides it.
 
 ## Topology and the outage contract
 
@@ -290,6 +460,15 @@ cast to the column's type.
 | `push()` on a capped `ListField` whose record was deleted (M1.1) | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
 | `load_raw_hash`, `idle_seconds`, `Query.keys(catchall=/clean=)` | Redis debug and inspection APIs | raise `BackendCapabilityError` (`idle_seconds` arrives in M4) |
 | `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` | run the sync call in a worker thread (the async driver arrives in M5) |
+| `ExistenceFilter.might_exist` (M2b) | a bloom filter: false positives are possible, and a deleted record stays "seen" | exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: `test_existence_filter.py::TestMembershipExactness` |
+| `FrequencySketch.get_frequency` (M2b) | a count-min sketch: never under, may be over | the exact count of saves (never decremented, like the sketch). Pinned: same class |
+| `ExistenceFilter.fill_ratio` (M2b) | the fraction of set bits | an estimate, `1 - e^(-k·n/m)` for the `n` distinct tokens stored |
+| `save(update_fields=[…])` naming a `BM25Field`'s **source**, or only a **scope** column (M2b) | only the listed fields' hooks run, so the BM25 index keeps the old text or scope | re-indexes on the source; moves the postings on a scope change. Pinned: `tests/postgres/test_postgres_search.py` |
+| `EmbeddingField` storage (M2b) | a `.npy` file per record plus `_index.json`, and an in-process matrix cache | the `vector(d)` column. No file, no cache, and `garbage_collect` / `sweep_stale_tempfiles` return `0`. The tests that assert files are `redis_only` |
+| Vector-arm ties and precision (M2b) | equal similarities come back in directory-listing order; numpy float32 dot products | ties by key, bytewise; pgvector's `<=>`. Similarities agree to 1e-6, because both are float32 accumulations in a different order |
+| `ContentField` (M2b) | a `$CF:` reference in the hash, with the content in a file store | the content itself in a `text` column |
+| `BM25Field.recompute_stats` (M2b) | corrects the running `avgdl`'s floating drift | a no-op: `N` and `avgdl` are counted live |
+| The `$BM25:` / `$EF:` / `$FS:` keys (M2b) | the index, readable through the raw client | not used: postings, length and token tables. The tests that read the keys are `redis_only` |
 
 ## Performance (M1 exit criteria)
 
