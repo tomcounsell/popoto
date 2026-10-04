@@ -121,6 +121,35 @@ def test_chained_relationship_lookup_is_a_documented_divergence(
         ]
 
 
+class ParityStamp(popoto.Model):
+    code = popoto.KeyField()
+    at = popoto.IndexedField(type=datetime.datetime, null=True)
+    pair = popoto.TupleField(null=True)
+
+
+def test_indexed_pattern_lookup_on_a_non_text_column_is_a_documented_divergence(
+    backend_is_redis,
+):
+    """Redis matches ``__startswith`` against the canonical key rendering
+    (``…T12:00:00.000000Z``); Postgres against the column's text cast
+    (``… 12:00:00+00``). Pinned so neither changes silently."""
+    ParityStamp.create(code="s", at=datetime.datetime(2026, 1, 1, 12, 0))
+    found = [s.code for s in ParityStamp.query.filter(at__startswith="2026-01-01T")]
+    assert found == (["s"] if backend_is_redis else [])
+    found = [s.code for s in ParityStamp.query.filter(at__startswith="2026-01-01 ")]
+    assert found == ([] if backend_is_redis else ["s"])
+
+
+def test_collection_equality_is_a_documented_divergence(backend_is_redis):
+    """Redis compares a plain collection field by Python equality after
+    hydration, where a tuple never equals a list; Postgres compares the
+    stored JSON documents. Equal-typed values match on both."""
+    ParityStamp.create(code="s", pair=(1, "x"))
+    assert [s.code for s in ParityStamp.query.filter(pair=(1, "x"))] == ["s"]
+    by_list = [s.code for s in ParityStamp.query.filter(pair=[1, "x"])]
+    assert by_list == ([] if backend_is_redis else ["s"])
+
+
 def test_relationship_is_lazy_on_filter_and_eager_on_get(books):
     (lazy,) = ParityBook.query.filter(title="hobbit")
     assert lazy.author == "ParityAuthor:tolkien"
