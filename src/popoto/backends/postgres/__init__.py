@@ -49,6 +49,7 @@ from typing import Any, Iterator, Optional, Sequence, Union
 from ...fields.constants import Defaults
 from ..types import (
     BackendCapabilityError,
+    BackendRetryableError,
     BackendUnavailableError,
     Capabilities,
     Expiry,
@@ -153,6 +154,22 @@ def _rollback_errors(psycopg: Any) -> tuple[type[BaseException], ...]:
         errors.TransactionRollback,
         errors.SerializationFailure,
         errors.DeadlockDetected,
+    )
+
+
+def _retryable(exc: BaseException, attempts: int = 1) -> BackendRetryableError:
+    """The popoto type for a rolled-back transaction (plan §6, TD-2): a
+    deadlock (40P01) or serialization failure (40001, 40000) reaches the
+    caller as :class:`BackendRetryableError`, raised ``from`` the driver
+    error, never as raw psycopg (#759 M2a, review B1). 40003
+    (``StatementCompletionUnknown``) is deliberately not in
+    :func:`_rollback_errors`: the statement may have committed, so it follows
+    :meth:`PostgresBackend._may_retry_broken` (#769)."""
+    sqlstate = getattr(exc, "sqlstate", None) or "40000"
+    times = "" if attempts <= 1 else f" {attempts} times"
+    return BackendRetryableError(
+        f"rolled back by a concurrent transaction{times} "
+        f"(SQLSTATE {sqlstate}: {exc}); retry it"
     )
 
 
@@ -365,8 +382,11 @@ class PostgresBackend(PostgresMemoryOps):
             pool = _pool_for(self.dsn)
             with pool.connection() as conn:
                 yield conn
-        except _rollback_errors(psycopg):
-            raise
+        except _rollback_errors(psycopg) as exc:
+            # Raised by the block (a caller-owned ``transaction()``, including
+            # its COMMIT) or by DDL: the work was rolled back, not lost to an
+            # outage. Not retried here -- the caller owns the transaction.
+            raise _retryable(exc) from exc
         except psycopg.OperationalError as exc:
             raise self._fail(exc, write=write) from exc
 
@@ -396,8 +416,10 @@ class PostgresBackend(PostgresMemoryOps):
         if pg is not None:
             try:
                 cur = pg.conn.execute(sql, params)
-            except _rollback_errors(psycopg):
-                raise
+            except _rollback_errors(psycopg) as exc:
+                # The caller owns the transaction, so it decides whether to
+                # run it again: no internal retry, one popoto type.
+                raise _retryable(exc) from exc
             except psycopg.OperationalError as exc:
                 raise self._fail(exc, write=write) from exc
             rows = cur.fetchall() if cur.description else []
@@ -418,10 +440,10 @@ class PostgresBackend(PostgresMemoryOps):
                     rowcount = cur.rowcount
                 self._ok()
                 return rows, rowcount
-            except _rollback_errors(psycopg):
+            except _rollback_errors(psycopg) as exc:
                 attempt += 1
                 if attempt >= attempts:
-                    raise
+                    raise _retryable(exc, attempt) from exc
                 time.sleep(random.uniform(0.005, 0.05) * attempt)
             except psycopg.OperationalError as exc:
                 if not reconnected and self._may_retry_broken(conn, exc, write):
@@ -535,9 +557,13 @@ class PostgresBackend(PostgresMemoryOps):
     def transaction(self) -> Iterator[PostgresUnitOfWork]:
         """One ``READ COMMITTED`` transaction on one pooled connection: every
         write passed this unit of work (``pipeline=uow``) commits together or
-        rolls back together. Deadlock/serialization failures inside it are
-        re-raised for the caller to retry; single-statement writes outside a
-        unit of work are retried automatically."""
+        rolls back together. A deadlock or serialization failure inside it
+        (or at its COMMIT) rolls the whole unit back and raises
+        :class:`~popoto.backends.BackendRetryableError` at once -- it is not
+        retried internally, because only the caller can run its block again.
+        Single statements outside a unit of work are retried automatically
+        (``Defaults.PG_TRANSACTION_RETRIES``) and raise the same type once
+        the retries are spent."""
         with self._connection(write=True) as conn:
             with conn.transaction():
                 ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)

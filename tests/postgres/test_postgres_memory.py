@@ -454,3 +454,151 @@ def test_a_deadlocked_statement_is_retried_not_reported_as_an_outage(pg, monkeyp
     record.touch("relevance")
     assert raised, "the deadlock was never injected"
     assert pg.health.ok and pg.health.dropped_writes == 0
+
+
+# -- B1: a rolled-back transaction surfaces as BackendRetryableError ----------
+
+
+def _inject(monkeypatch, marker, error, calls):
+    """Make every statement containing ``marker`` raise ``error``."""
+    original = psycopg.Connection.execute
+
+    def failing(self, query, params=None, **kwargs):
+        if marker in str(query):
+            calls.append(query)
+            raise error("injected")
+        return original(self, query, params, **kwargs)
+
+    monkeypatch.setattr(psycopg.Connection, "execute", failing)
+
+
+def test_a_real_deadlock_in_a_caller_transaction_is_a_typed_error(pg):
+    """Review B1 on #773: the caller's ``transaction()`` updates B then A
+    while ``on_context_used`` locks A then B. A short ``deadlock_timeout``
+    in the caller's transaction makes its backend run the deadlock check
+    first, so it is the victim. It must see ``BackendRetryableError`` chained
+    from the driver's ``DeadlockDetected`` -- not raw psycopg -- and is not
+    retried internally, while ``on_context_used`` retries and lands."""
+    a = PgMem.create(name="A", agent="x")
+    b = PgMem.create(name="B", agent="x")
+    holding_b = threading.Event()
+    results = {}
+
+    def user_tx():
+        statements = []
+        try:
+            with pg.transaction() as tx:
+                tx.conn.execute("SET LOCAL deadlock_timeout = 50")
+                ConfidenceField.update_confidence(b, "certainty", 0.9, pipeline=tx)
+                statements.append("B")
+                holding_b.set()
+                # on_context_used now takes A and blocks on B
+                time.sleep(0.5)
+                ConfidenceField.update_confidence(a, "certainty", 0.9, pipeline=tx)
+                statements.append("A")
+            results["user"] = "ok"
+        except Exception as exc:  # noqa: BLE001 - asserted on below
+            results["user"] = exc
+        results["statements"] = statements
+
+    def observe():
+        holding_b.wait(5)
+        try:
+            ObservationProtocol.on_context_used(
+                [a, b], {a.db_key.redis_key: "acted", b.db_key.redis_key: "acted"}
+            )
+            results["observe"] = "ok"
+        except Exception as exc:  # noqa: BLE001 - asserted on below
+            results["observe"] = exc
+
+    threads = [threading.Thread(target=user_tx), threading.Thread(target=observe)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    err = results["user"]
+    assert isinstance(err, BackendRetryableError), repr(err)
+    assert isinstance(err.__cause__, psycopg.errors.DeadlockDetected)
+    assert "40P01" in str(err)
+    # the victim ran once and rolled back as a unit: B's update is gone
+    assert results["statements"] == ["B"]
+    assert results["observe"] == "ok"
+    for record in (a, b):
+        data = ConfidenceField.get_confidence_data(record, "certainty")
+        assert data["evidence_count"] == 1
+    assert pg.health.ok and pg.health.dropped_writes == 0
+
+
+@pytest.mark.parametrize(
+    "error", ["DeadlockDetected", "SerializationFailure", "TransactionRollback"]
+)
+def test_a_rollback_inside_a_caller_transaction_is_not_retried(pg, monkeypatch, error):
+    record = PgMem.create(name="s", agent="x")
+    calls = []
+    _inject(monkeypatch, '"certainty__n"', getattr(psycopg.errors, error), calls)
+    with pytest.raises(BackendRetryableError) as info:
+        with pg.transaction() as tx:
+            ConfidenceField.update_confidence(record, "certainty", 0.9, pipeline=tx)
+    assert type(info.value.__cause__) is getattr(psycopg.errors, error)
+    assert len(calls) == 1
+    assert pg.health.ok and pg.health.dropped_writes == 0
+
+
+def test_a_rollback_reported_at_commit_is_a_typed_error(pg, monkeypatch):
+    """A serialization failure can be reported by the COMMIT itself."""
+    original = psycopg.Transaction.__exit__
+
+    def failing_exit(self, exc_type, exc, tb):
+        result = original(self, exc_type, exc, tb)
+        if exc_type is None:
+            raise psycopg.errors.SerializationFailure("could not serialize")
+        return result
+
+    monkeypatch.setattr(psycopg.Transaction, "__exit__", failing_exit)
+    with pytest.raises(BackendRetryableError) as info:
+        with pg.transaction():
+            pass
+    assert isinstance(info.value.__cause__, psycopg.errors.SerializationFailure)
+
+
+def test_exhausted_statement_retries_raise_a_typed_error(pg, monkeypatch):
+    """Outside a unit of work a single statement keeps its bounded internal
+    retry; once spent, the caller gets ``BackendRetryableError``."""
+    from popoto.fields.constants import Defaults
+
+    record = PgMem.create(name="e", agent="x")
+    calls = []
+    _inject(monkeypatch, '"relevance" = ', psycopg.errors.DeadlockDetected, calls)
+    with pytest.raises(BackendRetryableError) as info:
+        record.touch("relevance")
+    assert isinstance(info.value.__cause__, psycopg.errors.DeadlockDetected)
+    assert len(calls) == Defaults.PG_TRANSACTION_RETRIES + 1
+    assert pg.health.ok and pg.health.dropped_writes == 0
+
+
+def test_unknown_completion_is_not_a_retryable_error(pg, monkeypatch):
+    """40003 (``StatementCompletionUnknown``) may have committed, so it is
+    not a rollback. On a live connection a write is neither retried nor
+    typed retryable: it is an outage with a dropped write (#769)."""
+    from popoto.backends import BackendUnavailableError
+    from popoto.backends.postgres import Health
+
+    record = PgMem.create(name="u3", agent="x")
+    # the session backend's health record is shared: count this test's
+    # dropped writes on a fresh one and leave the shared one untouched
+    monkeypatch.setattr(pg, "health", Health())
+    calls = []
+    _inject(
+        monkeypatch, '"relevance" = ', psycopg.errors.StatementCompletionUnknown, calls
+    )
+    with pytest.raises(BackendUnavailableError) as info:
+        record.touch("relevance")
+    assert not isinstance(info.value, BackendRetryableError)
+    assert len(calls) == 1
+    assert pg.health.dropped_writes == 1
+    calls.clear()
+    with pytest.raises(BackendUnavailableError) as info:
+        with pg.transaction() as tx:
+            record.touch("relevance", pipeline=tx)
+    assert not isinstance(info.value, BackendRetryableError)
+    assert len(calls) == 1

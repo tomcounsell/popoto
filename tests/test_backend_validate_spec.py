@@ -176,6 +176,32 @@ def test_postgres_accepts_the_m2a_memory_fields_and_refuses_later_ones():
     assert "rhythm (CyclicDecayField)" in message
 
 
+def test_postgres_refuses_a_prediction_ledger_at_bind():
+    """#773 review: the ledger lives in Redis structures until M5, so a
+    Postgres model declaring it is refused statically instead of letting
+    ``record_prediction`` / ``auto_resolve`` issue Redis commands for a
+    record Redis does not hold."""
+    from popoto.fields.prediction_ledger import PredictionLedgerMixin
+
+    class VsLedger(PredictionLedgerMixin, popoto.AccessTrackerMixin, popoto.Model):
+        name = popoto.KeyField()
+
+    assert "PredictionLedgerMixin" in VsLedger._meta.spec.mixins
+    validate_spec(VsLedger._meta.spec, "redis")
+    with pytest.raises(BackendCapabilityError) as info:
+        validate_spec(VsLedger._meta.spec, "postgres")
+    message = str(info.value)
+    assert "PredictionLedgerMixin is not supported yet" in message
+    assert "M5" in message and "AccessTrackerMixin" not in message
+    with pytest.raises(BackendCapabilityError, match="PredictionLedgerMixin"):
+
+        class VsLedgerPg(PredictionLedgerMixin, popoto.Model):
+            name = popoto.KeyField()
+
+            class Meta:
+                backend = "postgres"
+
+
 def test_postgres_refuses_hook_overriding_custom_fields_only():
     with pytest.raises(BackendCapabilityError) as info:
         validate_spec(VsCustom._meta.spec, "postgres")

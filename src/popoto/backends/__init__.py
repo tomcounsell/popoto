@@ -464,6 +464,16 @@ STATIC_FIELD_KINDS: dict[str, Optional[frozenset[str]]] = {
     ),
 }
 
+#: Popoto mixins a Postgres model may not declare yet, with the milestone that
+#: brings each. ``PredictionLedgerMixin`` keeps its ledger in Redis structures
+#: (``RESOLVE_PREDICTION_LUA``); on a Postgres model ``record_prediction`` and
+#: ``auto_resolve`` would issue Redis commands for a record Redis does not
+#: hold, so it is refused at bind rather than silently doing nothing
+#: (#773 review). Its companion table arrives in M5 (plan §5).
+_POSTGRES_REFUSED_MIXINS: dict[str, str] = {
+    "PredictionLedgerMixin": "M5",
+}
+
 #: ``type=`` values an ``IndexedField`` / ``UniqueField`` may carry on
 #: Postgres: the scalar column types (a B-tree on a collection is refused).
 _POSTGRES_INDEXED_TYPES: frozenset[str] = frozenset(
@@ -622,6 +632,12 @@ def validate_spec(spec: ModelSpec, backend_name: str) -> None:
             type_name = getattr(fs.py_type, "__name__", fs.py_type)
             problems.append(
                 f"{fs.name} (SortedField, type={type_name}) is not supported yet"
+            )
+    for mixin in sorted(spec.mixins):
+        if mixin in _POSTGRES_REFUSED_MIXINS:
+            problems.append(
+                f"{mixin} is not supported yet (it arrives in "
+                f"{_POSTGRES_REFUSED_MIXINS[mixin]})"
             )
     if spec.ttl is not None:
         problems.append("Meta.ttl (record expiry arrives in M5)")

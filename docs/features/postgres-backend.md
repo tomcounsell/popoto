@@ -134,6 +134,9 @@ above the seam as before; its priority tier is not stored (plan §5 M2).
 column is indexed: each index would make every `update_confidence` or
 `confirm_access` a non-HOT update, and nothing filters or orders by one alone.
 A partitioned `ConfidenceField` arrives in M3 and is refused until then.
+`PredictionLedgerMixin` keeps its ledger in Redis until M5 and is refused on a
+Postgres model too, rather than issuing Redis commands for a record Redis does
+not hold.
 
 Fields that arrive later: the remaining memory fields (M2b–M4); `GeoField`, `Meta.ttl`
 and the rest (M5); an `IndexedField` on a collection type is refused. A model
@@ -223,7 +226,27 @@ with backend.transaction() as uow:      # one READ COMMITTED transaction
 inside one `transaction()`. A unique conflict anywhere in the batch rolls back
 the whole batch. Deadlock and serialization failures are retried
 automatically, up to `Defaults.PG_TRANSACTION_RETRIES` times, for single
-statements. Inside a `transaction()` they propagate to the caller.
+statements, which then raise `popoto.backends.BackendRetryableError`. Inside a
+`transaction()` -- including at its commit -- the whole unit rolls back and
+`BackendRetryableError` is raised at once, chained from the driver error;
+popoto does not retry a block it does not own:
+
+```python
+from popoto.backends import BackendRetryableError
+
+for attempt in range(3):
+    try:
+        with backend.transaction() as uow:
+            ...
+        break
+    except BackendRetryableError:
+        continue  # rolled back by a concurrent transaction; safe to rerun
+```
+
+Before #759 M2a's patch these reached the caller as raw psycopg
+`DeadlockDetected` / `SerializationFailure`. A statement whose completion is
+unknown (SQLSTATE 40003) is not retryable -- it may have committed -- and is
+reported as `BackendUnavailableError`.
 
 ## Ranking and memory state (M2a)
 
@@ -420,7 +443,7 @@ cast to the column's type.
 | A NaN decay score in `composite_score` (M2a) | `rank_decayed` replies `nan` (`0 * inf`: a `-inf` clock with above-prior confidence) and the composite's `ZADD` refuses it: `ResponseError: value is not a valid float` | that arm scores 0 for the record, the value `ZUNIONSTORE` gives a NaN product. Pinned: `test_a_nan_decay_score_in_composite_is_a_documented_divergence` |
 | The confirmed access log (M2a) | a capped list of read timestamps (`$AT:…:access_log`) | not kept: `access_count` and `last_accessed` are. It is read only by `export_state`, which arrives with `transfer/` in M5 |
 | `update_confidence(…, pipeline=uow)` with a Postgres `transaction()` (M2a) | (a Redis pipeline queues the update and returns `None`) | the update runs inside the transaction, so its value is returned and the attribute synced |
-| A model with a `CyclicDecayField`, `ValidityField`, partitioned `ConfidenceField` or `CoOccurrenceField` (M2a) | supported | refused at declaration until M5, M3, M3 and M4 respectively, so `ObservationProtocol`'s cycle, supersession and auto-discharge effects have no Postgres model to act on yet |
+| A model with a `CyclicDecayField`, `ValidityField`, partitioned `ConfidenceField`, `CoOccurrenceField` or `PredictionLedgerMixin` (M2a) | supported | refused at declaration until M5, M3, M3, M4 and M5 respectively, so `ObservationProtocol`'s cycle, supersession, auto-discharge and ledger-resolution effects have no Postgres model to act on yet |
 
 ## Performance (M1 and M2a exit criteria)
 

@@ -111,6 +111,14 @@ class ParityMemory(AccessTrackerMixin, popoto.Model):
     certainty = ConfidenceField()
 
 
+class ParityTrackedConfident(AccessTrackerMixin, popoto.Model):
+    """Read tracking and a confidence but no decay clock: ``acted`` has
+    nothing to touch, so only the access and confidence effects apply."""
+
+    name = popoto.UniqueKeyField()
+    certainty = ConfidenceField()
+
+
 class ParityComposite(AccessTrackerMixin, WriteFilterMixin, popoto.Model):
     """``test_composite_score_query.CompositeMemory`` without the
     CoOccurrenceField (Postgres stores that from M4)."""
@@ -145,6 +153,7 @@ MODELS = [
     ParityTracked,
     ParityShortTTL,
     ParityMemory,
+    ParityTrackedConfident,
     ParityComposite,
     ParityScored,
     ParityPartComposite,
@@ -847,6 +856,58 @@ def test_every_outcome_has_its_effects(backend):
     assert contradicted.certainty == lua_tostring(lua_confidence([0.1])[0])
     for record in (used, dismissed, deferred):
         assert conf(record)["evidence_count"] == 0
+
+
+VERDICTS = ("acted", "used", "dismissed", "deferred", "contradicted")
+
+
+@pytest.mark.parametrize("model", [ParityTracked, ParityTrackedConfident])
+def test_outcomes_on_an_access_tracked_model_without_a_decay_field(backend, model):
+    """#773 review gap: a model with ``AccessTrackerMixin`` and no decay
+    field through ``on_context_used`` -- ``acted`` has no clock to touch, so
+    each outcome reduces to its access (and, where declared, confidence)
+    effect, and the proposals still resolve."""
+    records = {v: model.create(name=v) for v in VERDICTS}
+    for record in records.values():
+        record.on_read()
+        record.on_read()
+    ObservationProtocol.on_surfaced(list(records.values()))
+    ObservationProtocol.on_context_used(
+        list(records.values()),
+        {
+            records[v].db_key.redis_key: v
+            for v in ("acted", "used", "dismissed", "contradicted")
+        },
+    )
+    for verdict, record in records.items():
+        assert staged_reads(backend, record) == 0, verdict
+        confirmed = 2 if verdict in ("acted", "used") else 0
+        assert record.access_count == confirmed, verdict
+        assert (record.last_accessed is not None) == bool(confirmed), verdict
+        (fresh,) = model.query.filter(name=verdict).no_track().all()
+        assert fresh.access_count == confirmed, verdict
+    assert RecallProposal.get_pending(model) == []
+    if model is ParityTrackedConfident:
+
+        def conf(verdict):
+            return ConfidenceField.get_confidence_data(records[verdict], "certainty")
+
+        assert conf("acted")["corroborations"] == 1
+        assert records["acted"].certainty == lua_tostring(lua_confidence([0.9])[0])
+        assert conf("contradicted")["contradictions"] == 1
+        assert records["contradicted"].certainty == lua_tostring(
+            lua_confidence([0.1])[0]
+        )
+        for verdict in ("used", "dismissed", "deferred"):
+            assert conf(verdict)["evidence_count"] == 0, verdict
+    # a second round only confirms what was staged since
+    records["acted"].on_read()
+    ObservationProtocol.on_context_used(
+        [records["acted"], records["used"]],
+        {records["acted"].db_key.redis_key: "acted"},
+    )
+    assert records["acted"].access_count == 3
+    assert records["used"].access_count == 2
 
 
 def test_unsaved_instances_degrade_and_the_batch_still_lands(backend):

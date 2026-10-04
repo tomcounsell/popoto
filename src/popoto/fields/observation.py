@@ -279,9 +279,10 @@ def _on_context_used_on_backend(
 
 def _apply_outcome_on_backend(instance: Any, outcome: str, uow: Any) -> None:
     """The effects matrix for one instance on a non-Redis backend, inside
-    ``uow``. Fields a non-Redis model cannot declare yet (CyclicDecayField,
-    ValidityField) have no effect to apply; a PredictionLedgerMixin is
-    resolved as on Redis."""
+    ``uow``. Fields and mixins a non-Redis model cannot declare yet
+    (CyclicDecayField, ValidityField, PredictionLedgerMixin) are refused at
+    bind by ``validate_spec``, so they have no effect to apply here -- in
+    particular no Redis command is issued for a ledger (#773 review)."""
     from .confidence_field import ConfidenceField
     from .decaying_sorted_field import DecayingSortedField
 
@@ -319,15 +320,6 @@ def _apply_outcome_on_backend(instance: Any, outcome: str, uow: Any) -> None:
                     )
                 except (TypeError, ValueError):
                     pass
-
-    if outcome != "deferred":
-        from .prediction_ledger import PredictionLedgerMixin
-
-        if isinstance(instance, PredictionLedgerMixin):
-            try:
-                PredictionLedgerMixin.auto_resolve(instance, outcome)
-            except (TypeError, ValueError):
-                pass
 
 
 def _get_instance_key(instance):

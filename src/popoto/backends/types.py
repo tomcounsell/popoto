@@ -94,10 +94,20 @@ class SchemaDriftError(BackendError):
 
 class BackendRetryableError(BackendError):
     """A deadlock or serialization failure rolled the work back; running it
-    again is safe (plan §6, TD-2). Raised by multi-row memory-state work on
-    Postgres (``ObservationProtocol.on_context_used``) once its own bounded
-    retries are spent, so a caller can catch one popoto type instead of a
-    driver error (#759 M2a)."""
+    again is safe (plan §6, TD-2), so a caller catches one popoto type instead
+    of a driver error (#759 M2a). Raised ``from`` the driver error:
+
+    - inside a caller-owned ``transaction()`` (a statement in it, or its
+      COMMIT), at once -- the whole unit was rolled back and only the caller
+      can run its block again, so popoto does not retry it;
+    - by a single statement outside a unit of work, and by
+      ``ObservationProtocol.on_context_used``, once their own bounded retries
+      (``Defaults.PG_TRANSACTION_RETRIES``) are spent.
+
+    Before #773's patch a caller-owned transaction saw the raw psycopg
+    ``DeadlockDetected`` / ``SerializationFailure``; code that caught those
+    should catch this instead. A statement whose completion is unknown
+    (40003) is not this error: it may have committed (#769)."""
 
 
 # -- identity -----------------------------------------------------------------

@@ -547,9 +547,13 @@ class PostgresMemoryOps:
         clause = f"t.{quote_ident(field)} IS NOT NULL"
         if where_sql:
             clause += " AND " + where_sql[len(" WHERE ") :]
+        # ``OFFSET 0`` fences the subquery: without it the planner flattens
+        # it and copies the score expression into both sort keys (the NaN
+        # test and the ``DESC`` key), evaluating it twice per row (#773
+        # review). The fence changes how often it runs, never its value.
         sql = (
             f'SELECT r."_pk", r."_score" FROM (SELECT t."_pk", {expr} AS "_score" '
-            f"FROM {ts.qualified} AS t WHERE {clause}) AS r "
+            f"FROM {ts.qualified} AS t WHERE {clause} OFFSET 0) AS r "
             # A NaN score (0 * inf) has no place in the Lua's comparator --
             # `x > nan` is always false, so the script leaves it wherever its
             # sort happens to -- and Postgres would rank it first; it goes last.
@@ -1002,29 +1006,28 @@ class PostgresMemoryOps:
         :class:`BackendRetryableError` is raised. Inside a caller's own unit
         of work there is no retry: the failure is raised as
         :class:`BackendRetryableError` for the caller to retry."""
-        from . import _import_psycopg, _pg_uow, _rollback_errors
+        from . import _import_psycopg, _pg_uow, _retryable, _rollback_errors
 
         psycopg = _import_psycopg()
         if _pg_uow(uow) is not None:
             try:
                 return work(uow)  # type: ignore[arg-type]
             except _rollback_errors(psycopg) as exc:
-                raise BackendRetryableError(
-                    f"rolled back by a concurrent transaction ({exc}); retry it"
-                ) from exc
+                raise _retryable(exc) from exc
         retries = int(Defaults.PG_TRANSACTION_RETRIES)
         attempt = 0
         while True:
             try:
                 with self.transaction() as tx:
                     return work(tx)
-            except _rollback_errors(psycopg) as exc:
+            except BackendRetryableError as exc:
+                # ``transaction()`` turns a rollback anywhere in its block --
+                # ``_run``, a raw one from ``work`` itself, or the COMMIT --
+                # into this type, chained from the driver error.
+                cause = exc.__cause__ or exc
                 attempt += 1
                 if attempt > retries:
-                    raise BackendRetryableError(
-                        f"rolled back by a concurrent transaction {attempt} times "
-                        f"({exc}); retry it"
-                    ) from exc
+                    raise _retryable(cause, attempt) from cause
                 time.sleep(random.uniform(0.005, 0.05) * attempt)
 
 
