@@ -782,6 +782,40 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     returns `[(instance, score)]`.
   - **`ContentField` is a `text` column**, pulled forward from M5 because
     the M2b gate files' models use it.
+- **M2c as shipped: departures from this plan, recorded.** M2c is
+  `ContextAssembler` at #758 D8's integration points.
+  - **`_pull_path_hybrid` does not call `recall()`.** It runs the same body
+    on both backends, and every arm dispatches: `BM25Field.search` is the
+    backend's `keyword_search` with `stats="corpus"` (the corpus-statistics
+    primitive `recall(bm25_stats="corpus")` uses), the vector arm is
+    `vector_search`, and `fuse` is the same Python RRF weighted by
+    `_fusion_weights`. Reason: `recall()` ranks every arm inside the scope,
+    while the Redis path ranks the vector arm corpus-wide and the BM25 arm
+    inside its `SCOPED_SEARCH_FETCH_CAP` window before `fuse` filters to the
+    scope, and RRF sums those ranks; the same ranked keys on both legs needs
+    the same arms, not the same statistics alone. Only the scope resolution
+    has its own branch: the BM25 window is narrowed by the scope's *indexed*
+    filters, from one id-only `SELECT`, exactly as `filter_for_keys_set`
+    narrows it on Redis (an all-plain scope narrows nothing; a mixed one by
+    its indexed part).
+  - **The zero-signal fallback is `_pull_path_composite`**, which on
+    Postgres is `rank_composite` in SQL, not #758's `top_by_relevance`:
+    the composite ranking is what Redis falls back to.
+  - **`assess` has no branch of its own.** Its probe is `composite_score`,
+    already one SQL statement on Postgres since M2a; what it lacked was the
+    metacognitive score proxy, which now reads the partition's scores
+    through the backend (`rank_decayed` for a decay field, the column for a
+    plain sorted field) instead of `ZSCORE`/`DECAY_SCORE_LUA`.
+  - **`_post_effects` on Postgres** is one transaction (`_observe`
+    `atomically`, retried on deadlock): the rows of the selected and the
+    suppressed records locked `FOR UPDATE` in `_pk` order behind their
+    record-key locks, one stage `UPDATE`, then one confidence `UPDATE` for
+    every suppressed candidate (a `ConfidenceField` `signal_many`
+    `field_call`, the `update_confidence` `SET` list over `_pk = ANY`). It
+    runs before `batch()`, so no Redis pipeline is opened.
+  - **`OUTAGE_ERRORS` gains `BackendUnavailableError`** in the assembler,
+    so a Postgres outage re-raises as a Redis one does instead of reading as
+    a failed arm and degrading to the query-blind fallback.
 - **Exit criteria.**
   - Gates (a) and (b) on the files below.
     `ContextAssembler(retrieval_mode="auto")` returns the same ranked keys on

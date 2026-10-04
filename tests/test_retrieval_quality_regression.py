@@ -33,6 +33,13 @@ from src.popoto.fields.field import Field  # noqa: E402
 from src.popoto.recipes.context_assembler import ContextAssembler  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
+# Backend conformance (#759 M2c, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Fixture path and loader
 # ---------------------------------------------------------------------------
@@ -229,6 +236,12 @@ class TestColdIndexRecovery:
     After re-saving, query-dependent BM25 results are restored.
     """
 
+    @pytest.mark.redis_only(
+        reason=(
+            "clears the BM25 index by deleting its $BM25: keys through the raw client; "
+            "the two-leg version is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_cold_index_falls_back_to_composite(self, caplog):
         """Clearing BM25 index keys triggers the lexical -> composite fallback path.
 
@@ -281,6 +294,12 @@ class TestColdIndexRecovery:
             f"All log messages: {[r.message for r in caplog.records]}"
         )
 
+    @pytest.mark.redis_only(
+        reason=(
+            "clears the BM25 index by deleting its $BM25: keys through the raw client; "
+            "the two-leg version is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_cold_index_recovery_after_resave(self):
         """After re-saving records, BM25 retrieval restores query-dependent results."""
         _flush()

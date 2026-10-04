@@ -61,6 +61,13 @@ from src.popoto.recipes.context_assembler import (  # noqa: E402
 )
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
+# Backend conformance (#759 M2c, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Test Models
 # ---------------------------------------------------------------------------
@@ -328,6 +335,12 @@ class TestAssembleEmpty:
         assert result.metadata["pull_count"] == 0
         assert result.metadata["push_count"] == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
+            "Postgres refuses at first use until #759 M5 and M4"
+        )
+    )
     def test_no_cues_with_cyclic_runs_push_path(self):
         """No query_cues but model has CyclicDecayField: push path runs."""
         # Save some records with urgency
@@ -369,6 +382,13 @@ class TestAssemblePullPath:
         assert isinstance(result, AssemblyResult)
         assert result.metadata["pull_count"] >= 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
+            "Postgres refuses at first use until #759 M5 and M4; the two-leg version is "
+            "in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_bloom_filter_skip_all_missing(self):
         """When ExistenceFilter says all cues definitely missing, skip pull."""
         assembler = ContextAssembler(
@@ -570,6 +590,12 @@ class TestAssembleMetadata:
 
 
 class TestFullPipeline:
+    @pytest.mark.redis_only(
+        reason=(
+            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
+            "Postgres refuses at first use until #759 M5 and M4"
+        )
+    )
     def test_end_to_end_with_full_memory(self):
         """End-to-end: save records, assemble with all field types."""
         for i in range(3):
@@ -659,6 +685,13 @@ class TestRetrievalQuality:
         # With no ConfidenceField on SimpleMemory, avg_confidence defaults to 1.0
         assert quality.avg_confidence == 1.0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
+            "Postgres refuses at first use until #759 M5 and M4; the two-leg version is "
+            "in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_assess_standalone_returns_retrieval_quality(self):
         """ContextAssembler.assess() returns a RetrievalQuality dataclass."""
         m = FullMemory(
@@ -708,6 +741,13 @@ class TestRetrievalQuality:
         comp = quality.per_cue_fok["anything"]["cue_familiarity"]
         assert comp == 0.5
 
+    @pytest.mark.redis_only(
+        reason=(
+            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
+            "Postgres refuses at first use until #759 M5 and M4; the two-leg version is "
+            "in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_fok_cue_familiarity_with_existence_filter_present(self):
         """Saved topics produce cue_familiarity == 1.0 under ExistenceFilter."""
         m = FullMemory(
@@ -725,6 +765,13 @@ class TestRetrievalQuality:
         # Saved topic -> ExistenceFilter.might_exist returns True -> 1.0
         assert comp == 1.0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
+            "Postgres refuses at first use until #759 M5 and M4; the two-leg version is "
+            "in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_avg_confidence_populated_with_confidence_field(self):
         """avg_confidence reflects ConfidenceField.get_confidence() mean."""
         m1 = FullMemory(agent_id="agent-1", topic="t1", content="c1")
@@ -743,6 +790,13 @@ class TestRetrievalQuality:
         # With a saved + updated ConfidenceField, avg_confidence is >= initial
         assert 0.0 <= quality.avg_confidence <= 1.0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
+            "Postgres refuses at first use until #759 M5 and M4; the two-leg version is "
+            "in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_score_spread_zero_on_empty_results(self):
         """score_spread is 0.0 when no records are selected (empty retrieval)."""
         # Note: no FullMemory instances saved; this yields empty results.
@@ -1264,6 +1318,12 @@ class TestPartitionAwareDecayingScoreProxy:
         best_key = max(proxy, key=proxy.get)
         assert ranked[0].db_key.redis_key == best_key
 
+    @pytest.mark.redis_only(
+        reason=(
+            "backdates the decay clock with a raw ZADD on the Redis partition sorted set; "
+            "the two-leg version is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_aged_records_are_stale_fresh_are_not(self):
         """staleness_ratio regression (#474): records aged past the surfacing
         threshold count as stale; freshly-saved records do not."""
@@ -1286,6 +1346,12 @@ class TestPartitionAwareDecayingScoreProxy:
         mixed = _staleness_ratio_wrapper(assembler, [aged, fresh])
         assert mixed == 0.5
 
+    @pytest.mark.redis_only(
+        reason=(
+            "backdates the decay clock with a raw ZADD on the Redis partition sorted set; "
+            "the two-leg version is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_fok_subthreshold_activation_for_aged_records(self):
         """FOK subthreshold regression (#474): records whose decayed relevance
         falls in (0, surfacing_threshold) drive subthreshold_activation > 0."""
@@ -1314,6 +1380,12 @@ class TestPartitionAwareDecayingScoreProxy:
         assert subthreshold
         assert all(s > 0.0 for s in subthreshold)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "CyclicPartitionedMemory declares a CyclicDecayField, which Postgres refuses "
+            "at first use until #759 M5"
+        )
+    )
     def test_cyclic_field_uses_cyclic_decay_not_raw_timestamp(self):
         """A CyclicDecayField is scored via CYCLIC_DECAY_LUA on the partition
         ZSET, so the proxy returns a bounded decayed relevance -- NOT the raw
@@ -1362,6 +1434,12 @@ class DecayConfPartitionedMemory(Model):
     certainty = ConfidenceField()
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "backdates with a raw ZADD and plants confidence with a raw HSET on the Redis "
+        "companion hash; the two-leg version is in tests/test_backend_parity_assembler.py"
+    )
+)
 class TestConfidenceModulatedProxyAgreement:
     AGED_DAYS = 10  # past the max(t, 1.0) guard, so modulation is live
 
@@ -1582,6 +1660,13 @@ class TestConfidenceGate:
 
     # -- Empty / skipped pull-path -----------------------------------------
 
+    @pytest.mark.redis_only(
+        reason=(
+            "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
+            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
+            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_empty_pull_records_with_threshold(self):
         """No candidates matched: applied=False, gate_score=None,
         gated=False, but the dict is still attached."""
@@ -1604,6 +1689,13 @@ class TestConfidenceGate:
         }
         _assert_gate_contract(result.metadata["gate"])
 
+    @pytest.mark.redis_only(
+        reason=(
+            "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
+            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
+            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_query_cues_none_skips_pull_path_gate_still_empty(self):
         """query_cues=None skips the pull path entirely: same empty-path
         gate behavior as an unmatched query."""
@@ -1624,6 +1716,12 @@ class TestConfidenceGate:
 
     # -- "refuse" mode -------------------------------------------------------
 
+    @pytest.mark.redis_only(
+        reason=(
+            "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
+            "until #759 M5, and the assertion is about the push path it drives"
+        )
+    )
     def test_refuse_mode_gated_drops_pull_records_keeps_push(self):
         """refuse + gate_score < threshold: pull records dropped, push
         path intact, and no competitive suppression runs (suppression
@@ -1667,6 +1765,13 @@ class TestConfidenceGate:
         # discoverable via the real (unmocked) push scan and gets injected.
         assert result.metadata["push_count"] >= 1
 
+    @pytest.mark.redis_only(
+        reason=(
+            "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
+            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
+            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_refused_keys_come_from_all_pull_candidates_in_rank_order(self):
         """#566: refused_keys lists every candidate the pull path found, in
         rank order (rank 0 first -- the record whose confidence was gated),
@@ -1697,6 +1802,13 @@ class TestConfidenceGate:
             refused_keys=[r.db_key.redis_key for r in records],
         )
 
+    @pytest.mark.redis_only(
+        reason=(
+            "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
+            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
+            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_refuse_not_gated_retains_records(self):
         """refuse mode but gate_score >= threshold: nothing is dropped."""
         record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
@@ -1719,6 +1831,13 @@ class TestConfidenceGate:
         assert result.metadata["gate"]["applied"] is True
         _assert_gate_contract(result.metadata["gate"])
 
+    @pytest.mark.redis_only(
+        reason=(
+            "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
+            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
+            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_refuse_assess_quality_fok_not_corrupted(self):
         """BLOCKER fix: a refusal must not corrupt _compute_quality's FoK
         score. all_pull_candidates is left untouched by the refuse clear
@@ -1747,6 +1866,13 @@ class TestConfidenceGate:
 
     # -- "flag" mode -----------------------------------------------------
 
+    @pytest.mark.redis_only(
+        reason=(
+            "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
+            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
+            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_flag_mode_gated_retains_records(self):
         """flag + gate_score < threshold: nothing is dropped, only the
         metadata annotation reports the decision."""
@@ -1778,6 +1904,13 @@ class TestConfidenceGate:
             result.metadata["gate"], refused_keys=[record.db_key.redis_key]
         )
 
+    @pytest.mark.redis_only(
+        reason=(
+            "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
+            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
+            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_flag_not_gated_retains_records(self):
         """flag mode, gate_score >= threshold: not gated, retained."""
         record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
@@ -1801,6 +1934,13 @@ class TestConfidenceGate:
 
     # -- Fault tolerance ----------------------------------------------------
 
+    @pytest.mark.redis_only(
+        reason=(
+            "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
+            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
+            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_get_confidence_raises_gate_not_applied(self, caplog):
         """A get_confidence() failure degrades gracefully: a warning is
         logged, the gate is treated as not-applied, and records are
@@ -1853,6 +1993,13 @@ class ValidityMemory(Model):
     validity = ValidityField()
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "ValidityMemory declares a ValidityField, which Postgres refuses at first use "
+        "until #759 M3, and every test here wipes it in setup; the two-leg "
+        "no-ValidityField passthrough is in tests/test_backend_parity_assembler.py"
+    )
+)
 class TestAssemblerValidityGating:
     """Layer 3: the candidate-key post-filter that reaches every arm.
 
