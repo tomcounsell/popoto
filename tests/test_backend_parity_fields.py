@@ -309,6 +309,14 @@ def test_in_with_mixed_numeric_types_binds_as_the_column_type(typed):
     assert typed_names(i__in=[1, 2.5]) == ["r1"]
     assert typed_names(f__in=[1.0, Decimal("2.5")]) == ["r1", "r2"]
     assert typed_names(dec__in=[Decimal("2"), 7.5]) == ["r2"]
+    # An integer column drops a non-finite number and an integer beyond
+    # ``bigint`` (no such key string on Redis; on Postgres they used to raise
+    # OverflowError / ValueError / NumericValueOutOfRange).
+    assert typed_names(i__in=[float("inf"), 1]) == ["r1"]
+    assert typed_names(i__in=[float("nan"), 1]) == ["r1"]
+    assert typed_names(i__in=[10**20, 1]) == ["r1"]
+    assert typed_names(i__in=[1e20, 1]) == ["r1"]
+    assert typed_names(i=10**20) == []
 
 
 def test_indexed_string_filter_matches_the_stored_key_string(typed):
