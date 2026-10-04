@@ -8140,6 +8140,25 @@ Note these are `redis.exceptions.ConnectionError`/`TimeoutError`, not the
 builtins of the same name — catching the builtins will not catch these.
 `OUTAGE_ERRORS` is the exact tuple the recipes test against.
 
+A model bound to Postgres raises
+`popoto.backends.BackendUnavailableError` when its database is unreachable,
+and the assembler re-raises that too. The tuple it tests against is
+`popoto.recipes.context_assembler.OUTAGE_ERRORS`, the Redis pair plus
+`BackendUnavailableError`; catch that one when a model may be bound to either
+backend.
+
+### On Postgres
+
+`ContextAssembler` works unchanged on a model bound to Postgres
+(`Meta.backend = "postgres"`, #759 M2c), and returns the same ranked records
+as on Redis: every stage reaches storage through field and query methods that
+dispatch on the model's backend, the hybrid path ranks BM25 with corpus-wide
+statistics as `BM25Field.search` does, and the post-retrieval effects (staged
+reads for the selected records, competitive suppression for the rest) run as
+bulk statements in one transaction. A Postgres-bound assembler issues no Redis
+command. See [Postgres Backend](postgres-backend.md#contextassembler-m2c) for
+what each stage runs and the few documented differences.
+
 ### Push Path
 
 1. **CyclicDecayField scan**: Find records whose cyclic + pressure score exceeds `DEFAULT_SURFACING_THRESHOLD`.
@@ -21630,12 +21649,13 @@ table with native indexes, and it is where new capabilities land.
 
 This page covers the first Postgres milestones: **plain models** (M1),
 **plain-field breadth** (M1.1), the **ranking and memory-state half of
-Valor's slice** (M2a) and **search** (M2b). That means records, queries, `Q`
-objects, ordering, counting and atomic increments for the field types listed
-below, including indexed, unique, tag, relationship and collection fields,
-plus decay ranking, confidence, read tracking, the write filter,
-`ObservationProtocol` and `composite_score`, and BM25 keyword search, pgvector
-embeddings, exact membership filters, fusion and `recall()`. Models that use
+Valor's slice** (M2a), **search** (M2b) and **`ContextAssembler`** (M2c).
+That means records, queries, `Q` objects, ordering, counting and atomic
+increments for the field types listed below, including indexed, unique, tag,
+relationship and collection fields, plus decay ranking, confidence, read
+tracking, the write filter, `ObservationProtocol` and `composite_score`, BM25
+keyword search, pgvector embeddings, exact membership filters, fusion and
+`recall()`, and the assembler over all of them. Models that use
 other fields stay on Redis until their milestone. Popoto refuses them when you
 declare them, so they never fail halfway through.
 
@@ -22050,6 +22070,64 @@ same on both backends; with three or more summed arms a score can differ by
 up to 2 ulp, because `ZUNIONSTORE` adds the smallest input set first while
 Postgres adds the arms in order. `co_occurrence_boost` waits for
 `CoOccurrenceField` (M4).
+
+## ContextAssembler (M2c)
+
+`ContextAssembler` runs on a Postgres-bound model with no option of its own,
+and returns the same ranked records as on Redis. It issues **no Redis
+command**: `tests/postgres/test_postgres_assembler.py` patches the Redis
+connection layer to record and refuse every command, then runs a Valor-shaped
+model through `assemble()` in every mode with scopes, tags, a budget, the
+gate, `assess_quality` and `emit_trace`, plus `assess()` and
+`on_context_used()`, and asserts the record is empty.
+
+What each stage runs on Postgres:
+
+| Stage | Postgres |
+|---|---|
+| ExistenceFilter short-circuit | `might_exist` on the exact token table (M2b) |
+| Hybrid / lexical pull | the same body as on Redis: `BM25Field.search` (`keyword_search` with **corpus-wide** statistics), the vector arm (`vector_search`), and `fuse` with `_fusion_weights`. The BM25 window is narrowed by the scope's indexed filters from one id-only `SELECT`, as `filter_for_keys_set` narrows it on Redis |
+| Zero-signal fallback, composite pull, `assess` probe | `composite_score`: `rank_composite`, one `SELECT` (M2a) |
+| Tag scoping | one id-only `SELECT` with `&&` (any) / `@>` (all) |
+| Score proxy (`assess_quality`, `emit_trace`, `assess`) | the partition's `rank_decayed` for a decay field, the column for a plain sorted field |
+| Post-effects | one transaction: the rows of the selected and the suppressed records locked in `_pk` order behind their record-key locks, one staged-read `UPDATE`, one confidence `UPDATE` for every suppressed candidate |
+
+**Why the hybrid path does not call `recall()`.** `recall()` ranks each arm
+inside the scope; the assembler ranks the vector arm across the whole model
+and the BM25 arm inside the `SCOPED_SEARCH_FETCH_CAP` window, and `fuse` then
+keeps the in-scope records. RRF sums those ranks, so the same keys in the same
+order on both backends needs the same arms. The BM25 statistics are
+corpus-wide on that path, never `recall()`'s per-scope default (architect
+decision 3).
+
+**The parity evidence.** The retrieval-quality fixture (200 records, 20
+queries, `retrieval_mode="auto"`) returns the same keys in the same order,
+the same formatted output and the same token count on both legs, through the
+lexical path and through the hybrid path partitioned by `agent_id`
+(`test_postgres_assembler.py`). `scripts/probe_assembler_parity.py` builds
+random corpora on both legs and compares `assemble()` (keys, formatted output
+and token count, metadata, trace, quality, and the post-effects' confidence and
+staged-read state), `on_context_used()` and `assess()`; its classes are in the
+PR that introduced M2c, and `test_postgres_assembler.py` runs a 12-shape slice
+of it in CI.
+
+```bash
+REDIS_URL=redis://localhost:6379/13 \
+POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
+    python scripts/probe_assembler_parity.py --seeds 1 2 3 --shapes 100
+```
+
+The differences the probe classifies are rows elsewhere on this page, seen
+through the assembler: the exact `ExistenceFilter` (a cue whose only record was
+deleted or rewritten short-circuits on Postgres, not on Redis), a reload after
+`touch()` (after an `acted` outcome the formatted `relevance` of that record
+differs, and a token budget can then admit a different record), and the vector
+arm's tie order (records with the same text have the same vector, which Redis
+returns in file-listing order and Postgres by key).
+
+An outage raises `BackendUnavailableError` from `assemble()`, as a Redis
+outage raises `ConnectionError`; it is in
+`popoto.recipes.context_assembler.OUTAGE_ERRORS`.
 
 ## Topology and the outage contract
 

@@ -1721,6 +1721,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#push-path" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3572,6 +3583,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#push-path" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4123,6 +4145,22 @@ connection exceptions propagate.</p>
 <p>Note these are <code>redis.exceptions.ConnectionError</code>/<code>TimeoutError</code>, not the
 builtins of the same name — catching the builtins will not catch these.
 <code>OUTAGE_ERRORS</code> is the exact tuple the recipes test against.</p>
+<p>A model bound to Postgres raises
+<code>popoto.backends.BackendUnavailableError</code> when its database is unreachable,
+and the assembler re-raises that too. The tuple it tests against is
+<code>popoto.recipes.context_assembler.OUTAGE_ERRORS</code>, the Redis pair plus
+<code>BackendUnavailableError</code>; catch that one when a model may be bound to either
+backend.</p>
+<h3 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h3>
+<p><code>ContextAssembler</code> works unchanged on a model bound to Postgres
+(<code>Meta.backend = "postgres"</code>, #759 M2c), and returns the same ranked records
+as on Redis: every stage reaches storage through field and query methods that
+dispatch on the model's backend, the hybrid path ranks BM25 with corpus-wide
+statistics as <code>BM25Field.search</code> does, and the post-retrieval effects (staged
+reads for the selected records, competitive suppression for the rest) run as
+bulk statements in one transaction. A Postgres-bound assembler issues no Redis
+command. See <a href="../postgres-backend/#contextassembler-m2c">Postgres Backend</a> for
+what each stage runs and the few documented differences.</p>
 <h3 id="push-path">Push Path<a class="headerlink" href="#push-path" title="Permanent link">&para;</a></h3>
 <ol>
 <li><strong>CyclicDecayField scan</strong>: Find records whose cyclic + pressure score exceeds <code>DEFAULT_SURFACING_THRESHOLD</code>.</li>
