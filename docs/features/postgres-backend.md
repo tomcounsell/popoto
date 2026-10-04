@@ -6,12 +6,13 @@ today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.
 
 This page covers the first Postgres milestones: **plain models** (M1),
-**plain-field breadth** (M1.1) and the **ranking and memory-state half of
-Valor's slice** (M2a). That means records, queries, `Q` objects, ordering,
-counting and atomic increments for the field types listed below, including
-indexed, unique, tag, relationship and collection fields, plus decay ranking,
-confidence, read tracking, the write filter, `ObservationProtocol` and
-`composite_score`. Models that use other fields stay on Redis until their
+**plain-field breadth** (M1.1), the **ranking and memory-state half of
+Valor's slice** (M2a) and the **validity axis** (M3). That means records,
+queries, `Q` objects, ordering, counting and atomic increments for the field
+types listed below, including indexed, unique, tag, relationship and
+collection fields, plus decay ranking, confidence (partitioned too), read
+tracking, the write filter, `ObservationProtocol`, `composite_score`, and
+`ValidityField` with `SupersessionProtocol`. Models that use other fields stay on Redis until their
 milestone. Popoto refuses them when you declare them, so they never fail
 halfway through.
 
@@ -64,7 +65,7 @@ spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.
 
-## Supported fields (M1, M1.1, M2a)
+## Supported fields (M1, M1.1, M2a, M3)
 
 | popoto field | Column | Index |
 |---|---|---|
@@ -82,7 +83,8 @@ first query does not.
 | `BytesField` / `DateField` / `TimeField` (M1.1) | `bytea` / `date` / `time` | — |
 | `Meta.indexes` (M1.1) | — | a composite B-tree per entry; `UNIQUE` when `is_unique` |
 | `DecayingSortedField(partition_by=…, base_score_field=…)` (M2a) | `double precision`: the decay clock, in epoch seconds | B-tree `(partition cols…, f, _pk COLLATE "C")` |
-| `ConfidenceField` (M2a) | `double precision` for the attribute, plus the state `<f>__conf` (`double precision`), `<f>__n`, `<f>__corr`, `<f>__contra` (`bigint`) | — |
+| `ConfidenceField` (M2a; `partition_by=` M3) | `double precision` for the attribute, plus the state `<f>__conf` (`double precision`), `<f>__n`, `<f>__corr`, `<f>__contra` (`bigint`) | — |
+| `ValidityField` (M3) | `double precision` for the declared value, plus `<f>__valid_from`, `<f>__invalid_at`, `<f>__ingested_at` (`double precision`; `'Infinity'` = open) and `<f>__supersedes`, `<f>__superseded_by` (`text`); companion `<table>__<f>__open (digest, member)` | B-tree on `<f>__valid_from` and on `<f>__invalid_at`; the companion's `member` references `_pk` `ON DELETE CASCADE` |
 
 Every table also has:
 
@@ -133,7 +135,9 @@ above the seam as before; its priority tier is not stored (plan §5 M2).
 `popoto_recall_proposal`, created on first use like `popoto_schema`. No state
 column is indexed: each index would make every `update_confidence` or
 `confirm_access` a non-HOT update, and nothing filters or orders by one alone.
-A partitioned `ConfidenceField` arrives in M3 and is refused until then.
+A partitioned `ConfidenceField` (M3) needs nothing more: its state is the
+record's own columns, so its partition is the row's partition columns, and a
+partition change that keeps the key keeps the state.
 `PredictionLedgerMixin` keeps its ledger in Redis until M5 and is refused on a
 Postgres model too, rather than issuing Redis commands for a record Redis does
 not hold.
@@ -443,9 +447,100 @@ cast to the column's type.
 | A NaN decay score in `composite_score` (M2a) | `rank_decayed` replies `nan` (`0 * inf`: a `-inf` clock with above-prior confidence) and the composite's `ZADD` refuses it: `ResponseError: value is not a valid float` | that arm scores 0 for the record, the value `ZUNIONSTORE` gives a NaN product. Pinned: `test_a_nan_decay_score_in_composite_is_a_documented_divergence` |
 | The confirmed access log (M2a) | a capped list of read timestamps (`$AT:…:access_log`) | not kept: `access_count` and `last_accessed` are. It is read only by `export_state`, which arrives with `transfer/` in M5 |
 | `update_confidence(…, pipeline=uow)` with a Postgres `transaction()` (M2a) | (a Redis pipeline queues the update and returns `None`) | the update runs inside the transaction, so its value is returned and the attribute synced |
-| A model with a `CyclicDecayField`, `ValidityField`, partitioned `ConfidenceField`, `CoOccurrenceField` or `PredictionLedgerMixin` (M2a) | supported | refused at declaration until M5, M3, M3, M4 and M5 respectively, so `ObservationProtocol`'s cycle, supersession, auto-discharge and ledger-resolution effects have no Postgres model to act on yet |
+| A model with a `CyclicDecayField`, `CoOccurrenceField` or `PredictionLedgerMixin` (M2a) | supported | refused at declaration until M5, M4 and M5 respectively, so `ObservationProtocol`'s cycle, auto-discharge and ledger-resolution effects have no Postgres model to act on yet (its supersession effect runs from M3) |
+| `execute_supersede(mode="open")` naming a member with no record (M3) | `ZADD NX` indexes the member anyway | writes nothing: the interval is the record's row. Only a direct `execute_supersede` call can ask for it. Pinned: `tests/postgres/test_postgres_validity.py::test_mode_open_on_a_member_with_no_record_writes_nothing` |
+| An open-claim pointer naming a record that does not exist (M3) | storable (a manual `SET`, or a partial `import_state`); `supersede` reads it as "no incumbent" | unrepresentable: the pointer table's foreign key refuses it (`ForeignKeyViolation`), and deleting a record cascades to its pointers. Pinned: `test_a_pointer_cannot_name_a_record_that_does_not_exist` |
+| `save_and_supersede` / `save_and_invalidate` whose close fails (M3) | `MULTI`/`EXEC` keeps the successor's save, and the typed error's text carries redis-py's `Command # N (...) of pipeline caused error:` prefix | the whole unit rolls back, so the successor is not saved either; same exception type, and the text is the bare reply line |
+| A NaN `as_of` / `validity__as_of` (M3) | the range reads (`filter`, `resolve_*_keys`, the composite mask) raise `ResponseError: min or max is not a float`; the decay ranking's gate excludes nothing | `QueryException` with the same text (as row (v) of the query table); the decay ranking excludes nothing |
+| `SupersessionProtocol.supersede`/`invalidate` with the backend's `transaction()` as `pipeline` (M3) | (a Redis pipeline queues the script; the closed key is unknown until `execute()`) | runs inside the transaction: the closed key is returned and a typed error raised at the call. `save_and_*` with a Redis pipeline is refused with `ValueError` |
 
-## Performance (M1 and M2a exit criteria)
+## Validity and supersession (M3)
+
+A `ValidityField` keeps the six Redis keys' state on the record's row and in
+one companion table:
+
+| Redis key | Postgres |
+|---|---|
+| `…:valid_from` / `…:invalid_at` / `…:ingested_at` sorted sets | `<f>__valid_from` / `<f>__invalid_at` / `<f>__ingested_at`, `double precision` (`NULL` = absent from that index; `'Infinity'` = open) |
+| `…:chain:fwd` / `…:chain:rev` hashes | `<f>__superseded_by` / `<f>__supersedes` on the record |
+| `…:open:{digest}` strings | `<table>__<f>__open (digest PRIMARY KEY, member)`, `member` referencing `_pk` `ON DELETE CASCADE` |
+
+**Why not `tstzrange`.** The plan proposed one `tstzrange` column. A
+`timestamptz` keeps microseconds, so the Redis score `1700000000.1234567`
+comes back `1700000000.123457`, two scores one ulp apart become one instant,
+and the gate's `invalid_at <= as_of` flips for a close one ulp after `as_of`
+(pinned: `tests/postgres/test_postgres_validity.py::test_timestamptz_would_not_hold_the_redis_score`,
+`tests/test_validity_parity.py::TestExclusionRule::test_the_as_of_bound_is_bit_exact`).
+A range also has no way to say "no `invalid_at` recorded" beside "`invalid_at`
+is `+inf`", which differ at `as_of = +inf`. So the interval follows M2a's
+clock decision: `double precision` epoch seconds, bit-identical to the score.
+
+**The exclusion rule** every gate applies -- `top_by_decay`'s ranking,
+`composite_score`'s mask, `ValidityField.resolve_excluded_keys`, the
+assembler -- is `invalid_at <= as_of OR valid_from > as_of`, with an absent end
+never excluding, as one `WHERE` term on the row. `filter(validity__as_of=t)`
+and `resolve_valid_keys` are the whitelist, `valid_from <= t AND invalid_at >
+t`, both ends present; `__current=False` is the members of either index that
+are not valid now. The #631 POC's 17-row table (`tests/test_validity_parity.py`)
+holds on both backends.
+
+**`supersede`** is `SUPERSEDE_LUA` phase for phase, in one transaction:
+
+1. `pg_advisory_xact_lock(hashtext('popoto:validity:<schema>.<table>.<f>'))`
+   -- one lock per model and field, the Redis single thread;
+2. resolve the incumbent: the named one, else the identity's pointer;
+3. `SELECT … ORDER BY _pk COLLATE "C" FOR UPDATE` on the successor and the
+   incumbent;
+4. validate, raising the typed error built from the script's reply line (and
+   so with the same text) and writing nothing: a successor that does not
+   exist, an *asserted* incumbent that does not exist (a pointer-resolved one
+   is "no incumbent"), a close before the incumbent's start, an asserted
+   `valid_from` that disagrees with the stored one;
+5. mutate: close the incumbent if it is open (idempotent), both chain links,
+   open the successor `NX` (an absent end filled, a closed record never
+   reopened), repoint the pointer.
+
+| Reply line | Exception (a `ValueError`) |
+|---|---|
+| `POPOTO_VALIDITY_MEMBER_ABSENT successor <key>` | `ValidityMemberAbsentError` |
+| `POPOTO_VALIDITY_MEMBER_ABSENT incumbent <key>` | `ValidityMemberAbsentError` |
+| `POPOTO_VALIDITY_CLOSE_BEFORE_START` | `ValidityCloseBeforeStartError` |
+| `POPOTO_VALIDITY_VALID_FROM_CONFLICT <stored> <requested>` (numbers as Lua's `%.14g`) | `ValidityValidFromConflictError` |
+
+A save opens the interval inside its upsert, the script's mode `'open'`, and a
+declared `valid_from` that disagrees with the stored start fails the upsert's
+guard, so nothing is written (behind the same `pre_save_validate` check as on
+Redis). `chain` is one `WITH RECURSIVE` with the Redis walk's stop rules: a
+missing link, a record already visited, a link naming a record with no
+`valid_from`.
+
+**Lock order.** Every supersede on a model and field takes the advisory lock
+before any row lock, and `ObservationProtocol.on_context_used` takes it
+before locking its batch, so two supersedes never interleave -- including
+the crossing chains that deadlocked the #631 POC (`d1 → X` superseded by `Y`
+while `d2 → Y` is superseded by `X`; `TestCrossingChains` forces the overlap
+ten times). A save does not take it: it meets a supersede on the row lock,
+and its upsert re-reads the row it waited on. The residual is a caller's own
+`transaction()` that locks a row and then supersedes while another supersede
+waits for that row: Postgres detects the cycle, and the caller gets
+`BackendRetryableError` (pinned: `test_a_cross_operation_deadlock_is_a_retryable_error`).
+
+**The seeded probe.** `scripts/probe_validity_parity.py` runs the same random
+sequences of saves (declaring and re-declaring starts), supersedes,
+invalidations, direct `execute_supersede` calls in every mode, `save_and_*`
+and deletes on both backends, comparing every return value and exception
+(type and text), the intervals, links, pointers and chains, and every gated
+read at the interval ends, `±inf`, `1e308` and NaN. Its documented classes are
+the M3 rows of the table above; `tests/postgres/test_validity_probe.py` runs a
+25-shape slice in CI.
+
+```bash
+REDIS_URL=redis://localhost:6379/10 \
+POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
+    python scripts/probe_validity_parity.py --seeds 1 2 3 --shapes 200
+```
+
+## Performance (M1, M2a and M3 exit criteria)
 
 `scripts/bench_backend_seam.py` measures the public API on both backends. It
 seeds 2,000 records, runs `ANALYZE`, and then makes three runs of 300
@@ -454,7 +549,9 @@ The M1 targets are `Model.save()` p50 at most 2x Redis and `filter` +
 hydration p50 at most 1x Redis. M2a adds `rank_decayed` with a base score and
 confidence modulation over all 2,000 records (top 10): Postgres p50 at most
 1x Redis, `DECAY_SCORE_LUA` against one `SELECT`; `top_by_decay` with
-hydration is measured beside it. The PRs that introduced each milestone
+hydration is measured beside it. M3 adds the same ranking with a validity gate
+(a tenth of the records superseded, a twentieth not yet started): Postgres
+p50 at most 1x Redis. The PRs that introduced each milestone
 record the measured numbers and the environment they were taken on.
 
 ```bash

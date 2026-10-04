@@ -412,7 +412,7 @@ firing from there. `src/popoto/backends/postgres/` never imports `redis`, and
 | `GeoField` | `geography(Point,4326)` | GiST (needs PostGIS) |
 | `DecayingSortedField` | `<f> double precision` (epoch seconds, the Redis sorted-set score; M2a departure, §5 M2) | B-tree `(partition cols…, <f>, _pk COLLATE "C")` |
 | `ConfidenceField` | `<f> double precision` (the model attribute, as the Redis hash keeps it) + state `<f>__conf double precision`, `<f>__n bigint`, `<f>__corr bigint`, `<f>__contra bigint` (`NULL` = the seed; M2a) | none (M2a departure, §5 M2) |
-| `ValidityField` | `<f> tstzrange`, `<f>_ingested_at timestamptz`, `<f>_identity text`, `<f>_supersedes text`, `<f>_superseded_by text` | GiST on `<f>`; partial `UNIQUE (<f>_identity) WHERE upper_inf(<f>)` replaces the open-pointer STRING |
+| `ValidityField` | `<f>` (the declared value) + `<f>__valid_from`, `<f>__invalid_at`, `<f>__ingested_at` `double precision` (`'Infinity'` = open), `<f>__supersedes`, `<f>__superseded_by` `text`; companion `<table>__<f>__open (digest, member)` (M3 departure, §5 M3) | B-tree on `<f>__valid_from` and `<f>__invalid_at`; the companion's `member` references `_pk` `ON DELETE CASCADE` |
 | `EmbeddingField` | `vector(d)` (`d` from provider) | HNSW `vector_cosine_ops` past the threshold (needs pgvector) |
 | `BM25Field` | `<f>_len int` + companion `<model>__<f>_postings(scope, term, _pk, tf)` | PK `(scope, term, _pk)` |
 | `CoOccurrenceField` | companion `<model>__<f>_edges(src, dst, weight)` | PK `(src, dst)`, B-tree `(dst)` |
@@ -720,6 +720,37 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   crossing-chains interleaving (`tests/conformance/test_validity.py::TestConcurrency`,
   archive), re-expressed at model level, passes ten times. `rank_decayed` with
   a validity gate at N=2000: Postgres p50 ≤ Redis p50.
+- **M3 as shipped: departures from this plan, recorded.**
+  - **The interval is three `double precision` columns, not `tstzrange`.**
+    `timestamptz` keeps microseconds: the Redis score `1700000000.1234567`
+    reads back `1700000000.123457`, two scores one ulp apart become one
+    instant, and the gate's `invalid_at <= as_of` flips for a close one ulp
+    after `as_of` (measured on PostgreSQL 18.6; pinned by
+    `test_timestamptz_would_not_hold_the_redis_score` and the bit-exact bound
+    test). A range also cannot tell "no `invalid_at` recorded" from "`+inf`",
+    which the exclusion rule distinguishes at `as_of = +inf`. This is M2a's
+    clock decision applied to the interval: `<f>__valid_from`,
+    `<f>__invalid_at`, `<f>__ingested_at`, `NULL` = absent from that index,
+    `'Infinity'` = open; the declared value keeps `<f>`, as the Redis hash
+    does. B-trees on the two gate columns, not GiST.
+  - **The open pointer is a companion table, not a partial `UNIQUE` on an
+    identity column.** One record can be the open claim of several
+    identities, and an `invalidate` leaves the pointer naming the record it
+    closed; a per-row identity column can say neither.
+    `<table>__<f>__open (digest PRIMARY KEY, member)` with `member`
+    referencing `_pk` `ON DELETE CASCADE` is `on_delete`'s pointer cleanup by
+    exact key (no `a`/`ab` over-match). Created with the model's table at
+    first use. Consequence: a pointer naming a record that does not exist
+    cannot be stored (documented divergence).
+  - **Chain links are `<f>__supersedes` / `<f>__superseded_by` on the row**,
+    the double-underscore convention of M1/M2a, and `chain` is one `WITH
+    RECURSIVE` over them.
+  - **`supersede` takes the `(model, field)` advisory lock first, then `FOR
+    UPDATE` in `_pk` order**, as this plan said; `ObservationProtocol`'s
+    batch takes the same lock before its row locks. Saves do not take it.
+  - **`semantic_search` / `keyword_search`** are listed here but need M2b's
+    `EmbeddingField` / `BM25Field` columns; they land on whichever of M2b's
+    merge or this PR comes second.
 - **Files (gate b).** `test_validity_field.py` (non-Lua tests),
   `test_partitioned_confidence.py`, `test_semantic_search.py`.
 
