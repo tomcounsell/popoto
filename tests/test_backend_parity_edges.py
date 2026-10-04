@@ -206,17 +206,17 @@ def test_unparseable_sorted_string_bound_raises_on_both_legs(bound, backend_is_r
     [
         ("2.5", ["a", "b"]),
         ("3", ["a", "b", "c"]),
-        (" 3", ["a", "b", "c"]),
         ("+3", ["a", "b", "c"]),
         ("3.", ["a", "b", "c"]),
         ("1e1", ["10", "a", "b", "c"]),
         ("inf", ["10", "a", "b", "c"]),
         ("-inf", []),
-        ("0x2", ["a", "b"]),
     ],
 )
 def test_parseable_sorted_string_bound_agrees(bound, expected):
-    """What ``strtod`` accepts is accepted on both legs, with the same rows."""
+    """What ``strtod`` accepts is accepted on both legs, with the same rows.
+    (Leading whitespace and hex floats are left out: Redis parses them and
+    Valkey refuses them, so they are server-dependent.)"""
     assert codes(EdgeItem.query.filter(rank__lte=bound)) == expected
 
 
@@ -392,7 +392,7 @@ class SortedFloatKeyed(popoto.Model):
 
 @pytest.mark.parametrize(
     "value, expected",
-    [(1, [1]), (2.0, [2]), ("01", [1]), (" 1", [1]), (1.0, [1]), ("2", [2])],
+    [(1, [1]), (2.0, [2]), ("01", [1]), (1.0, [1]), ("2", [2])],
     ids=repr,
 )
 def test_sorted_int_key_equality_is_a_score_match(value, expected):
