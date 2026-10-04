@@ -11,7 +11,7 @@ by the engine's own statement -- then the table is ``ANALYZE``d.
 Each measured call is the public ``Model.query.recall(q, scope=p,
 limit=10)``: the query embedding (a synthetic provider, so the provider's
 own latency is not in the number), the BM25 and vector arms, RRF fusion and
-the full rows of the fused records, in one statement. The two arms are also
+the full rows of the fused records (an index-only count, then one statement on the exact path; the HNSW arm is its own statement). The two arms are also
 timed alone (``keyword_search`` with per-scope statistics, the vector arm)
 to show where the time goes. ``--runs`` runs of ``--iters`` calls after a
 warm-up; each run's p50 / p95 and the overall p95 are printed.

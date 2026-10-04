@@ -713,7 +713,22 @@ p95 at 60% scope. The 5% scope (1,000 vectors) takes the exact path, over
 the narrow vector table; before that table, reading 1,000 TOASTed 6 kB
 vectors from the record table was most of the time, and the 5% p95 sat
 at 13-25 ms. The 60% scope (12,000 vectors) takes HNSW. Each run prints the
-load average. BENCH_TABLE
+load average.
+
+Measured for #774 (Apple M1 Max, PostgreSQL 18.6 with `shared_buffers`
+128 MB, pgvector 0.8.7, one 20k corpus, six invocations of three runs each;
+the machine was shared, load average 4.7-7.5 throughout):
+
+| Scope | Path | p50 (typical) | p95 per run | Runs within the bar |
+|---|---|---|---|---|
+| 5% | exact, narrow table | 5.6-5.9 ms (11.5-13.4 ms in the slow windows) | 6.5-10.8 ms in 13 runs; 16.4-20.2 ms in 5 | 13 of 18 (bar 15 ms) |
+| 60% | HNSW | 9.9-17.8 ms | 16.8-46.3 ms | 18 of 18 (bar 60 ms) |
+
+The five slow 5% runs fell in windows where the whole machine slowed: the
+same index-only count statement went from 0.4 ms to 1.0 ms p50 and every
+arm doubled together. Run alone in one window, the exact arm on the record
+table (TOAST) took p50 7.9 ms, p95 9.1 ms, and on the narrow table p50
+2.9 ms, p95 3.6 ms.
 
 ```bash
 POPOTO_POSTGRES_URL=postgresql://localhost:5432/popoto_bench \
