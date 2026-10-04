@@ -297,11 +297,12 @@ def test_unknown_filter_operator_is_refused(pg):
     "call",
     [
         lambda: PgNote.load_raw_hash("PgNote:o:s"),
-        lambda: PgNote.idle_seconds("PgNote:o:s"),
         lambda: PgNote.query.keys(catchall=True),
         lambda: PgNote.query.keys(clean=True),
     ],
-    ids=["load_raw_hash", "idle_seconds", "keys_catchall", "keys_clean"],
+    # idle_seconds left this list in #759 M4: it is a field_call adapter now
+    # (tests/postgres/test_postgres_recipes.py::test_idle_seconds_*).
+    ids=["load_raw_hash", "keys_catchall", "keys_clean"],
 )
 def test_redis_only_apis_refuse_instead_of_reading_redis(pg, call):
     with pytest.raises(BackendCapabilityError):

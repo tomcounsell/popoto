@@ -1071,7 +1071,9 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         if handled is not NOT_HANDLED:
             return handled
         raise BackendCapabilityError(
-            f"PostgresBackend.field_call({kind or field}, {op!r}) has no adapter"
+            f"PostgresBackend.field_call({kind or field}, {op!r}) has no adapter; "
+            "the remaining ones (CyclicDecayField, TDValueField, "
+            "PredictionLedgerMixin) each arrives in #759 M5"
         )
 
     def _capped_push(

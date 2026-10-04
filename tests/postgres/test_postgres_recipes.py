@@ -558,7 +558,7 @@ def test_append_only_sees_its_own_transaction(pg):
 
 
 def test_unlisted_field_call_raises_capability_error(pg):
-    with pytest.raises(BackendCapabilityError, match="no adapter"):
+    with pytest.raises(BackendCapabilityError, match="no adapter.*arrives in"):
         pg.field_call(RecIdle._meta.spec, "note", "frobnicate")
 
 
