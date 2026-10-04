@@ -45,6 +45,13 @@ from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 # collection to fail rather than skip.
 numpy = pytest.importorskip("numpy")
 
+# Backend conformance (#759 M2c, plan §5 M2 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Test models
 # ---------------------------------------------------------------------------
@@ -295,6 +302,14 @@ class TestBackwardsCompatibility:
         result = assembler.assemble(query_cues={"topic": "test"})
         assert result.records == []
 
+    @pytest.mark.redis_only(
+        reason=(
+            "HybridMemory declares a CoOccurrenceField, which Postgres refuses at first "
+            "use until #759 M4: the call raises BackendCapabilityError, which the "
+            "assembler logs and swallows, so a pass would not exercise Postgres; the "
+            "two-leg version is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_forced_composite_with_hybrid_fields(self):
         """Callers who pass retrieval_mode='composite' must always use the
         composite path even if BM25 and EmbeddingField are present."""
@@ -367,6 +382,14 @@ class TestPullPathDispatch:
             # Should fall back gracefully — either via composite or empty result
             assert isinstance(result.records, list)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "HybridMemory declares a CoOccurrenceField, which Postgres refuses at first "
+            "use until #759 M4: the call raises BackendCapabilityError, which the "
+            "assembler logs and swallows, so a pass would not exercise Postgres; the "
+            "two-leg version is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_hybrid_fallback_when_bm25_raises(self):
         """When BM25.search raises, hybrid continues with vector-only signal
         (or falls back to composite if vector is also empty)."""
@@ -559,6 +582,13 @@ class TestGetVectorScores:
         assert isinstance(result, list)
         assert result == []
 
+    @pytest.mark.redis_only(
+        reason=(
+            "patches EmbeddingField.load_embeddings, the Redis vector arm's .npy matrix "
+            "loader; Postgres ranks in SQL (vector_search) and never calls it. The "
+            "two-leg version is in tests/test_backend_parity_assembler.py"
+        )
+    )
     def test_returns_tuples_when_provider_configured(self):
         """With a mock provider, _get_vector_scores returns (str, float) tuples."""
         import numpy as np

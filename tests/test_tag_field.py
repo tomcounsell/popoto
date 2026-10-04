@@ -293,9 +293,6 @@ class TestTagFieldValkeySafety:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason="AssemblerMemory declares a DecayingSortedField and drives ContextAssembler, which arrive on Postgres in M2 (#759 plan §5)"
-)
 class TestTagFieldAssembler:
     def setup_method(self):
         AssemblerMemory.delete_all()
@@ -408,9 +405,6 @@ class TestTagFieldAssembler:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason="AssemblerMemory declares a DecayingSortedField and drives ContextAssembler, which arrive on Postgres in M2 (#759 plan §5)"
-)
 class TestTagFieldBenchmark:
     def setup_method(self):
         AssemblerMemory.delete_all()

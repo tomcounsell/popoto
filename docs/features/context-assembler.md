@@ -287,6 +287,25 @@ Note these are `redis.exceptions.ConnectionError`/`TimeoutError`, not the
 builtins of the same name — catching the builtins will not catch these.
 `OUTAGE_ERRORS` is the exact tuple the recipes test against.
 
+A model bound to Postgres raises
+`popoto.backends.BackendUnavailableError` when its database is unreachable,
+and the assembler re-raises that too. The tuple it tests against is
+`popoto.recipes.context_assembler.OUTAGE_ERRORS`, the Redis pair plus
+`BackendUnavailableError`; catch that one when a model may be bound to either
+backend.
+
+### On Postgres
+
+`ContextAssembler` works unchanged on a model bound to Postgres
+(`Meta.backend = "postgres"`, #759 M2c), and returns the same ranked records
+as on Redis: every stage reaches storage through field and query methods that
+dispatch on the model's backend, the hybrid path ranks BM25 with corpus-wide
+statistics as `BM25Field.search` does, and the post-retrieval effects (staged
+reads for the selected records, competitive suppression for the rest) run as
+bulk statements in one transaction. A Postgres-bound assembler issues no Redis
+command. See [Postgres Backend](postgres-backend.md#contextassembler-m2c) for
+what each stage runs and the few documented differences.
+
 ### Push Path
 
 1. **CyclicDecayField scan**: Find records whose cyclic + pressure score exceeds `DEFAULT_SURFACING_THRESHOLD`.
