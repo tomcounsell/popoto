@@ -1019,7 +1019,7 @@ class SearchMixin:
         self,
         spec: ModelSpec,
         field: str,
-        query: Sequence[float],
+        query: Any,
         *,
         limit: int,
         where: Optional[Predicate] = None,
