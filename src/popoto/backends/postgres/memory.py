@@ -847,6 +847,8 @@ class PostgresMemoryOps(PostgresValidityOps):
             result = self._validity_field_call(spec, field, op, args, kwargs, uow)
             if result is not _VALIDITY_NOT_HANDLED:
                 return result
+        if fs is not None and fs.kind == CONFIDENCE_KIND and op == "signal_many":
+            return self._confidence_signal_many(spec, field, *args, uow=uow, **kwargs)
         return _NOT_HANDLED
 
     def _confidence_state(
@@ -1152,6 +1154,61 @@ class PostgresMemoryOps(PostgresValidityOps):
                 if attempt > retries:
                     raise _retryable(cause, attempt) from cause
                 time.sleep(random.uniform(0.005, 0.05) * attempt)
+
+    # ContextAssembler (#759 M2c) ---------------------------------------------
+
+    def _confidence_signal_many(
+        self,
+        spec: ModelSpec,
+        field: str,
+        ids: Sequence[RecordId],
+        signal: float,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> int:
+        """One capped-mean signal applied to every record in ``ids`` in **one**
+        ``UPDATE`` -- the assembler's competitive suppression (#758 D8),
+        which on Redis queues one ``CAPPED_BAYESIAN_UPDATE_LUA`` per
+        candidate. The ``SET`` list is :meth:`update_confidence`'s,
+        operation for operation, so each row ends bit-identical to a
+        single update with the same signal
+        (``tests/postgres/test_postgres_assembler.py`` pins it). Records
+        that do not exist are skipped, as the queued script skips them.
+        Rows lock in ``_pk`` order behind their record-key locks. Returns
+        how many rows were updated; an id listed twice is updated once."""
+        fs = spec.fields.get(field)
+        if fs is None or fs.kind != CONFIDENCE_KIND:
+            raise TypeError(f"{field} is not a ConfidenceField")
+        keys = sorted({rid.canonical for rid in ids}, key=_sort_key)
+        if not keys:
+            return 0
+        ts = self._table(spec, write=True)
+        ic = _lit(float(fs.options.get("initial_confidence", 0.5)))
+        cap = int(fs.options.get("evidence_cap", Defaults.CONFIDENCE_EVIDENCE_CAP))
+        sig = _lit(float(signal))
+        conf, n, corr, contra = (quote_ident(field + s) for s in CONF_SUFFIXES)
+        c = f"coalesce({conf}, {ic})"
+        k = f"(least(coalesce({n}, 0) + 1, {cap}) + 1)"
+        d = f"({sig} - {c})"
+        step = (
+            f"(CASE WHEN abs({d}) * 2::float8 <= {k} * {_lit(5e-324)}"
+            f" THEN (CASE WHEN {d} < 0 THEN (-0.0)::float8 ELSE {_ZERO} END)"
+            f" ELSE {d} / {k} END)"
+        )
+        corroborates = float(signal) >= 0.5
+        sql = (
+            f'WITH locked AS (SELECT "_pk" FROM {ts.qualified} '
+            f'WHERE "_pk" = ANY(%s::text[]) ORDER BY "_pk" COLLATE "C" FOR UPDATE) '
+            f"UPDATE {ts.qualified} AS t SET "
+            f"{conf} = greatest({_ZERO}, least({_ONE}, {c} + {step})), "
+            f"{n} = coalesce({n}, 0) + 1, "
+            f"{corr} = coalesce({corr}, 0) + {1 if corroborates else 0}, "
+            f"{contra} = coalesce({contra}, 0) + {0 if corroborates else 1}, "
+            f'"_updated_at" = now() FROM locked WHERE t."_pk" = locked."_pk"'
+        )
+        sql, params = self._record_locked(ts, keys, sql, [keys])
+        _, count = self._run(sql, params, uow=uow, write=True)
+        return int(count or 0)
 
 
 def memory_field_call(

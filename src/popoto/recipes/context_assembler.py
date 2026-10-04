@@ -82,9 +82,19 @@ from ..fields.observation import ObservationProtocol
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.tag_field import TagFieldMixin
 from ..fields.validity_field import ValidityField
-from ..redis_db import OUTAGE_ERRORS
+from ..backends.types import BackendUnavailableError
+from ..redis_db import OUTAGE_ERRORS as _REDIS_OUTAGE_ERRORS
 
 logger = logging.getLogger("POPOTO.ContextAssembler")
+
+#: Exceptions that mean "the store is unreachable", which every stage here
+#: re-raises rather than reading as "no memories". Redis's two plus the
+#: backend-neutral :class:`~popoto.backends.BackendUnavailableError` a
+#: Postgres-bound model raises (#759 M2c, #758 D8): without it, a Postgres
+#: outage in the BM25 arm was swallowed as a failed signal and assembly
+#: degraded to the query-blind composite path. A Redis-bound model never
+#: raises the third, so its behaviour is unchanged.
+OUTAGE_ERRORS = _REDIS_OUTAGE_ERRORS + (BackendUnavailableError,)
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +115,164 @@ def _get_key(instance) -> str:
         except Exception:
             return str(id(instance))
     return key
+
+
+# ---------------------------------------------------------------------------
+# Postgres-bound models (#759 M2c, #758 D8)
+#
+# Every stage below reaches storage through field and query methods that
+# already dispatch on the model's backend (BM25Field.search, the vector arm,
+# fuse, composite_score, ExistenceFilter, ConfidenceField, ObservationProtocol).
+# What remains here is the handful of places the assembler itself spoke Redis:
+# the scope and tag key sets, the metacognitive score proxy, and the
+# post-effects pipeline. Each takes the branch below when the model is bound to
+# a non-Redis backend, and the Redis code under it is unchanged. Resolving the
+# backend issues no Redis command (see ``backends.routing``).
+# ---------------------------------------------------------------------------
+
+
+def _non_redis_backend(model_class: Any) -> Any:
+    """The model's backend when it is not Redis, else ``None``."""
+    from ..backends.routing import non_redis_backend
+
+    return non_redis_backend(model_class)
+
+
+def _backend_keys_matching(
+    model_class: Any, backend: Any, kwargs: dict[str, Any]
+) -> set[str]:
+    """The canonical keys of the records ``filter(**kwargs)`` matches, from
+    one id-only ``SELECT`` -- the Postgres reading of ``filter_for_keys_set``
+    (the same compile ``Query.fuse`` uses on Postgres). An unknown parameter
+    raises ``QueryException`` exactly as the Redis call does."""
+    from ..backends import QueryCall, QueryPlan
+    from ..backends.planning import plan_from_call
+
+    plan = plan_from_call(
+        QueryCall(query=model_class.query, kind="filter", kwargs=dict(kwargs))
+    )
+    rows = backend.select(
+        model_class._meta.spec, QueryPlan(where=plan.where, project=())
+    )
+    return {row["_id"].canonical for row in rows}
+
+
+def _indexed_scope(
+    model_class: Any, filters: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    """Split ``filters`` the way ``filter_for_keys_set`` does on Redis:
+    ``(indexed, plain, unknown)``.
+
+    *Indexed* parameters are the ones a field resolves to a key set (its
+    ``filter_query_params``), plus the ``partition_by`` names a queried sorted
+    field consumes; *plain* ones name an unindexed ``Field`` and are left to
+    the client-side pass; *unknown* ones make the Redis call raise. The hybrid
+    pull's BM25 window is narrowed by the indexed part only on both backends,
+    because which records a superset admits into that window decides the
+    ranks the fused list sees (#576).
+    """
+    meta = model_class._meta
+    params = meta.filter_query_params_by_field
+    remaining = set(filters) - {"limit", "order_by", "values"}
+    indexed_names: set[str] = set()
+    for field_name in meta.sorted_field_names:
+        used = remaining & params[field_name]
+        if not used:
+            continue
+        consumed = used | set(meta.fields[field_name].partition_by)
+        indexed_names |= consumed & set(filters)
+        remaining -= consumed
+    for field_name, field_params in params.items():
+        if field_name in meta.sorted_field_names:
+            continue
+        used = remaining & field_params
+        indexed_names |= used
+        remaining -= used
+    indexed = {k: v for k, v in filters.items() if k in indexed_names}
+    plain = {k: filters[k] for k in remaining if k in meta.fields}
+    unknown = sorted(k for k in remaining if k not in meta.fields)
+    return indexed, plain, unknown
+
+
+def _backend_partition_scores(
+    records: list[Any],
+    *,
+    model_class: Any,
+    field_name: str,
+    backend: Any,
+    now: float | None,
+) -> dict[str, float | None]:
+    """:func:`_partition_scores_for_field` on a non-Redis backend.
+
+    A record scores what its partition's sorted set would give it on Redis:
+    a plain ``SortedField`` its stored value, a ``DecayingSortedField`` the
+    ``DECAY_SCORE_LUA`` score of ``top_by_decay`` (the backend's
+    ``rank_decayed`` over the partition, with the same base-score field and
+    confidence modulation), and ``None`` when it is not in that partition --
+    unsaved, missing a partition value, or stored under another one.
+    """
+    from ..backends import RecordId
+    from ..backends.postgres.memory import partition_where
+    from ..models.query import QueryBuilder
+
+    f = model_class._meta.fields[field_name]
+    partition = list(f.partition_by or ())
+    spec = model_class._meta.spec
+    keys = [_get_key(r) for r in records]
+    rows = backend.load(
+        spec,
+        [RecordId.from_key(model_class._meta.model_name, k) for k in keys],
+    )
+    stored: dict[str, tuple[tuple[tuple[str, Any], ...], Any]] = {}
+    for record, key, row in zip(records, keys, rows):
+        if row is None:
+            continue
+        try:
+            part = tuple((pf, getattr(record, pf)) for pf in partition)
+        except Exception:
+            continue
+        if any(value is None for _pf, value in part):
+            continue
+        if any(row.get(pf) != value for pf, value in part):
+            continue
+        stored[key] = (part, row)
+
+    scores: dict[str, float | None] = {key: None for key in keys}
+    if not isinstance(f, DecayingSortedField):
+        for key, (_part, row) in stored.items():
+            value = row.get(field_name)
+            try:
+                scores[key] = None if value is None else float(value)
+            except (TypeError, ValueError):
+                scores[key] = None
+        return scores
+
+    confidence = QueryBuilder(model_class.query)._decay_confidence_field(
+        model_class, f, field_name
+    )
+    if now is None:
+        now = time.time()
+    for part in {part for part, _row in stored.values()}:
+        try:
+            ranked = backend.rank_decayed(
+                spec,
+                field_name,
+                now=now,
+                n=None,
+                where=partition_where(dict(part)),
+                base_score_field=f.base_score_field or None,
+                confidence_field=confidence,
+            )
+        except OUTAGE_ERRORS:
+            raise
+        except Exception as e:
+            logger.warning("decayed partition score failed for %s: %s", part, e)
+            continue
+        by_key = {rid.canonical: float(score) for rid, score in ranked}
+        for key, (record_part, _row) in stored.items():
+            if record_part == part:
+                scores[key] = by_key.get(key)
+    return scores
 
 
 # ---------------------------------------------------------------------------
@@ -617,6 +785,16 @@ def _partition_scores_for_field(records, *, model_class, field_name, now=None):
     Returns:
         ``{record_key: score_or_None}`` for every record in ``records``.
     """
+    backend = _non_redis_backend(model_class)
+    if backend is not None:
+        return _backend_partition_scores(
+            records,
+            model_class=model_class,
+            field_name=field_name,
+            backend=backend,
+            now=now,
+        )
+
     f = model_class._meta.fields[field_name]
 
     # Resolve each record's partition-specific ZSET key up front. A record
@@ -1654,6 +1832,13 @@ class ContextAssembler:
             return None
         lookup = "any" if tag_match == "any" else "all"
         param = f"{self._tag_field_name}__{lookup}"
+        backend = _non_redis_backend(self.model_class)
+        if backend is not None:
+            # ``&&`` (any) / ``@>`` (all) on the tag column: the records the
+            # SUNION / SINTER of the value sets hold on Redis (#759 M2c).
+            return _backend_keys_matching(
+                self.model_class, backend, {param: list(tags)}
+            )
         field_cls = self.model_class._meta.fields[self._tag_field_name].__class__
         matched = field_cls.filter_query(
             self.model_class, self._tag_field_name, **{param: list(tags)}
@@ -1751,6 +1936,39 @@ class ContextAssembler:
         """
         headroom = min(self._exclude_headroom, EXCLUDE_HEADROOM_CAP)
         return base + headroom
+
+    def _backend_scope_keys(
+        self, backend: Any, filters: dict[str, Any]
+    ) -> set[str] | None:
+        """The hybrid pull's ``allowed_keys`` on a non-Redis backend: what
+        ``filter_for_keys_set(**filters)`` yields on Redis, from one id-only
+        ``SELECT`` instead of index sets (#759 M2c).
+
+        Same three outcomes as the Redis branch: ``None`` when every filter
+        names a plain (unindexed) field -- ``fuse`` applies the predicate --;
+        the keys the *indexed* filters match when the scope mixes the two;
+        and an empty set (the lexical signal skipped, failing closed) when a
+        filter names no field, or the scope cannot be resolved.
+        """
+        from ..exceptions import QueryException
+
+        try:
+            indexed, _plain, unknown = _indexed_scope(self.model_class, filters)
+            if unknown:
+                raise QueryException(f"Invalid filter parameters: {','.join(unknown)}")
+            if not indexed:
+                return None
+            return _backend_keys_matching(self.model_class, backend, indexed)
+        except OUTAGE_ERRORS:
+            raise
+        except Exception as e:
+            logger.warning(
+                "Could not resolve retrieval scope %s, skipping the lexical "
+                "signal: %s",
+                filters,
+                e,
+            )
+            return set()
 
     @staticmethod
     def _scope_by_validity(
@@ -2415,6 +2633,20 @@ class ContextAssembler:
         Falls back to the composite path when both lexical and vector signals
         are empty (e.g. zero-BM25-hit queries degrade to composite, by design).
 
+        On a Postgres-bound model (#759 M2c, #758 D8) the same body runs and
+        every arm dispatches: ``BM25Field.search`` is the backend's
+        ``keyword_search`` with **corpus-wide** statistics (``stats="corpus"``,
+        what ``recall(bm25_stats="corpus")`` uses for its BM25 arm, never the
+        per-scope default), the vector arm is ``vector_search``, ``fuse`` is
+        the same Python RRF with ``_fusion_weights``, and the zero-signal
+        fallback is ``_pull_path_composite`` (``rank_composite`` in SQL). Only
+        the scope resolution below has its own branch. The path deliberately
+        does not call ``recall()`` itself: ``recall`` ranks every arm inside
+        the scope, while this path ranks the vector arm corpus-wide and the
+        BM25 arm inside the ``SCOPED_SEARCH_FETCH_CAP`` window before ``fuse``
+        filters to the scope, and those ranks are what the RRF sum sees. The
+        same keys in the same order on both backends needs the same arms.
+
         Returns:
             Tuple of (selected_records, all_candidates).
         """
@@ -2446,7 +2678,10 @@ class ContextAssembler:
         # filtering a bounded fetch lets other agents' records crowd the window
         # and starve this one (#576).
         allowed_keys = None
-        if filters:
+        backend = _non_redis_backend(self.model_class) if filters else None
+        if backend is not None:
+            allowed_keys = self._backend_scope_keys(backend, filters)
+        elif filters:
             try:
                 query = self.model_class.query
                 allowed_keys = query.filter_for_keys_set(**filters)
@@ -2634,8 +2869,19 @@ class ContextAssembler:
     def _post_effects(
         self, selected, pull_keys, push_keys, all_pull_candidates, agent_id
     ):
-        """Apply post-retrieval effects using Redis pipeline."""
+        """Apply post-retrieval effects using Redis pipeline.
+
+        On a Postgres-bound model the effects run in :meth:`_post_effects_on_backend`
+        instead, taken before any Redis pipeline is opened (#759 M2c, #758 D8).
+        """
         if not selected and not all_pull_candidates:
+            return
+
+        backend = _non_redis_backend(self.model_class)
+        if backend is not None:
+            self._post_effects_on_backend(
+                backend, selected, pull_keys, push_keys, all_pull_candidates, agent_id
+            )
             return
 
         pipeline = batch()
@@ -2676,6 +2922,109 @@ class ContextAssembler:
             raise
         except Exception as e:
             logger.warning("Post-effects pipeline failed: %s", e)
+
+    def _post_effects_on_backend(
+        self,
+        backend: Any,
+        selected: list[Any],
+        pull_keys: set[str],
+        push_keys: set[str],
+        all_pull_candidates: list[Any],
+        agent_id: Any,
+    ) -> None:
+        """The post-retrieval effects of :meth:`_post_effects` on a non-Redis
+        backend, as bulk calls in **one** transaction (#759 M2c, #758 D8).
+
+        The effects are the Redis pipeline's, record for record: one staged
+        read for each selected pull record (``on_read``, when the model
+        tracks reads), proposals for the selected push records
+        (``on_surfaced``), and the competitive-suppression signal
+        (``COMPETITIVE_SUPPRESSION_SIGNAL``) for every pull candidate that
+        was not selected. Here they are one stage ``UPDATE`` and one
+        confidence ``UPDATE`` over all the keys (``ConfidenceField``'s
+        ``signal_many``), after the rows of both sets are locked in ``_pk``
+        order behind their record-key locks -- the backend's lock order, the
+        one ``on_context_used`` takes. No Redis pipeline is opened, and no
+        Redis command is issued.
+
+        A deadlock or serialization failure retries the whole unit
+        (``Defaults.PG_TRANSACTION_RETRIES``); a failure that survives, like
+        a failed Redis pipeline, is logged and does not fail the assembly.
+        An outage (``BackendUnavailableError``) propagates, as a Redis
+        outage does.
+        """
+        from ..backends import RecordId
+
+        model = self.model_class
+        spec = model._meta.spec
+        model_name = model._meta.model_name
+
+        stage: dict[str, int] = {}
+        for record in selected:
+            if _get_key(record) not in pull_keys:
+                continue
+            # ``on_read`` stages a read only on an AccessTrackerMixin model.
+            if callable(getattr(record, "_at_member", None)):
+                key = record._at_member()
+                stage[key] = stage.get(key, 0) + 1
+        proactive_records = [r for r in selected if _get_key(r) in push_keys]
+        suppress: list[str] = []
+        if self._confidence_field_name is not None:
+            selected_keys = {_get_key(r) for r in selected}
+            suppress = [
+                _get_key(c)
+                for c in all_pull_candidates
+                if _get_key(c) not in selected_keys
+            ]
+        if not stage and not proactive_records and not suppress:
+            return
+
+        ttl = getattr(model, "_staged_ttl_seconds", None)
+
+        def work(tx: Any) -> None:
+            now = time.time()
+            locked = sorted(set(stage) | set(suppress))
+            if locked:
+                backend.field_call(
+                    spec,
+                    "_observe",
+                    "lock",
+                    [RecordId.from_key(model_name, k) for k in locked],
+                    uow=tx,
+                )
+            if stage:
+                backend.field_call(
+                    spec, "_access", "stage", stage, now=now, ttl=ttl, uow=tx
+                )
+            if proactive_records:
+                ObservationProtocol.on_surfaced(
+                    proactive_records,
+                    reason="proactive",
+                    partition=agent_id,
+                    pipeline=tx,
+                )
+            # Each candidate takes the signal once per time it is listed, as
+            # its queued script runs once per listing on Redis.
+            pending = list(suppress)
+            while pending:
+                batch_keys = list(dict.fromkeys(pending))
+                backend.field_call(
+                    spec,
+                    self._confidence_field_name,
+                    "signal_many",
+                    [RecordId.from_key(model_name, k) for k in batch_keys],
+                    COMPETITIVE_SUPPRESSION_SIGNAL,
+                    uow=tx,
+                )
+                for k in batch_keys:
+                    pending.remove(k)
+
+        try:
+            backend.field_call(spec, "_observe", "atomically", work)
+        except OUTAGE_ERRORS:
+            raise
+        except Exception as e:
+            logger.warning("Post-effects transaction failed: %s", e)
 
     # ------------------------------------------------------------------
     # Metacognitive layer: RetrievalQuality helpers + public assess()

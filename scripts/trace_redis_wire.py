@@ -28,6 +28,12 @@ Usage -- trace a base tree and the working tree, then compare::
         python scripts/trace_redis_wire.py > head.trace
     cmp base.trace head.trace
 
+``--with-assembler`` appends the ``ContextAssembler`` scenarios (#759 M2c):
+``assemble()`` in every mode with scopes, tags, budgets and the gate,
+``assess()``, the score proxy and ``on_context_used()``. They are off by
+default, so the default trace (and the hash earlier milestones recorded) is
+unchanged.
+
 The script refuses to run unless ``REDIS_URL`` names a non-zero database
 (CLAUDE.md, #577), and it clears only the keys its own models own.
 """
@@ -846,6 +852,174 @@ def m2b_embeddings():
         EmbeddingField.sweep_stale_tempfiles(TrEmb),
         TrEmb.query.get(name="e2").delete(),
     ]
+
+
+# -- ContextAssembler (#759 M2c), behind --with-assembler ------------------------
+#
+# M2c adds a backend check ahead of the assembler's own Redis code (the scope
+# and tag key sets, the metacognitive score proxy, the post-effects pipeline).
+# These scenarios pin that a Redis-bound assembler's wire is unchanged. They
+# run only with the flag, so the default trace -- and its hash, which earlier
+# milestones recorded -- is exactly what it was.
+
+WITH_ASSEMBLER = "--with-assembler" in sys.argv
+
+if WITH_ASSEMBLER:
+    from popoto import (  # noqa: E402
+        AccessTrackerMixin,
+        ConfidenceField,
+        DecayingSortedField,
+        ObservationProtocol,
+    )
+    from popoto.recipes.context_assembler import ContextAssembler  # noqa: E402
+
+    class TrMem(AccessTrackerMixin, popoto.Model):
+        name = popoto.KeyField()
+        agent = popoto.KeyField()
+        tier = popoto.Field(type=str, default="hot")
+        tags = popoto.TagField()
+        text = popoto.StringField(default="")
+        importance = popoto.FloatField(default=1.0)
+        relevance = DecayingSortedField(
+            partition_by="agent", base_score_field="importance"
+        )
+        certainty = ConfidenceField()
+        content = BM25Field(source="text")
+        embedding = EmbeddingField(source="text", provider=_TrProvider())
+
+    class TrMemPlain(popoto.Model):
+        name = popoto.KeyField()
+        agent = popoto.KeyField()
+        score = popoto.SortedField(type=float, partition_by="agent")
+        relevance = DecayingSortedField(partition_by="agent")
+        certainty = ConfidenceField()
+
+    MODELS = MODELS + (TrMem, TrMemPlain)
+
+    _MEMS = (
+        ("m1", "a", "hot", ["ops"], "redis cluster failover runbook", 2.0),
+        ("m2", "a", "cold", ["dev"], "redis deployment guide", 1.0),
+        ("m3", "a", "hot", ["ops", "dev"], "kubernetes rollout runbook", 3.0),
+        ("m4", "b", "hot", ["ops"], "redis cluster sentinel notes", 1.5),
+        ("m5", "a", "hot", [], "unrelated text", 0.5),
+    )
+
+    def _mem_names(result):
+        return [r._redis_key for r in result.records]
+
+    @scenario
+    def m2c_seed_memories():
+        for name, agent, tier, tags, text, importance in _MEMS:
+            TrMem(
+                name=name,
+                agent=agent,
+                tier=tier,
+                tags=tags,
+                text=text,
+                importance=importance,
+            ).save()
+        ConfidenceField.update_confidence(
+            TrMem.query.get(name="m3", agent="a"), "certainty", signal=0.9
+        )
+        for i, value in enumerate((0.2, 0.7, 0.4)):
+            TrMemPlain(name=f"p{i}", agent="a", score=value).save()
+        return True
+
+    @scenario
+    def m2c_assemble_hybrid():
+        assembler = ContextAssembler(
+            TrMem, score_weights={"relevance": 0.6, "certainty": 0.3}, max_items=2
+        )
+        result = assembler.assemble(
+            {"topic": "redis runbook"},
+            partition_filters={"agent": "a"},
+            assess_quality=True,
+            emit_trace=True,
+        )
+        return [_mem_names(result), result.formatted, result.metadata["token_count"]]
+
+    @scenario
+    def m2c_assemble_scoped_and_tagged():
+        assembler = ContextAssembler(
+            TrMem,
+            score_weights={"relevance": 1.0},
+            max_items=3,
+            max_tokens=60,
+            confidence_gate_threshold=0.3,
+            confidence_gate_mode="flag",
+        )
+        out = []
+        for kwargs in (
+            {"partition_filters": {"agent": "a", "tier": "hot"}},
+            {"partition_filters": {"tier": "hot"}},
+            {"partition_filters": {"agent": "a"}, "tags": ["ops"], "tag_match": "any"},
+            {
+                "partition_filters": {"agent": "a"},
+                "tags": ["ops", "dev"],
+                "tag_match": "all",
+            },
+            {"partition_filters": {"agent": "a"}, "exclude_keys": {"TrMem:a:m1"}},
+            {"agent_id": "a"},
+        ):
+            result = assembler.assemble({"topic": "redis"}, **kwargs)
+            out.append([_mem_names(result), result.metadata.get("gate")])
+        return out
+
+    @scenario
+    def m2c_assemble_lexical_composite_and_fallback():
+        out = []
+        for mode, cues in (
+            ("lexical", {"topic": "kubernetes"}),
+            ("composite", {"topic": "kubernetes"}),
+            ("hybrid", {"topic": "zzzabsent"}),
+        ):
+            assembler = ContextAssembler(
+                TrMem, score_weights={"relevance": 1.0}, retrieval_mode=mode
+            )
+            result = assembler.assemble(cues, partition_filters={"agent": "a"})
+            out.append([mode, _mem_names(result), result.metadata["pull_count"]])
+        return out
+
+    @scenario
+    def m2c_assess_and_proxy():
+        from popoto.recipes.context_assembler import _score_proxy_for_records
+
+        assembler = ContextAssembler(TrMem, score_weights={"relevance": 1.0})
+        quality = assembler.assess({"topic": "redis"}, {"agent": "a"})
+        plain = list(TrMemPlain.query.filter(agent="a"))
+        return [
+            quality.fok_score,
+            quality.score_distribution,
+            quality.per_cue_fok,
+            _score_proxy_for_records(
+                plain, model_class=TrMemPlain, score_weights={"score": 1.0}
+            ),
+            _score_proxy_for_records(
+                plain, model_class=TrMemPlain, score_weights={"relevance": 1.0}
+            ),
+        ]
+
+    @scenario
+    def m2c_post_effects_and_outcomes():
+        assembler = ContextAssembler(
+            TrMem, score_weights={"relevance": 1.0}, max_items=2
+        )
+        result = assembler.assemble(
+            {"topic": "redis"}, partition_filters={"agent": "a"}
+        )
+        keys = _mem_names(result)
+        ObservationProtocol.on_context_used(
+            result.records, dict(zip(keys, ["acted", "contradicted"]))
+        )
+        return [
+            keys,
+            [
+                ConfidenceField.get_confidence_data(
+                    TrMem(name=n, agent="a"), "certainty"
+                )
+                for n in ("m1", "m2", "m3", "m5")
+            ],
+        ]
 
 
 def main() -> None:
