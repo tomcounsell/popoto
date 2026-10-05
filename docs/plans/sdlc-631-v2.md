@@ -1115,6 +1115,17 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     '{}')`; and a NaN prediction error (seed 6) -- **documented and pinned**
     (`ledger_nan_error`; Redis's `HSET` survives its refused `ZADD`,
     Postgres refuses first, both with "value is not a valid float").
+  - **After the merge with #783 (review of PR #786):** every long-tail
+    statement that addresses the record row carries the live-row filter
+    (the ledger's `EXISTS` guard, cycle adjust / pressure / export /
+    import, the TD update); the ledger tables do not, since the `$PL:` keys
+    outlive the record on Redis too. A non-numeric cycle factor raises
+    `ValueError` with the script's error text before writing (it persisted
+    `NaN` amplitudes), and `lua_tonumber` is C `strtod` as Lua reads it
+    (`"0x10"` = 16). The TD read of a stored `numeric` is clamped at
+    `strtod`'s rounding boundaries (`±inf` / `±0`, exact), where the cast
+    raised "out of range"; `Decimal('-0')` is a documented divergence. The
+    long-tail writers join a `popoto.batch()`.
 
 ## 6. Carried forward from the POC
 

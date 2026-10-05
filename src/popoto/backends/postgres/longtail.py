@@ -60,6 +60,7 @@ import base64
 import json
 import logging
 import math
+import re
 import struct
 import time
 from dataclasses import dataclass, field
@@ -70,6 +71,7 @@ from .codec import _BYTES, _FLOAT, _MAP
 from .memory import (
     _NOT_HANDLED,
     _ZERO,
+    _and_live,
     _lit,
     _nonfinite,
     decay_score_sql,
@@ -135,16 +137,82 @@ _INT64 = 2.0**63
 # -- Lua / cmsgpack number and table rules ------------------------------------
 
 
+_C_SPACE = " \t\n\v\f\r"
+"""C ``isspace`` in the "C" locale: what ``strtod`` skips before a number and
+Lua's ``luaO_str2d`` skips after one."""
+_LUA_DECIMAL = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?", re.ASCII)
+_LUA_HEX = re.compile(
+    r"[+-]?0[xX](?:[0-9a-fA-F]+\.?[0-9a-fA-F]*|\.[0-9a-fA-F]+)(?:[pP][+-]?\d+)?",
+    re.ASCII,
+)
+_LUA_SPECIAL = re.compile(r"[+-]?(?:inf(?:inity)?)", re.ASCII | re.IGNORECASE)
+_LUA_NAN = re.compile(r"[+-]?nan(?:\([0-9A-Za-z_]*\))?", re.ASCII | re.IGNORECASE)
+
+
 def lua_tonumber(value: Any) -> Optional[float]:
-    """Lua 5.1 ``tonumber`` of an ``ARGV`` string (``str(value)``): ``strtod``
-    with nothing trailing, else ``nil`` (``None``)."""
-    text = str(value)
-    if "_" in text:  # Python's float() accepts digit separators; strtod not
-        return None
-    try:
+    """Lua 5.1 ``tonumber`` of an ``ARGV`` string (``str(value)``), else
+    ``nil`` (``None``): C ``strtod`` -- leading space, a sign, a decimal or
+    C99 hex float (``"0x10"`` is 16, ``"0x1p3"`` 8), ``inf``/``infinity``/
+    ``nan`` (or ``nan(chars)``) in any case, overflow to ``±inf`` and
+    underflow to ``±0`` -- with only trailing space after it, and nothing
+    read past a NUL (Lua reads the C string). Checked case by case against Redis 8.10's
+    ``tonumber`` (``tests/test_backend_parity_longtail.py``). Python's
+    ``float()`` is looser (digit separators, non-ASCII digits) and refuses
+    hex, so the shape is matched first."""
+    text = str(value).split("\x00", 1)[0].strip(_C_SPACE)
+    if _LUA_NAN.fullmatch(text):
+        return math.nan
+    if _LUA_DECIMAL.fullmatch(text) or _LUA_SPECIAL.fullmatch(text):
         return float(text)
-    except ValueError:
-        return None
+    if _LUA_HEX.fullmatch(text):
+        try:
+            return float.fromhex(text)
+        except OverflowError:
+            return -math.inf if text.startswith("-") else math.inf
+    return None
+
+
+# The ``numeric`` -> double boundaries of ``strtod`` (round to nearest, ties
+# to even), as exact decimal literals: at or past ``2**1024 - 2**970`` (the
+# midpoint between DBL_MAX and 2**1024) a value rounds to ``inf``; at or
+# below ``2**-1075`` (half the smallest subnormal) it rounds to ``0``.
+# Postgres's own ``numeric::float8`` raises "out of range" on exactly those
+# values, so they are answered first.
+_DBL_OVERFLOW = str(2**1024 - 2**970)
+_DBL_UNDERFLOW = "0." + str(5**1075).rjust(1075, "0")
+
+
+def _numeric_as_double_sql(expr: str) -> str:
+    """``expr`` (a ``numeric``) as Lua's ``tonumber`` of its text reads it:
+    ``NULL`` -> ``0`` (the script's default), ``NaN`` -> ``NaN``, past the
+    double range ``±inf``, below the smallest subnormal ``±0`` (sign kept,
+    as ``strtod`` keeps it), anything else the ``::float8`` cast, which is
+    the same ``strtod`` of the same exact decimal. ``NaN`` is tested first:
+    a ``numeric`` ``NaN`` sorts above every number."""
+    return (
+        f"(CASE WHEN {expr} IS NULL THEN {_ZERO} "
+        f"WHEN {expr} = 'NaN'::numeric THEN {_NAN} "
+        f"WHEN {expr} >= {_DBL_OVERFLOW}::numeric THEN {_INF} "
+        f"WHEN {expr} <= -{_DBL_OVERFLOW}::numeric THEN '-Infinity'::float8 "
+        f"WHEN abs({expr}) <= {_DBL_UNDERFLOW}::numeric THEN "
+        f"(CASE WHEN {expr} < 0 THEN '-0'::float8 ELSE {_ZERO} END) "
+        f"ELSE {expr}::float8 END)"
+    )
+
+
+def _adjust_nil_factor_error() -> str:
+    """The text of Redis's ``ResponseError`` when ``CYCLES_ADJUST_LUA``
+    multiplies by a ``nil`` factor: line 15 of the script, named by its
+    SHA1 as Redis 7+ formats a script error."""
+    import hashlib
+
+    from ...fields.cyclic_decay_field import CYCLES_ADJUST_LUA
+
+    sha = hashlib.sha1(CYCLES_ADJUST_LUA.encode()).hexdigest()
+    return (
+        "user_script:15: attempt to perform arithmetic on local 'factor' "
+        f"(a nil value) script: {sha}, on @user_script:15."
+    )
 
 
 def lua_num(value: float) -> Any:
@@ -779,11 +847,33 @@ class LongtailOpsMixin:
         ``[0, max_amplitude]``, below ``min_threshold`` snapped to ``0`` (a
         ``NaN`` passes every comparison untouched, as in Lua). One
         ``UPDATE``; ``None`` when there is no stored cycles entry (the
-        script's ``nil``)."""
+        script's ``nil``) or the record has expired (M5 TTL: the entry went
+        with the row).
+
+        A ``factor`` the script's ``tonumber`` reads as ``nil`` (``None``,
+        ``"abc"``, ``True``) fails its first multiplication on Redis, so
+        nothing is written; here it raises ``ValueError`` with the script's
+        error text before any write -- the same message, a different class,
+        as for every Lua refusal on this backend. As on Redis it is reached
+        only when there is at least one cycle to multiply: no entry is
+        ``None`` and an empty entry stays empty."""
         ts = self._table(spec, write=True)
         cp, ca, ch = (quote_ident(field + s) for s in CYCLE_SUFFIXES[:3])
+        live = _and_live(ts)
         factor_n = lua_tonumber(factor)
-        f_l = _lit(math.nan if factor_n is None else factor_n)
+        if factor_n is None:
+            rows, _ = self._run(
+                f"SELECT {cp}, coalesce({ca}, '{{}}'::float8[]), {ch} "
+                f'FROM {ts.qualified} WHERE "_pk" = %s AND {cp} IS NOT NULL{live}',
+                [id.canonical],
+                uow=uow,
+            )
+            if not rows:
+                return None
+            if rows[0][1]:
+                raise ValueError(_adjust_nil_factor_error())
+            return _rows_cycles(rows[0][0], rows[0][1], rows[0][2], None)
+        f_l = _lit(factor_n)
         mx, mn = _lit(float(max_amplitude)), _lit(float(min_threshold))
         x = safe_mul("u.a", f_l)
         # ``array_agg`` over no rows is NULL, not ``'{}'``: an empty stored
@@ -801,7 +891,7 @@ class LongtailOpsMixin:
             ts,
             [id.canonical],
             f"UPDATE {ts.qualified} SET {ca} = {clamp} "
-            f'WHERE "_pk" = %s AND {cp} IS NOT NULL '
+            f'WHERE "_pk" = %s AND {cp} IS NOT NULL{live} '
             f"RETURNING {cp}, {ca}, {ch}",
             [id.canonical],
         )
@@ -820,13 +910,16 @@ class LongtailOpsMixin:
         *,
         uow: Optional[UnitOfWork] = None,
     ) -> None:
-        """``resolve_pressure``'s blind ``HSET {rate, last_resolved: at}``."""
+        """``resolve_pressure``'s blind ``HSET {rate, last_resolved: at}``.
+        Nothing is written for a record that does not exist or has expired
+        (documented: Redis writes an orphan companion entry)."""
         ts = self._table(spec, write=True)
         pr, pa = (quote_ident(field + s) for s in PRESSURE_SUFFIXES)
         sql, params = self._record_locked(
             ts,
             [id.canonical],
-            f"UPDATE {ts.qualified} SET {pr} = %s, {pa} = %s " f'WHERE "_pk" = %s',
+            f"UPDATE {ts.qualified} SET {pr} = %s, {pa} = %s "
+            f'WHERE "_pk" = %s{_and_live(ts)}',
             [float(rate), float(at), id.canonical],
         )
         self._run(sql, params, uow=uow, write=True)
@@ -842,13 +935,13 @@ class LongtailOpsMixin:
         """The stored companion state, as the Redis hashes decode: ``cycles``
         (``[period, amplitude, phase(, baseline)]``, ``None`` = no entry)
         and ``pressure`` (``{"rate", "last_resolved"}`` or ``None``).
-        ``None`` when the record does not exist."""
+        ``None`` when the record does not exist or has expired."""
         ts = self._table(spec)
         cols = ", ".join(
             quote_ident(field + s) for s in CYCLE_SUFFIXES + PRESSURE_SUFFIXES
         )
         rows, _ = self._run(
-            f'SELECT {cols} FROM {ts.qualified} WHERE "_pk" = %s',
+            f'SELECT {cols} FROM {ts.qualified} WHERE "_pk" = %s' + _and_live(ts),
             [id.canonical],
             uow=uow,
         )
@@ -876,7 +969,8 @@ class LongtailOpsMixin:
     ) -> None:
         """``import_state``'s raw writes: cycles as 3-element entries (no
         baseline, #698), pressure as given. ``None`` leaves that half
-        untouched."""
+        untouched. A record that does not exist or has expired is not
+        written."""
         ts = self._table(spec, write=True)
         sets: list[str] = []
         params: list[Any] = []
@@ -904,7 +998,8 @@ class LongtailOpsMixin:
         sql, all_params = self._record_locked(
             ts,
             [id.canonical],
-            f"UPDATE {ts.qualified} SET {', '.join(sets)} WHERE \"_pk\" = %s",
+            f"UPDATE {ts.qualified} SET {', '.join(sets)} "
+            f'WHERE "_pk" = %s{_and_live(ts)}',
             params + [id.canonical],
         )
         self._run(sql, all_params, uow=uow, write=True)
@@ -926,8 +1021,14 @@ class LongtailOpsMixin:
         caller in the same order), ``q' = q + alpha * td``, stored as the
         ``numeric`` of ``tostring(q')`` -- Lua's ``%.14g`` -- with the
         trailing zeros of ``to_char``'s ``%.13e`` trimmed. Returns
-        ``tostring(td)``. ``q`` is ``0`` when the column is ``NULL``. A
-        record that does not exist is not written (Redis would leave a hash
+        ``tostring(td)``. ``q`` is ``0`` when the column is ``NULL``, and the
+        stored ``numeric`` reads as the script's ``tonumber`` of its text:
+        past the double range it is ``±inf`` and below the smallest
+        subnormal ``±0`` (:func:`_numeric_as_double_sql`), where a plain
+        ``::float8`` cast raises "out of range". A ``numeric`` has no ``-0``,
+        so a stored ``Decimal('-0')`` reads as ``0`` (documented: the reply
+        can be ``-0.0`` where Redis's is ``0.0``). A record that does not
+        exist or has expired is not written (Redis would leave a hash
         holding only the value) and the reply is the one ``q = 0`` gives."""
         ts = self._table(spec, write=True)
         col = quote_ident(field)
@@ -946,9 +1047,10 @@ class LongtailOpsMixin:
         )
         sql = (
             f'WITH c AS MATERIALIZED (SELECT t."_pk", '
-            f"coalesce(t.{col}::float8, {_ZERO}) AS q, "
+            f"{_numeric_as_double_sql(f't.{col}')} AS q, "
             f"{_lit(target)} AS tgt, {_lit(alpha)} AS alpha "
-            f'FROM {ts.qualified} AS t WHERE t."_pk" = %s FOR UPDATE), '
+            f'FROM {ts.qualified} AS t WHERE t."_pk" = %s{_and_live(ts, "t")} '
+            "FOR UPDATE), "
             f'd AS (SELECT c."_pk", c.q, c.alpha, {safe_sub(target_l, "c.q")} AS td '
             f"FROM c), "
             f'm AS (SELECT d."_pk", d.q, d.td, {safe_mul("d.alpha", "d.td")} AS m '
@@ -969,10 +1071,17 @@ class LongtailOpsMixin:
     def _ledger_exists(
         self, spec: ModelSpec, id: RecordId, *, uow: Optional[UnitOfWork] = None
     ) -> bool:
-        """``EXISTS <record key>``, read inside ``uow`` when given."""
+        """``EXISTS <record key>``, read inside ``uow`` when given: an
+        expired ``Meta.ttl`` record does not exist (M5 TTL), so ``record`` /
+        ``resolve`` raise ``TypeError`` and ``auto_resolve`` returns ``None``
+        on it, as on Redis. This is the one ledger read that filters: the
+        ledger rows themselves are keyed by class name, not by the record
+        row, and outlive it on both legs (the ``$PL:`` keys carry no TTL)."""
         ts = self._table(spec)
         rows, _ = self._run(
-            f'SELECT 1 FROM {ts.qualified} WHERE "_pk" = %s', [id.canonical], uow=uow
+            f'SELECT 1 FROM {ts.qualified} WHERE "_pk" = %s' + _and_live(ts),
+            [id.canonical],
+            uow=uow,
         )
         return bool(rows)
 

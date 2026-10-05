@@ -73,10 +73,13 @@ def _exists(backend: Any, instance: Any, member_key: str, uow: Any = None) -> bo
     )
 
 
-def _uow_of(pipeline: Any) -> Any:
-    from ..backends import UnitOfWork
+def _uow_of(pipeline: Any, backend: Any) -> Any:
+    """A backend unit of work passed as ``pipeline=``, or the transaction a
+    ``popoto.batch()`` opens on ``backend`` (#783): a batched ledger write
+    joins it. A plain Redis pipeline cannot carry a Postgres write."""
+    from ..batch import unit_of
 
-    return pipeline if isinstance(pipeline, UnitOfWork) else None
+    return unit_of(pipeline, backend)
 
 
 # Lua script: atomic prediction resolution.
@@ -404,7 +407,7 @@ class PredictionLedgerMixin:
 
         backend = _ledger_backend(instance)
         if backend is not None:
-            if not _exists(backend, instance, member_key, _uow_of(pipeline)):
+            if not _exists(backend, instance, member_key, _uow_of(pipeline, backend)):
                 raise TypeError("record_prediction() requires a saved model instance")
             data = {
                 "predicted": predicted,
@@ -423,7 +426,7 @@ class PredictionLedgerMixin:
                 "record",
                 _rid(instance, member_key),
                 data,
-                uow=_uow_of(pipeline),
+                uow=_uow_of(pipeline, backend),
             )
             return None
 
@@ -473,7 +476,7 @@ class PredictionLedgerMixin:
 
         backend = _ledger_backend(instance)
         if backend is not None:
-            uow = _uow_of(pipeline)
+            uow = _uow_of(pipeline, backend)
             if not _exists(backend, instance, member_key, uow):
                 raise TypeError("resolve_prediction() requires a saved model instance")
             data = backend.field_call(
@@ -574,7 +577,7 @@ class PredictionLedgerMixin:
 
         backend = _ledger_backend(instance)
         if backend is not None:
-            uow = _uow_of(pipeline)
+            uow = _uow_of(pipeline, backend)
             if not _exists(backend, instance, member_key, uow):
                 return None
             data = backend.field_call(
@@ -684,7 +687,7 @@ class PredictionLedgerMixin:
         never waits on the batch's own row lock."""
         from ..backends.postgres.longtail import lua_tonumber
 
-        uow = _uow_of(pipeline)
+        uow = _uow_of(pipeline, backend)
         partition = getattr(instance, "_pl_partition", "default")
         error_number = lua_tonumber(str(prediction_error))
         result = backend.field_call(
@@ -701,7 +704,11 @@ class PredictionLedgerMixin:
         if result == 0:
             return None
         cls._apply_confidence_feedback(instance, prediction_error, pipeline=uow)
-        cls._log_resolution_event(instance, prediction_error, mode, pipeline)
+        # A batch's event follows its transaction's commit, as a unit of
+        # work's does (after_commit); a plain Redis pipeline queues it.
+        cls._log_resolution_event(
+            instance, prediction_error, mode, uow if uow is not None else pipeline
+        )
         return prediction_error
 
     @classmethod

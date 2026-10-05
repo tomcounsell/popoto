@@ -915,6 +915,16 @@ and adds a text round trip to every row a ranking scans.
   empty cycles entry must stay empty, as the script's re-pack of an empty
   array does (`test_adjusting_an_empty_cycles_entry_keeps_it_empty`).
   `resolve_pressure` is one `UPDATE` of the two pressure columns.
+- The factor is read as the script reads it, with Lua's `tonumber`: C
+  `strtod` with only trailing space after it, so `"0x10"` is 16 and
+  `"0x1p-1"` is 0.5 on both legs, while `"1_0"` and non-ASCII digits are not
+  numbers (`lua_tonumber`, checked case by case against the server's own in
+  `test_lua_tonumber_matches_the_servers`). A factor that reads as `nil`
+  (`None`, `"abc"`, `True`) fails the script's first multiplication, so
+  Redis writes nothing and raises `ResponseError`; Postgres raises
+  `ValueError` with the same text, before any write -- never a `NaN`
+  amplitude. As on Redis, it is reached only when there is a cycle to
+  multiply: no entry still returns `[]`, and an empty entry stays empty.
 
 **`TDValueField`.** `TD_UPDATE_LUA` is one statement behind the record's key
 lock: the row locked `FOR UPDATE`, `td = target - q` and `q' = q + alpha * td`
@@ -924,6 +934,11 @@ script does), and `q'` stored as the `numeric` of the script's
 same 14 significant digits as `%.14g`, with its trailing zeros trimmed. The
 reply is `tostring(td)`. The constants enter through a `MATERIALIZED` CTE, so
 the planner cannot fold a subnormal one into a plan-time "underflow".
+The stored `numeric` is read as the script's `tonumber` of its text: a
+`Decimal` past the double range is `±inf` and one below half the smallest
+subnormal (`2**-1075`) is `±0`, at `strtod`'s exact rounding boundaries,
+where a plain `::float8` cast raises "value out of range"
+(`test_td_update_reads_an_out_of_range_value_as_tonumber_does`).
 `recipes/policy_cache.py` runs unchanged on a Postgres-bound `PolicyEntry`.
 
 **`PredictionLedgerMixin`.** The `$PL:{Class}:meta:{pk}` entry is a row of
@@ -968,6 +983,16 @@ pressure auto-discharge on `contradicted`, reading the confidence the batch
 just updated. Every ledger and cycle write takes the record-key lock the
 batch already holds, so the plan's one lock order is kept; a rolled-back
 batch resolves nothing.
+
+**Expiry and `popoto.batch()`.** On a `Meta.ttl` model every long-tail
+statement that addresses the record row -- the ledger's `EXISTS` guard, the
+cycle adjustment, the pressure write, the cycle export and import, and the
+TD update -- carries #783's live-row filter, so an expired record is no
+record to it. A `popoto.batch()` handed to `strengthen_cycle`,
+`weaken_cycle`, `resolve_pressure`, `td_update` or the ledger's writers
+joins the batch's transaction, as a save does: nothing lands before
+`execute()`, a `reset()` writes nothing, and the record locks it takes are
+the batch's (`test_long_tail_writes_join_a_batch`).
 
 ## Topology and the outage contract
 
@@ -1463,7 +1488,9 @@ cast to the column's type.
 | `CyclicDecayField.rank_decayed(zset_key, …)` (M5) | ranks that sorted set with `CYCLIC_DECAY_LUA` | raises `BackendCapabilityError` naming `top_by_decay`, as `DecayingSortedField.rank_decayed` does |
 | A cycles entry written raw (`import_state`) (M5) | Python msgpack keeps the importer's `float` for an integral period or baseline until the next save or adjustment re-packs it through cmsgpack | cmsgpack's `int` at once. Values identical (probe class `cyclic_merge_raw_types`) |
 | A non-numeric cycle slot (a string period, a malformed entry) (M5) | storable; the merge falls back to the declaration with a warning, and the ranking may raise | unrepresentable: `import_state` refuses a non-numeric slot with `ValueError` |
-| `strengthen_cycle` / `weaken_cycle` / `resolve_pressure` / `td_update` on a record that no longer exists (M5) | `resolve_pressure` and `td_update` write orphan companion or hash entries (`HSET`) | nothing is written; `td_update` replies what the script replies from `Q = 0` |
+| `strengthen_cycle` / `weaken_cycle` / `resolve_pressure` / `td_update` on a record that no longer exists, or has expired (M5) | `resolve_pressure` and `td_update` write orphan companion or hash entries (`HSET`) | nothing is written; `td_update` replies what the script replies from `Q = 0` (on an expired record that is the same reply: Redis's `HGET` of the expired key is `nil`) |
+| A non-numeric `strengthen_cycle` / `weaken_cycle` factor (`None`, `"abc"`, `True`) (M5) | the script's multiplication fails: `ResponseError: user_script:15: attempt to perform arithmetic on local 'factor' (a nil value) …`, nothing written | `ValueError` with the same text, before anything is written. Pinned on both legs: `test_backend_parity_longtail.py::test_a_non_numeric_factor_is_refused_before_writing` |
+| `td_update` on a stored `Decimal('-0')` (M5) | `tonumber("-0")` is `-0.0`, so with a target of `-0.0` the TD error is `-0.0 - -0.0` = `0.0` | a `numeric` has no `-0`: the value is stored as `0`, and the reply is `-0.0 - 0.0` = `-0.0`. The stored values compare equal. Pinned on both legs: `test_backend_parity_longtail.py::test_td_update_from_a_negative_zero_is_a_documented_divergence` |
 | A NaN `CyclicDecayField` score (M5) | the script's comparator is inconsistent around it (`x > nan` is false): its sort may misplace real scores, or raise "invalid order function for sorting" | NaN ranks last and every other score keeps its place (M2a's rule; probe class `cyclic_rank_nan`) |
 | `td_update(…, pipeline=uow)` with a Postgres `transaction()` (M5) | (a Redis pipeline queues the script and returns `None`) | the update runs inside the transaction, so the TD error is returned, as `update_confidence` does |
 | A NaN `td_update` value (M5) | stored as `tostring(nan)`, `"nan"` or `"-nan"` by platform | `numeric` `NaN`, unsigned |
@@ -1481,7 +1508,7 @@ cast to the column's type.
 | A `_ttl` that is not a whole number (`1.5`) (M5) | `MULTI`/`EXEC` writes the hash, then `EXPIRE` fails: `ResponseError: value is not an integer or out of range`, and the record stays with its old TTL, or none | `ModelException` with the same text, before anything is written. Pinned: `test_backend_parity_ttl.py::test_a_fractional_ttl_is_a_documented_divergence` |
 | `count()` / `keys()` after a record expires (M5) | count the class or index set, which keeps the expired member until a hydrating read (`get`, `filter`, `all`) purges it or `clean_indexes` runs | count live rows only. Probe class `count_orphans`. Pinned: `test_backend_parity_ttl.py::test_count_after_expiry_is_a_documented_divergence` |
 | Rankings, search and membership after a record expires (M5) | the sorted sets, BM25 postings, vector file and bloom keep the member: `top_by_decay(n=…)` can give a slot to it and return fewer than `n` after hydration drops it, BM25's `N`/`avgdl`/`df` count it, and `might_exist` stays `True` | the record is in none of them from the instant it expires: `n` live records, statistics over live documents, `might_exist` `False` once no live record holds the token. Pinned: `test_backend_parity_ttl.py::test_ranking_after_expiry_is_a_documented_divergence`, and each read in `tests/postgres/test_postgres_ttl.py::test_every_public_read_misses_an_expired_record` |
-| State keyed by an expired record (M5): its confidence entry, validity intervals and open-claim pointers, staged reads | kept in their own keys until something cleans them; `ConfidenceField.update_confidence` refuses (its script checks the hash) | gone with the row: reads see the seed / no interval / no pointer, and `chain` stops at it as at a hard delete. `update_confidence` refuses on both. Pinned on both legs: `test_backend_parity_ttl.py::test_state_keyed_by_an_expired_record_is_a_documented_divergence`; the validity half in `tests/postgres/test_postgres_ttl.py::test_validity_reads_miss_an_expired_record` |
+| State keyed by an expired record (M5): its confidence entry, validity intervals and open-claim pointers, staged reads, `CyclicDecayField` cycles and pressure | kept in their own keys until something cleans them; `ConfidenceField.update_confidence` refuses (its script checks the hash); `strengthen_cycle` / `weaken_cycle` still adjust the cycles entry, `export_state` returns it, and a save over the key merges with it | gone with the row: reads see the seed / no interval / no pointer, and `chain` stops at it as at a hard delete; an adjustment finds no entry (`[]`), `export_state` returns `None`, and a save starts from the declaration. `update_confidence` refuses on both. Pinned on both legs: `test_backend_parity_ttl.py::test_state_keyed_by_an_expired_record_is_a_documented_divergence` and `test_backend_parity_longtail.py::test_cycle_state_of_an_expired_record_is_a_documented_divergence`; the validity half in `tests/postgres/test_postgres_ttl.py::test_validity_reads_miss_an_expired_record`. The prediction ledger is **not** in this row: its `EXISTS` guard misses an expired record on both legs (`record`/`resolve` raise `TypeError`, `auto_resolve` returns `None`), and its entries outlive the record on both, as they outlive a delete (`test_the_ledger_treats_an_expired_record_as_absent`) |
 | A save over an expired key (M5) | `HSET` creates a new hash, but the expired record's companion state (confidence entry, BM25 postings, interval) is still there for the new one to inherit | the expired row and its side rows are deleted first: a fresh record, confidence at the seed. Pinned on both legs: `test_backend_parity_ttl.py::test_a_save_over_an_expired_key_is_a_documented_divergence`; the postings in `tests/postgres/test_postgres_ttl.py::test_a_save_over_an_expired_key_writes_a_fresh_record` |
 | `atomic_increment` through an instance whose record expired (or was deleted) under it (M5) | the script `HSET`s the field onto a fresh key: a one-field hash with no TTL, outside the class set | `ModelException` (`… no longer exists`), as for any missing row. Probe class `increment_after_expiry`. Pinned: `test_backend_parity_ttl.py::test_increment_after_expiry_is_a_documented_divergence` |
 | The instant of expiry (M5) | a key is expired once the server's millisecond clock is *past* its expiry, so it is still there at that exact millisecond | a row is expired once `_expires_at <= now` (microseconds), so `ttl=0` is gone even under a frozen clock. Observable only with the frozen test clock: two real clocks never land on one instant |

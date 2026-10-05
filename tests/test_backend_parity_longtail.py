@@ -23,10 +23,12 @@ Where the legs legitimately differ, the test pins both behaviours
 
 import logging
 import math
+import time
 from decimal import Decimal
 
 import msgpack
 import pytest
+import redis
 
 import popoto
 from popoto import ConfidenceField, CyclicDecayField, ObservationProtocol
@@ -67,14 +69,32 @@ class LtValid(popoto.Model):
     validity = popoto.ValidityField()
 
 
+class LtTtl(PredictionLedgerMixin, popoto.Model):
+    """Every long-tail field on a ``Meta.ttl`` model (#783's read filter)."""
+
+    name = popoto.KeyField()
+    relevance = CyclicDecayField(cycles=[(86400, 2.0, 0)], pressure_rate=0.1)
+    q_value = popoto.TDValueField(null=True)
+    certainty = ConfidenceField()
+
+    class Meta:
+        ttl = 3600
+
+
+#: A short-lived record's TTL, and how long a test waits past it.
+SHORT = 1
+PAST = 1.6
+
+
 @pytest.fixture(autouse=True)
 def _clean():
     def wipe():
-        for model in (LtRhythm, LtValue, LtLedger, LtValid):
+        for model in (LtRhythm, LtValue, LtLedger, LtValid, LtTtl):
             model.delete_all()
         client = popoto.get_redis()
-        for key in client.scan_iter(match="$PL:LtLedger*"):
-            client.delete(key)
+        for pattern in ("$PL:LtLedger*", "$PL:LtTtl*", "*LtTtl*"):
+            for key in client.scan_iter(match=pattern):
+                client.delete(key)
 
     wipe()
     yield
@@ -464,3 +484,260 @@ def test_an_unedited_declaration_logs_nothing(caplog):
     with caplog.at_level(logging.INFO, logger="POPOTO.CyclicDecayField"):
         record.save()
     assert not [r for r in caplog.records if r.name == "POPOTO.CyclicDecayField"]
+
+
+# -- an expired Meta.ttl record (#783's live-row filter) ----------------------------
+
+
+def _expiring(name, **values):
+    record = LtTtl(name=name, **values)
+    record._ttl = SHORT
+    record.save()
+    return record
+
+
+def test_the_ledger_treats_an_expired_record_as_absent():
+    """Redis's ``EXISTS`` guard misses an expired key: ``record`` and
+    ``resolve`` raise ``TypeError``, ``auto_resolve`` returns ``None`` and
+    nothing is resolved. The entry recorded while the record lived stays
+    (the ``$PL:`` keys carry no TTL; the ledger table is not the row)."""
+    record = _expiring("ledger")
+    PredictionLedgerMixin.record_prediction(record, predicted={"x": 1.0})
+    time.sleep(PAST)
+    with pytest.raises(TypeError, match="saved model instance"):
+        PredictionLedgerMixin.record_prediction(record, predicted={"x": 2.0})
+    with pytest.raises(TypeError, match="saved model instance"):
+        PredictionLedgerMixin.resolve_prediction(record, actual={"x": 1.0})
+    assert PredictionLedgerMixin.auto_resolve(record, "acted") is None
+    assert PredictionLedgerMixin.get_highest_errors(LtTtl) == []
+    entry = PredictionLedgerMixin.get_prediction_data(record)
+    assert entry["predicted"] == {"x": 1.0} and entry["resolved"] is False
+
+
+def test_td_update_on_an_expired_record_reads_q_as_zero():
+    """The script's ``HGET`` of an expired key is ``nil``, so ``Q = 0``: the
+    reply ignores the value stored while the record lived. (Redis then
+    ``HSET``s a hash holding only the value; Postgres writes nothing --
+    the documented "record that no longer exists" row.)"""
+    record = _expiring("td", q_value=Decimal("0.5"))
+    time.sleep(PAST)
+    reply = TDValueField.td_update(record, "q_value", reward=1.0, alpha=0.5)
+    assert reply == 1.0  # 1.0 - 0, not 1.0 - 0.5
+
+
+def test_cycle_state_of_an_expired_record_is_a_documented_divergence(backend):
+    """Redis keeps the cycles and pressure companion entries after the
+    record key expires, so an adjustment, an export and the merge of a later
+    save all see them; on Postgres they went with the row, as #783's
+    confidence state did: the adjustment finds no entry, the export no
+    record, and a save over the expired key starts from the declaration."""
+    record = _expiring("cyc")
+    assert record.strengthen_cycle("relevance", factor=1.5) == [[86400, 3.0, 0.0]]
+    time.sleep(PAST)
+    adjusted = record.strengthen_cycle("relevance", factor=2.0)
+    exported = CyclicDecayField.export_state(record, "relevance", None)
+    again = LtTtl(name="cyc")
+    again._ttl = None
+    again.save()
+    merged = CyclicDecayField.export_state(again, "relevance", None)["cycles"]
+    if backend.is_redis:
+        assert adjusted == [[86400, 6.0, 0.0]]
+        assert exported["cycles"] == [[86400, 6.0, 0.0, 2]]
+        assert merged == [[86400, 6.0, 0.0, 2]]
+    else:
+        assert adjusted == []
+        assert exported is None
+        assert merged == [[86400, 2.0, 0.0, 2]]
+
+
+# -- CYCLES_ADJUST_LUA's tonumber(factor) ------------------------------------------
+
+
+@pytest.mark.parametrize("factor", [None, "abc", True, "", "1_0"])
+def test_a_non_numeric_factor_is_refused_before_writing(backend, factor):
+    """``tonumber`` of the factor is ``nil`` and the script's first
+    multiplication fails: nothing is written. Same message on both legs;
+    Redis raises ``ResponseError``, Postgres ``ValueError`` (documented)."""
+    record = LtRhythm.create(name="nil")
+    expected = redis.exceptions.ResponseError if backend.is_redis else ValueError
+    with pytest.raises(expected) as caught:
+        record.weaken_cycle("relevance", factor=factor)
+    assert str(caught.value).startswith(
+        "user_script:15: attempt to perform arithmetic on local 'factor' "
+        "(a nil value) script: "
+    )
+    if not backend.is_redis:
+        from popoto.backends.postgres.longtail import _adjust_nil_factor_error
+
+        assert str(caught.value) == _adjust_nil_factor_error()
+    cycles = CyclicDecayField.export_state(record, "relevance", None)["cycles"]
+    assert cycles == [[86400, 2.0, 0.0, 2]]  # never NaN
+
+
+def test_a_nil_factor_reaches_no_arithmetic_without_a_cycle():
+    """No entry is the script's ``nil`` (``[]``) and an empty entry loops
+    over nothing: neither raises, on either leg."""
+    record = LtRhythm.create(name="empty")
+    _plant(record, [], None)
+    assert record.strengthen_cycle("relevance", factor=None) == []
+    other = LtRhythm.create(name="none")
+    backend = non_redis_backend(other)
+    if backend is None:
+        field = other._meta.fields["relevance"]
+        popoto.get_redis().hdel(
+            field.get_cycles_hash_key(other, "relevance"), other.db_key.redis_key
+        )
+    else:
+        table = backend._table(other._meta.spec).qualified
+        backend._run(
+            f'UPDATE {table} SET "relevance__cycle_period" = NULL ' 'WHERE "_pk" = %s',
+            [other.db_key.redis_key],
+            write=True,
+        )
+    assert other.strengthen_cycle("relevance", factor="abc") == []
+
+
+@pytest.mark.parametrize(
+    "factor, amplitude", [("0x10", 32.0), (" 0x1p-1 ", 1.0), ("+0X2", 4.0)]
+)
+def test_a_hex_factor_reads_as_lua_tonumber(factor, amplitude):
+    record = LtRhythm.create(name="hex")
+    assert record.strengthen_cycle("relevance", factor=factor) == [
+        [86400, amplitude, 0.0]
+    ]
+
+
+_TONUMBER_CASES = [
+    "0x10", "-0x10", " 0x10 ", "0X1F", "0x", "0x1p3", "0x1.8", "0x.8", "0x1.",
+    "0x10p", "0x10 x", "0x1p99999", "-0x1p99999", "0x1p-99999", "1e5", " 5 ",
+    "5\n", "\t5", "\v1", "1_0", "+5", ".5", "5.", ".", "", " ", "1e", "1e+",
+    "1.5x", "nan", "NaN", "-nan", "nan(1)", "inf", "-inf", "Infinity",
+    "infinit", "inf ", "True", "None", "abc", "٣", "1e400", "-1e400",
+    "1e-400", "-1e-400", "-0", "4.9e-324", "1.7976931348623159e308", "1e5\x00x",
+]  # fmt: skip
+
+
+def test_lua_tonumber_matches_the_servers():
+    """The Postgres leg's ``tonumber`` against Redis's own, case by case
+    (the value and the sign of a zero)."""
+    pytest.importorskip("psycopg")
+    from popoto.backends.postgres.longtail import lua_tonumber
+
+    script = (
+        "local n = tonumber(ARGV[1]) if n == nil then return 'nil' end "
+        "local z = '+' if n == 0 and 1 / n < 0 then z = '-' end "
+        "return z .. string.format('%.17g', n)"
+    )
+    client = popoto.get_redis()
+    for text in _TONUMBER_CASES:
+        server = client.eval(script, 0, text).decode()
+        ours = lua_tonumber(text)
+        if server == "nil":
+            assert ours is None, text
+            continue
+        assert ours is not None, text
+        value = float(server[1:].replace("-nan", "nan"))
+        if math.isnan(value):
+            assert math.isnan(ours), text
+            continue
+        assert ours == value, text
+        if value == 0:
+            assert (math.copysign(1, ours) < 0) == (server[0] == "-"), text
+
+
+# -- TD_UPDATE_LUA's tonumber of the stored value ----------------------------------
+
+
+@pytest.mark.parametrize(
+    "start",
+    [
+        Decimal("1e400"),
+        Decimal("-1e400"),
+        Decimal("1e-400"),
+        Decimal("-1e-330"),
+        Decimal("1.7976931348623159e308"),  # past the midpoint: inf
+        Decimal("1.7976931348623158e308"),  # below it: DBL_MAX
+        Decimal("2.4703282292062327e-324"),  # below 2**-1075: 0
+        Decimal("2.5e-324"),  # above it: the smallest subnormal
+        Decimal("Infinity"),
+        Decimal("-Infinity"),
+    ],
+)
+def test_td_update_reads_an_out_of_range_value_as_tonumber_does(start):
+    """Lua's ``tonumber`` of the stored text overflows to ``±inf`` and
+    underflows to ``±0``; Postgres's ``numeric::float8`` would raise "out of
+    range", so the read is clamped at ``strtod``'s rounding boundaries."""
+    record = LtValue.create(name="range", q_value=start)
+    reply = TDValueField.td_update(
+        record, "q_value", reward=1.0, max_future_q=0.0, alpha=0.5, gamma=0.0
+    )
+    q = float(str(start))
+    td = 1.0 - q
+    new_q = q + 0.5 * td
+    stored = LtValue.query.get(name="range").q_value
+    if math.isnan(td):
+        assert math.isnan(reply)
+    else:
+        assert reply == float("%.14g" % td)
+        assert math.copysign(1, reply) == math.copysign(1, td)
+    if math.isnan(new_q):
+        assert stored.is_nan()
+    else:
+        assert stored == Decimal("%.14g" % new_q)
+
+
+def test_td_update_from_a_negative_zero_is_a_documented_divergence(backend):
+    """A ``numeric`` has no ``-0``: ``Decimal('-0')`` is stored as ``0`` on
+    Postgres, where Redis's ``tonumber("-0")`` is ``-0.0``. With a target of
+    ``-0.0`` the script's ``-0.0 - -0.0`` is ``0.0``; Postgres's ``-0.0 -
+    0.0`` is ``-0.0``. The stored values compare equal."""
+    record = LtValue.create(name="negzero", q_value=Decimal("-0"))
+    reply = TDValueField.td_update(
+        record, "q_value", reward=-0.0, max_future_q=-0.0, alpha=1.0, gamma=0.0
+    )
+    assert reply == 0.0
+    assert math.copysign(1, reply) == (1.0 if backend.is_redis else -1.0)
+    assert LtValue.query.get(name="negzero").q_value == 0
+
+
+# -- popoto.batch() --------------------------------------------------------------------
+
+
+def test_long_tail_writes_join_a_batch():
+    """A batched adjustment, pressure resolution, TD update and ledger write
+    land on ``execute()`` and not before: Redis queues them; on Postgres each
+    joins the batch's transaction (#783) behind the record lock it holds."""
+    rhythm = LtRhythm.create(name="batch")
+    value = LtValue.create(name="batch", q_value=Decimal("0"))
+    ledger = LtLedger.create(name="batch")
+    pipe = popoto.batch()
+    try:
+        assert rhythm.strengthen_cycle("relevance", factor=1.5, pipeline=pipe) is pipe
+        assert rhythm.resolve_pressure("relevance", pipeline=pipe) is pipe
+        reply = TDValueField.td_update(value, "q_value", reward=1.0, pipeline=pipe)
+        assert reply is None
+        PredictionLedgerMixin.record_prediction(
+            ledger, predicted={"x": 1.0}, pipeline=pipe
+        )
+        state = CyclicDecayField.export_state(rhythm, "relevance", None)
+        assert state["cycles"] == [[86400, 2.0, 0.0, 2]]
+        assert LtValue.query.get(name="batch").q_value == Decimal("0")
+        assert PredictionLedgerMixin.get_prediction_data(ledger) is None
+        pipe.execute()
+    finally:
+        pipe.reset()
+    state = CyclicDecayField.export_state(rhythm, "relevance", None)
+    assert state["cycles"] == [[86400, 3.0, 0.0, 2]]
+    assert state["pressure"]["rate"] == 0.1
+    assert LtValue.query.get(name="batch").q_value == Decimal("0.1")
+    entry = PredictionLedgerMixin.get_prediction_data(ledger)
+    assert entry["predicted"] == {"x": 1.0}
+
+
+def test_a_reset_batch_writes_no_long_tail_state():
+    rhythm = LtRhythm.create(name="reset")
+    pipe = popoto.batch()
+    rhythm.strengthen_cycle("relevance", factor=1.5, pipeline=pipe)
+    pipe.reset()
+    state = CyclicDecayField.export_state(rhythm, "relevance", None)
+    assert state["cycles"] == [[86400, 2.0, 0.0, 2]]

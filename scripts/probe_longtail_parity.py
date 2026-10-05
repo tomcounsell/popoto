@@ -258,6 +258,10 @@ class Probe:
         try:
             return fn()
         except Exception as exc:  # noqa: BLE001 - compared across legs
+            if str(exc).startswith("user_script:"):
+                # A Lua error: Redis's ResponseError, Postgres's ValueError
+                # with the same text (documented class difference).
+                return ("!!", "LuaError", str(exc))
             return ("!!", type(exc).__name__)
 
     # -- raw state (both legs) -------------------------------------------------------
@@ -787,6 +791,9 @@ class Probe:
                     factor = rng.choice(
                         [1.2, 0.8, 0.5, 2.0, rng.uniform(0, 3), 0.0, 1e-9, 1e300]
                         + ([math.inf, math.nan, -1.0] if rng.random() < 0.2 else [])
+                        # tonumber() of the factor: nil (refused, nothing
+                        # written) and a hex float (16), as the script reads.
+                        + ([None, "abc", True, "0x10"] if rng.random() < 0.1 else [])
                     )
                     steps.append(("adjust", who, factor, rng.random() < 0.5))
                 elif roll < 0.85:
@@ -816,21 +823,19 @@ class Probe:
                         rec = recs[who]
                         if kind == "plant":
                             planted.add(who)
-                        elif kind in ("save", "adjust"):
+                        elif kind == "save":
                             planted.discard(who)
                         if kind == "save":
                             field.cycles, field.pressure_rate = a, b
                             trace.append(("save", self.attempt(rec.save)))
                         elif kind == "adjust":
                             fn = rec.strengthen_cycle if b else rec.weaken_cycle
-                            trace.append(
-                                (
-                                    "adjust",
-                                    self.attempt(
-                                        lambda fn=fn: fn("relevance", factor=a)
-                                    ),
-                                )
-                            )
+                            got = self.attempt(lambda fn=fn: fn("relevance", factor=a))
+                            if not (isinstance(got, tuple) and got[:1] == ("!!",)):
+                                # A refused adjustment (a nil factor) writes
+                                # nothing, so a planted entry stays raw.
+                                planted.discard(who)
+                            trace.append(("adjust", got))
                         elif kind == "resolve":
                             trace.append(
                                 (
@@ -914,6 +919,8 @@ class Probe:
         ]
         if self.wild:
             values += [Decimal("Infinity"), Decimal("NaN")]
+            # Outside the double range: tonumber() gives ±inf / ±0.
+            values += [Decimal("1e400"), Decimal("-1e-400"), Decimal("-1e400")]
         start = rng.choice(values)
         calls = []
         for _ in range(rng.randint(1, 6)):
@@ -1030,6 +1037,9 @@ class Probe:
             else:
                 steps.append(("delete", who, None))
         limits = [rng.choice([10, 1, 2, 0, -1, -2, 100])]
+        # Drawn once, before the legs: a draw inside the leg loop gave the
+        # two legs different limits (and shifted the stream between them).
+        summary_limits = {part: rng.choice([100, 2]) for part in ("default", "p2")}
         out = {}
         for leg in ("redis", "postgres"):
             self.leg(leg)
@@ -1100,7 +1110,7 @@ class Probe:
                         "summary",
                         self.attempt(
                             lambda part=part: PredictionLedgerMixin.error_summary(
-                                LtLedger, part, limit=rng.choice([100, 2])
+                                LtLedger, part, limit=summary_limits[part]
                             )
                         ),
                     )

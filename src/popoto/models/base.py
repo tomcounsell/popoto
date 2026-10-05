@@ -2340,7 +2340,8 @@ class Model(metaclass=ModelBase):
         if backend.name != "redis":
             # #759 M5: the blind HSET, as one UPDATE of the row's pressure
             # columns. A Redis pipeline cannot carry it: the write runs at
-            # once and the pipeline comes back untouched, as touch() does.
+            # once and the pipeline comes back untouched, as touch() does; a
+            # popoto.batch() joins its transaction (and comes back).
             backend.field_call(
                 self._meta.spec,
                 field_name,
@@ -2348,7 +2349,7 @@ class Model(metaclass=ModelBase):
                 RecordId.from_key(self._meta.model_name, member_key),
                 field.pressure_rate,
                 now,
-                uow=_as_uow(pipeline),
+                uow=_as_uow(pipeline, backend),
             )
             return pipeline if pipeline is not None else now
 
@@ -2477,7 +2478,8 @@ class Model(metaclass=ModelBase):
         if backend.name != "redis":
             # #759 M5: CYCLES_ADJUST_LUA as one UPDATE of the amplitudes. With
             # a Redis pipeline the write runs at once and the pipeline comes
-            # back, as touch() does; a backend unit of work carries it.
+            # back, as touch() does; a backend unit of work carries it, and a
+            # popoto.batch() joins its transaction (and comes back).
             cycles = backend.field_call(
                 self._meta.spec,
                 field_name,
@@ -2486,7 +2488,7 @@ class Model(metaclass=ModelBase):
                 str(factor),
                 max_amplitude,
                 min_threshold,
-                uow=_as_uow(pipeline),
+                uow=_as_uow(pipeline, backend),
             )
             if pipeline is not None:
                 return pipeline

@@ -273,9 +273,10 @@ def _td_update_on_backend(
     ``tonumber``; a value that does not read back as a number fails the
     script's arithmetic on Redis and raises ``ValueError`` here. With a Redis
     pipeline (which cannot carry a Postgres write) the update runs at once and
-    ``None`` is returned, as a queued update returns; with the backend's own
-    unit of work it runs inside that transaction and the TD error is returned,
-    as ``ConfidenceField.update_confidence`` does.
+    ``None`` is returned, as a queued update returns; a ``popoto.batch()``
+    joins the batch's transaction and also returns ``None``; with the
+    backend's own unit of work it runs inside that transaction and the TD
+    error is returned, as ``ConfidenceField.update_confidence`` does.
     """
     from ..backends import RecordId, UnitOfWork
     from ..backends.postgres.longtail import lua_tonumber
@@ -287,7 +288,11 @@ def _td_update_on_backend(
             "(the script's tonumber() of each must not be nil)"
         )
     r, a, g, m = (float(n) for n in numbers)  # type: ignore[arg-type]
-    uow = pipeline if isinstance(pipeline, UnitOfWork) else None
+    from ..batch import unit_of
+
+    # A popoto.batch() joins its Postgres transaction (#783); a plain Redis
+    # pipeline cannot carry the write, so it runs at once.
+    uow = unit_of(pipeline, backend)
     td_error = backend.field_call(
         model_instance._meta.spec,
         field_name,
@@ -297,6 +302,7 @@ def _td_update_on_backend(
         alpha=a,
         uow=uow,
     )
-    if pipeline is not None and uow is None:
+    if pipeline is not None and not isinstance(pipeline, UnitOfWork):
+        # A Redis pipeline or a batch: the reply is a queued update's.
         return None
     return float(td_error)
