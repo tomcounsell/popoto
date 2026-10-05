@@ -274,9 +274,10 @@ class PostgresUnitOfWork(UnitOfWork):
 
     def after_commit(self, callback: Callable[[], Any]) -> None:
         """Run ``callback`` once this transaction has committed; drop it if
-        the transaction rolls back. ``EventStreamMixin`` sends its Redis
-        ``XADD`` this way, so a rolled-back write logs no mutation (#759 M4b
-        B2). Callbacks run in registration order, after ``COMMIT`` returns
+        the transaction rolls back. ``WriteFilterMixin``'s priority tag runs
+        this way (#759 M4b B2); ``EventStreamMixin``'s entry no longer does --
+        since M5 it is appended inside the transaction (:meth:`before_commit`).
+        Callbacks run in registration order, after ``COMMIT`` returns
         and the connection is back in the pool; one that raises is logged and
         the rest still run, because the transaction has already committed."""
         self._after_commit.append(callback)

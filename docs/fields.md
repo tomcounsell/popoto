@@ -2079,6 +2079,10 @@ When `WriteFilterMixin` discards a record (score below threshold), the `save()` 
 - `stream:{stream_name}` — default stream key
 - `stream:{stream_name}:{partition_value}` — partitioned stream key
 
+### On Postgres
+
+A Postgres-bound model's stream is kept in the backend's events tables, not in Redis. The stream keys, ids (`<ms>-<seq>`) and entry fields stay the same. The entry is appended in the save's or delete's own transaction, so the record and its entry commit or roll back together. Because of that, an append that fails at the server fails the save. Read the stream with `Model.stream_range()` / `Model.stream_len()`, or with `popoto.streams.stream_client(Model)`, which has the same redis-py methods on both backends. See [Postgres Backend: event streams and pub/sub](features/postgres-backend.md#event-streams-and-pubsub-m5).
+
 ## TagField
 
 `TagField` adds **optional, indexed, multi-value scoping** to a model. It is the
