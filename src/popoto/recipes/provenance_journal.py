@@ -173,7 +173,7 @@ beyond the stream bound noted on the class.
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterator, Optional, Sequence, Type, Union
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Sequence, Type, Union, cast
 
 import redis.client
 import redis.exceptions
@@ -1366,7 +1366,9 @@ def _append_on_backend(
                 closes=stored_target,
                 at=instant,
                 field_name=VALIDITY_FIELD_NAME,
-                pipeline=pipeline,
+                # A backend unit of work: save_and_invalidate's annotation
+                # names the Redis pipeline its Redis path takes.
+                pipeline=cast(Any, pipeline),
             )
         except SupersedeDeclinedError as exc:
             verdict = getattr(exc, "verdict", None)
