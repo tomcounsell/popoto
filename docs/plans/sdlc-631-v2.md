@@ -1263,23 +1263,36 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     `QueryException` where Redis raises `ResponseError` (same text); an
     expired record is out of every search and `count()` at once.
   - **The probe** (`scripts/probe_geo_parity.py`) compares against the
-    running Redis, exactly, except two documented classes that exist only
-    against a contracting build: `fma_position_ulp` and `fma_boundary`. A
+    running Redis, exactly, except four documented classes. Two exist only
+    against a contracting build, `fma_position_ulp` and `fma_boundary`: a
     mismatch joins one only when the probe's own fused model of the C
     reproduces the running Redis to the bit. The coordinator's proposed
     "≤ 1 ulp" tolerance was measured and rejected: one fused rounding of
     the decode is up to 5,996 ulps of a latitude near zero, and of the
     haversine up to 50,982,380 ulps (about 0.19 m) of a near-antipodal
-    distance, where `asin`'s slope amplifies it; exact reproduction by the
-    fused model is both tighter and honest. Against x86-64 Redis (CI) both
-    classes are 0.
-    Seeds 1–6 × 500 shapes on PostgreSQL 18.6 and Redis 8.10.2, macOS
+    distance, where `asin`'s slope amplifies it.
+  - **libm is the other source, found by CI after the non-fused change.**
+    With positions then identical to x86-64 `redis:7-alpine`'s, a handful
+    of exact-distance checks still differed: that Redis links musl and the
+    runner's Python glibc, and their `sin`/`cos`/`asin` disagree in the last
+    bit now and then. The port's distance therefore depends on the host
+    Python's libm; positions (no libm) do not. Nothing portable reproduces
+    another libm's last bit, so `libm_ulp` / `libm_boundary` are a bound,
+    not a model: the distance must lie in the envelope the formula gives
+    with each of its five libm results moved by at most one ulp (and a
+    search may differ only by members whose envelope straddles the
+    radius). Against arm64 macOS Redis, which shares the probe's libm,
+    they are 0; against x86-64 Redis the `fma_*` classes are 0. A
+    correctly rounded `sin`/`cos`/`asin` would make the port itself
+    host-independent but still not equal to musl's; not done.
+  - Seeds 1–6 × 500 shapes on PostgreSQL 18.6 and Redis 8.10.2, macOS
     arm64: 0 undocumented mismatches over 11,467 stored scores and
     positions, 8,160 exact-distance checks, 13,824 searches and 13,824
-    counts; documented `fma_position_ulp` 3,405 and `fma_boundary` 415
-    (beside `error_class` 2,628 and `save_invalid_pair` 1,142). Two classes surfaced in the first cut and were
-    fixed before merge: the score's `double` rounding past `2**53`
-    (longitude 180), and the order of redis-py's argument-type refusal.
+    counts; documented `fma_position_ulp` 3,405, `fma_boundary` 415, `libm_*`
+    0 (beside `error_class` 2,628 and `save_invalid_pair` 1,142). Two
+    classes surfaced in the first cut and were fixed before merge: the
+    score's `double` rounding past `2**53` (longitude 180), and the order
+    of redis-py's argument-type refusal.
   - **Transfer:** `GeoField.roundtrip_policy` is `"rebuild"`: an import
     re-saves the coordinates and the save rebuilds the geo columns, so
     nothing geo-specific is carried in the transfer format (#788).

@@ -56,11 +56,24 @@ seed, shape and inputs, and the run exits non-zero:
 * ``fma_boundary`` -- a radius search or count that differs only by members
   that the contraction alone moves across the radius. Also 0 against a build
   without contraction.
+* ``libm_ulp`` -- a distance Redis's radius test measures that differs from
+  the port's though the inputs are identical, and lies within the envelope
+  the same formula gives when each of its five libm results (``sin``,
+  ``cos``, ``asin``) is off by at most one ulp. The running Redis's libm is
+  not this process's: CI's ``redis:7-alpine`` links musl, CI's Python glibc,
+  and they disagree in the last bit now and then. 0 where both share a libm
+  (a local Redis and Python on one macOS).
+* ``libm_boundary`` -- a search or count that differs only by members whose
+  libm envelope straddles the radius.
 
-Neither class is a tolerance. A mismatch joins one only when a model of the
-same C *with* the two contractions (``_fused_decode`` /
+The ``fma_*`` classes are not a tolerance. A mismatch joins one only when a
+model of the same C *with* the two contractions (``_fused_decode`` /
 ``_fused_distance``, below; the probe's, not the backend's) reproduces the
-running Redis to the bit; anything else is undocumented. "One ulp" is the
+running Redis to the bit. The ``libm_*`` classes are a bound, not a model --
+nothing portable reproduces another libm's last bit -- but a tight one:
+one ulp per libm call, propagated through the formula, never a free ulp
+count on the result. Positions call no libm and are never in them. Anything
+else is undocumented. "One ulp" is the
 rounding, not always the gap: one rounding of the decode's product (the
 magnitude of the range, up to 180) is several ulps of a latitude near zero,
 and the report prints the widest gap seen.
@@ -79,6 +92,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import itertools
 import math
 import os
 import random
@@ -296,12 +310,12 @@ class Probe:
 
     # -- stored state -------------------------------------------------------------
 
-    def flips(self, shape: Shape, params: dict[str, Any]) -> set[str]:
-        """The names on which the port's radius test and the fused model's
-        disagree (positions decoded from the Postgres leg's stored scores):
-        the members contraction alone moves across the radius. Empty for a
-        search either leg refuses, and always empty where the running Redis
-        does not contract."""
+    def flips(self, shape: Shape, params: dict[str, Any]) -> dict[str, set[str]]:
+        """The members an arithmetic difference alone can move across the
+        radius (positions from the Postgres leg's stored scores): ``fma``,
+        where the port's radius test and the fused model's disagree; ``libm``,
+        where the libm envelope of the port's distance straddles the radius.
+        Both empty for a search either leg refuses."""
         self.leg("postgres")
         ts = self.pg._table(ProbeGeo._meta.spec)
         rows, _ = self.pg._run(
@@ -319,7 +333,7 @@ class Probe:
                 ).db_key.redis_key
                 found = [r for r in rows if r[1] == pk]
                 if not found:
-                    return set()
+                    return {"fma": set(), "libm": set()}
                 center = (found[0][3], found[0][4])
                 fused_center = _fused_decode(found[0][2])
             else:
@@ -329,14 +343,17 @@ class Probe:
                 )
                 center = fused_center = geo.parse_point(lon, lat)
         except Exception:  # noqa: BLE001 - a refused search has no boundary
-            return set()
+            return {"fma": set(), "libm": set()}
         limit = radius * conversion
-        out = set()
+        out: dict[str, set[str]] = {"fma": set(), "libm": set()}
         for name, _pk, score, mlon, mlat in rows:
             plain = not geo.distance(*center, mlon, mlat) > limit
             fused = not _fused_distance(*fused_center, *_fused_decode(score)) > limit
             if plain != fused:
-                out.add(name)
+                out["fma"].add(name)
+            lo, hi = _libm_envelope(*center, mlon, mlat)
+            if lo <= limit < hi:
+                out["libm"].add(name)
         return out
 
     def compare_stored(self, shape: Shape) -> None:
@@ -441,6 +458,14 @@ class Probe:
             if inside(fd) and not inside(math.nextafter(fd, 0)):
                 self.documented["fma_position_ulp"] += 1
                 self.spread["distance"] = max(self.spread["distance"], _ulps(d, fd))
+                redis_exact = True
+        if not redis_exact and want_at:
+            # The running Redis's libm is not this process's (CI's
+            # redis:7-alpine links musl; CI's Python, glibc). Its distance is
+            # in the envelope one-ulp libm results give, or undocumented.
+            lo, hi = _libm_envelope(lon, lat, float(rpos[0]), float(rpos[1]))
+            if inside(hi) and not inside(math.nextafter(lo, 0)):
+                self.documented["libm_ulp"] += 1
                 redis_exact = True
         # The Postgres leg's own search, at its own distance: always exact.
         self.leg("postgres")
@@ -582,7 +607,7 @@ class Probe:
 
         got = self.both(run)
         r, p = got["redis"], got["postgres"]
-        edge: set[str] | None = None
+        edge: dict[str, set[str]] | None = None
         if r[0] == "!!" or p[0] == "!!":
             self.compare_errors(r, p, where)
         else:
@@ -592,9 +617,13 @@ class Probe:
                 self.checks["filter"] += 1
             else:
                 edge = self.flips(shape, params)
-                if edge and _same(rv, pv, order, with_distances, limited, edge):
+                fma, libm = edge["fma"], edge["fma"] | edge["libm"]
+                if fma and _same(rv, pv, order, with_distances, limited, fma):
                     self.checks["filter"] += 1
                     self.documented["fma_boundary"] += 1
+                elif libm and _same(rv, pv, order, with_distances, limited, libm):
+                    self.checks["filter"] += 1
+                    self.documented["libm_boundary"] += 1
                 else:
                     self.check(
                         "filter",
@@ -618,9 +647,13 @@ class Probe:
         else:
             if edge is None:
                 edge = self.flips(shape, params)
-            if edge and abs(r[1] - p[1]) <= len(edge):
+            gap = abs(r[1] - p[1])
+            if edge["fma"] and gap <= len(edge["fma"]):
                 self.checks["count"] += 1
                 self.documented["fma_boundary"] += 1
+            elif gap <= len(edge["fma"] | edge["libm"]):
+                self.checks["count"] += 1
+                self.documented["libm_boundary"] += 1
             else:
                 self.check(
                     "count", False, lambda: f"{where} count: {got} boundary={edge}"
@@ -749,18 +782,62 @@ def _fused_decode(score: int) -> tuple[float, float]:
     )
 
 
-def _fused_distance(lon1d: float, lat1d: float, lon2d: float, lat2d: float) -> float:
-    """``geo.distance`` with the haversine's ``u*u + c`` fused."""
+def _haversine(
+    lon1d: float,
+    lat1d: float,
+    lon2d: float,
+    lat2d: float,
+    *,
+    fused: bool = False,
+    nudge: tuple[int, ...] = (0, 0, 0, 0, 0),
+) -> float:
+    """``geo.distance``, optionally with ``u*u + c`` fused, and with each libm
+    result (``sin`` v, ``sin`` u, the two ``cos``, ``asin``) moved by
+    ``nudge[i]`` ulps. ``sqrt`` is IEEE, correctly rounded everywhere."""
+
+    def off(x: float, n: int) -> float:
+        for _ in range(abs(n)):
+            x = math.nextafter(x, math.inf if n > 0 else -math.inf)
+        return x
+
     lon1r, lon2r = lon1d * geo.D_R, lon2d * geo.D_R
     v = math.sin((lon2r - lon1r) / 2)
     if v == 0.0:
         return geo.EARTH_RADIUS_IN_METERS * abs(lat2d * geo.D_R - lat1d * geo.D_R)
+    v = off(v, nudge[0])
     lat1r, lat2r = lat1d * geo.D_R, lat2d * geo.D_R
-    u = math.sin((lat2r - lat1r) / 2)
-    a = _fma(u, u, math.cos(lat1r) * math.cos(lat2r) * v * v)
+    u = off(math.sin((lat2r - lat1r) / 2), nudge[1])
+    c = off(math.cos(lat1r), nudge[2]) * off(math.cos(lat2r), nudge[3]) * v * v
+    a = _fma(u, u, c) if fused else u * u + c
     root = math.sqrt(a)
-    arc = math.asin(root) if root <= 1.0 else math.nan
-    return 2.0 * geo.EARTH_RADIUS_IN_METERS * arc
+    if root > 1.0:
+        return math.nan
+    return 2.0 * geo.EARTH_RADIUS_IN_METERS * off(math.asin(root), nudge[4])
+
+
+def _fused_distance(lon1d: float, lat1d: float, lon2d: float, lat2d: float) -> float:
+    """``geo.distance`` with the haversine's ``u*u + c`` fused."""
+    return _haversine(lon1d, lat1d, lon2d, lat2d, fused=True)
+
+
+_NUDGES = list(itertools.product((-1, 0, 1), repeat=5))
+
+
+def _libm_envelope(
+    lon1d: float, lat1d: float, lon2d: float, lat2d: float
+) -> tuple[float, float]:
+    """The least and greatest distance the port's formula gives when each of
+    its five libm results is off by at most one ulp -- the accuracy every
+    mainstream libm (glibc, musl, Apple's) meets, without agreeing on the
+    last bit. A Redis on another libm measures a distance in this range."""
+    values = [
+        x
+        for n in _NUDGES
+        if (x := _haversine(lon1d, lat1d, lon2d, lat2d, nudge=n)) == x
+    ]
+    if not values:
+        return math.nan, math.nan
+    return min(values), max(values)
 
 
 def _ulps(a: float, b: float) -> int:

@@ -37,20 +37,27 @@ the query's own statement as ``_pk = ANY(…)``, and the distances order it.
 
 **Arithmetic: plain IEEE doubles, never fused.** Every ``a*b + c`` here is
 two roundings, as CPython evaluates it. That is deliberate: a Postgres
-deployment has no Redis to mirror, so the port must give the same answer on
-every machine, and the only portable reading of Redis's C is the one with no
-contraction. It is bit-identical to a Redis built without contraction (the
-x86-64 builds, e.g. ``redis:7-alpine``, which CI runs). A Redis built with
-clang on arm64 (e.g. Homebrew 8.10.2) contracts two expressions into fused
-multiply-adds -- the decode's ``min + (i / 2**step) * scale`` and the
-haversine's ``u*u + cos(lat1)*cos(lat2)*v*v`` -- so its decoded positions
-and distances are one fused rounding away from this in places (for a
-near-antipodal distance, where ``asin``'s slope amplifies it, up to about
-0.19 m), and a member that close to the radius can be in on one and out on
-the other. ``scripts/probe_geo_parity.py`` classifies those exactly. ``sin``/``cos``/``asin``/``sqrt`` are the platform's libm, as they are
-for Redis. The distance stays in Python rather than SQL so that the save's
-decode and the search's test share one implementation; nothing in it needs
-Python beyond that.
+deployment has no Redis to mirror, so the port must not depend on how a
+compiler built Redis, and the only portable reading of its C is the one with
+no contraction. Encode and decode use no libm, so scores and decoded
+positions are bit-identical, on every platform, to a Redis built without
+contraction (the x86-64 builds, e.g. ``redis:7-alpine``, which CI runs). A
+Redis built with clang on arm64 (e.g. Homebrew 8.10.2) contracts two
+expressions into fused multiply-adds -- the decode's
+``min + (i / 2**step) * scale`` and the haversine's
+``u*u + cos(lat1)*cos(lat2)*v*v`` -- so its decoded positions and distances
+are one fused rounding away from this in places (for a near-antipodal
+distance, where ``asin``'s slope amplifies it, up to about 0.19 m), and a
+member that close to the radius can be in on one and out on the other.
+
+``sin``/``cos``/``asin`` are the host Python's libm, as Redis uses its own.
+Libms agree to within an ulp but not on the last bit (CI's musl-linked Redis
+against its glibc Python shows it), so a distance can differ by that much,
+propagated through the formula, from a Redis on another libm.
+``sqrt`` is IEEE, correctly rounded everywhere. ``scripts/probe_geo_parity.py``
+classifies both kinds of difference. The distance stays in Python rather
+than SQL so that the save's decode and the search's test share one
+implementation; nothing in it needs Python beyond that.
 
 **Distances** are reported as Redis replies them: ``WITHDIST`` divides the
 meters by the unit's conversion factor and prints four decimals
