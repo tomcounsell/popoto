@@ -15,12 +15,25 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from typing import Any, Literal, Mapping, Optional, Sequence, Union
+from typing import (
+    Any,
+    AsyncContextManager,
+    Callable,
+    Literal,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Union,
+    runtime_checkable,
+)
 
 from ..redis_db import PopotoException
 
 __all__ = [
+    "ASYNC_PROTOCOL_METHODS",
     "And",
+    "AsyncBackend",
     "BackendCapabilityError",
     "BackendError",
     "BackendUnavailableError",
@@ -432,3 +445,114 @@ class UnitOfWork:
 
     def __repr__(self) -> str:
         return f"<UnitOfWork {self.backend} {self.pipeline!r}>"
+
+
+# -- the async twin (#759 M5) -------------------------------------------------
+
+ASYNC_PROTOCOL_METHODS: tuple[str, ...] = (
+    "bind",
+    "transaction",
+    "close",
+    "save",
+    "load",
+    "delete",
+    "exists",
+    "increment",
+    "select",
+    "count",
+    "field_call",
+)
+"""The protocol methods :class:`AsyncBackend` mirrors: groups A-C, which
+today's ``async_*`` callers reach (``async_save``/``async_create``/the bulk
+twins through ``save``, ``async_get``/``async_get_many`` through ``load``,
+``async_filter``/``async_all``/``async_keys`` through ``select``,
+``async_count`` through ``count``, ``async_delete``/``async_delete_all``
+through ``delete``), plus ``field_call``, which a hydrating read reaches for
+``AccessTrackerMixin`` staging. ``increment`` has no ``async_*`` caller yet
+and is mirrored because it is group B."""
+
+
+@runtime_checkable
+class AsyncBackend(Protocol):
+    """The async twin of :class:`popoto.backends.Backend` (plan §2, TD-6).
+
+    Same arguments and results as the sync methods of
+    :data:`ASYNC_PROTOCOL_METHODS`, awaited. ``transaction()`` is an *async*
+    context manager whose unit of work is passed as ``pipeline=`` to the
+    ``async_*`` model methods. ``run(fn, ...)`` runs sync popoto code (a
+    ``Model.save``, a ``Query.get``) with its storage I/O on this backend's
+    async driver: it is how the ``async_*`` model methods are routed, so the
+    model layer above the seam exists once.
+
+    Redis has no implementation: a Redis-bound model's ``async_*`` methods
+    keep today's ``redis.asyncio`` / worker-thread paths unchanged.
+    """
+
+    name: str
+
+    async def run(
+        self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any
+    ) -> Any: ...
+
+    async def bind(self, spec: ModelSpec) -> Capabilities: ...
+
+    def transaction(self) -> AsyncContextManager[UnitOfWork]: ...
+
+    async def close(self) -> None: ...
+
+    async def save(
+        self,
+        obj: Any,
+        *,
+        fields: Optional[Sequence[str]] = None,
+        previous_id: Optional[RecordId] = None,
+        expiry: Optional[Expiry] = None,
+        uow: Optional[UnitOfWork] = None,
+        **options: Any,
+    ) -> SaveOutcome: ...
+
+    async def load(
+        self,
+        spec: ModelSpec,
+        ids: Sequence[RecordId],
+        *,
+        fields: Optional[Sequence[str]] = None,
+        **options: Any,
+    ) -> list[Optional[Row]]: ...
+
+    async def delete(
+        self,
+        spec: ModelSpec,
+        ids: Sequence[RecordId],
+        *,
+        uow: Optional[UnitOfWork] = None,
+        **options: Any,
+    ) -> int: ...
+
+    async def exists(self, spec: ModelSpec, ids: Sequence[RecordId]) -> list[bool]: ...
+
+    async def increment(
+        self,
+        spec: ModelSpec,
+        id: RecordId,
+        field: str,
+        delta: Union[int, float],
+        *,
+        uow: Optional[UnitOfWork] = None,
+        **options: Any,
+    ) -> Union[int, float]: ...
+
+    async def select(self, spec: ModelSpec, plan: QueryPlan) -> list[Row]: ...
+
+    async def count(self, spec: ModelSpec, plan: QueryPlan) -> int: ...
+
+    async def field_call(
+        self,
+        spec: ModelSpec,
+        field: str,
+        op: str,
+        /,
+        *args: Any,
+        uow: Optional[UnitOfWork] = None,
+        **kwargs: Any,
+    ) -> Any: ...

@@ -175,9 +175,55 @@ def _retryable(exc: BaseException, attempts: int = 1) -> BackendRetryableError:
     )
 
 
+# -- the async bridge (#759 M5) -----------------------------------------------
+
+_async_bridge: Any = None
+"""Installed by :mod:`.aio` on import. While sync backend code runs inside
+one of its bridge greenlets (an ``async_*`` call on a Postgres model), the
+three helpers below route that code's I/O onto the event loop: the pool is
+the loop's ``AsyncConnectionPool``, a retry back-off is ``asyncio.sleep``, and
+a blocking provider call goes to a worker thread. Everywhere else they are
+exactly what they were."""
+
+
+def _set_async_bridge(bridge: Any) -> None:
+    global _async_bridge
+    _async_bridge = bridge
+
+
+def _bridged() -> Any:
+    bridge = _async_bridge
+    if bridge is not None and bridge.active():
+        return bridge
+    return None
+
+
+def _sleep(seconds: float) -> None:
+    """A retry back-off: ``time.sleep``, or ``asyncio.sleep`` in the bridge."""
+    bridge = _bridged()
+    if bridge is not None:
+        bridge.sleep(seconds)
+    else:
+        time.sleep(seconds)
+
+
+def _blocking(fn: Any, /, *args: Any, **kwargs: Any) -> Any:
+    """Call a blocking non-Postgres function (an embedding provider): in
+    place, or in a worker thread when inside the bridge, so it never blocks
+    the event loop."""
+    bridge = _bridged()
+    if bridge is not None:
+        return bridge.blocking(fn, *args, **kwargs)
+    return fn(*args, **kwargs)
+
+
 def _pool_for(dsn: str) -> Any:
     """The process's pool for ``dsn``, created lazily (and again after a
-    fork: a child never reuses the parent's sockets)."""
+    fork: a child never reuses the parent's sockets). Inside the async
+    bridge, the running loop's pool instead (:mod:`.aio`)."""
+    bridge = _bridged()
+    if bridge is not None:
+        return bridge.pool(dsn)
     key = (dsn, os.getpid())
     pool = _pools.get(key)
     if pool is not None:
@@ -217,7 +263,10 @@ def _pool_for(dsn: str) -> Any:
 
 
 def close_pools() -> None:
-    """Close every pool this process opened (tests, interpreter shutdown)."""
+    """Close every pool this process opened (tests, interpreter shutdown),
+    the async bridge's per-loop pools included."""
+    if _async_bridge is not None:
+        _async_bridge.close_all()
     with _pools_lock:
         for (dsn, pid), pool in list(_pools.items()):
             if pid == os.getpid():
@@ -469,7 +518,7 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
                 attempt += 1
                 if attempt >= attempts:
                     raise _retryable(exc, attempt) from exc
-                time.sleep(random.uniform(0.005, 0.05) * attempt)
+                _sleep(random.uniform(0.005, 0.05) * attempt)
             except psycopg.OperationalError as exc:
                 if not reconnected and self._may_retry_broken(conn, exc, write):
                     reconnected = True

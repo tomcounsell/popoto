@@ -145,9 +145,18 @@ def _row_result(row: Any) -> Any:
 def _decoded_backend(model_class: Any) -> bool:
     """True when ``model_class`` is bound to a backend other than Redis. The
     native-async query methods talk to ``redis.asyncio`` directly; for such a
-    model they run the sync method in a thread instead (the async backend
-    twin is M5)."""
+    model they run the sync method through :func:`_run_decoded` instead."""
     return get_backend(model_class).name != "redis"
+
+
+async def _run_decoded(model_class: Any, fn: Any, /, *args: Any, **kwargs: Any) -> Any:
+    """An ``async_*`` query method of a non-Redis model: its sync twin on the
+    model's async backend (#759 M5) -- on Postgres, ``AsyncPostgresBackend``,
+    whose I/O is ``psycopg.AsyncConnection`` on the running loop; for any
+    other backend, a worker thread, as before."""
+    from ..backends.postgres.aio import run_async
+
+    return await run_async(get_backend(model_class), fn, *args, **kwargs)
 
 
 def _hydrate_keys(model_class: Any, keys: Any) -> list[Any]:
@@ -4380,9 +4389,14 @@ class Query:
         Raises:
             QueryException: If the filter matches more than one object.
         """
-        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
-            found: Any = await to_thread(
-                self.get, db_key, redis_key, _no_track=_no_track, **kwargs
+        if _decoded_backend(self.model_class):  # #759 M5: the async backend
+            found: Any = await _run_decoded(
+                self.model_class,
+                self.get,
+                db_key,
+                redis_key,
+                _no_track=_no_track,
+                **kwargs,
             )
             return found
         from ..models.encoding import decode_popoto_model_hashmap
@@ -4434,8 +4448,10 @@ class Query:
             keys = ["Product:widget:001", "Product:widget:002"]
             products = await Product.query.async_get_many(redis_keys=keys)
         """
-        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
-            return await to_thread(self.get_many, redis_keys, skip_none)
+        if _decoded_backend(self.model_class):  # #759 M5: the async backend
+            return await _run_decoded(
+                self.model_class, self.get_many, redis_keys, skip_none
+            )
         if not redis_keys:
             return []
 
@@ -4499,8 +4515,9 @@ class Query:
             Object loading uses native async Redis for better performance on
             bulk data retrieval.
         """
-        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
-            return await to_thread(
+        if _decoded_backend(self.model_class):  # #759 M5: the async backend
+            return await _run_decoded(
+                self.model_class,
                 self._execute_filter,
                 _no_track=_no_track,
                 _allow_pushdown=_allow_pushdown,
@@ -4626,8 +4643,8 @@ class Query:
         Returns:
             List of all model instances or dicts (if values= specified)
         """
-        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
-            return await to_thread(self.all, **kwargs)
+        if _decoded_backend(self.model_class):  # #759 M5: the async backend
+            return await _run_decoded(self.model_class, self.all, **kwargs)
         async_redis = await get_async_redis_db()
         redis_db_keys_list = list(
             await async_redis.smembers(
@@ -4659,8 +4676,8 @@ class Query:
         Returns:
             Count of matching instances
         """
-        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
-            return await to_thread(self.count, **kwargs)
+        if _decoded_backend(self.model_class):  # #759 M5: the async backend
+            return await _run_decoded(self.model_class, self.count, **kwargs)
         async_redis = await get_async_redis_db()
 
         if not len(kwargs):
@@ -4706,8 +4723,10 @@ class Query:
             The clean operation uses to_thread() as it involves complex pipeline
             operations. Regular key retrieval uses native async.
         """
-        if _decoded_backend(self.model_class):  # #759 M1b: no async driver yet
-            return await to_thread(self.keys, catchall=catchall, clean=clean, **kwargs)
+        if _decoded_backend(self.model_class):  # #759 M5: the async backend
+            return await _run_decoded(
+                self.model_class, self.keys, catchall=catchall, clean=clean, **kwargs
+            )
         if clean:
             # Clean operation is complex with pipelines, use thread pool
             return await to_thread(self.keys, catchall=catchall, clean=clean, **kwargs)

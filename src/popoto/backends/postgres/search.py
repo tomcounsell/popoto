@@ -765,7 +765,11 @@ def _embed_for_save(obj: Any, emb: EmbeddingLayout) -> Optional[tuple[Any, int]]
     if text is None or text == "":
         return None
     try:
-        vectors = provider.embed([text], input_type="document")
+        from . import _blocking
+
+        # Off the event loop inside the async bridge (#759 M5): a provider
+        # is a sync API, often a network call.
+        vectors = _blocking(provider.embed, [text], input_type="document")
         if not vectors or not vectors[0]:
             return None
         vector = vectors[0]
@@ -868,7 +872,9 @@ def backfill(
         worker = threading.Thread(target=work, name="popoto-backfill", daemon=True)
         worker.start()
         released = True  # the worker releases the lock when its call returns
-        if not done.wait(max(0.0, deadline - time.monotonic())):
+        from . import _blocking
+
+        if not _blocking(done.wait, max(0.0, deadline - time.monotonic())):
             logger.info(
                 "popoto backfill: provider did not answer within %.2fs; "
                 "abandoned (the save already committed)",
@@ -1821,8 +1827,10 @@ class SearchMixin:
         provider = emb.field_ref.provider if emb.field_ref is not None else None
         if provider is None:
             return None
+        from . import _blocking
+
         try:
-            vectors = provider.embed([text], input_type="query")
+            vectors = _blocking(provider.embed, [text], input_type="query")
         except Exception as exc:
             logger.warning("recall: query embedding failed (%s); vector arm off", exc)
             return None
