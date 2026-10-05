@@ -22738,17 +22738,30 @@ except BackendBusyError:
 A connection that cannot be *opened* is still `BackendUnavailableError` and
 an outage. The sync `psycopg_pool` reports both cases as one `PoolTimeout`,
 so on the sync path popoto calls a timeout busy only when every connection
-of the pool is checked out to a caller at that moment. The async pool
-applies the same rule to its own slots: a wait is busy only when every slot
-is held by a checked-out connection. During a partition (an unresponsive
-server, not a refused port) callers sit inside the connect holding slots
-while others queue behind them, and those queued waits time out as outages:
-health flips and each write is counted dropped. The rule says nothing about
-the server's state, only the pool's -- with every connection checked out and
-the server then going down, a new caller is still told the pool is busy,
-and the holders report the outage when their statements fail. Pinned by
+of the pool is checked out to a caller at that moment. The async pool opens
+connections inline, so it can tell more: a wait that times out is busy when
+every slot is checked out, and otherwise it is decided by what the server
+did. Some slot is then held by a caller still validating an idle
+connection (the checkout check's round trip) or *connecting*, and the
+waiter waits -- at most one connect timeout more -- for that round trip's
+outcome: one that reaches the server makes the wait contention
+(`BackendBusyError`), a connect that *fails* (refused, timed out at the
+socket) makes it an outage, and none answering within the connect timeout
+is an outage too. So a slow but reachable server under contention -- a
+loaded CI runner, where a round trip can straddle a 1 s checkout timeout --
+is busy and leaves health untouched, while during a partition (an
+unresponsive server, a black-holed port) callers sit inside the connect
+holding slots, the waits queued behind them end as outages, health flips and
+each write is counted dropped. Classifying by slot state alone counted the
+first case as an outage, which is what turned `main` red after #784. The
+"every slot checked out" rule still says nothing about the server's state,
+only the pool's -- with every connection checked out and the server then
+going down, a new caller is still told the pool is busy, and the holders
+report the outage when their statements fail. Pinned by
 `tests/postgres/test_postgres_async.py::test_a_busy_async_pool_is_not_an_outage`,
-`test_a_partitioned_async_pool_is_an_outage_not_busy` and
+`test_a_partitioned_async_pool_is_an_outage_not_busy`,
+`test_slow_connects_to_a_reachable_server_are_contention_not_an_outage`,
+`test_a_wait_behind_a_slow_checkout_check_is_contention_not_an_outage` and
 `test_a_busy_sync_pool_is_not_an_outage`.
 
 ## Transactions
