@@ -1213,14 +1213,21 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     B-tree on the score. Redis's nine search boxes are score ranges, so the
     bounding-box prefilter is that B-tree. PostGIS stays a possible later
     optimisation, not a dependency.
-  - **The exact distance test is Python, not SQL.** The Redis measured
-    (Homebrew 8.10.2, clang, arm64) contracts the decode's and the
-    haversine's `a*b + c` into fused multiply-adds; SQL rounds each `float8`
-    operator, which leaves 1028/3000 decoded positions and 14/150 distances
-    an ulp off. So the backend fetches the boxes' rows in one statement,
-    computes `geohashGetDistance` with an exact FMA in Python, and scopes the
-    query's own statement by the matched keys (`_pk = ANY`), its top-level
-    siblings narrowing the candidates. `QueryPlan.compute` carries
+  - **Plain IEEE arithmetic, never fused (coordinator decision, PATCH).**
+    The first cut reproduced the Redis it was measured against (Homebrew
+    8.10.2, clang, arm64), which contracts the decode's and the haversine's
+    `a*b + c` into fused multiply-adds, with an exact FMA in Python. CI runs
+    x86-64 `redis:7-alpine`, which does not contract, and the probe slice
+    failed there: positions an ulp apart and one radius-boundary membership
+    flipped. A Postgres deployment has no Redis to mirror, so the port is
+    now deterministic and portable: every `a*b + c` rounds twice. That
+    equals x86-64 Redis to the bit and is one fused rounding from an arm64
+    build. The exact test stays in Python (not moved back to SQL) so the
+    save's decode and the search's test share one implementation; the
+    backend fetches the boxes' rows in one statement, computes
+    `geohashGetDistance`, and scopes the query's own statement by the
+    matched keys (`_pk = ANY`), its top-level siblings narrowing the
+    candidates. `QueryPlan.compute` carries
     `ComputedCol("_geo_distance", GeoQuery)`; the distances (four decimals,
     as `WITHDIST` replies) ride on `Row` and order the `SELECT` after
     `order_by`'s term.
@@ -1238,13 +1245,24 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     text; Redis has already written the hash); refused searches raise
     `QueryException` where Redis raises `ResponseError` (same text); an
     expired record is out of every search and `count()` at once.
-  - **The probe** (`scripts/probe_geo_parity.py`, seeds 1–6 × 500 shapes on
-    PostgreSQL 18.6 and Redis 8.10.2, macOS arm64): 0 undocumented
-    mismatches over 11,467 stored scores and positions (bit-identical to
-    `ZSCORE`/`GEOPOS`), 8,160 exact-distance checks, 13,824 searches and
-    13,824 counts. Two classes surfaced and were fixed before merge: the
-    score's `double` rounding past `2**53` (longitude 180), and the order of
-    redis-py's argument-type refusal.
+  - **The probe** (`scripts/probe_geo_parity.py`) compares against the
+    running Redis, exactly, except two documented classes that exist only
+    against a contracting build: `fma_position_ulp` and `fma_boundary`. A
+    mismatch joins one only when the probe's own fused model of the C
+    reproduces the running Redis to the bit. The coordinator's proposed
+    "≤ 1 ulp" tolerance was measured and rejected: one fused rounding of
+    the decode is up to 5,996 ulps of a latitude near zero, and of the
+    haversine up to 50,982,380 ulps (about 0.19 m) of a near-antipodal
+    distance, where `asin`'s slope amplifies it; exact reproduction by the
+    fused model is both tighter and honest. Against x86-64 Redis (CI) both
+    classes are 0.
+    Seeds 1–6 × 500 shapes on PostgreSQL 18.6 and Redis 8.10.2, macOS
+    arm64: 0 undocumented mismatches over 11,467 stored scores and
+    positions, 8,160 exact-distance checks, 13,824 searches and 13,824
+    counts; documented `fma_position_ulp` 3,405 and `fma_boundary` 415
+    (beside `error_class` 2,628 and `save_invalid_pair` 1,142). Two classes surfaced in the first cut and were
+    fixed before merge: the score's `double` rounding past `2**53`
+    (longitude 180), and the order of redis-py's argument-type refusal.
   - **Transfer:** `GeoField.roundtrip_policy` is `"rebuild"`: an import
     re-saves the coordinates and the save rebuilds the geo columns, so
     nothing geo-specific is carried in the transfer format (#788).

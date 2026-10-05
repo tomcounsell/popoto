@@ -6,7 +6,7 @@ the server refuses with) is pinned by the conformance files --
 the geo tests of ``test_query_thread_safety.py`` and ``test_async.py`` -- and
 by the seeded probe ``scripts/probe_geo_parity.py`` (a slice runs at the end of
 this file). This file covers what has no Redis leg: the columns and the index,
-the stored score and decoded position against values read off Redis 8.10.2,
+the stored score and decoded position against values read off Redis,
 member removal, atomic refusal, ``Meta.ttl``, ``popoto.batch()``, async, and
 the scope a geo leaf can and cannot take.
 """
@@ -66,13 +66,21 @@ def _names(rows):
 # -- the arithmetic, against values read off Redis ------------------------------
 
 
+ROME_LAT_UNFUSED = 41.902782133789835
+"""Rome's decoded latitude in plain IEEE arithmetic: what ``GEOPOS`` replies
+on a Redis built without floating-point contraction (x86-64)."""
+ROME_LAT_FUSED = 41.90278213378984
+"""The same on Redis 8.10.2 built by clang on arm64, which fuses the decode's
+``min + (i / 2**step) * scale`` into one rounding: the adjacent double."""
+
+
 def test_scores_and_positions_match_redis():
-    """``GEOADD`` scores and ``GEOPOS`` positions from Redis 8.10.2 (arm64):
-    Rome; a point on longitude 180, whose 54-bit score the zset's double
-    rounds to a neighbouring cell; one on the latitude limit (bit 52)."""
+    """``GEOADD`` scores and ``GEOPOS`` positions: Rome; a point on longitude
+    180, whose 54-bit score the zset's double rounds to a neighbouring cell;
+    one on the latitude limit (bit 52)."""
     rome = geo.score_of(12.496366, 41.902782)
     assert rome == 3480343273965391
-    assert geo.decode_point(rome) == (12.496366202831268, 41.90278213378984)
+    assert geo.decode_point(rome) == (12.496366202831268, ROME_LAT_UNFUSED)
     edge = geo.score_of(180.0, 32.7614995816)
     assert edge == 10221133194347524
     assert geo.decode_point(edge)[0] == 180.0
@@ -89,10 +97,18 @@ def test_reply_distance_is_withdist_four_decimals():
     assert geo.reply_distance(math.nan, 1.0) == 0.0  # llrint(NaN) on arm64
 
 
-def test_the_exact_fma_is_correctly_rounded():
-    a, b, c = 0.1, 10.0, -1.0
-    assert geo._fma_exact(a, b, c) == 5.551115123125783e-17  # a*b + c = 0.0
-    assert a * b + c == 0.0
+def test_the_arithmetic_is_plain_ieee_never_fused():
+    """The port is deterministic across platforms: each ``a*b + c`` rounds
+    twice, as a Redis built without contraction computes it. A fusing build
+    (clang, arm64) is one ulp away in places -- here, Rome's latitude."""
+    assert math.nextafter(ROME_LAT_UNFUSED, 90.0) == ROME_LAT_FUSED
+    assert not hasattr(geo, "FUSED_MULTIPLY_ADD")
+    lat_min = geo._decode(3480343273965391, geo.GEO_STEP_MAX).lat_min
+    sep = geo._deinterleave64(3480343273965391)
+    plain = geo.GEO_LAT_MIN + ((sep & 0xFFFFFFFF) / float(1 << 26)) * (
+        geo.GEO_LAT_MAX - geo.GEO_LAT_MIN
+    )
+    assert lat_min == plain
 
 
 def test_a_score_past_2_52_is_in_no_search_box():
@@ -154,7 +170,7 @@ def test_save_stores_the_score_and_the_decoded_position(pg, admin):
     assert _geo_row(admin, pg, rome.db_key.redis_key) == (
         3480343273965391,
         12.496366202831268,
-        41.90278213378984,
+        ROME_LAT_UNFUSED,
     )
     # The value reads back as given, not quantised.
     assert GeoPlace.query.get(name="rome").place == ROME

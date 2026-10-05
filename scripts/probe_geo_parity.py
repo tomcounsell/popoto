@@ -21,10 +21,13 @@ class              what is compared
                    ``<f>__geohash``
 ``position``       its decoded position: ``GEOPOS`` vs ``<f>__geolon`` /
                    ``<f>__geolat``, to the bit
-``distance_bits``  the exact distance Redis measured, read off its radius
-                   test: a member is inside at radius ``d`` and outside at the
-                   double just below ``d`` iff Redis's distance is ``d``,
-                   the port's (``unit=m``, so ``radius * conversion = d``)
+``distance_bits``  the exact distance each leg measures, read off its own
+                   radius test: a member is inside at radius ``d`` and
+                   outside at the double just below ``d`` iff that leg's
+                   distance is ``d`` (``unit=m``, so ``radius * conversion =
+                   d``). For Redis, ``d`` is the port's haversine from
+                   Redis's own ``GEOPOS``; for Postgres, from its stored
+                   position.
 ``filter``         ``filter(shape=…, <geo params>)``: which records, their
                    ``_geo_distance`` / ``_geo_distance_unit``, and the order
                    where the order is defined (by ``order_by``; by distance
@@ -43,6 +46,24 @@ seed, shape and inputs, and the run exits non-zero:
   hash before the ``GEOADD`` fails (the record exists, unindexed); Postgres
   refuses before writing (``ValueError``, same text). The probe deletes the
   half-written Redis record so later reads compare like with like.
+* ``fma_position_ulp`` -- a decoded position (``GEOPOS``), or the distance
+  Redis's radius test measures, that differs from the port's by one fused
+  rounding. The port is plain IEEE arithmetic, which is what a Redis built
+  without floating-point contraction computes (x86-64, CI's
+  ``redis:7-alpine``): there this class is 0. A clang/arm64 build fuses the
+  decode's ``min + t * scale`` and the haversine's ``u*u + c`` into one
+  rounding each.
+* ``fma_boundary`` -- a radius search or count that differs only by members
+  that the contraction alone moves across the radius. Also 0 against a build
+  without contraction.
+
+Neither class is a tolerance. A mismatch joins one only when a model of the
+same C *with* the two contractions (``_fused_decode`` /
+``_fused_distance``, below; the probe's, not the backend's) reproduces the
+running Redis to the bit; anything else is undocumented. "One ulp" is the
+rounding, not always the gap: one rounding of the decode's product (the
+magnitude of the range, up to 180) is several ulps of a latitude near zero,
+and the report prints the widest gap seen.
 
 Safety: Redis is bound from ``REDIS_URL`` *before* importing popoto and
 database 0 is refused (CLAUDE.md, #577); on Postgres the script creates its
@@ -61,6 +82,7 @@ import argparse
 import math
 import os
 import random
+import struct
 import sys
 import time
 import uuid
@@ -130,6 +152,8 @@ class Probe:
         # distance_bits checks whose member no scanned box holds (a score
         # past 2**52): Redis's own behaviour, reproduced, not a divergence.
         self.uncovered = 0
+        # The widest fma_position_ulp gap seen, in ulps of the value.
+        self.spread: Counter = Counter()
 
     # -- plumbing -------------------------------------------------------------
 
@@ -272,6 +296,49 @@ class Probe:
 
     # -- stored state -------------------------------------------------------------
 
+    def flips(self, shape: Shape, params: dict[str, Any]) -> set[str]:
+        """The names on which the port's radius test and the fused model's
+        disagree (positions decoded from the Postgres leg's stored scores):
+        the members contraction alone moves across the radius. Empty for a
+        search either leg refuses, and always empty where the running Redis
+        does not contract."""
+        self.leg("postgres")
+        ts = self.pg._table(ProbeGeo._meta.spec)
+        rows, _ = self.pg._run(
+            f'SELECT "name", "_pk", "place__geohash", "place__geolon", '
+            f'"place__geolat" FROM {ts.qualified} WHERE "shape" = %s '
+            f'AND "place__geohash" IS NOT NULL',
+            [shape.key],
+        )
+        try:
+            radius = geo.parse_radius(params["place_radius"])
+            conversion = geo.UNIT_TO_METERS[params["place_radius_unit"]]
+            if "place_member" in params:
+                pk = ProbeGeo(
+                    shape=shape.key, name=params["place_member"].name
+                ).db_key.redis_key
+                found = [r for r in rows if r[1] == pk]
+                if not found:
+                    return set()
+                center = (found[0][3], found[0][4])
+                fused_center = _fused_decode(found[0][2])
+            else:
+                lat, lon = params.get("place") or (
+                    params["place_latitude"],
+                    params["place_longitude"],
+                )
+                center = fused_center = geo.parse_point(lon, lat)
+        except Exception:  # noqa: BLE001 - a refused search has no boundary
+            return set()
+        limit = radius * conversion
+        out = set()
+        for name, _pk, score, mlon, mlat in rows:
+            plain = not geo.distance(*center, mlon, mlat) > limit
+            fused = not _fused_distance(*fused_center, *_fused_decode(score)) > limit
+            if plain != fused:
+                out.add(name)
+        return out
+
     def compare_stored(self, shape: Shape) -> None:
         self.leg("redis")
         client = popoto.get_redis()
@@ -302,14 +369,24 @@ class Probe:
                 self.check("position", pg[1] is None, lambda: f"{key} pg={pg}")
                 continue
             rpos = (float(pos[0]), float(pos[1]))
+            exact = rpos == (pg[1], pg[2])
+            if not exact and pg[0] is not None and rpos == _fused_decode(pg[0]):
+                self.checks["position"] += 1
+                self.documented["fma_position_ulp"] += 1
+                self.spread["position"] = max(
+                    self.spread["position"],
+                    _ulps(rpos[0], pg[1]),
+                    _ulps(rpos[1], pg[2]),
+                )
+                continue
             self.check(
                 "position",
-                rpos == (pg[1], pg[2]),
+                exact,
                 lambda: f"{self.where(shape)}: {key} redis={rpos!r} pg={pg[1:]!r}",
             )
 
     def distance_bits(self, shape: Shape, center: tuple[float, float]) -> None:
-        """Read Redis's exact distance for one member off its radius test."""
+        """Read each leg's exact distance for one member off its radius test."""
         self.leg("redis")
         client = popoto.get_redis()
         geo_key = GeoField.get_geo_db_key(ProbeGeo, "place").redis_key
@@ -321,11 +398,22 @@ class Probe:
         score = client.zscore(geo_key, key)
         if score is None:
             return
-        mlon, mlat = geo.decode_point(int(score))
+        (rpos,) = client.execute_command("GEOPOS", geo_key, key)
         lat, lon = center
-        d = geo.distance(lon, lat, mlon, mlat)
-        if not (d > 0 and math.isfinite(d)):
+        # Redis measures from its own decoded position: the port's haversine
+        # from there is Redis's distance, up to the contraction.
+        d = geo.distance(lon, lat, float(rpos[0]), float(rpos[1]))
+        self.leg("postgres")
+        ts = self.pg._table(ProbeGeo._meta.spec)
+        rows, _ = self.pg._run(
+            f'SELECT "place__geolon", "place__geolat" FROM {ts.qualified} '
+            f'WHERE "_pk" = %s',
+            [key],
+        )
+        pd = geo.distance(lon, lat, rows[0][0], rows[0][1])
+        if not (d > 0 and math.isfinite(d) and pd > 0 and math.isfinite(pd)):
             return
+        self.leg("redis")
 
         def inside(radius: float) -> bool:
             out = client.execute_command(
@@ -342,10 +430,19 @@ class Probe:
 
         below_d = math.nextafter(d, 0)
         at, below = inside(d), inside(below_d)
-        want_at, want_below = covered(d), False
+        want_at = covered(d)
         if not want_at:
             self.uncovered += 1
-        # The Postgres leg's own search, at the same two radii.
+        redis_exact = (at, below) == (want_at, False)
+        fd = _fused_distance(lon, lat, float(rpos[0]), float(rpos[1]))
+        if not redis_exact and want_at and fd != d and math.isfinite(fd):
+            # Redis's haversine contracts u*u + c: its distance is the fused
+            # model's to the bit, or this is undocumented.
+            if inside(fd) and not inside(math.nextafter(fd, 0)):
+                self.documented["fma_position_ulp"] += 1
+                self.spread["distance"] = max(self.spread["distance"], _ulps(d, fd))
+                redis_exact = True
+        # The Postgres leg's own search, at its own distance: always exact.
         self.leg("postgres")
 
         def pg_inside(radius: float) -> bool:
@@ -354,14 +451,16 @@ class Probe:
             )
             return name in {row.name for row in rows}
 
-        pg_at, pg_below = pg_inside(d), pg_inside(below_d)
+        pg_got = (pg_inside(pd), pg_inside(math.nextafter(pd, 0)))
+        pg_want = (covered(pd), False)
         self.check(
             "distance_bits",
-            (at, below) == (want_at, want_below) == (pg_at, pg_below),
+            redis_exact and pg_got == pg_want,
             lambda: (
-                f"{self.where(shape)}: center={center!r} member={key} port={d!r} "
-                f"inside(d)={at} inside(d-ulp)={below} covered={want_at} "
-                f"pg=({pg_at}, {pg_below})"
+                f"{self.where(shape)}: center={center!r} member={key} "
+                f"redis_d={d!r} pg_d={pd!r} inside(d)={at} "
+                f"inside(d-ulp)={below} covered={want_at} "
+                f"pg={pg_got} want_pg={pg_want}"
             ),
         )
 
@@ -483,18 +582,25 @@ class Probe:
 
         got = self.both(run)
         r, p = got["redis"], got["postgres"]
+        edge: set[str] | None = None
         if r[0] == "!!" or p[0] == "!!":
             self.compare_errors(r, p, where)
         else:
             rv, pv = r[1], p[1]
-            if order:
-                same = rv == pv
-            elif with_distances:
-                same = sorted(rv, key=_by_distance) == sorted(pv, key=_by_distance)
-                same = same and _ascending(rv) and _ascending(pv)
+            limited = "limit" in extra
+            if _same(rv, pv, order, with_distances, limited):
+                self.checks["filter"] += 1
             else:
-                same = sorted(rv) == sorted(pv)
-            self.check("filter", same, lambda: f"{where}: redis={rv} pg={pv}")
+                edge = self.flips(shape, params)
+                if edge and _same(rv, pv, order, with_distances, limited, edge):
+                    self.checks["filter"] += 1
+                    self.documented["fma_boundary"] += 1
+                else:
+                    self.check(
+                        "filter",
+                        False,
+                        lambda: f"{where}: redis={rv} pg={pv} boundary={edge}",
+                    )
 
         def count(leg: str) -> Any:
             if "place_member" in params:
@@ -507,8 +613,18 @@ class Probe:
         r, p = got["redis"], got["postgres"]
         if r[0] == "!!" or p[0] == "!!":
             self.compare_errors(r, p, where + " count")
+        elif r == p:
+            self.checks["count"] += 1
         else:
-            self.check("count", r == p, lambda: f"{where} count: {got}")
+            if edge is None:
+                edge = self.flips(shape, params)
+            if edge and abs(r[1] - p[1]) <= len(edge):
+                self.checks["count"] += 1
+                self.documented["fma_boundary"] += 1
+            else:
+                self.check(
+                    "count", False, lambda: f"{where} count: {got} boundary={edge}"
+                )
 
     def compare_errors(self, r: Any, p: Any, where: str) -> None:
         if r[0] == "!!" and p[0] == "!!" and r[2] == p[2]:
@@ -575,6 +691,11 @@ class Probe:
         lines.append("\ndocumented (counted apart, not failures):")
         for cls in sorted(self.documented):
             lines.append(f"  {cls}: {self.documented[cls]}")
+        for what in sorted(self.spread):
+            lines.append(
+                f"  widest fma_position_ulp gap ({what}): "
+                f"{self.spread[what]} ulp of the value"
+            )
         for cls, examples in sorted(self.examples.items()):
             lines.append(f"\n{cls} examples:")
             lines.extend(f"  - {e}" for e in examples)
@@ -585,8 +706,94 @@ class Probe:
             "shapes": self.shapes,
             "checks": dict(self.checks),
             "documented": dict(self.documented),
+            "spread": dict(self.spread),
             "undocumented": list(self.undocumented),
         }
+
+
+# -- the fused model: Redis's C as a contracting compiler builds it -------------
+#
+# Classification only. The port (``geo``) is plain IEEE arithmetic; a Redis
+# built by clang on arm64 contracts two ``a*b + c`` into one rounding. A
+# mismatch is ``fma_*`` only when this model reproduces the running Redis to
+# the bit, so nothing else can hide in the class.
+
+
+def _fma(a: float, b: float, c: float) -> float:
+    """``a*b + c`` rounded once (exact rationals; ``int / int`` rounds
+    correctly)."""
+    an, ad = a.as_integer_ratio()
+    bn, bd = b.as_integer_ratio()
+    cn, cd = c.as_integer_ratio()
+    return (an * bn * cd + cn * ad * bd) / (ad * bd * cd)
+
+
+def _fused_decode(score: int) -> tuple[float, float]:
+    """``geo.decode_point`` with the decode's ``min + t * scale`` fused."""
+    sep = geo._deinterleave64(score)
+    ilat, ilon = sep & 0xFFFFFFFF, (sep >> 32) & 0xFFFFFFFF
+    div = float(1 << geo.GEO_STEP_MAX)
+    lat_scale = geo.GEO_LAT_MAX - geo.GEO_LAT_MIN
+    lon_scale = geo.GEO_LONG_MAX - geo.GEO_LONG_MIN
+    lat = (
+        _fma(ilat * 1.0 / div, lat_scale, geo.GEO_LAT_MIN)
+        + _fma((ilat + 1) * 1.0 / div, lat_scale, geo.GEO_LAT_MIN)
+    ) / 2
+    lon = (
+        _fma(ilon * 1.0 / div, lon_scale, geo.GEO_LONG_MIN)
+        + _fma((ilon + 1) * 1.0 / div, lon_scale, geo.GEO_LONG_MIN)
+    ) / 2
+    return (
+        min(max(lon, geo.GEO_LONG_MIN), geo.GEO_LONG_MAX),
+        min(max(lat, geo.GEO_LAT_MIN), geo.GEO_LAT_MAX),
+    )
+
+
+def _fused_distance(lon1d: float, lat1d: float, lon2d: float, lat2d: float) -> float:
+    """``geo.distance`` with the haversine's ``u*u + c`` fused."""
+    lon1r, lon2r = lon1d * geo.D_R, lon2d * geo.D_R
+    v = math.sin((lon2r - lon1r) / 2)
+    if v == 0.0:
+        return geo.EARTH_RADIUS_IN_METERS * abs(lat2d * geo.D_R - lat1d * geo.D_R)
+    lat1r, lat2r = lat1d * geo.D_R, lat2d * geo.D_R
+    u = math.sin((lat2r - lat1r) / 2)
+    a = _fma(u, u, math.cos(lat1r) * math.cos(lat2r) * v * v)
+    root = math.sqrt(a)
+    arc = math.asin(root) if root <= 1.0 else math.nan
+    return 2.0 * geo.EARTH_RADIUS_IN_METERS * arc
+
+
+def _ulps(a: float, b: float) -> int:
+    """How many doubles apart ``a`` and ``b`` are (same sign assumed)."""
+    if a == b:
+        return 0
+    ia = int.from_bytes(struct.pack("<d", abs(a)), "little")
+    ib = int.from_bytes(struct.pack("<d", abs(b)), "little")
+    return abs(ia - ib) if (a < 0) == (b < 0) else ia + ib
+
+
+def _same(
+    rv: list,
+    pv: list,
+    order: Any,
+    with_distances: bool,
+    limited: bool,
+    drop: Any = frozenset(),
+) -> bool:
+    """The two legs' rows agree, ignoring the names in ``drop`` (and, with a
+    ``limit``, the rows a dropped name pushed past it)."""
+    if drop:
+        rv = [row for row in rv if row[0] not in drop]
+        pv = [row for row in pv if row[0] not in drop]
+        if limited:
+            n = min(len(rv), len(pv))
+            rv, pv = rv[:n], pv[:n]
+    if order:
+        return rv == pv
+    if with_distances:
+        same = sorted(rv, key=_by_distance) == sorted(pv, key=_by_distance)
+        return same and _ascending(rv) and _ascending(pv)
+    return sorted(rv) == sorted(pv)
 
 
 def _by_distance(item: Any) -> Any:

@@ -7,7 +7,8 @@ and keeping the members whose haversine distance is within the radius. This
 module reproduces that arithmetic operation for operation, from Redis's own C
 (``src/geohash.c``, ``src/geohash_helper.c``, ``src/geo.c``; read at tag
 8.10.2), so that the same points, searched the same way, give the same keys
-and the same distances to the bit.
+and the same distances to the bit as a Redis built without floating-point
+contraction (see "Arithmetic" below).
 
 **Storage.** Beside the field's own ``jsonb`` value (the coordinates exactly
 as given, which is what a read returns on both backends), a ``GeoField``
@@ -34,21 +35,22 @@ is ``geohashGetDistance`` and the radius test is ``geohashGetDistanceIfInRadius`
 (``distance > radius * conversion`` excludes). The matched keys then scope
 the query's own statement as ``_pk = ANY(…)``, and the distances order it.
 
-**Why the distance is computed here and not in SQL.** The Redis this was
-measured against (Homebrew 8.10.2, clang, arm64) contracts two expressions
-into a fused multiply-add -- the decode's ``min + (i / 2**step) * scale`` and
-the haversine's ``u*u + cos(lat1)*cos(lat2)*v*v`` (C allows this; clang's
-default is ``-ffp-contract=on``). Without the fusion, 1028 of 3000 decoded
-positions and 14 of 150 bisected distances differ from Redis by an ulp; with
-it, all 3000 and all 150 match. SQL has no fused multiply-add and evaluates
-each ``float8`` operator separately, so the same formula in SQL cannot
-reproduce Redis bit for bit. Python can: :func:`_fma` is exact
-(``math.fma`` where Python has it, 3.13+, else an exact rational product
-rounded once). ``sin``/``cos``/``asin``/``sqrt`` are the platform's libm, as
-they are for Redis. A Redis built *without* contraction (x86-64 without FMA)
-rounds those products separately and differs from this, and from the arm64
-build, by an ulp in the same places; :data:`FUSED_MULTIPLY_ADD` records which
-build is reproduced.
+**Arithmetic: plain IEEE doubles, never fused.** Every ``a*b + c`` here is
+two roundings, as CPython evaluates it. That is deliberate: a Postgres
+deployment has no Redis to mirror, so the port must give the same answer on
+every machine, and the only portable reading of Redis's C is the one with no
+contraction. It is bit-identical to a Redis built without contraction (the
+x86-64 builds, e.g. ``redis:7-alpine``, which CI runs). A Redis built with
+clang on arm64 (e.g. Homebrew 8.10.2) contracts two expressions into fused
+multiply-adds -- the decode's ``min + (i / 2**step) * scale`` and the
+haversine's ``u*u + cos(lat1)*cos(lat2)*v*v`` -- so its decoded positions
+and distances are one fused rounding away from this in places (for a
+near-antipodal distance, where ``asin``'s slope amplifies it, up to about
+0.19 m), and a member that close to the radius can be in on one and out on
+the other. ``scripts/probe_geo_parity.py`` classifies those exactly. ``sin``/``cos``/``asin``/``sqrt`` are the platform's libm, as they are
+for Redis. The distance stays in Python rather than SQL so that the save's
+decode and the search's test share one implementation; nothing in it needs
+Python beyond that.
 
 **Distances** are reported as Redis replies them: ``WITHDIST`` divides the
 meters by the unit's conversion factor and prints four decimals
@@ -75,7 +77,6 @@ from ..types import And, Cond, ModelSpec, Not, Op, Or, Predicate
 from .schema import Column, TableSpec, quote_ident
 
 __all__ = [
-    "FUSED_MULTIPLY_ADD",
     "GEO_KIND",
     "GeoResolved",
     "decode_point",
@@ -110,34 +111,7 @@ MERCATOR_MAX = 20037726.37
 UNIT_TO_METERS: dict[str, float] = {"m": 1.0, "km": 1000.0, "ft": 0.3048, "mi": 1609.34}
 """``extractUnitOrReply``."""
 
-FUSED_MULTIPLY_ADD = True
-"""Reproduce a Redis build that contracts ``a*b + c`` into one rounding
-(clang's default; what the parity probe measures against). See the module
-docstring."""
-
 _U64 = (1 << 64) - 1
-
-
-# -- exact fused multiply-add -------------------------------------------------
-
-
-def _fma_exact(a: float, b: float, c: float) -> float:
-    """``a*b + c`` rounded once: the operands are exact binary rationals, the
-    sum is formed exactly, and Python's ``int / int`` rounds it correctly."""
-    an, ad = a.as_integer_ratio()
-    bn, bd = b.as_integer_ratio()
-    cn, cd = c.as_integer_ratio()
-    return (an * bn * cd + cn * ad * bd) / (ad * bd * cd)
-
-
-_fma: Callable[[float, float, float], float] = getattr(math, "fma", _fma_exact)
-
-
-def _mul_add(a: float, b: float, c: float) -> float:
-    """``a*b + c`` as the reproduced Redis build evaluates it."""
-    if FUSED_MULTIPLY_ADD:
-        return _fma(a, b, c)
-    return a * b + c
 
 
 # -- geohash.c ----------------------------------------------------------------
@@ -219,10 +193,10 @@ def _decode(bits: int, step: int) -> _Area:
     long_scale = GEO_LONG_MAX - GEO_LONG_MIN
     div = float(1 << step)
     return _Area(
-        lat_min=_mul_add(ilato * 1.0 / div, lat_scale, GEO_LAT_MIN),
-        lat_max=_mul_add((ilato + 1) * 1.0 / div, lat_scale, GEO_LAT_MIN),
-        lon_min=_mul_add(ilono * 1.0 / div, long_scale, GEO_LONG_MIN),
-        lon_max=_mul_add((ilono + 1) * 1.0 / div, long_scale, GEO_LONG_MIN),
+        lat_min=GEO_LAT_MIN + (ilato * 1.0 / div) * lat_scale,
+        lat_max=GEO_LAT_MIN + ((ilato + 1) * 1.0 / div) * lat_scale,
+        lon_min=GEO_LONG_MIN + (ilono * 1.0 / div) * long_scale,
+        lon_max=GEO_LONG_MIN + ((ilono + 1) * 1.0 / div) * long_scale,
     )
 
 
@@ -400,7 +374,7 @@ def distance(lon1d: float, lat1d: float, lon2d: float, lat2d: float) -> float:
     lat1r = lat1d * D_R
     lat2r = lat2d * D_R
     u = math.sin((lat2r - lat1r) / 2)
-    a = _mul_add(u, u, math.cos(lat1r) * math.cos(lat2r) * v * v)
+    a = u * u + math.cos(lat1r) * math.cos(lat2r) * v * v
     root = math.sqrt(a)
     arc = math.asin(root) if root <= 1.0 else math.nan
     return 2.0 * EARTH_RADIUS_IN_METERS * arc

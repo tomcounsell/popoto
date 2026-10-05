@@ -1042,18 +1042,28 @@ and before the key tie-break, which is how the Redis path re-sorts its
 hydrated objects. This is `QueryPlan.compute` (`ComputedCol("_geo_distance",
 …)`).
 
-**Why the distance is not computed in SQL.** The Redis build measured here
-(Homebrew 8.10.2, clang, arm64) fuses two expressions into a fused
-multiply-add: the decode's `min + (i / 2**step) * scale` and the haversine's
-`u*u + cos(lat1)*cos(lat2)*v*v`. Without the fusion, 1028 of 3000 decoded
-positions and 14 of 150 bisected distances are an ulp off. With it, all of
-them match. SQL has no fused multiply-add and rounds each `float8` operator
-separately, so the box prefilter is SQL and the exact test is Python: the fused
-multiply-add is exact there (`math.fma` on 3.13+, else an exact rational
-product rounded once), and `sin`/`cos`/`asin`/`sqrt` are the platform
-`libm`, as they are for Redis. A Redis built without contraction (x86-64
-without FMA) differs from this, and from the arm64 build, by an ulp in the
-same places (`popoto.backends.postgres.geo.FUSED_MULTIPLY_ADD`).
+**Arithmetic: plain IEEE doubles, never fused.** A Postgres deployment has
+no Redis to mirror, so the port gives the same answer on every machine: each
+`a*b + c` in Redis's C is evaluated as two roundings, as CPython evaluates
+it. That is bit-identical to a Redis built without floating-point
+contraction, which is what the x86-64 builds are (CI runs `redis:7-alpine`
+and compares exactly). A Redis built by clang on arm64 (Homebrew 8.10.2, for
+one) contracts two expressions into fused multiply-adds: the decode's
+`min + (i / 2**step) * scale` and the haversine's
+`u*u + cos(lat1)*cos(lat2)*v*v`. Against that build, a decoded position
+(`GEOPOS`) or a distance is one fused rounding away from this one in places.
+For a position that is at most an ulp of the decode's product (about
+1.4e-14 degrees), which is thousands of ulps of a latitude near zero, where
+the decode's subtraction cancels. For a distance it is usually an ulp or
+two, but near the antipode `asin`'s slope amplifies one rounding of the
+haversine's `a`: the seeded probe saw up to about 0.19 m on a
+2×10^7 m distance. The consequence that reaches a query is at the radius:
+a member whose distance is that close to the radius can be in on one build
+and out on the other, and a `WITHDIST` value can differ in its fourth
+decimal when the gap straddles a rounding boundary.
+`sin`/`cos`/`asin`/`sqrt` are the platform `libm`, as they are for Redis.
+The exact test runs in Python rather than SQL so the save's decode and the
+search's test share one implementation.
 
 **Quirks reproduced, not repaired.** A point whose score is 2^52 or more
 (the latitude limit, longitude 180) lies past every search box, so no radius
@@ -1068,9 +1078,16 @@ before any server-side check.
 scan later as an optimisation. It would not change the arithmetic above, and
 it is not a dependency.
 
-The seeded probe compares both legs, including the stored score and decoded
-position against `ZSCORE`/`GEOPOS`, and Redis's exact distance read off its
-own radius test (in at `d`, out one ulp below):
+The seeded probe compares both legs against the *running* Redis, including
+the stored score and decoded position against `ZSCORE`/`GEOPOS`, and each
+leg's exact distance read off its own radius test (in at `d`, out one ulp
+below). Every comparison is exact, except two classes that count apart and
+exist only against a contracting build: `fma_position_ulp` (a position or
+distance one fused rounding away) and `fma_boundary` (a search or count
+differing only by members the contraction moves across the radius). Neither
+is a tolerance: a mismatch joins one only when a model of the same C with
+the two contractions reproduces the running Redis to the bit. Against x86-64
+Redis both are 0.
 
 ```bash
 REDIS_URL=redis://localhost:6379/7 \
@@ -1086,6 +1103,7 @@ POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
 | A search the server refuses (bad center, bad or negative radius, a member that is not indexed) | `ResponseError` | `QueryException`, same text |
 | A record that has expired (`Meta.ttl`) | its geo-set member stays (no read purges it): `filter()` drops it at hydration, but `count()` keeps counting it, and a search by its member still runs around it | invisible to every search, `count()` and member lookup at once |
 | A geo leaf scoping a ranking or a search (`rank_decayed(where=…)`, `recall`) | the leaf's key set | `BackendCapabilityError`: a geo filter scopes `filter()` and `count()` only, for now |
+| A Redis built with floating-point contraction (clang, arm64) | the decode and the haversine round `a*b + c` once: positions and distances one fused rounding away (up to ~0.19 m near the antipode), so a member that close to the radius can flip | plain IEEE arithmetic: equal to x86-64 Redis to the bit, on every platform |
 
 Two leaves asking for distances in one query (two geo fields, or a geo leaf
 in each branch of a `Q`) merge their distances in predicate order, and the
