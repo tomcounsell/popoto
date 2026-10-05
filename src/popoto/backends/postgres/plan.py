@@ -429,6 +429,11 @@ def _cond_sql(ts: TableSpec, kinds: dict[str, str], c: Cond, params: list[Any]) 
     op = c.op
     if ts.is_tag(c.field):
         return _tag_sql(c.field, col, op, c.value, params)
+    if op is Op.WITHIN and kind == "GeoField":
+        # M5: a geo leaf the backend has already searched (.geo).
+        from .geo import within_sql
+
+        return within_sql(c, params)
     if op is Op.VALID_AT and kind == "ValidityField":
         # M3: filter(validity__as_of=t / __current=...), .validity.
         from .validity import validity_cond_sql
@@ -607,6 +612,7 @@ def render_order(
     ts: TableSpec,
     terms: tuple[OrderTerm, ...],
     not_null: frozenset[str] = frozenset(),
+    extra: tuple[str, ...] = (),
 ) -> str:
     """``ORDER BY`` for ``terms`` plus the deterministic tie-break
     ``_pk COLLATE "C"`` (Redis's bytewise member order).
@@ -640,5 +646,8 @@ def render_order(
         if zero is None and not known_not_null:
             nulls = " NULLS LAST" if term.descending else " NULLS FIRST"
         parts.append(f"{expr} {direction}{nulls}")
+    # Terms a backend computes (a geo search's distance, M5) order between
+    # the field terms and the tie-break.
+    parts.extend(extra)
     parts.append(f'"_pk" COLLATE "C" {"DESC" if descending else "ASC"}')
     return " ORDER BY " + ", ".join(parts)

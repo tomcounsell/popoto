@@ -11,6 +11,11 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import pytest
 from src import popoto
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this module
+# runs on each configured backend leg. On Postgres a GeoField is plain columns
+# reproducing Redis's geohash arithmetic (popoto.backends.postgres.geo).
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class Location(popoto.Model):
     name = popoto.KeyField()
