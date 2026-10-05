@@ -10,7 +10,7 @@ end to end in ``tests/postgres/test_migrate_redis_to_postgres.py``.
 import inspect
 import re
 
-from popoto.transfer import migrate_redis_to_postgres as mig
+from popoto import migrate_redis_to_postgres as mig
 
 SOURCE = inspect.getsource(mig)
 

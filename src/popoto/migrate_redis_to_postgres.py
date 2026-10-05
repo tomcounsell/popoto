@@ -2,7 +2,7 @@
 
 Run it as a module::
 
-    python -m popoto.transfer.migrate_redis_to_postgres \\
+    python -m popoto.migrate_redis_to_postgres \\
         --rdb /archive/run1/dump.rdb --content-dir /archive/run1/content \\
         --run-dir /archive/run1/migration --source-id laptop-1 \\
         --mapping myapp.memory_migration:MAPPINGS
@@ -789,8 +789,8 @@ def _decay_crosscheck(
 ) -> dict[str, Any]:
     """Each decay index's score against the record hash's clock: the two
     independent encodings of the same number (#757 Risk 5)."""
-    from ..fields.decaying_sorted_field import DecayingSortedField
-    from ..models.encoding import decode_popoto_model_hashmap
+    from .fields.decaying_sorted_field import DecayingSortedField
+    from .models.encoding import decode_popoto_model_hashmap
 
     out: dict[str, Any] = {}
     model = mapping.model
@@ -837,7 +837,7 @@ def _embedding_inventory(
     record_keys: set[str],
     content_dir: Optional[Path],
 ) -> dict[str, Any]:
-    from ..fields.embedding_field import EmbeddingField
+    from .fields.embedding_field import EmbeddingField
 
     out: dict[str, Any] = {}
     model = mapping.model
@@ -874,7 +874,7 @@ def _embedding_inventory(
 def _redis_side(models: Sequence[Any]) -> Iterator[None]:
     """Bind ``models`` to the Redis backend: the process default, and any
     ``Meta.backend`` a post-cutover model declares, for the block."""
-    from ..backends import reset_bindings, set_backend
+    from .backends import reset_bindings, set_backend
 
     saved = {m: getattr(m._meta, "backend", None) for m in models}
     previous = set_backend("redis")
@@ -892,7 +892,7 @@ def _redis_side(models: Sequence[Any]) -> Iterator[None]:
 
 @contextlib.contextmanager
 def _postgres_side(models: Sequence[Any], backend: Any) -> Iterator[None]:
-    from ..backends import reset_bindings, set_backend
+    from .backends import reset_bindings, set_backend
 
     saved = {m: getattr(m._meta, "backend", None) for m in models}
     previous = set_backend(backend)
@@ -920,10 +920,15 @@ def _export_model(
 ) -> tuple[str, dict[str, Any]]:
     """The model's JSONL: ``export_records`` over the class set, then the
     orphan hashes ``SMEMBERS`` cannot see, hydrated the same way."""
-    from ..models.query import Query
-    from .export import _field_state, _model_state, _record_values, export_records
-    from .format import dump_line, to_jsonable
-    from .results import ExportResult
+    from .models.query import Query
+    from .transfer.export import (
+        _field_state,
+        _model_state,
+        _record_values,
+        export_records,
+    )
+    from .transfer.format import dump_line, to_jsonable
+    from .transfer.results import ExportResult
 
     model = mapping.model
     buffer = io.StringIO()
@@ -986,8 +991,8 @@ def normalize_record(model: Any, record: Mapping[str, Any]) -> dict[str, Any]:
     must reproduce. Drops what Postgres does not keep by design (the access
     log, a cycle's declared baseline) and reduces vectors to a float32
     digest."""
-    from ..fields.cyclic_decay_field import CyclicDecayField
-    from ..fields.embedding_field import EmbeddingField
+    from .fields.cyclic_decay_field import CyclicDecayField
+    from .fields.embedding_field import EmbeddingField
 
     values = json.loads(json.dumps(record.get("values") or {}))
     state = json.loads(json.dumps(record.get("state") or {}))
@@ -1014,7 +1019,7 @@ def payload_sha(model: Any, record: Mapping[str, Any]) -> str:
 
 
 def _content_store(field: Any, content_dir: Optional[Path]) -> Any:
-    from ..stores.filesystem import FilesystemStore
+    from .stores.filesystem import FilesystemStore
 
     if getattr(field, "_store", None) is not None:
         return field.store
@@ -1035,13 +1040,13 @@ def transform_record(
 
     Returns ``{"key", "record", "meta"}``. ``meta["reject"]`` is set when the
     record cannot land (it is then counted, never written)."""
-    from ..fields.co_occurrence_field import CoOccurrenceField
-    from ..fields.content_field import ContentField
-    from ..fields.cyclic_decay_field import CyclicDecayField
-    from ..fields.datetime_field import DatetimeField
-    from ..fields.decaying_sorted_field import DecayingSortedField
-    from ..fields.embedding_field import EmbeddingField
-    from .format import from_jsonable
+    from .fields.co_occurrence_field import CoOccurrenceField
+    from .fields.content_field import ContentField
+    from .fields.cyclic_decay_field import CyclicDecayField
+    from .fields.datetime_field import DatetimeField
+    from .fields.decaying_sorted_field import DecayingSortedField
+    from .fields.embedding_field import EmbeddingField
+    from .transfer.format import from_jsonable
 
     model = mapping.model
     key = str(record["key"])
@@ -1211,7 +1216,7 @@ _WRITES = (INSERTED, RESUMED, UPDATED_DELTA, WON_MERGE)
 
 
 def _qi(name: str) -> str:
-    from ..backends.postgres.schema import quote_ident
+    from .backends.postgres.schema import quote_ident
 
     return str(quote_ident(name))
 
@@ -1255,7 +1260,7 @@ def _table_exists(conn: Any, schema: str, table: str) -> bool:
 
 
 def _table_name(model: Any) -> str:
-    from ..backends.postgres.schema import table_name_for
+    from .backends.postgres.schema import table_name_for
 
     return str(table_name_for(model._meta.model_name))
 
@@ -1312,7 +1317,7 @@ def _no_embedding(models: Sequence[Any]) -> Iterator[None]:
     """Switch off ``auto_embed`` while records land: the vector is the
     carried one (``import_state``), and a save must never call the provider
     (Valor's is a paid network API)."""
-    from ..fields.embedding_field import EmbeddingField
+    from .fields.embedding_field import EmbeddingField
 
     saved: list[tuple[Any, bool]] = []
     for model in models:
@@ -1399,9 +1404,9 @@ def _load_model(
     decisions: dict[str, str],
     errors: list[str],
 ) -> None:
-    from ..backends.postgres.search import record_lock_sql
-    from .format import dump_line
-    from .import_ import import_records
+    from .backends.postgres.search import record_lock_sql
+    from .transfer.format import dump_line
+    from .transfer.import_ import import_records
 
     model = mapping.model
     schema = backend.schema
@@ -1627,7 +1632,7 @@ def _load_model(
 
 
 def _export_index(model: Any) -> dict[str, dict[str, Any]]:
-    from .export import export_records
+    from .transfer.export import export_records
 
     text = export_records(model).data or ""
     lines = [json.loads(line) for line in text.splitlines() if line.strip()]
@@ -1647,7 +1652,7 @@ def _diff_parts(a: Mapping[str, Any], b: Mapping[str, Any]) -> list[str]:
 def _partitions(
     mapping: ModelMapping, field: Any, rows: Sequence[Mapping[str, Any]], limit: int
 ) -> list[dict[str, Any]]:
-    from .format import from_jsonable
+    from .transfer.format import from_jsonable
 
     seen: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -1669,7 +1674,7 @@ def _decay_order(
 def _sample_queries(
     mapping: ModelMapping, source: str, rows: Sequence[Mapping[str, Any]], limit: int
 ) -> list[str]:
-    from .format import from_jsonable
+    from .transfer.format import from_jsonable
 
     queries: list[str] = []
     for row in sorted(rows, key=lambda r: r["meta"]["payload_sha"]):
@@ -1695,8 +1700,8 @@ def verify(
 ) -> dict[str, Any]:
     """Read back through popoto on Postgres and compare semantic state with
     the throwaway Redis (which is still running)."""
-    from ..fields.bm25_field import BM25Field
-    from ..fields.decaying_sorted_field import DecayingSortedField
+    from .fields.bm25_field import BM25Field
+    from .fields.decaying_sorted_field import DecayingSortedField
 
     models = [m.model for m in mappings]
     checks: dict[str, Any] = {}
@@ -1887,7 +1892,7 @@ def verify(
 
 def _redis_bm25_docs(model: Any, field_name: str) -> list[Any]:
     """The documents a Redis BM25 index scores against (its length set)."""
-    from ..redis_db import get_REDIS_DB
+    from .redis_db import get_REDIS_DB
 
     prefix = f"$BM25:{model.__name__}:{field_name}:dl"
     return list(get_REDIS_DB().zrange(prefix, 0, -1))
@@ -1991,7 +1996,7 @@ def _load_run_record(
 def _bound_to(server: ThrowawayRedis, db: int) -> Iterator[None]:
     """Point popoto's global client at the throwaway for the block, then put
     back exactly the client object that was bound before."""
-    from .. import redis_db
+    from . import redis_db
 
     previous = redis_db.POPOTO_REDIS_DB
     redis_db.set_REDIS_DB_settings(host=_LOOPBACK, port=server.port, db=db)
@@ -2009,8 +2014,8 @@ def _bound_to(server: ThrowawayRedis, db: int) -> Iterator[None]:
 def _content_root(path: Optional[Path]) -> Iterator[None]:
     """``POPOTO_CONTENT_PATH`` and the default content store pointed at the
     private copy of the operator's content directory."""
-    from ..fields import content_field
-    from ..stores.filesystem import FilesystemStore
+    from .fields import content_field
+    from .stores.filesystem import FilesystemStore
 
     saved_env = os.environ.get("POPOTO_CONTENT_PATH")
     saved_store = content_field._default_content_store
@@ -2028,7 +2033,7 @@ def _content_root(path: Optional[Path]) -> Iterator[None]:
 
 
 def _check_models(mappings: Sequence[ModelMapping]) -> None:
-    from ..backends import BackendCapabilityError, validate_spec
+    from .backends import BackendCapabilityError, validate_spec
 
     if not mappings:
         raise MigrationRefused("no models to migrate; pass --model or --mapping")
@@ -2051,7 +2056,7 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
     :class:`InventoryStop` (the snapshot was read, nothing written), or the
     underlying error of a failed load -- after which ``--resume`` with the
     same run directory continues where the last committed batch ended."""
-    from ..backends.postgres import PostgresBackend
+    from .backends.postgres import PostgresBackend
 
     started = time.time()
     mappings = list(config.mappings)
@@ -2092,7 +2097,7 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
     snapshot_time = os.path.getmtime(rdb)
 
     report: dict[str, Any] = {
-        "tool": "popoto.transfer.migrate_redis_to_postgres",
+        "tool": "popoto.migrate_redis_to_postgres",
         "issue": 756,
         "run_id": run_id,
         "source_id": config.source_id,
@@ -2362,7 +2367,7 @@ def _mappings_from_args(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m popoto.transfer.migrate_redis_to_postgres",
+        prog="python -m popoto.migrate_redis_to_postgres",
         description=(
             "One-off copy of popoto models from a Redis RDB snapshot into Postgres "
             "(#756). Reads only from a private redis-server it starts on the "

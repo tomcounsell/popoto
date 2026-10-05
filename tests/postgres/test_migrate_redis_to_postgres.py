@@ -32,8 +32,8 @@ psycopg = pytest.importorskip("psycopg")
 import popoto  # noqa: E402
 import redis  # noqa: E402
 from popoto.backends import set_backend  # noqa: E402
-from popoto.transfer import migrate_redis_to_postgres as mig  # noqa: E402
-from popoto.transfer.migrate_redis_to_postgres import (  # noqa: E402
+from popoto import migrate_redis_to_postgres as mig  # noqa: E402
+from popoto.migrate_redis_to_postgres import (  # noqa: E402
     ForbiddenCommand,
     InventoryStop,
     LiveRedisRefused,

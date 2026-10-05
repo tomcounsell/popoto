@@ -44,7 +44,7 @@ from popoto.fields.prediction_ledger import PredictionLedgerMixin
 from popoto.fields.supersession import SupersessionProtocol
 from popoto.fields.validity_field import ValidityField
 from popoto.fields.write_filter import WriteFilterMixin
-from popoto.transfer.migrate_redis_to_postgres import ModelMapping
+from popoto.migrate_redis_to_postgres import ModelMapping
 
 DIMS = 4
 

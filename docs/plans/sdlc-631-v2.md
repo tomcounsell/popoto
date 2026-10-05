@@ -112,7 +112,7 @@ one database**. Proposed rule, to confirm on #756: within a scope, an equal
 `_pk` with an equal payload is deduplicated; a differing payload keeps the
 later `_updated_at` (tie: the greater source id) and logs the loser to
 `_migrated_from`. The source id lives there, never in the scope. `transfer/` on Postgres (M5) is same-backend parity, not a cutover.
-**#756 as built:** `python -m popoto.transfer.migrate_redis_to_postgres`
+**#756 as built:** `python -m popoto.migrate_redis_to_postgres`
 applies exactly this rule (plus: a row popoto wrote natively is never
 overwritten, and the same source re-run replaces its own rows), against the
 shipped per-model tables; see `docs/features/redis-to-postgres-migration.md`.

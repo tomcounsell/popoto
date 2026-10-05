@@ -7,7 +7,7 @@ machine: each machine's Redis store merges into the one central Postgres
 database.
 
 ```bash
-python -m popoto.transfer.migrate_redis_to_postgres \
+python -m popoto.migrate_redis_to_postgres \
     --rdb /archive/laptop-1/dump.rdb \
     --content-dir /archive/laptop-1/content \
     --run-dir /archive/laptop-1/migration \
@@ -135,7 +135,7 @@ names and types M2a and M2b shipped. A mapping (`ModelMapping`) adds only
 the evidence Redis never stored:
 
 ```python
-from popoto.transfer.migrate_redis_to_postgres import ModelMapping
+from popoto.migrate_redis_to_postgres import ModelMapping
 
 MAPPINGS = [
     ModelMapping(
@@ -355,8 +355,13 @@ safety model and adapts to what shipped:
   `superseded_at` column, so it is not estimated.
 - **Machines.** Several machines merge into one database under the v2 rule
   above, instead of #757's "a primary-key collision aborts".
-- **Packaging.** The tool ships as a module of `popoto.transfer`, run with
-  `python -m`, instead of a `tools/` directory outside the package.
+- **Packaging.** The tool ships as the module
+  `popoto.migrate_redis_to_postgres`, run with `python -m`, instead of a
+  `tools/` directory outside the package. It sits beside `popoto.transfer`,
+  not inside it, because `transfer/` is the model-generic driver and is
+  pinned never to name a concrete field type
+  (`tests/test_transfer_roundtrip.py::TestGenericDriver`). This tool knows
+  the memory fields by design.
 - **Not built here.** The retrieval-parity harness against Valor's
   `retrieve_memories` runs in Valor's repo. This tool's decay-order and
   BM25 checks are the library-level equivalent.
