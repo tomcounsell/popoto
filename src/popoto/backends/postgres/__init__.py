@@ -67,6 +67,7 @@ from ..types import (
 from ..planning import has_filters
 from .codec import decode_json, encode_json_element
 from .events import EventsMixin, stream_deletes
+from .geo import geo_save_values, resolve_geo
 from .graph import GraphMixin, graph_delete_lock_sql, graph_delete_sql
 from .longtail import LongtailOpsMixin, cyclic_save_parts
 from .recipes import RecipeOpsMixin
@@ -1119,6 +1120,9 @@ class PostgresBackend(
         if cyclic is not None:
             state.update(cyclic.cols)
             overrides.update(cyclic.overrides)
+        # M5: GeoField.on_save's GEOADD / ZREM, as the score and decoded
+        # position columns of this upsert (.geo); refused before any write.
+        state.update(geo_save_values(ts, spec, obj, names))
         extra = "".join(f', {expr} AS "_r{i}"' for i, expr in enumerate(returning))
         search = (
             prepare_save(self, ts, obj, fields, values, new_key)
@@ -1477,9 +1481,10 @@ class PostgresBackend(
             # Id-only rows. The keys() call carries no filter; a plan with a
             # where/order/limit (sample_related_keys: ORDER BY random() LIMIT
             # n) is honoured rather than dropped.
-            where_sql, params = render_where(ts, kinds, plan.where)
+            where, _, _ = resolve_geo(self, ts, plan.where)
+            where_sql, params = render_where(ts, kinds, where)
             sql = f'SELECT "_pk" FROM {ts.qualified}{where_sql}'
-            sql += render_order(ts, plan.order_by, non_null_fields(plan.where))
+            sql += render_order(ts, plan.order_by, non_null_fields(where))
             if plan.limit:
                 sql += f" LIMIT {int(plan.limit)}"
             if plan.offset:
@@ -1489,23 +1494,53 @@ class PostgresBackend(
                 {"_id": RecordId(spec.name, (), pk, native=pk.encode())}
                 for (pk,) in rows
             ]
-        where_sql, params = render_where(ts, kinds, plan.where)
+        # M5: a geo leaf runs its search first and scopes the statement by
+        # the keys it matched (.geo); with_distances orders by the distance.
+        where, distances, unit = resolve_geo(self, ts, plan.where)
+        if not any(c.name == "_geo_distance" for c in plan.compute):
+            distances = None
+        where_sql, params = render_where(ts, kinds, where)
         cols = self._select_cols(ts, plan.project)
         col_sql = ", ".join(quote_ident(c) for c in cols)
-        sql = f"SELECT {col_sql} FROM {ts.qualified}{where_sql}"
-        sql += render_order(ts, plan.order_by, non_null_fields(plan.where))
+        sql = f"SELECT {col_sql} FROM {ts.qualified}"
+        extra: tuple[str, ...] = ()
+        if distances is not None and plan.project is None:
+            # Redis sorts the hydrated objects by distance (a record the geo
+            # leaf did not match last), then re-sorts stably by order_by and
+            # reverses for a descending one: the distance is the term after
+            # order_by's, in its direction.
+            sql += (
+                ' LEFT JOIN unnest(%s::text[], %s::float8[]) AS "_g"("_g_pk", '
+                f'"_g_d") ON "_g"."_g_pk" = {ts.qualified}."_pk"'
+            )
+            params = [list(distances), list(distances.values())] + params
+            reverse = bool(plan.order_by) and plan.order_by[0].descending
+            extra = (
+                '"_g"."_g_d" ' + ("DESC NULLS FIRST" if reverse else "ASC NULLS LAST"),
+            )
+        sql += where_sql
+        sql += render_order(ts, plan.order_by, non_null_fields(where), extra)
         if plan.limit:
             sql += f" LIMIT {int(plan.limit)}"
         if plan.offset:
             sql += f" OFFSET {int(plan.offset)}"
         rows, _ = self._run(sql, params)
-        return [self._decode(ts, cols, row) for row in rows]
+        out: list[Row] = []
+        for row in rows:
+            decoded = self._decode(ts, cols, row)
+            pk = decoded["_id"].canonical
+            if distances is not None and pk in distances:
+                decoded["_geo_distance"] = distances[pk]
+                decoded["_geo_distance_unit"] = unit
+            out.append(decoded)
+        return out
 
     def count(self, spec: ModelSpec, plan: QueryPlan) -> int:
         ts = self._table(spec)
         plan = self._plan(plan)
         kinds = {name: fs.kind for name, fs in spec.fields.items()}
-        where_sql, params = render_where(ts, kinds, plan.where)
+        where, _, _ = resolve_geo(self, ts, plan.where)
+        where_sql, params = render_where(ts, kinds, where)
         rows, _ = self._run(f"SELECT count(*) FROM {ts.qualified}{where_sql}", params)
         return int(rows[0][0])
 

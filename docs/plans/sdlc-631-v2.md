@@ -1139,6 +1139,23 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     parent never awaits is refused too. A batch opened by a sync write now
     refuses an `async_*` write (it would block the loop), as the converse
     already did.
+  - **After merge: main red on CI, the slot-state rule replaced.** The
+    second review's rule ("busy only when every slot is checked out") also
+    read a slot held by a caller still *validating* an idle connection (the
+    checkout check's round trip) or connecting to a healthy server as an
+    outage. On the loaded CI runner a waiter in
+    `test_unsorted_concurrent_async_transactions_fail_only_retryably` timed
+    out (1 s) with a slot in transit -- no connect or discard happens
+    mid-run, so the check (or the semaphore hand-off just before it) is the
+    window; slowing the check to 0.3 s locally failed that test 2 of 2 runs
+    -- and was booked as a dropped write. Because the `pg` fixture shared
+    the session backend's health record, twelve later tests asserting
+    `dropped_writes == 0` failed with it (run 37344318326). Two fixes: `pg`
+    hands each test a fresh `Health` record, and a timed-out waiter that
+    finds a slot not checked out waits (at most one connect timeout) for
+    the outcome of the connect or checkout check in progress -- the server
+    answering makes it busy, a failed connect or no answer an outage. The
+    black-holed-port case still counts every write dropped.
 - **M5 long tail as shipped: departures from this plan, recorded.** The
   `CyclicDecayField` / `PredictionLedgerMixin` / `TDValueField` PR
   (`backends/postgres/longtail.py`).
@@ -1203,6 +1220,82 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     `strtod`'s rounding boundaries (`±inf` / `±0`, exact), where the cast
     raised "out of range"; `Decimal('-0')` is a documented divergence. The
     long-tail writers join a `popoto.batch()`.
+- **M5 geo as shipped: departures from this plan, recorded.** The
+  `GeoField` PR (`backends/postgres/geo.py`).
+  - **No PostGIS** (coordinator decision, superseding §3's
+    `geography(Point,4326)` row and §1's PostGIS mapping): `<f>` stays the
+    `jsonb` coordinates as given, plus `<f>__geohash bigint` (the score
+    `GEOADD` stores, through the zset's `double`) and `<f>__geolon` /
+    `<f>__geolat` (the position decoded from it, `GEOPOS`), with a partial
+    B-tree on the score. Redis's nine search boxes are score ranges, so the
+    bounding-box prefilter is that B-tree. PostGIS stays a possible later
+    optimisation, not a dependency.
+  - **Plain IEEE arithmetic, never fused (coordinator decision, PATCH).**
+    The first cut reproduced the Redis it was measured against (Homebrew
+    8.10.2, clang, arm64), which contracts the decode's and the haversine's
+    `a*b + c` into fused multiply-adds, with an exact FMA in Python. CI runs
+    x86-64 `redis:7-alpine`, which does not contract, and the probe slice
+    failed there: positions an ulp apart and one radius-boundary membership
+    flipped. A Postgres deployment has no Redis to mirror, so the port is
+    now deterministic and portable: every `a*b + c` rounds twice. That
+    equals x86-64 Redis to the bit and is one fused rounding from an arm64
+    build. The exact test stays in Python (not moved back to SQL) so the
+    save's decode and the search's test share one implementation; the
+    backend fetches the boxes' rows in one statement, computes
+    `geohashGetDistance`, and scopes the query's own statement by the
+    matched keys (`_pk = ANY`), its top-level siblings narrowing the
+    candidates. `QueryPlan.compute` carries
+    `ComputedCol("_geo_distance", GeoQuery)`; the distances (four decimals,
+    as `WITHDIST` replies) ride on `Row` and order the `SELECT` after
+    `order_by`'s term.
+  - **The planner groups a field's geo parameters into one
+    `Cond(field, Op.WITHIN, GeoQuery)`**, parsed by
+    `GeoField.parse_query`, which `filter_query` now uses too (same
+    `QueryException` texts, Redis wire unchanged). A geo leaf scopes
+    `select`/`count` only; under a ranking or search `where=` it raises
+    `BackendCapabilityError`.
+  - **Reproduced, not repaired:** a score past `2**52` (the latitude limit,
+    longitude 180) is outside every search box; a by-member search of an
+    empty geo set replies empty unchecked; redis-py's encoder refusal of a
+    `bool`/`Decimal` argument comes first. **Documented divergences:** a
+    point `GEOADD` refuses is refused before writing (`ValueError`, same
+    text; Redis has already written the hash); refused searches raise
+    `QueryException` where Redis raises `ResponseError` (same text); an
+    expired record is out of every search and `count()` at once.
+  - **The probe** (`scripts/probe_geo_parity.py`) compares against the
+    running Redis, exactly, except four documented classes. Two exist only
+    against a contracting build, `fma_position_ulp` and `fma_boundary`: a
+    mismatch joins one only when the probe's own fused model of the C
+    reproduces the running Redis to the bit. The coordinator's proposed
+    "≤ 1 ulp" tolerance was measured and rejected: one fused rounding of
+    the decode is up to 5,996 ulps of a latitude near zero, and of the
+    haversine up to 50,982,380 ulps (about 0.19 m) of a near-antipodal
+    distance, where `asin`'s slope amplifies it.
+  - **libm is the other source, found by CI after the non-fused change.**
+    With positions then identical to x86-64 `redis:7-alpine`'s, a handful
+    of exact-distance checks still differed: that Redis links musl and the
+    runner's Python glibc, and their `sin`/`cos`/`asin` disagree in the last
+    bit now and then. The port's distance therefore depends on the host
+    Python's libm; positions (no libm) do not. Nothing portable reproduces
+    another libm's last bit, so `libm_ulp` / `libm_boundary` are a bound,
+    not a model: the distance must lie in the envelope the formula gives
+    with each of its five libm results moved by at most one ulp (and a
+    search may differ only by members whose envelope straddles the
+    radius). Against arm64 macOS Redis, which shares the probe's libm,
+    they are 0; against x86-64 Redis the `fma_*` classes are 0. A
+    correctly rounded `sin`/`cos`/`asin` would make the port itself
+    host-independent but still not equal to musl's; not done.
+  - Seeds 1–6 × 500 shapes on PostgreSQL 18.6 and Redis 8.10.2, macOS
+    arm64: 0 undocumented mismatches over 11,467 stored scores and
+    positions, 8,160 exact-distance checks, 13,824 searches and 13,824
+    counts; documented `fma_position_ulp` 3,405, `fma_boundary` 415, `libm_*`
+    0 (beside `error_class` 2,628 and `save_invalid_pair` 1,142). Two
+    classes surfaced in the first cut and were fixed before merge: the
+    score's `double` rounding past `2**53` (longitude 180), and the order
+    of redis-py's argument-type refusal.
+  - **Transfer:** `GeoField.roundtrip_policy` is `"rebuild"`: an import
+    re-saves the coordinates and the save rebuilds the geo columns, so
+    nothing geo-specific is carried in the transfer format (#788).
 
 - **M5 events as shipped: departures from this plan, recorded.** Event
   streams, consumer groups and pub/sub on Postgres (`backends/postgres/events.py`,

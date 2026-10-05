@@ -406,6 +406,58 @@ async def async_keys():
     ]
 
 
+# -- GeoField (#759 M5), behind --with-geo -----------------------------------------
+#
+# M5 routes a geo filter through GeoField.parse_query, which the Redis
+# filter_query now shares with the Postgres planner. These pin that an async
+# geo save and search send what they sent; behind the flag, so the default
+# trace is unchanged.
+
+WITH_GEO = "--with-geo" in sys.argv
+
+
+class AtGeo(popoto.Model):
+    name = popoto.KeyField()
+    place = popoto.GeoField()
+
+
+if WITH_GEO:
+    MODELS = MODELS + (AtGeo,)
+
+    @scenario
+    async def async_geo_save_and_filter():
+        await AtGeo(name="rome", place=(41.902782, 12.496366)).async_save()
+        await AtGeo(name="vatican", place=(41.904755, 12.454628)).async_save()
+        rows = await AtGeo.query.async_filter(
+            place=(41.902782, 12.496366),
+            place_radius=5,
+            place_radius_unit="km",
+            place_with_distances=True,
+        )
+        return [
+            [(r.name, r._geo_distance, r._geo_distance_unit) for r in rows],
+            await AtGeo.query.async_count(place=(41.9, 12.5), place_radius=10),
+        ]
+
+    @scenario
+    async def async_geo_member_and_errors():
+        rome = AtGeo.query.get(name="rome")
+        out: list[Any] = [
+            sorted(
+                r.name
+                for r in await AtGeo.query.async_filter(
+                    place_member=rome, place_radius=4, place_radius_unit="km"
+                )
+            )
+        ]
+        for bad in ({"place": (86.0, 1.0)}, {"place": (1.0, 1.0), "place_radius": -1}):
+            try:
+                await AtGeo.query.async_filter(**bad)
+            except Exception as exc:  # noqa: BLE001 - recorded
+                out.append(f"{type(exc).__name__}: {exc}")
+        return out
+
+
 async def main() -> None:
     global _TRACE
     redis_db._POPOTO_ASYNC_REDIS_DB = None
