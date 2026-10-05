@@ -81,6 +81,7 @@ from .schema import (
     quote_ident,
 )
 from .search import SearchMixin, prepare_save, record_lock_sql, require_extensions
+from .validity import ensure_validity_tables, refuse_valid_from_conflict, save_parts
 
 __all__ = [
     "POSTGRES_URL_ENV",
@@ -553,6 +554,9 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             with self._connection() as conn:
                 require_extensions(conn, ts)
                 ensure_table(conn, ts, auto=_schema_auto())
+                # M3: a ValidityField's open-pointer table, outside any
+                # transaction that will later hold the model table's locks.
+                ensure_validity_tables(conn, ts, spec)
             self._ok()
             self._tables[spec.name] = (spec, ts)
             return ts
@@ -700,30 +704,35 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         # Side-effect fields (BM25Field, ExistenceFilter, FrequencySketch)
         # have no column; their rows are written by the search CTEs below.
         values = self._row_values(ts, obj, [n for n in names if n in ts.field_types])
+        # M3: a ValidityField's interval columns, written as SUPERSEDE_LUA's
+        # mode 'open' writes them (.validity.save_parts).
+        state, overrides, guards = save_parts(ts, spec, obj, names)
         search = (
             prepare_save(self, ts, obj, fields, values, new_key)
             if ts.search is not None
             else None
         )
-        cols = ["_pk"] + list(values)
+        cols = ["_pk"] + list(values) + list(state)
         col_sql = ", ".join(quote_ident(c) for c in cols)
         placeholders = ", ".join(["%s"] * len(cols))
         # Key columns are a function of _pk, so a conflict on _pk means they
         # already hold these values: leave them out of the SET.
         updates = ", ".join(
-            f"{quote_ident(c)} = EXCLUDED.{quote_ident(c)}"
-            for c in values
+            f"{quote_ident(c)} = " + (overrides.get(c) or f"EXCLUDED.{quote_ident(c)}")
+            for c in list(values) + list(state)
             if c not in ts.key_fields
         )
         # A native write clears _migrated_from (#756's import contract).
         updates = (updates + ", " if updates else "") + (
             '"_updated_at" = now(), "_migrated_from" = NULL'
         )
+        guard = f" WHERE {' AND '.join(guards)}" if guards else ""
         sql = (
             f"INSERT INTO {ts.qualified} ({col_sql}) VALUES ({placeholders}) "
-            f'ON CONFLICT ("_pk") DO UPDATE SET {updates} RETURNING (xmax = 0)'
+            f'ON CONFLICT ("_pk") DO UPDATE SET {updates}{guard} '
+            "RETURNING (xmax = 0)"
         )
-        params = [new_key] + list(values.values())
+        params = [new_key] + list(values.values()) + list(state.values())
         if search is not None and search.ctes:
             # Postings, document length and membership rows ride in the same
             # statement as data-modifying CTEs: one round trip, one
@@ -742,7 +751,22 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         sql, params = self._record_locked(ts, [new_key], sql, params)
         psycopg = _import_psycopg()
         try:
-            rows, _ = self._run(sql, params, uow=uow, write=True)
+            if guards and search is not None and search.ctes:
+                # A guarded upsert (a declared valid_from, M3) with search
+                # CTEs: the CTEs run even when the guard refuses the row, so
+                # the refusal must roll them back -- one owned transaction
+                # (retried as _run would be), or a SAVEPOINT inside the
+                # caller's, that raises before it commits. A caller that
+                # catches the refusal and commits keeps nothing of this save.
+                def guarded(tx: UnitOfWork) -> list[tuple[Any, ...]]:
+                    found, _ = self._run(sql, params, uow=tx, write=True)
+                    if not found:
+                        refuse_valid_from_conflict(self, spec, obj, uow=tx)
+                    return found
+
+                rows = self._atomically(guarded, uow=uow)
+            else:
+                rows, _ = self._run(sql, params, uow=uow, write=True)
         except psycopg.errors.UniqueViolation as exc:
             constraint = exc.diag.constraint_name or ""
             covered = ts.unique_indexes.get(constraint, ())
@@ -774,6 +798,10 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             from ...exceptions import ModelException
 
             raise ModelException(message) from exc
+        if guards and not rows:
+            # The upsert's guard refused a declared valid_from that disagrees
+            # with the stored start (a save racing past pre_save_validate).
+            refuse_valid_from_conflict(self, spec, obj, uow=uow)
         inserted = bool(rows and rows[0][0])
 
         obj._redis_key = new_key
@@ -1032,12 +1060,6 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             "bound to Postgres, which supports records and queries (groups A-C) "
             "in this release"
         )
-
-    def supersede(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("supersede", "M3")
-
-    def chain(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("chain", "M3")
 
     def maintain(self, *a: Any, **kw: Any) -> Any:
         raise self._later("maintain", "M5")

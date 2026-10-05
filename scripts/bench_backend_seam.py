@@ -16,7 +16,10 @@ The M1 exit criteria compared are ``save`` p50 <= 2x Redis and
 ``filter+hydrate`` p50 <= 1x Redis; M2a adds ``rank_decayed`` with a base
 score and confidence modulation over N records, p50 <= 1x Redis (plan §5 M2:
 ``DECAY_SCORE_LUA`` against one ``SELECT`` with the decay expression in
-``ORDER BY``), and the public ``top_by_decay`` with hydration beside it.
+``ORDER BY``), and the public ``top_by_decay`` with hydration beside it. M3
+adds the same ranking with a ``ValidityField`` gate (a tenth of the records
+superseded, a twentieth not yet started), p50 <= 1x Redis (plan §5 M3:
+``DECAY_SCORE_LUA``'s gate against the exclusion rule as a ``WHERE`` term).
 
 Safety: Redis is bound from ``REDIS_URL`` *before* importing popoto
 (CLAUDE.md, #577) and database 0 is refused. On Postgres the script creates
@@ -68,11 +71,17 @@ if not PG_URL:
 import psycopg  # noqa: E402
 
 import popoto  # noqa: E402
-from popoto import ConfidenceField, DecayingSortedField  # noqa: E402
+from popoto import (  # noqa: E402
+    ConfidenceField,
+    DecayingSortedField,
+    SupersessionProtocol,
+    ValidityField,
+)
 from popoto.backends import get_backend, set_backend  # noqa: E402
 from popoto.fields.decaying_sorted_field import (  # noqa: E402
     confidence_modulation_args,
     resolve_confidence_modulation_field,
+    validity_gate_args,
 )
 from popoto.backends.postgres import PostgresBackend  # noqa: E402
 from popoto.backends.redis import RedisBackend  # noqa: E402
@@ -102,7 +111,49 @@ class BenchMemory(popoto.Model):
     certainty = ConfidenceField()
 
 
+class BenchValidMemory(popoto.Model):
+    """M3's gated ranking: ``BenchMemory`` plus a validity axis."""
+
+    key = popoto.KeyField()
+    strength = popoto.FloatField(default=1.0)
+    last_seen = DecayingSortedField(decay_rate=0.5, base_score_field="strength")
+    certainty = ConfidenceField()
+    validity = ValidityField()
+
+
 _NOW = time.time()
+
+
+def _rank_decayed_gated(i: int) -> Any:
+    """``_rank_decayed`` with the validity gate at now: on Redis the gate
+    keys and as-of ``validity_gate_args`` builds (with the #585 pre-trim),
+    on Postgres ``validity_field=`` -- what ``top_by_decay`` passes on a
+    model with a ``ValidityField``."""
+    field = BenchValidMemory._meta.fields["last_seen"]
+    backend = get_backend(BenchValidMemory)
+    if backend.name == "redis":
+        zkey = field.get_sortedset_db_key(BenchValidMemory, "last_seen").redis_key
+        return field.rank_decayed(
+            zkey,
+            now=_NOW,
+            n=10,
+            confidence=confidence_modulation_args(
+                BenchValidMemory, field, "last_seen"
+            ),
+            validity=validity_gate_args(BenchValidMemory),
+        )
+    conf, _ = resolve_confidence_modulation_field(
+        BenchValidMemory, field, "last_seen"
+    )
+    return backend.rank_decayed(
+        BenchValidMemory._meta.spec,
+        "last_seen",
+        now=_NOW,
+        n=10,
+        base_score_field="strength",
+        confidence_field=conf,
+        validity_field="validity",
+    )
 
 
 def _rank_decayed(i: int) -> Any:
@@ -162,8 +213,33 @@ def _seed_memory(n: int) -> None:
                 ConfidenceField.update_confidence(record, "certainty", rng.random())
 
 
+def _seed_valid_memory(n: int) -> None:
+    """``_seed_memory``'s corpus with intervals: every tenth record is
+    superseded by its successor (closed, chained), every twentieth declares
+    a start in the future, the rest are open."""
+    import random
+
+    rng = random.Random(580)
+    previous = None
+    for i in range(n):
+        record = BenchValidMemory(
+            key=f"v{i}",
+            strength=round(rng.uniform(0.2, 5.0), 3),
+            last_seen=_NOW - rng.uniform(0, 400) * 86400,
+            validity=(_NOW + 30 * 86400) if i % 20 == 7 else None,
+        )
+        record.save(skip_auto_now=True)
+        if i % 2:
+            for _ in range(rng.randint(1, 4)):
+                ConfidenceField.update_confidence(record, "certainty", rng.random())
+        if previous is not None and i % 10 == 1:
+            SupersessionProtocol.invalidate(previous, superseded_by=record)
+        previous = record
+
+
 def _seed(n: int) -> None:
     _seed_memory(n)
+    _seed_valid_memory(n)
     now = datetime.datetime(2026, 1, 1, tzinfo=UTC)
     for i in range(n):
         BenchNote(
@@ -197,6 +273,10 @@ OPS: dict[str, Callable[[int], Any]] = {
     "top_by_decay(n=10) base+confidence + hydrate": lambda i: (
         BenchMemory.query.top_by_decay("last_seen", n=10)
     ),
+    "rank_decayed(base+confidence+validity gate, all N, n=10)": _rank_decayed_gated,
+    "top_by_decay(n=10) gated + hydrate": lambda i: (
+        BenchValidMemory.query.top_by_decay("last_seen", n=10)
+    ),
 }
 EXIT_CRITERIA = {
     "Model.save() new record": 2.0,
@@ -204,6 +284,7 @@ EXIT_CRITERIA = {
     "filter(score__gte, limit=50) + hydrate": 1.0,
     "filter(owner=, score__lt, limit=20) + hydrate": 1.0,
     "rank_decayed(base+confidence, all N, n=10)": 1.0,
+    "rank_decayed(base+confidence+validity gate, all N, n=10)": 1.0,
 }
 
 
@@ -276,7 +357,8 @@ def main() -> None:
             pg,
             args.n,
             lambda: admin.execute(
-                f'ANALYZE "{schema}".bench_note, "{schema}".bench_memory'
+                f'ANALYZE "{schema}".bench_note, "{schema}".bench_memory, '
+                f'"{schema}".bench_valid_memory'
             ),
         )
         res = bench({"redis": rd, "postgres": pg}, args.iters, args.runs)

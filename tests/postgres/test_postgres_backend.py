@@ -311,8 +311,9 @@ def test_redis_only_apis_refuse_instead_of_reading_redis(pg, call):
 
 def test_later_groups_raise_capability_error(pg):
     # touch / rank_decayed arrived in M2a (tests/postgres/test_postgres_memory.py),
-    # graph_update / graph_expand in M4 (tests/postgres/test_postgres_graph.py).
-    for method in ("supersede", "maintain"):
+    # graph_update / graph_expand in M4 (tests/postgres/test_postgres_graph.py),
+    # supersede / chain in M3 (tests/postgres/test_postgres_validity.py).
+    for method in ("maintain",):
         with pytest.raises(BackendCapabilityError, match="arrives in"):
             getattr(pg, method)(PgNote._meta.spec, "score")
 

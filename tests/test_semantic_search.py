@@ -30,6 +30,13 @@ from src.popoto.stores.filesystem import FilesystemStore
 from src.popoto.embeddings import AbstractEmbeddingProvider
 from src.popoto.redis_db import POPOTO_REDIS_DB
 from src.popoto.models.query import QueryException
+from src.popoto import DecayingSortedField, SupersessionProtocol, ValidityField
+
+# Backend conformance (#759 M3, plan §5 M3 gate (b)): every test runs once
+# per configured backend; the ``backend`` fixture binds that leg's backend for
+# the test. On Postgres the vectors are M2b's ``vector(d)`` columns and the
+# ranking is ``composite_score``'s similarity arm, one ``SELECT``.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
 
 # --- Mock Provider ---
 
@@ -77,6 +84,17 @@ class SearchDoc(popoto.Model):
     embedding = EmbeddingField(source="content")
 
 
+class RankedSearchDoc(popoto.Model):
+    """semantic_search(indexes=...): the similarity arm beside a decay arm,
+    under the validity mask."""
+
+    name = popoto.UniqueKeyField()
+    content = ContentField()
+    embedding = EmbeddingField(source="content")
+    relevance = DecayingSortedField()
+    validity = ValidityField()
+
+
 class NoEmbeddingDoc(popoto.Model):
     name = popoto.UniqueKeyField()
     text = popoto.StringField(default="")
@@ -107,7 +125,7 @@ def setup_env(tmp_path):
 def cleanup():
     """Clean up Redis keys after each test."""
     yield
-    for model_class in [SearchDoc, NoEmbeddingDoc]:
+    for model_class in [SearchDoc, RankedSearchDoc, NoEmbeddingDoc]:
         keys = POPOTO_REDIS_DB.smembers(model_class._meta.db_class_set_key.redis_key)
         if keys:
             pipe = POPOTO_REDIS_DB.pipeline()
@@ -205,3 +223,40 @@ class TestSemanticSearchWithQueryBuilder:
         results = SearchDoc.query.semantic_search("revenue")
         assert len(results) > 0
         assert results[0].name == "revenue_q1"
+
+
+class TestSemanticSearchWithIndexes:
+    """``semantic_search(indexes=...)`` delegates to ``composite_score`` with
+    the similarity scores as one more arm (weight 1.0, last), masked by the
+    model's ``ValidityField`` -- a ``ZUNIONSTORE`` on Redis, one ``SELECT`` on
+    Postgres (#759 M2b's arm, M3's mask)."""
+
+    def _docs(self):
+        out = {}
+        for name, content in (
+            ("revenue_q1", "Revenue report for Q1 showing growth in revenue"),
+            ("financial", "Financial analysis of market trends and money"),
+            ("weather_jan", "Weather forecast for January with cold weather"),
+        ):
+            out[name] = RankedSearchDoc(name=name, content=content)
+            out[name].save()
+        return out
+
+    def test_similarity_decides_the_order_beside_a_decay_arm(self):
+        self._docs()
+        results = RankedSearchDoc.query.semantic_search(
+            "revenue growth", indexes={"relevance": 1e-6}
+        )
+        assert [r.name for r in results][:2] == ["revenue_q1", "financial"]
+
+    def test_a_closed_record_is_masked_out(self):
+        docs = self._docs()
+        SupersessionProtocol.invalidate(
+            docs["revenue_q1"], superseded_by=docs["financial"]
+        )
+        results = RankedSearchDoc.query.semantic_search(
+            "revenue growth", indexes={"relevance": 1e-6}
+        )
+        names = [r.name for r in results]
+        assert "revenue_q1" not in names
+        assert names[0] == "financial"

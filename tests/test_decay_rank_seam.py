@@ -284,9 +284,6 @@ def test_cyclic_override_ignores_the_validity_gate():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason="uses a ValidityField, which Postgres stores from #759 M3"
-)
 def test_resolve_excluded_keys_unions_closed_and_future():
     from src.popoto.fields.supersession import SupersessionProtocol
 
@@ -303,9 +300,6 @@ def test_resolve_excluded_keys_unions_closed_and_future():
     assert open_record.db_key.redis_key not in excluded
 
 
-@pytest.mark.redis_only(
-    reason="uses a ValidityField, which Postgres stores from #759 M3"
-)
 def test_unmanaged_records_are_never_excluded():
     """The whole reason this is an exclusion set and not a whitelist: a record
     with no interval predates the field's adoption and must stay retrievable.
@@ -321,7 +315,7 @@ def test_unmanaged_records_are_never_excluded():
 
 
 @pytest.mark.redis_only(
-    reason="uses a ValidityField, which Postgres stores from #759 M3"
+    reason="counts the Redis ZRANGEBYSCOREs; on Postgres resolve_excluded_keys is one SELECT (tests/postgres/test_postgres_validity.py)"
 )
 def test_resolve_excluded_keys_issues_exactly_two_range_reads(monkeypatch):
     """Two ZRANGEBYSCOREs, in the order the assembler established. A third read
@@ -333,9 +327,6 @@ def test_resolve_excluded_keys_issues_exactly_two_range_reads(monkeypatch):
     assert len(ranges) == 2
 
 
-@pytest.mark.redis_only(
-    reason="uses a ValidityField, which Postgres stores from #759 M3"
-)
 def test_excluded_keys_are_decoded_strings():
     """Consumers compare against ``record.db_key.redis_key``, which is a str."""
     from src.popoto.fields.supersession import SupersessionProtocol

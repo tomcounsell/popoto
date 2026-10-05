@@ -429,6 +429,11 @@ def _cond_sql(ts: TableSpec, kinds: dict[str, str], c: Cond, params: list[Any]) 
     op = c.op
     if ts.is_tag(c.field):
         return _tag_sql(c.field, col, op, c.value, params)
+    if op is Op.VALID_AT and kind == "ValidityField":
+        # M3: filter(validity__as_of=t / __current=...), .validity.
+        from .validity import validity_cond_sql
+
+        return validity_cond_sql(c.field, c.value)
     if op is Op.ISNULL:
         return f"{col} IS NULL" if c.value else f"{col} IS NOT NULL"
     if ts.is_json(c.field):

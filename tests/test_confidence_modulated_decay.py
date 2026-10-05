@@ -363,9 +363,6 @@ class TestModulationArgs:
 
 
 class TestQueryIntegration:
-    @pytest.mark.redis_only(
-        reason="uses a partitioned ConfidenceField, which Postgres stores from #759 M3"
-    )
     def test_partitioned_confidence_query_without_filter_raises(self):
         rec = ModDecayPartitionedConfidence(name="a", project="apollo")
         rec.save()

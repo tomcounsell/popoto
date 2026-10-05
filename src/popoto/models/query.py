@@ -794,6 +794,40 @@ class QueryBuilder:
             return None
         return conf_name
 
+    def _decay_confidence_partition(
+        self, model_class: Any, field: Any, field_name: str
+    ) -> Any:
+        """The partition a partitioned modulating ``ConfidenceField`` is read
+        from on a non-Redis backend (#759 M3), or ``None``. The query must
+        name it, with the same ``QueryException`` as on Redis (raised by
+        ``confidence_modulation_args``, which builds keys and issues no
+        command): Redis reads that one partition's companion hash, so a
+        record outside it modulates as if it had no confidence data."""
+        from ..fields.decaying_sorted_field import confidence_modulation_args
+
+        conf_name = self._decay_confidence_field(model_class, field, field_name)
+        if conf_name is None:
+            return None
+        confidence_modulation_args(
+            model_class, field, field_name, filters=self._filters
+        )
+        partition_by = model_class._meta.fields[conf_name].partition_by
+        if not partition_by:
+            return None
+        return {pf: self._filters[pf] for pf in partition_by}
+
+    @staticmethod
+    def _validity_gate_field(model_class: Any) -> Optional[str]:
+        """The ``ValidityField`` that gates ranking on a non-Redis backend
+        (#759 M3), or ``None``: ``validity_gate_args``' resolution, with the
+        kill switch read now."""
+        from ..fields.constants import Defaults
+        from ..fields.decaying_sorted_field import resolve_validity_field_name
+
+        if not Defaults.VALIDITY_GATING_ENABLED:
+            return None
+        return resolve_validity_field_name(model_class)
+
     def _top_by_decay_on_backend(
         self,
         model_class: Any,
@@ -809,9 +843,9 @@ class QueryBuilder:
         ``ORDER BY`` -- then one ``load`` of the ranked rows, in rank order.
 
         Only the partition filters scope the scan, as on Redis, where they
-        pick the sorted set and every other filter is ignored. ``as_of`` feeds
-        a validity gate, and no ``ValidityField`` can be declared on a
-        non-Redis model until #759 M3, so there is no gate to pass it to."""
+        pick the sorted set and every other filter is ignored. ``as_of`` is
+        the validity gate's instant (#759 M3): with a ``ValidityField`` a
+        record closed by then, or not yet started, is not ranked."""
         import time
 
         from ..backends.postgres.memory import partition_where
@@ -828,6 +862,11 @@ class QueryBuilder:
             decay_rate=decay_rate,
             base_score_field=base_score_field or None,
             confidence_field=self._decay_confidence_field(
+                model_class, field, field_name
+            ),
+            as_of=as_of,
+            validity_field=self._validity_gate_field(model_class),
+            confidence_partition=self._decay_confidence_partition(
                 model_class, field, field_name
             ),
         )
@@ -902,7 +941,12 @@ class QueryBuilder:
                         weight,
                         field_name,
                         partition_where(partition),
-                        options={"confidence_field": conf},
+                        options={
+                            "confidence_field": conf,
+                            "confidence_partition": self._decay_confidence_partition(
+                                model_class, field, field_name
+                            ),
+                        },
                     )
                 else:
                     arms[("sorted", field_name)] = RankTerm(
@@ -910,8 +954,23 @@ class QueryBuilder:
                     )
                 continue
             if isinstance(field, ConfidenceField):
+                # A partitioned field's arm is its query's partition (#759
+                # M3): the one companion hash _materialize_confidence_field
+                # reads, refused the same way when the filter is missing.
+                conf_partition = None
+                if field.partition_by:
+                    missing = [p for p in field.partition_by if p not in self._filters]
+                    if missing:
+                        raise QueryException(
+                            f"ConfidenceField '{field_name}' is partitioned by "
+                            f"{', '.join(field.partition_by)}. "
+                            f"Query must include filter(s) for: {', '.join(missing)}"
+                        )
+                    conf_partition = partition_where(
+                        {pf: self._filters[pf] for pf in field.partition_by}
+                    )
                 arms[("confidence", field_name)] = RankTerm(
-                    "confidence", weight, field_name
+                    "confidence", weight, field_name, conf_partition
                 )
                 continue
             raise QueryException(
@@ -978,6 +1037,7 @@ class QueryBuilder:
             where=None,
             as_of=as_of,
             temperature=temperature,
+            validity_field=self._validity_gate_field(model_class),
         )
         ids = [
             rid
@@ -3728,6 +3788,7 @@ class Query:
         limit: int = 10,
         bm25_stats: str = "scope",
         k: int = 60,
+        as_of: Optional[float] = None,
     ) -> list[tuple[Any, float]]:
         """``[PG-only]`` Hybrid recall: BM25, vector and decay arms fused by
         weighted RRF, ``score = Σ weight / (k + rank)``, returning
@@ -3765,6 +3826,11 @@ class Query:
                 decision 3); ``"corpus"`` uses corpus-wide statistics, which
                 is what ``BM25Field.search`` does on both backends.
             k: The RRF constant (60, Cormack et al.).
+            as_of: Epoch seconds to evaluate the model's ``ValidityField``
+                gate at (``None`` = now). On a model with a ``ValidityField``
+                a record closed at or before it, or starting after it, is
+                left out of **every** arm, as ``top_by_decay`` and the
+                assembler leave it out; a model without one is unaffected.
 
         Every scoping argument is optional, and they compose (``AND``).
         """
@@ -3787,6 +3853,8 @@ class Query:
             bm25_stats=bm25_stats,
             k=k,
             decay=self._relevance_arm(),
+            validity_field=QueryBuilder._validity_gate_field(self.model_class),
+            as_of=as_of,
         )
         out = []
         for row, score in rows:
@@ -3825,6 +3893,7 @@ class Query:
         limit: int = 10,
         *,
         field_name: Optional[str] = None,
+        as_of: Optional[float] = None,
     ) -> list[tuple[Any, float]]:
         """``[PG-only]`` The ``limit`` most relevant records -- decay x
         confidence, the ``DECAY_SCORE_LUA`` score ``top_by_decay`` ranks by,
@@ -3843,6 +3912,9 @@ class Query:
             limit: Records returned.
             field_name: The ``DecayingSortedField``; optional when the model
                 has exactly one.
+            as_of: Epoch seconds to evaluate the model's ``ValidityField``
+                gate at (``None`` = now): a record closed at or before it, or
+                starting after it, is not ranked, as in ``top_by_decay``.
 
         Reads are not tracked (no ``AccessTrackerMixin`` staging), as with
         ``recall``.
@@ -3897,8 +3969,10 @@ class Query:
             now=time.time(),
             n=int(limit),
             where=where,
+            as_of=as_of,
             base_score_field=getattr(field, "base_score_field", None) or None,
             confidence_field=confidence,
+            validity_field=QueryBuilder._validity_gate_field(self.model_class),
         )
         if not scored:
             return []
