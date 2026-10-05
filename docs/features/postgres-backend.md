@@ -583,6 +583,65 @@ Before #759 M2a's patch these reached the caller as raw psycopg
 unknown (SQLSTATE 40003) is not retryable -- it may have committed -- and is
 reported as `BackendUnavailableError`.
 
+## Async (M5)
+
+On a Postgres-bound model every `async_*` method -- `async_save`,
+`async_create`, `async_delete`, `async_load`, `async_get_or_create`,
+`async_update_or_create`, the bulk twins, `async_delete_all`, and
+`Query.async_get`/`async_get_many`/`async_filter`/`async_all`/`async_count`/
+`async_keys` -- runs on the model's **async backend**, with its I/O on
+`psycopg.AsyncConnection` on the running event loop. Before M5 they ran the
+sync call in a worker thread. A Redis-bound model's `async_*` methods are
+unchanged, command for command (`scripts/trace_async_redis_wire.py`).
+
+```python
+from popoto.backends.postgres.aio import get_async_backend
+
+note = await Note.async_create(owner="a", slug="1")
+rows = await Note.query.async_filter(owner="a")
+
+backend = get_async_backend(Note)          # Postgres-bound models only
+async with backend.transaction() as uow:   # one READ COMMITTED transaction
+    await Note(owner="a", slug="2").async_save(pipeline=uow)
+    await Note(owner="a", slug="3").async_save(pipeline=uow)
+# both committed, or (on an exception) neither
+```
+
+**One implementation.** The async backend does not reimplement the sync one.
+It runs the sync backend's own code in a greenlet on the loop thread (the
+technique SQLAlchemy's asyncio extension uses) and swaps the one thing that
+does I/O: inside that greenlet, every statement the sync code issues is
+awaited on an `AsyncConnection` from the loop's pool. So the SQL, the lock
+order, the deadlock retry and `BackendRetryableError`, the #769 no-blind-retry
+rule, the `BackendUnavailableError` outage record (shared: `get_backend(M).health`
+counts async failures and dropped writes too), the savepoint a guarded save
+takes inside a caller's transaction, and the first-use version, encoding and
+DDL checks are the sync backend's, by construction. `greenlet` comes with the
+`postgres` extra; without it, the `async_*` methods fall back to the worker
+thread and log one warning. A unit of work from the async `transaction()` is
+for the `async_*` methods: handing it to a sync `save(pipeline=uow)` raises
+`BridgeMisuseError`.
+
+**What still leaves the loop.** An embedding provider is a sync API: its call,
+and the backfill's wait on it, run in a worker thread so they never block the
+loop. Redis I/O that a Postgres model's sync path makes (an
+`EventStreamMixin`'s `XADD`) is a blocking call on the loop thread.
+`async_check_indexes`/`async_clean_indexes`/`async_rebuild_indexes` stay on a
+worker thread on every backend: their bodies scan Redis index keys.
+
+**Event loops.** Pools are per (DSN, process, event loop), lazy, each at most
+`Defaults.PG_POOL_MAX_SIZE` connections, validated on checkout like the sync
+pool's. A model used from two loops -- `asyncio.run()` twice, pytest-asyncio's
+function-scoped loops -- gets a pool per loop. A loop's pool closes with the
+loop: `loop.shutdown_asyncgens()`, which `asyncio.run`, `asyncio.Runner` and
+pytest-asyncio call, finalizes it. A loop closed without that call is swept,
+at the socket, by the next pool lookup from any loop, so `pg_stat_activity`
+does not grow with the number of loops a process has used
+(`tests/postgres/test_postgres_async.py`). The pool is popoto's own, not
+`psycopg_pool.AsyncConnectionPool`: that pool's maintenance workers catch
+`CancelledError`, so one still open when its loop shuts down hangs
+`asyncio.run()`'s task cancellation whenever a worker is mid-task.
+
 ## Ranking and memory state (M2a)
 
 Each operation is one statement. `top_by_decay` is `rank_decayed` (below)
@@ -769,7 +828,8 @@ cast to the column's type.
 | An aware `time` in a `TimeField` / `SortedField(type=time)` (M1.1) | stored with its offset (`isoformat()`) | `ValueError` naming the field: a `time` column holds wall-clock time only. Use a `DatetimeField` when the offset matters. Pinned: `tests/postgres/test_postgres_fields.py::test_an_aware_time_is_refused` |
 | `push()` on a capped `ListField` whose record was deleted (M1.1) | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
 | `load_raw_hash`, `idle_seconds`, `Query.keys(catchall=/clean=)` | Redis debug and inspection APIs | raise `BackendCapabilityError` (`idle_seconds` arrives in M4) |
-| `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` | run the sync call in a worker thread (the async driver arrives in M5) |
+| `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` (reads); a worker thread (writes) | the async backend: the sync call's Postgres I/O on `psycopg.AsyncConnection`, on the running loop, no thread (M5, [Async](#async-m5)) |
+| `async_all` on an `AccessTrackerMixin` model | stages a read per record (its native path hydrates through `_async_get_many_objects`), although `all()` is non-tracking by design | does not stage, as `all()` does not (before M5 too) |
 | `ExistenceFilter.might_exist` (M2b) | a bloom filter: false positives are possible, and a deleted record stays "seen" | exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: `test_existence_filter.py::TestMembershipExactness` |
 | `FrequencySketch.get_frequency` (M2b) | a count-min sketch: never under, may be over | the exact count of saves (never decremented, like the sketch). Pinned: same class |
 | `ExistenceFilter.fill_ratio` (M2b) | the fraction of set bits | an estimate, `1 - e^(-k·n/m)` for the `n` distinct tokens stored |

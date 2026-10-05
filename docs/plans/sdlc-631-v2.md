@@ -963,6 +963,40 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   `test_prediction_ledger.py`, `test_td_value_field.py`,
   `test_content_field.py`, `test_check_indexes.py`, `test_clean_indexes.py`,
   `test_transfer_roundtrip.py`, `test_transfer_key_regeneration.py`.
+- **M5 async as shipped: departures from this plan, recorded.**
+  - **One implementation, two drivers, not an async copy.**
+    `AsyncPostgresBackend` (`backends/postgres/aio.py`) runs the sync
+    backend's own methods -- and, for the routed `async_*` model methods, the
+    whole sync `Model`/`Query` method -- in a greenlet on the loop thread;
+    inside it `_pool_for` returns a sync-shaped facade over the loop's
+    `AsyncConnection`s, so every statement is awaited on the loop. The SQL,
+    the §6 lock order, `BackendRetryableError`, the #769 no-blind-retry rule,
+    the `BackendUnavailableError` health record (shared with the sync
+    backend), the M3 savepoint rule and the first-use version/encoding/DDL
+    checks are therefore the sync backend's, not a parallel copy; the only
+    edits to the sync modules are the `_pool_for` hook and routing the two
+    retry back-offs (`_sleep`) and the three embedding-provider calls
+    (`_blocking`, to a worker thread) through the bridge. Cost: a new
+    dependency, `greenlet`, in the `postgres` extra (without it the methods
+    keep the thread shim and log once). The `AsyncBackend` protocol mirrors
+    groups A-C plus `field_call` (the methods `async_*` callers reach), not
+    all 24, and adds `run(fn, ...)`, which is how the model methods route.
+  - **The pool is popoto's own, not `psycopg_pool.AsyncConnectionPool`.**
+    That pool's maintenance workers catch `CancelledError`, so one left open
+    when its loop shuts down hangs `asyncio.run()`'s task cancellation
+    whenever a worker is mid-task: 5 hangs in 6 runs of two
+    `test_async.py` conformance tests under pytest-asyncio's
+    function-scoped loops. A per-loop pool has to survive loops nobody closes
+    it for, so this one has no background task: max `PG_POOL_MAX_SIZE`
+    connections, `PG_CONNECT_TIMEOUT_SECONDS` to wait for one (then
+    `PoolTimeout`), the empty-query checkout check, and a connection that
+    comes back not idle is closed. It closes with its loop through
+    `shutdown_asyncgens()`; a loop closed without that is swept at the socket
+    by the next lookup.
+  - **Not routed:** `async_check_indexes`/`async_clean_indexes`/
+    `async_rebuild_indexes` stay on a worker thread on every backend, because
+    their bodies scan Redis index keys (Postgres `maintain` is its own M5
+    item); routing them would block the loop on Redis I/O.
 
 ## 6. Carried forward from the POC
 
