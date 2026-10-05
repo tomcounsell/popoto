@@ -18,6 +18,7 @@ import popoto
 from popoto import ConfidenceField, DecayingSortedField
 from popoto.backends import BackendCapabilityError, BackendError, SchemaDriftError
 from popoto.exceptions import ModelException
+from popoto.fields.co_occurrence_field import CoOccurrenceField
 from popoto.fields.existence_filter import ExistenceFilter
 
 pytestmark = [pytest.mark.conformance]
@@ -231,3 +232,68 @@ def test_removing_meta_ttl_is_a_documented_divergence(backend):
             rec.save()
     for obj in first.query.all():
         obj.delete()
+
+
+class ParityEdges(popoto.Model):
+    name = popoto.UniqueKeyField()
+    near = CoOccurrenceField()
+    follows = CoOccurrenceField(symmetric=False)
+
+    class Meta:
+        ttl = 3600
+
+
+def _edge_keys(field, key):
+    return sorted(k for k, _w in field.get_linked(ParityEdges, key))
+
+
+def _assert_edges_survive(want):
+    """check/clean/rebuild keep every edge and report no drift."""
+    assert ParityEdges.check_indexes()["total"] == 0
+    assert ParityEdges.clean_indexes() == 0
+    ParityEdges.rebuild_indexes()
+    assert ParityEdges.check_indexes()["total"] == 0
+    for field, key, keys in want:
+        assert _edge_keys(field, key) == keys
+
+
+def test_edges_to_never_saved_endpoints_survive_maintenance(backend):
+    """Redis keeps an edge whose record does not exist and counts nothing;
+    Postgres does the same (#788 review). Only Postgres also *reports* it,
+    outside ``total``."""
+    near = ParityEdges._meta.fields["near"]
+    follows = ParityEdges._meta.fields["follows"]
+    a = ParityEdges.create(name="a")
+    ka = a.db_key.redis_key
+    near.link(ParityEdges, ka, "ParityEdges:ghost", 0.5)
+    follows.link(ParityEdges, "ParityEdges:ghost2", ka, 0.5)
+    _assert_edges_survive(
+        [
+            (near, ka, ["ParityEdges:ghost"]),
+            (follows, "ParityEdges:ghost2", [ka]),
+        ]
+    )
+    if not backend.is_redis:
+        dangling = ParityEdges.check_indexes()["side_tables"]["graph_edges"]
+        assert dangling == {"dangling": 3}
+
+
+def test_a_ttl_reaped_records_edges_survive_maintenance(backend):
+    near = ParityEdges._meta.fields["near"]
+    a = ParityEdges.create(name="a")
+    b = _short(ParityEdges(name="b"))
+    b.save()
+    ka, kb = a.db_key.redis_key, b.db_key.redis_key
+    near.link(ParityEdges, ka, kb, 0.5)
+    time.sleep(PAST)
+    if not backend.is_redis:
+        from popoto.backends import get_backend
+        from popoto.backends.postgres import ttl as ttl_mod
+
+        pg = get_backend(ParityEdges)
+        assert ttl_mod.reap(pg, pg._table(ParityEdges._meta.spec), force=True) == [kb]
+    else:
+        # Redis leaves the expired hash's own index entries behind (class
+        # set, key field); that is not the edges' drift. Clear it first.
+        ParityEdges.clean_indexes()
+    _assert_edges_survive([(near, ka, [kb])])

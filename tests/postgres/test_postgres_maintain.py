@@ -707,10 +707,10 @@ def _linked(field, key):
     return sorted(k for k, _w in field.get_linked(MaintGraph, key))
 
 
-def test_orphan_edges_are_found_and_cleaned(pg, pg_schema, admin):
-    """A ``CoOccurrenceField`` edge has no foreign key, so a plain SQL
-    ``DELETE`` of a record -- triggers on -- leaves its edges (#788 review:
-    ``get_linked`` kept returning the deleted record)."""
+def test_dangling_edges_are_reported_apart_and_kept(pg, pg_schema, admin):
+    """Redis keeps an edge whose record is gone and counts nothing, so
+    check/clean/rebuild here keep it and ``total`` stays 0 (#788 review).
+    ``check`` still reports it, as ``graph_edges.dangling``."""
     a, b, c, d = (MaintGraph.create(name=n) for n in "abcd")
     ka, kb, kc, kd = (o.db_key.redis_key for o in (a, b, c, d))
     near = MaintGraph._meta.fields["near"]
@@ -719,36 +719,72 @@ def test_orphan_edges_are_found_and_cleaned(pg, pg_schema, admin):
     near.link(MaintGraph, ka, "Elsewhere:x", 0.5)  # outside the key space
     follows.link(MaintGraph, kc, kd, 0.5)  # c->d
     follows.link(MaintGraph, kd, ka, 0.5)  # d->a
-    assert MaintGraph.check_indexes()["total"] == 0
+    check = MaintGraph.check_indexes()
+    assert check["total"] == 0
+    assert check["side_tables"] == {"graph_edges": {"dangling": 0}}
     for victim in (kb, kd):
         admin.execute(
             f"DELETE FROM {_q(pg_schema, 'maint_graph')} WHERE _pk = %s", (victim,)
         )
+    before = (_linked(near, ka), _linked(follows, kc), _linked(follows, kd))
     check = MaintGraph.check_indexes()
-    # near: both directions of a<->b (symmetric). follows: d->a (its source
-    # is gone); c->d stays -- an asymmetric delete leaves edges *to* the
-    # record on Redis too, so that one is data.
-    assert check["side_tables"]["near"]["orphans"] == 2
-    assert check["side_tables"]["follows"]["orphans"] == 1
-    assert check["total"] == 3
+    # near: both directions of a<->b. follows: d->a (its source is gone);
+    # c->d is data (an asymmetric delete leaves edges *to* a record).
+    assert check["side_tables"]["graph_edges"] == {"dangling": 3}
+    assert check["total"] == 0
+    assert MaintGraph.clean_indexes(batch_size=1) == 0
+    MaintGraph.rebuild_indexes()
+    assert MaintGraph.check_indexes() == check
+    assert before == (_linked(near, ka), _linked(follows, kc), _linked(follows, kd))
     assert _linked(near, ka) == sorted([kb, "Elsewhere:x"])
 
-    assert MaintGraph.clean_indexes(batch_size=1) == 3
-    assert MaintGraph.check_indexes()["total"] == 0
-    assert _linked(near, ka) == ["Elsewhere:x"]
-    assert _linked(follows, kc) == [kd]
-    assert _linked(follows, kd) == []
 
-
-def test_rebuild_removes_orphan_edges_too(pg, pg_schema, admin):
-    a, b = (MaintGraph.create(name=n) for n in "ab")
+def test_never_saved_endpoints_keep_their_edges(pg):
+    a = MaintGraph.create(name="a")
+    ka = a.db_key.redis_key
     near = MaintGraph._meta.fields["near"]
-    near.link(MaintGraph, a.db_key.redis_key, b.db_key.redis_key, 0.5)
-    admin.execute(
-        f"DELETE FROM {_q(pg_schema, 'maint_graph')} WHERE _pk = %s",
-        (b.db_key.redis_key,),
-    )
-    assert MaintGraph.check_indexes()["total"] == 2
+    follows = MaintGraph._meta.fields["follows"]
+    near.link(MaintGraph, ka, "MaintGraph:ghost", 0.5)
+    follows.link(MaintGraph, "MaintGraph:ghost2", ka, 0.5)
+    check = MaintGraph.check_indexes()
+    assert check["total"] == 0
+    assert check["side_tables"]["graph_edges"]["dangling"] == 3
+    assert MaintGraph.clean_indexes() == 0
     MaintGraph.rebuild_indexes()
     assert MaintGraph.check_indexes()["total"] == 0
-    assert _linked(near, a.db_key.redis_key) == []
+    assert _linked(near, ka) == ["MaintGraph:ghost"]
+    assert _linked(follows, "MaintGraph:ghost2") == [ka]
+
+
+class MaintTtlGraph(popoto.Model):
+    name = popoto.UniqueKeyField()
+    near = CoOccurrenceField()
+
+    class Meta:
+        ttl = 60
+
+
+def test_a_reaped_records_edges_stay_and_total_is_zero(pg):
+    from popoto.backends import get_backend
+    from popoto.backends.postgres import ttl as ttl_mod
+
+    near = MaintTtlGraph._meta.fields["near"]
+    with frozen_clock(1_000_000.0):
+        a = MaintTtlGraph.create(name="a")
+        b = MaintTtlGraph(name="b")
+        b._ttl = 5
+        b.save()
+        ka, kb = a.db_key.redis_key, b.db_key.redis_key
+        near.link(MaintTtlGraph, ka, kb, 0.5)
+        assert MaintTtlGraph.check_indexes()["total"] == 0
+    with frozen_clock(1_000_030.0):
+        backend = get_backend(MaintTtlGraph)
+        ts = backend._table(MaintTtlGraph._meta.spec)
+        assert ttl_mod.reap(backend, ts, force=True) == [kb]
+        check = MaintTtlGraph.check_indexes()
+        assert check["total"] == 0
+        assert check["side_tables"]["graph_edges"]["dangling"] == 2
+        assert MaintTtlGraph.clean_indexes() == 0
+        MaintTtlGraph.rebuild_indexes()
+        assert MaintTtlGraph.check_indexes()["total"] == 0
+        assert [k for k, _w in near.get_linked(MaintTtlGraph, ka)] == [kb]

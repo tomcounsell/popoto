@@ -29,11 +29,12 @@ popoto writes rather than the server (``.search``, ``.validity``):
   can never leave one; a bulk load or restore run with triggers disabled
   (``session_replication_role = replica``, ``pg_restore
   --disable-triggers`` -- the shape a #756 copy may take) can. Counted per
-  side row. ``CoOccurrenceField`` edges have no foreign key (Redis links any
-  two key strings), so for them *any* SQL ``DELETE`` of a record leaves
-  orphans, triggers on or off; an edge is an orphan when an endpoint in the
-  model's key space has no row -- its ``src`` in every field, its ``dst``
-  only in a symmetric one (:func:`_edge_orphan_sql`).
+  side row. ``CoOccurrenceField`` edges are not in this list: they have no
+  foreign key (Redis links any two key strings, records or not), and Redis
+  keeps an edge whose record is gone (never saved, expired, deleted outside
+  popoto) and never counts it. So do ``clean`` and ``rebuild`` here, and
+  ``check`` reports them apart, as ``side_tables["graph_edges"]["dangling"]``,
+  outside ``total`` (:func:`_edge_dangling_sql`).
 * **invalid indexes** -- the INVALID ``*_ccnew`` / ``*_ccold`` indexes a
   failed ``REINDEX ... CONCURRENTLY`` leaves (a lock timeout, a cancel).
   ``check`` counts them (``invalid_indexes``); ``clean`` and ``rebuild``
@@ -52,8 +53,9 @@ popoto writes rather than the server (``.search``, ``.validity``):
 model: a live row whose auto-key column is ``NULL`` or ``''`` (only direct
 SQL can write one; ``clean`` deletes it, as Redis ``DEL``\\ s the hash).
 
-Not drift, and not checked: an edge to a key outside the model's key space,
-or (asymmetric field) to a deleted record -- data on Redis too;
+Not drift: an edge whose endpoint has no record (never saved, expired,
+deleted outside popoto) -- Redis keeps those, so ``clean``/``rebuild`` do;
+``check`` only reports them apart (``graph_edges.dangling``);
 ``FrequencySketch`` counts (never decremented, as the sketch never is); the
 engine tables keyed by ``(model, member)`` with no foreign key --
 ``popoto_tombstone``, ``popoto_embedding_cache``, ``popoto_recall_proposal``
@@ -192,7 +194,7 @@ def _fk_side_tables(ts: TableSpec, spec: ModelSpec) -> list[tuple[str, str, str]
 def _edge_tables(ts: TableSpec, spec: ModelSpec) -> list[tuple[str, str, bool]]:
     """``(field, qualified edge table, symmetric)`` per ``CoOccurrenceField``.
     Edge rows have no foreign key (Redis links any two key strings), so
-    their orphans are found by :func:`_edge_orphan_sql`, not an FK join."""
+    a dangling one is found by :func:`_edge_dangling_sql`, not an FK join."""
     return [
         (
             name,
@@ -203,19 +205,17 @@ def _edge_tables(ts: TableSpec, spec: ModelSpec) -> list[tuple[str, str, bool]]:
     ]
 
 
-def _edge_orphan_sql(ts: TableSpec, symmetric: bool) -> tuple[str, int]:
-    """The ``WHERE`` condition (on alias ``e``) for an orphan edge row, and
-    how many ``%s`` (the model's key prefix) it takes.
+def _edge_dangling_sql(ts: TableSpec, symmetric: bool) -> tuple[str, int]:
+    """The ``WHERE`` condition (on alias ``e``) for a dangling edge row, and
+    how many ``%s`` (the model's key prefix) it takes. Informational only:
+    ``check`` counts these, nothing deletes them (Redis keeps them too).
 
     An endpoint is *gone* when it is in this model's key space
     (``<Model>:``) and no row of the table has it as ``_pk``. A ``src`` that
-    is gone is an orphan in every field: a popoto delete removes the record's
-    own edge set. A ``dst`` that is gone is an orphan only in a symmetric
-    field, whose delete also removes the reverse edges; an asymmetric delete
-    leaves edges *to* the record in other sets, on Redis
-    (``CoOccurrenceField.on_delete``) and here alike, so those are data. An
-    endpoint outside the model's key space (``link`` takes any string) is
-    data too, and never counted."""
+    is gone dangles in every field; a ``dst`` that is gone only in a
+    symmetric field (an asymmetric delete leaves edges *to* the record by
+    design, on Redis and here alike). An endpoint outside the model's key
+    space (``link`` takes any string) is never counted."""
 
     def gone(col: str) -> str:
         return (
@@ -230,10 +230,7 @@ def _edge_orphan_sql(ts: TableSpec, symmetric: bool) -> tuple[str, int]:
 
 def _side_fields(ts: TableSpec, spec: ModelSpec) -> list[str]:
     """Every field with side tables that can drift, sorted."""
-    return sorted(
-        {f for f, _t, _c in _fk_side_tables(ts, spec)}
-        | {f for f, _t, _s in _edge_tables(ts, spec)}
-    )
+    return sorted({f for f, _t, _c in _fk_side_tables(ts, spec)})
 
 
 def _key_prefix(model: Any) -> str:
@@ -513,26 +510,28 @@ class MaintainOpsMixin:
 
     def _drift(
         self, spec: ModelSpec, model: Any, batch_size: int
-    ) -> tuple[TableSpec, dict[str, SideDrift]]:
-        """Every side field's drift, paging over the live records."""
+    ) -> tuple[TableSpec, dict[str, SideDrift], int]:
+        """Every side field's drift, paging over the live records, and the
+        count of dangling edges (informational, never drift)."""
         ts = self._table(spec)
         drift = {name: SideDrift() for name in _side_fields(ts, spec)}
         for name, table, col in _fk_side_tables(ts, spec):
             drift[name].orphans += self._orphan_count(ts, table, col)
         prefix = _key_prefix(model)
-        for name, table, symmetric in _edge_tables(ts, spec):
-            cond, uses = _edge_orphan_sql(ts, symmetric)
+        dangling = 0
+        for _name, table, symmetric in _edge_tables(ts, spec):
+            cond, uses = _edge_dangling_sql(ts, symmetric)
             rows, _ = self._run(
                 f"SELECT count(*) FROM {table} e WHERE {cond}", [prefix] * uses
             )
-            drift[name].orphans += int(rows[0][0])
+            dangling += int(rows[0][0])
         if ts.search is None:
-            return ts, drift
+            return ts, drift, dangling
         for keys in self._live_pages(ts, batch_size):
             have = self._actual(ts, keys)
             for pk, instance in self._instances(ts, model, keys):
                 self._classify(ts, pk, _expected(ts, instance), have, drift)
-        return ts, drift
+        return ts, drift, dangling
 
     # -- check ----------------------------------------------------------------
 
@@ -542,9 +541,12 @@ class MaintainOpsMixin:
         """``check_indexes``' dict: the Redis keys (index kinds that are
         transactional here, always ``0``), ``partial_writes``, and
         ``side_tables`` -- ``{field: {"orphans", "missing", "stale"}}`` for
-        every field with companion tables. Read-only; no locks."""
+        every field with companion tables, plus ``"graph_edges": {"dangling":
+        n}`` for a model with ``CoOccurrenceField``s: edges naming a record
+        that does not exist, which Redis keeps and ``total`` leaves out.
+        Read-only; no locks."""
         meta = model._meta
-        ts, drift = self._drift(spec, model, batch_size)
+        ts, drift, dangling = self._drift(spec, model, batch_size)
         result: dict[str, Any] = {
             "class_set": 0,
             "partial_writes": self._partial_write_count(ts, model),
@@ -566,6 +568,8 @@ class MaintainOpsMixin:
             + result["invalid_indexes"]
             + sum(sum(counts.values()) for counts in result["side_tables"].values())
         )
+        if _edge_tables(ts, spec):
+            result["side_tables"]["graph_edges"] = {"dangling": dangling}
         return result
 
     # -- partial writes -------------------------------------------------------
@@ -599,7 +603,6 @@ class MaintainOpsMixin:
         removed = 0
         for _name, table, col in _fk_side_tables(ts, spec):
             removed += self._delete_orphans(ts, table, col, batch_size)
-        removed += self._delete_edge_orphans(ts, spec, model, batch_size)
         if not self._unit_open_here():
             # A DROP INDEX CONCURRENTLY would wait on the caller's own open
             # transaction; inside one, the leftovers wait for the next clean.
@@ -653,43 +656,6 @@ class MaintainOpsMixin:
             removed += int(n or 0)
             if not n:
                 return removed
-
-    def _delete_edge_orphans(
-        self, ts: TableSpec, spec: ModelSpec, model: Any, batch_size: int
-    ) -> int:
-        """Delete orphan edge rows (:func:`_edge_orphan_sql`) a page at a
-        time, behind the record-key locks of both endpoints of the page's
-        rows (the locks ``graph_update`` takes for a symmetric field), and
-        re-checked in the statement: an endpoint saved meanwhile keeps its
-        edges."""
-        prefix = _key_prefix(model)
-        removed = 0
-        for _name, table, symmetric in _edge_tables(ts, spec):
-            cond, uses = _edge_orphan_sql(ts, symmetric)
-            while True:
-                rows, _ = self._run(
-                    f'SELECT e."src", e."dst" FROM {table} e WHERE {cond} '
-                    'ORDER BY e."src" COLLATE "C", e."dst" COLLATE "C" LIMIT %s',
-                    [prefix] * uses + [batch_size],
-                )
-                if not rows:
-                    break
-                srcs = [r[0] for r in rows]
-                dsts = [r[1] for r in rows]
-                keys = sorted(set(srcs) | set(dsts), key=lambda k: k.encode("utf-8"))
-                sql, params = self._record_locked(
-                    ts,
-                    keys,
-                    f'DELETE FROM {table} e WHERE (e."src", e."dst") IN '
-                    "(SELECT * FROM unnest(%s::text[], %s::text[])) "
-                    f"AND {cond}",
-                    [srcs, dsts] + [prefix] * uses,
-                )
-                _, n = self._run(sql, params, write=True)
-                removed += int(n or 0)
-                if not n:
-                    break
-        return removed
 
     # -- leftovers of a failed CONCURRENTLY -----------------------------------
 
@@ -792,7 +758,6 @@ class MaintainOpsMixin:
         done = ["side_rows"]
         for _name, table, col in _fk_side_tables(ts, spec):
             self._delete_orphans(ts, table, col, batch_size)
-        self._delete_edge_orphans(ts, spec, model, batch_size)
         done.append("orphans")
         self._reindex_analyze(ts, spec, done, count, diverged)
         if diverged:

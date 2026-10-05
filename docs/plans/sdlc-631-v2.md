@@ -1290,6 +1290,16 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     the cycles baseline slot are dropped.
   - **Wire trace:** `trace_redis_wire.py --with-maintain` covers every
     rerouted Redis path, and is byte-identical to `main` with all flags.
+  - **Graph edges match Redis.** An edge whose endpoint has no record (never
+    saved, reaped, deleted outside popoto) is kept by `clean`/`rebuild`;
+    `check` reports it as `side_tables["graph_edges"]["dangling"]`, outside
+    `total`.
+  - **Follow-ups.**
+    - **Maintenance DSN setting.** `REINDEX` needs session `SET`s
+      (`lock_timeout`, `statement_timeout`), which PgBouncer in transaction
+      mode does not keep. Maintenance uses the DSN popoto is configured with,
+      so it has to be a direct or session-mode DSN. A setting that names a
+      separate maintenance DSN would let the application stay on the pooler.
 
 ## 6. Carried forward from the POC
 
