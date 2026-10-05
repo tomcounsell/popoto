@@ -80,7 +80,21 @@ from .schema import (
     ensure_table,
     quote_ident,
 )
-from .search import SearchMixin, prepare_save, record_lock_sql, require_extensions
+from .search import (
+    SearchMixin,
+    prepare_save,
+    record_lock_keys,
+    record_lock_sql,
+    require_extensions,
+)
+from .ttl import (
+    Reaper,
+    expiry_sql,
+    live_sql,
+    purge_expired_sql,
+    reap,
+    ttl_remaining,
+)
 from .validity import ensure_validity_tables, refuse_valid_from_conflict, save_parts
 
 __all__ = [
@@ -263,12 +277,18 @@ class PostgresUnitOfWork(UnitOfWork):
     ``bool(uow)`` is always ``True`` (TD-10).
     """
 
-    __slots__ = ("conn", "_after_commit")
+    __slots__ = ("conn", "_after_commit", "reap", "locked")
 
     def __init__(self, conn: Any) -> None:
         super().__init__(None, backend="postgres")
         self.conn = conn
         self._after_commit: list[Callable[[], Any]] = []
+        # Meta.ttl tables written in this unit (M5): reaped after it commits.
+        self.reap: dict[str, TableSpec] = {}
+        # Record-key locks this unit holds (#783): another open unit -- or an
+        # autocommit statement -- on the same thread that asks for one of
+        # them would wait on its own thread forever.
+        self.locked: set[str] = set()
 
     def after_commit(self, callback: Callable[[], Any]) -> None:
         """Run ``callback`` once this transaction has committed; drop it if
@@ -299,6 +319,14 @@ class PostgresUnitOfWork(UnitOfWork):
 
 def _pg_uow(uow: Optional[UnitOfWork]) -> Optional[PostgresUnitOfWork]:
     return uow if isinstance(uow, PostgresUnitOfWork) else None
+
+
+def _and_live(ts: TableSpec) -> str:
+    """`` AND <the TTL read filter>`` for a ``Meta.ttl`` model (M5): a write
+    addressed to one record (``increment``, a capped push) treats an expired
+    row as the record that does not exist. ``""`` otherwise."""
+    live = live_sql(ts)
+    return f" AND {live}" if live else ""
 
 
 def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
@@ -352,6 +380,8 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         self._server_checked = False
         self._lock = threading.RLock()
         self._intent = threading.local()
+        self._reaper = Reaper()
+        self._open = threading.local()
 
     def __repr__(self) -> str:
         return f"<PostgresBackend schema={self.schema!r}>"
@@ -435,6 +465,39 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         lock_sql, lock_params = record_lock_sql(ts, pks)
         return lock_sql + sql, list(lock_params) + list(params)
 
+    def _open_units(self) -> list[PostgresUnitOfWork]:
+        """The ``transaction()`` units open on this thread, outermost first."""
+        units = getattr(self._open, "units", None)
+        if units is None:
+            units = self._open.units = []
+        return units
+
+    def _refuse_self_wait(
+        self, pg: Optional[PostgresUnitOfWork], keys: Sequence[str]
+    ) -> None:
+        """Refuse, before it is sent, a statement that would wait on a
+        record-key lock another open unit of work *on this thread* holds
+        (#783 review). That lock is released only when the other unit
+        commits or rolls back, which this thread cannot do while it waits:
+        the statement would hang to ``PG_STATEMENT_TIMEOUT_MS`` and then be
+        misreported as an outage. Two nested ``popoto.batch()``es or
+        ``transaction()``s that write one record, or a write outside a batch
+        to a record saved in it, are the shapes. On Redis each is fine (a
+        queued command holds no lock); here it is
+        :class:`~popoto.backends.BackendCapabilityError`, at once."""
+        wanted = set(keys)
+        for unit in self._open_units():
+            if unit is not pg and not unit.locked.isdisjoint(wanted):
+                held = sorted(unit.locked & wanted)[0]
+                raise BackendCapabilityError(
+                    f"this write would wait on the record lock {held!r}, which "
+                    "another open Postgres transaction on this thread holds (a "
+                    "nested popoto.batch() or transaction() that wrote the same "
+                    "record, or a write outside the batch it was saved in): it "
+                    "could never be granted. Write through the batch that holds "
+                    "the record, or execute() it first"
+                )
+
     def _statement_prefix(self) -> str:
         ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
         return f"SET LOCAL statement_timeout = {ms}; " if ms > 0 else ""
@@ -458,6 +521,9 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         """
         psycopg = _import_psycopg()
         pg = _pg_uow(uow)
+        lock_keys = record_lock_keys(sql, params)
+        if lock_keys:
+            self._refuse_self_wait(pg, lock_keys)
         if pg is not None:
             try:
                 cur = pg.conn.execute(sql, params)
@@ -472,6 +538,7 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             while cur.nextset():
                 pass
             rows = cur.fetchall() if cur.description else []
+            pg.locked.update(lock_keys)
             return rows, cur.rowcount
         attempts = int(Defaults.PG_TRANSACTION_RETRIES) + 1
         prefix = self._statement_prefix()
@@ -584,6 +651,7 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         with self._lock:
             self._tables.clear()
             self.__dict__.pop("_recall_ready", None)
+            self._reaper.forget()
             self.__dict__.pop("_engine_ready", None)
 
     # -- A. lifecycle ----------------------------------------------------------
@@ -604,7 +672,9 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             groups=POSTGRES_CAPABILITIES_GROUPS,
             field_kinds=frozenset(fs.kind for fs in spec.fields.values()),
             key_migration=False,
-            record_ttl=False,
+            # M5: Meta.ttl models expire (an _expires_at column, a read
+            # filter and the reaper); an instance TTL needs Meta.ttl.
+            record_ttl=spec.ttl is not None,
         )
 
     @contextlib.contextmanager
@@ -617,17 +687,48 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         retried internally, because only the caller can run its block again.
         Single statements outside a unit of work are retried automatically
         (``Defaults.PG_TRANSACTION_RETRIES``) and raise the same type once
-        the retries are spent."""
+        the retries are spent.
+
+        After the unit commits, the TTL reaper runs for each ``Meta.ttl``
+        table it wrote (M5): never inside the caller's transaction, and not
+        at all when the unit rolled back."""
         with self._connection(write=True) as conn:
             with conn.transaction():
                 ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
                 if ms > 0:
                     conn.execute(f"SET LOCAL statement_timeout = {ms}")
                 uow = PostgresUnitOfWork(conn)
-                yield uow
+                units = self._open_units()
+                units.append(uow)
+                try:
+                    yield uow
+                finally:
+                    units.remove(uow)
         # Reached only after COMMIT succeeded: an exception in the block, or
         # at COMMIT, propagates past this line and the callbacks are dropped.
+        # (A popoto.batch() rolled back by reset() clears both lists first:
+        # psycopg swallows its own Rollback signal, so that path gets here.)
         uow._run_after_commit()
+        for ts in list(uow.reap.values()):
+            reap(self, ts)
+
+    def _after_write(self, ts: TableSpec, uow: Optional[UnitOfWork]) -> None:
+        """A record write on ``ts`` succeeded: run the TTL reaper now when it
+        committed (autocommit), or after its unit of work commits (M5). A
+        model without ``Meta.ttl`` has nothing to reap."""
+        if not ts.ttl:
+            return
+        pg = _pg_uow(uow)
+        if pg is not None:
+            pg.reap[ts.qualified] = ts
+            return
+        reap(self, ts)
+
+    def ttl_remaining(self, spec: ModelSpec, ids: Sequence[RecordId]) -> list[int]:
+        """``TTL``-shaped remaining expiry per record (``-2`` no live record,
+        ``-1`` no expiry, else whole seconds): what a test or tool reads from
+        ``redis.ttl(key)`` on the Redis backend (M5, ``.ttl``)."""
+        return ttl_remaining(self, spec, [rid.canonical for rid in ids])
 
     def close(self) -> None:
         close_pools()
@@ -707,9 +808,11 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         handed to a Postgres model cannot carry the write, so it runs at once
         and the pipeline is returned untouched for its caller to execute.
         """
-        if expiry is not None:
-            raise BackendCapabilityError("save(expiry=) arrives on Postgres in M5")
         spec = obj._meta.spec
+        # M5: the expiry this save writes (``expiry=``, else the instance's
+        # _ttl / _expire_at), or None to keep the stored one. Refused before
+        # any I/O on a model without Meta.ttl, or for a ttl EXPIRE refuses.
+        expires = expiry_sql(spec, obj, expiry)
         ts = self._table(spec, write=True)
         new_key = obj.db_key.redis_key
         old_key = obj._redis_key
@@ -735,13 +838,19 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             else None
         )
         cols = ["_pk"] + list(values) + list(state)
+        slots = ["%s"] * len(cols)
+        if expires is not None:
+            # M5: _expires_at from the server clock (now + ttl) or the
+            # instance's _expire_at, as EXPIRE / EXPIREAT set it on Redis.
+            cols.append("_expires_at")
+            slots.append(expires[0])
         col_sql = ", ".join(quote_ident(c) for c in cols)
-        placeholders = ", ".join(["%s"] * len(cols))
+        placeholders = ", ".join(slots)
         # Key columns are a function of _pk, so a conflict on _pk means they
         # already hold these values: leave them out of the SET.
         updates = ", ".join(
             f"{quote_ident(c)} = " + (overrides.get(c) or f"EXCLUDED.{quote_ident(c)}")
-            for c in list(values) + list(state)
+            for c in cols[1:]
             if c not in ts.key_fields
         )
         # A native write clears _migrated_from (#756's import contract).
@@ -755,6 +864,8 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             "RETURNING (xmax = 0)"
         )
         params = [new_key] + list(values.values()) + list(state.values())
+        if expires is not None:
+            params += expires[1]
         if search is not None and search.ctes:
             # Postings, document length and membership rows ride in the same
             # statement as data-modifying CTEs: one round trip, one
@@ -770,6 +881,12 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         # this record committed, and every writer of a record takes it before
         # the row (record_lock_sql: one lock order, plan §6). The reply is the
         # last statement's.
+        purge = purge_expired_sql(ts)
+        if purge:
+            # M5: an expired row under this key is dropped first (its side
+            # rows cascade), so the upsert writes a fresh record, as HSET on a
+            # key Redis has expired creates a new hash.
+            sql, params = purge + sql, [new_key] + params
         sql, params = self._record_locked(ts, [new_key], sql, params)
         psycopg = _import_psycopg()
         try:
@@ -842,6 +959,8 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             # Piggybacked embedding backfill (#758 D7): after the commit,
             # bounded by Defaults.PG_BACKFILL_*; never inside a transaction().
             search.after()
+        # M5: the TTL reaper, after the commit (or the unit of work's).
+        self._after_write(ts, uow)
         saved_id = RecordId(spec.name, (), new_key)
         if _pg_uow(uow) is not None:
             return SaveOutcome(id=saved_id, result=uow)
@@ -914,6 +1033,10 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         else:
             sql = f'SELECT {col_sql} FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])'
             params = [keys]
+        live = live_sql(ts)
+        if live:
+            # M5: an expired row is no record, reaped or not.
+            sql += " AND " + live
         rows, _ = self._run(sql, params)
         by_pk = {row[0]: self._decode(ts, cols, row) for row in rows}
         return [by_pk.get(k) for k in keys]
@@ -937,6 +1060,10 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         statement = (
             f'{graph_sql}DELETE FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])'
         )
+        if ts.ttl:
+            # M5: "how many existed" counts live records only -- Redis's DEL
+            # of a key it has expired returns 0. RETURNING reports it.
+            statement += " RETURNING (" + (live_sql(ts) or "TRUE") + ")"
         # A symmetric graph field's reverse-edge CTE writes the partners'
         # edge sets, so their record-key locks join the deleted keys' (M4).
         lock_sql, lock_params = graph_delete_lock_sql(ts, spec, keys)
@@ -948,6 +1075,9 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         for obj in options.get("objs") or ():
             obj._db_content = dict()
             obj._saved_field_values = dict()
+        self._after_write(ts, uow)
+        if ts.ttl:
+            return sum(1 for (alive,) in rows if alive)
         return int(count or 0)
 
     def exists(self, spec: ModelSpec, ids: Sequence[RecordId]) -> list[bool]:
@@ -955,8 +1085,11 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             return []
         ts = self._table(spec)
         keys = [rid.canonical for rid in ids]
+        live = live_sql(ts)
         rows, _ = self._run(
-            f'SELECT "_pk" FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])', [keys]
+            f'SELECT "_pk" FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])'
+            + (f" AND {live}" if live else ""),
+            [keys],
         )
         found = {row[0] for row in rows}
         return [k in found for k in keys]
@@ -988,10 +1121,11 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             ts,
             [id.canonical],
             f'UPDATE {ts.qualified} SET {col} = {expr}, "_updated_at" = now(), "_migrated_from" = NULL '
-            f'WHERE "_pk" = %s RETURNING {col}',
+            f'WHERE "_pk" = %s{_and_live(ts)} RETURNING {col}',
             [delta, id.canonical],
         )
         rows, _ = self._run(sql, params, uow=uow, write=True)
+        self._after_write(ts, uow)
         if not rows:
             from ...exceptions import ModelException
 
@@ -1149,10 +1283,11 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             f"UPDATE {ts.qualified} SET {col} = jsonb_path_query_array("
             f"jsonb_build_array(%s::jsonb) || coalesce({col}, '[]'::jsonb), "
             f'\'$[0 to {last}]\'), "_updated_at" = now(), "_migrated_from" = NULL '
-            f'WHERE "_pk" = %s RETURNING {col}',
+            f'WHERE "_pk" = %s{_and_live(ts)} RETURNING {col}',
             [Jsonb(encode_json_element(value)), id.canonical],
         )
         rows, _ = self._run(sql, params, uow=uow, write=True)
+        self._after_write(ts, uow)
         if not rows:
             from ...exceptions import ModelException
 

@@ -236,9 +236,8 @@ def _on_context_used_on_backend(
     Unsaved instances degrade exactly as on Redis: their effects are skipped
     and the rest of the batch still lands.
     """
-    from ..backends import UnitOfWork
+    from ..batch import unit_of
 
-    uow = pipeline if isinstance(pipeline, UnitOfWork) else None
     groups: dict[int, Any] = {}
     for instance in instances:
         backend = non_redis_backend(instance)
@@ -287,8 +286,13 @@ def _on_context_used_on_backend(
                     RecallProposal.resolve(instance, outcome, pipeline=tx)
 
         some_model = next(iter(by_model))
+        # A transaction() unit of work, or a popoto.batch()'s (#759 M5).
         backend.field_call(
-            some_model._meta.spec, "_observe", "atomically", work, uow=uow
+            some_model._meta.spec,
+            "_observe",
+            "atomically",
+            work,
+            uow=unit_of(pipeline, backend),
         )
 
 
@@ -717,12 +721,13 @@ def _apply_used(instance, pipeline):
             pass  # Graceful degradation
 
 
-def _uow_of(pipeline: Any) -> Any:
-    """A backend unit of work passed as ``pipeline=`` (a Redis pipeline
-    cannot carry a Postgres write: the write runs at once)."""
-    from ..backends import UnitOfWork
+def _uow_of(pipeline: Any, backend: Any) -> Any:
+    """A backend unit of work passed as ``pipeline=``, or the one a
+    ``popoto.batch()`` opens on ``backend`` (#759 M5). A plain Redis pipeline
+    cannot carry a Postgres write: the write runs at once."""
+    from ..batch import unit_of
 
-    return pipeline if isinstance(pipeline, UnitOfWork) else None
+    return unit_of(pipeline, backend)
 
 
 class RecallProposal:
@@ -780,7 +785,7 @@ class RecallProposal:
                 partition or "default",
                 [_get_instance_key(i) for i in instances],
                 now,
-                uow=_uow_of(pipeline),
+                uow=_uow_of(pipeline, backend),
             )
             return
         key = cls._pending_key(model_class, partition)
@@ -821,7 +826,7 @@ class RecallProposal:
                 "remove",
                 partition or "default",
                 _get_instance_key(instance),
-                uow=_uow_of(pipeline),
+                uow=_uow_of(pipeline, backend),
             )
             return pipeline if pipeline is not None else removed
         key = cls._pending_key(model_class, partition)
@@ -857,7 +862,7 @@ class RecallProposal:
                 "expire",
                 partition or "default",
                 time.time() - ttl,
-                uow=_uow_of(pipeline),
+                uow=_uow_of(pipeline, backend),
             )
         key = cls._pending_key(model_class, partition)
         cutoff = time.time() - ttl

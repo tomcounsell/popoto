@@ -97,6 +97,7 @@ from ...fields.constants import Defaults
 from ..types import ModelSpec, RecordId, Scored, UnitOfWork
 from .memory import _lit, lua_tostring, safe_mul
 from .schema import TableSpec, _bounded, quote_ident
+from .search import PREFIXED_LOCK_MANY
 
 __all__ = [
     "EDGE_SUFFIX",
@@ -225,8 +226,8 @@ def graph_delete_lock_sql(
         for n in symmetric
     )
     one = (
-        "SELECT count(pg_advisory_xact_lock(hashtextextended(%s || u.k, 0))) "
-        "FROM unnest(ARRAY(SELECT a.k FROM (SELECT unnest(%s::text[]) AS k "
+        PREFIXED_LOCK_MANY
+        + "FROM unnest(ARRAY(SELECT a.k FROM (SELECT unnest(%s::text[]) AS k "
         f'{partners}) AS a ORDER BY a.k COLLATE "C")) WITH ORDINALITY AS u(k, i); '
     )
     params: list[Any] = [f"popoto:rec:{ts.qualified}:", list(keys)]

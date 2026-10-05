@@ -54,12 +54,13 @@ return #staged
 """
 
 
-def _uow_of(pipeline: Any) -> Any:
-    """A backend unit of work passed as ``pipeline=`` (a Redis pipeline
-    cannot carry a Postgres write: the write runs at once)."""
-    from ..backends import UnitOfWork
+def _uow_of(pipeline: Any, backend: Any) -> Any:
+    """A backend unit of work passed as ``pipeline=``, or the one a
+    ``popoto.batch()`` opens on ``backend`` (#759 M5). A plain Redis pipeline
+    cannot carry a Postgres write: the write runs at once."""
+    from ..batch import unit_of
 
-    return pipeline if isinstance(pipeline, UnitOfWork) else None
+    return unit_of(pipeline, backend)
 
 
 class AccessTrackerMixin:
@@ -238,7 +239,7 @@ class AccessTrackerMixin:
                 {self._at_member(): 1},
                 now=time.time(),
                 ttl=self._staged_ttl_seconds,
-                uow=_uow_of(pipeline),
+                uow=_uow_of(pipeline, backend),
             )
             return
         ts = str(time.time())
@@ -292,7 +293,7 @@ class AccessTrackerMixin:
                 self._at_record_id(),
                 now=time.time(),
                 ttl=self._staged_ttl_seconds,
-                uow=_uow_of(pipeline),
+                uow=_uow_of(pipeline, backend),
             )
             if promoted is None:
                 raise TypeError("confirm_access() requires a saved model instance")
@@ -338,7 +339,7 @@ class AccessTrackerMixin:
         backend = non_redis_backend(self)
         if backend is not None:
             self._access_call(
-                backend, "discard", self._at_record_id(), uow=_uow_of(pipeline)
+                backend, "discard", self._at_record_id(), uow=_uow_of(pipeline, backend)
             )
             return
         staged_key = self._at_key("staged")

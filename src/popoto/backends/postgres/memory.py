@@ -89,6 +89,7 @@ from ..types import (
 )
 from .plan import render_where, to_column_value
 from .schema import Column, TableSpec, engine_table_ddl, quote_ident
+from .ttl import live_sql
 from .validity import NOT_HANDLED as _VALIDITY_NOT_HANDLED
 from .validity import (
     VALIDITY_KIND,
@@ -145,6 +146,14 @@ _OVERFLOW_LN = "709.78"
 _UNDERFLOW_LN = "745.13"
 """Just under ``-ln(2**-1075)`` = 745.1332: past it a result rounds to 0."""
 _HALF_DBL_LIMIT = 2.0**1023
+
+
+def _and_live(ts: TableSpec, alias: str = "") -> str:
+    """`` AND <the TTL read filter>`` on a ``Meta.ttl`` model (M5), else
+    ``""``: an expired record is no record to a reader, and a single-record
+    state write treats it as one that does not exist."""
+    live = live_sql(ts, alias)
+    return f" AND {live}" if live else ""
 
 
 def lua_tostring(value: float) -> float:
@@ -474,7 +483,7 @@ class PostgresMemoryOps(PostgresValidityOps):
             ts,
             [id.canonical],
             f'UPDATE {ts.qualified} SET {col} = %s, "_updated_at" = now() '
-            f'WHERE "_pk" = %s',
+            f'WHERE "_pk" = %s' + _and_live(ts),
             [float(at), id.canonical],
         )
         self._run(sql, params, uow=uow, write=True)
@@ -521,7 +530,7 @@ class PostgresMemoryOps(PostgresValidityOps):
             f"{n} = coalesce({n}, 0) + 1, "
             f"{corr} = coalesce({corr}, 0) + {1 if corroborates else 0}, "
             f"{contra} = coalesce({contra}, 0) + {0 if corroborates else 1}, "
-            f'"_updated_at" = now() WHERE "_pk" = %s '
+            f'"_updated_at" = now() WHERE "_pk" = %s{_and_live(ts)} '
             f"RETURNING {conf}, {n}, {corr}, {contra}"
         )
         sql, params = self._record_locked(ts, [id.canonical], sql, [id.canonical])
@@ -744,6 +753,10 @@ class PostgresMemoryOps(PostgresValidityOps):
             where_parts.append(domain)
             params.extend(dparams)
         inner_where = " OR ".join(where_parts)
+        # M5: an expired record ranks in no arm -- including a caller's
+        # scores arm, whose domain is the key list rather than the table.
+        if ts.ttl:
+            inner_where = f"({inner_where}){_and_live(ts, 't')}"
         if validity_field:
             self._validity_field(spec, validity_field)
             gate = included_sql(
@@ -860,7 +873,8 @@ class PostgresMemoryOps(PostgresValidityOps):
         ic = float(fs.options.get("initial_confidence", 0.5))
         cols = ", ".join(quote_ident(field + s) for s in CONF_SUFFIXES)
         rows, _ = self._run(
-            f'SELECT {cols} FROM {ts.qualified} WHERE "_pk" = %s', [id.canonical]
+            f'SELECT {cols} FROM {ts.qualified} WHERE "_pk" = %s' + _and_live(ts),
+            [id.canonical],
         )
         if not rows:
             return None
@@ -969,7 +983,7 @@ class PostgresMemoryOps(PostgresValidityOps):
         rows, _ = self._run(
             f'SELECT coalesce("_access_count", 0), "_last_accessed", '
             f'CASE WHEN "_staged_at" > {cut} THEN coalesce("_staged_reads", 0) '
-            f'ELSE 0 END FROM {ts.qualified} WHERE "_pk" = %s',
+            f'ELSE 0 END FROM {ts.qualified} WHERE "_pk" = %s' + _and_live(ts),
             [id.canonical],
             uow=uow,
         )
