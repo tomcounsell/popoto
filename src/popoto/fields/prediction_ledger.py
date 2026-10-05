@@ -704,8 +704,8 @@ class PredictionLedgerMixin:
         if result == 0:
             return None
         cls._apply_confidence_feedback(instance, prediction_error, pipeline=uow)
-        # A batch's event follows its transaction's commit, as a unit of
-        # work's does (after_commit); a plain Redis pipeline queues it.
+        # A batch's or unit of work's event is appended in its transaction,
+        # just before COMMIT; a plain Redis pipeline queues it.
         cls._log_resolution_event(
             instance, prediction_error, mode, uow if uow is not None else pipeline
         )
@@ -1063,15 +1063,9 @@ class PredictionLedgerMixin:
         """
         from .event_stream import EventStreamMixin
 
-        after_commit = getattr(pipeline, "after_commit", None)
-        if isinstance(instance, EventStreamMixin) and after_commit is not None:
-            # A Postgres unit of work (#759 M5): the stream is still Redis, so
-            # the XADD is sent once the transaction commits, never for one
-            # that rolls back (the M4b rule for EventStreamMixin).
-            after_commit(
-                lambda: cls._log_resolution_event(instance, prediction_error, mode)
-            )
-            return
+        # A Postgres unit of work or batch (#759 M5): _xadd_event appends to
+        # the backend's stream inside that transaction, just before its
+        # COMMIT, so the event commits or rolls back with the resolution.
         if isinstance(instance, EventStreamMixin):
             try:
                 instance._xadd_event(

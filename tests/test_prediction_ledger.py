@@ -441,7 +441,8 @@ class TestEventStreamSynergy:
 
         # Read stream entries
         stream_key = item._get_stream_key()
-        entries = POPOTO_REDIS_DB.xrange(stream_key)
+        # The stream lives on the model's backend (#759 M5).
+        entries = item.stream_client().xrange(stream_key)
 
         # Find prediction_resolved entry (skip create entry from save)
         resolved_entries = [
@@ -461,7 +462,8 @@ class TestEventStreamSynergy:
         PredictionLedgerMixin.auto_resolve(item, "dismissed")
 
         stream_key = item._get_stream_key()
-        entries = POPOTO_REDIS_DB.xrange(stream_key)
+        # The stream lives on the model's backend (#759 M5).
+        entries = item.stream_client().xrange(stream_key)
 
         resolved_entries = [
             e
@@ -783,7 +785,8 @@ class TestFullIntegration:
 
         # EventStream should have entry
         stream_key = item._get_stream_key()
-        entries = POPOTO_REDIS_DB.xrange(stream_key)
+        # The stream lives on the model's backend (#759 M5).
+        entries = item.stream_client().xrange(stream_key)
         resolved_entries = [
             e
             for e in entries

@@ -1297,6 +1297,43 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     re-saves the coordinates and the save rebuilds the geo columns, so
     nothing geo-specific is carried in the transfer format (#788).
 
+- **M5 events as shipped: departures from this plan, recorded.** Event
+  streams, consumer groups and pub/sub on Postgres (`backends/postgres/events.py`,
+  `pubsub.py`); gate (b) on `test_event_stream_mixin.py`,
+  `test_stream_consumer.py` and `test_pubsub.py`.
+  - **Not `bigserial`: Redis's `<ms>-<seq>` ids**, minted from the server
+    clock under the stream row's lock (`popoto_stream`), which is held to the
+    end of the appending transaction -- so ids commit in id order and a group
+    cursor never skips an entry that commits later. The entry is written **in
+    the record write's own transaction** (a caller's or a `popoto.batch()`'s:
+    just before `COMMIT`, `PostgresUnitOfWork.defer_stream_append`, so the
+    stream locks are the last locks taken, after §6's record-key and row
+    locks, and **in stream-key order** -- #787 review: registration order let
+    two transactions writing two streams in opposite orders deadlock, 82-86
+    of 160 under 4 threads), replacing M4b's after-commit Redis `XADD`. Cost:
+    a save takes its own transaction (p50 +0.5 ms).
+  - **The stream commands keep redis-py's surface** (`stream_client()`
+    returns the Redis client or the backend's `StreamStore`), so
+    `StreamConsumer` keeps one body for both backends and the gate-(b) files
+    run unchanged against either. `MAXLEN ~` trims exactly (a documented
+    divergence); `XINFO GROUPS` `entries-read`/`lag` follow Redis 8's rules.
+  - **One notification channel per schema** for pub/sub, patterns matched
+    client-side, payloads over 8000 bytes refused (not chunked); a separate
+    per-schema events channel wakes blocking `XREADGROUP`s. Both `LISTEN` on
+    dedicated sessions (`POPOTO_POSTGRES_LISTEN_URL`), with a 1 s fallback
+    poll and reconnection. Each payload carries a per-publish nonce, because
+    Postgres folds identical notifications within one transaction; globs
+    match byte-wise, as Redis's `stringmatchlen` does.
+  - **Follow-up (not in M5): one shared listener per process and schema.**
+    Each blocking `StreamConsumer` and each `Subscriber` holds its own
+    `LISTEN` session, unpoolable, so a central database pays N processes ×
+    (consumers + subscribers) sessions against `max_connections` on top of
+    the pools (documented in `docs/features/postgres-backend.md`, "Connection
+    cost"). A per-process multiplexer -- one `LISTEN` session per schema
+    fanning notifications out to in-process waiters -- would make that one
+    session per process. Related: `publish()` reads `pg_stat_activity` for
+    its count on every call.
+
 ## 6. Carried forward from the POC
 
 | Ref (WS4 §7 / feature doc) | Lesson | v2 disposition |

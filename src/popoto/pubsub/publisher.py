@@ -34,11 +34,20 @@ Example:
                 self.publish({"symbol": self.symbol, "price": self.price},
                             pipeline=pipeline)
 
+Backends (#759 M5):
+    A publisher publishes on its backend: a ``Model`` subclass on the
+    model's, otherwise ``backend=`` (a name or instance) at construction,
+    otherwise the process default. On Postgres a message is a ``pg_notify``
+    (delivered when its transaction commits; inside the backend's unit of
+    work passed as ``pipeline=``, when *that* commits) and must encode to
+    under 8000 bytes -- see ``popoto.backends.postgres.pubsub``.
+
 See Also:
     - Subscriber: The receiving end of the pub/sub system
     - redis_db: Connection management for Redis
 """
 
+import typing
 from abc import ABC
 import logging
 
@@ -120,7 +129,11 @@ class Publisher(ABC):
             **kwargs: May contain 'channel_name' to override the default channel.
                 All kwargs are passed to parent classes.
         """
-        self._channel_name = kwargs.get("channel_name", self.__class__.__name__)
+        self._pubsub_backend = kwargs.pop("backend", None)
+        # Popped, not read (#759 M5): passed on, it reached object.__init__,
+        # so Publisher(channel_name=...) -- the documented call -- raised
+        # TypeError.
+        self._channel_name = kwargs.pop("channel_name", self.__class__.__name__)
         super().__init__(*args, **kwargs)
 
     @property
@@ -195,9 +208,11 @@ class Publisher(ABC):
                 model.publish({"saved": True}, pipeline=pipeline)
                 pipeline.execute()  # Both operations succeed or fail together
         """
-        import msgpack_numpy as m
-
-        m.patch()
+        # numpy support when msgpack-numpy is installed (the `dataframe`
+        # extra); plain msgpack otherwise, which encodes everything but
+        # arrays to the same bytes (#759 M5: publishing used to raise
+        # ModuleNotFoundError without the extra).
+        _patch_msgpack_numpy()
         # logger.debug(f"publish to {channel_name}: {publish_data}")
         channel_name = channel_name or self._channel_name
         self._publish_data = data or self._publish_data
@@ -206,6 +221,26 @@ class Publisher(ABC):
         elif not channel_name:
             raise PublisherException("missing channel to publish to")
 
+        backend = _native_backend(self, pipeline)
+        if backend is not None:
+            # #759 M5: NOTIFY on the backend -- inside its unit of work when
+            # one is passed, or inside a popoto.batch()'s transaction (which
+            # it joins, so the message is delivered at execute()'s COMMIT and
+            # never after reset()). A pipeline publish names the instance's
+            # channel, as the Redis pipeline branch below does.
+            from ..batch import unit_of
+
+            uow = unit_of(pipeline, backend)
+            target = self._channel_name if pipeline else channel_name
+            subscriber_count = backend.publish(
+                target, msgpack.packb(self._publish_data), uow=uow
+            )
+            if pipeline:
+                return pipeline
+            logger.debug(
+                f"published data to `{channel_name}`, {subscriber_count} subscribers"
+            )
+            return subscriber_count
         if pipeline:
             return pipeline.publish(
                 self._channel_name, msgpack.packb(self._publish_data)
@@ -218,3 +253,39 @@ class Publisher(ABC):
                 f"published data to `{channel_name}`, {subscriber_count} subscribers"
             )
             return subscriber_count
+
+
+def _native_backend(obj: object, pipeline: object = None) -> "typing.Any":
+    """The non-Redis backend ``obj`` publishes or subscribes on, or ``None``
+    for Redis (#759 M5): a plain Redis pipeline means Redis; otherwise
+    ``obj``'s model backend, its ``backend=`` choice, or the process default.
+    A ``popoto.batch()`` is not a plain pipeline: it carries whichever
+    backend ``obj`` publishes on (a Postgres publish joins its transaction)."""
+    from ..batch import Batch
+
+    if isinstance(pipeline, redis.client.Pipeline) and not isinstance(pipeline, Batch):
+        return None
+    from ..backends import UnitOfWork, _instance, get_backend
+
+    if isinstance(pipeline, UnitOfWork) and pipeline.backend != "redis":
+        return _instance(pipeline.backend)
+
+    if hasattr(type(obj), "_meta") and hasattr(obj, "save"):
+        backend = get_backend(type(obj))
+    else:
+        choice = getattr(obj, "_pubsub_backend", None)
+        if isinstance(choice, str):
+            backend = _instance(choice)
+        elif choice is not None:
+            backend = choice
+        else:
+            backend = get_backend()
+    return None if getattr(backend, "name", "redis") == "redis" else backend
+
+
+def _patch_msgpack_numpy() -> None:
+    try:
+        import msgpack_numpy
+    except ImportError:
+        return
+    msgpack_numpy.patch()

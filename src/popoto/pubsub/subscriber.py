@@ -49,6 +49,12 @@ Usage Example:
         subscriber()  # Check for and process one message
         time.sleep(0.1)
 
+Backends (#759 M5):
+    A subscriber listens on ``backend=`` (a name or instance) when given,
+    else the process default. On Postgres ``self.pubsub`` is a
+    ``PostgresPubSub`` on a dedicated ``LISTEN`` session, polled the same way;
+    call ``self.pubsub.close()`` to end it.
+
 See Also:
     - Publisher: The counterpart that emits messages to channels
     - popoto.finance.subscribers: Concrete implementations for financial data
@@ -137,7 +143,16 @@ class Subscriber(ABC):
             overhead is acceptable or if a shared subscription model would be
             more appropriate.
         """
-        self.pubsub = get_REDIS_DB().pubsub()
+        from .publisher import _native_backend
+
+        self._pubsub_backend = kwargs.pop("backend", None)
+        backend = _native_backend(self)
+        if backend is not None:
+            # #759 M5: LISTEN on a dedicated Postgres session, with the same
+            # message dicts redis-py's PubSub returns.
+            self.pubsub = backend.pubsub()
+        else:
+            self.pubsub = get_REDIS_DB().pubsub()
         logger.info(f"New pubsub for {self.__class__.__name__}")
         for channel_name in self.sub_channel_names:
             self.pubsub.subscribe(channel_name)
@@ -176,9 +191,11 @@ class Subscriber(ABC):
             the subscriber is used in environments where msgpack_numpy might
             not be globally patched.
         """
-        import msgpack_numpy as m
-
-        m.patch()
+        # numpy support when msgpack-numpy is installed (the `dataframe`
+        # extra); plain msgpack otherwise, which encodes everything but
+        # arrays to the same bytes (#759 M5: publishing used to raise
+        # ModuleNotFoundError without the extra).
+        _patch_msgpack_numpy()
         data_event = self.pubsub.get_message()
         if not data_event:
             return
@@ -263,3 +280,11 @@ class Subscriber(ABC):
             f"... message/event discarded"
         )
         pass
+
+
+def _patch_msgpack_numpy() -> None:
+    try:
+        import msgpack_numpy
+    except ImportError:
+        return
+    msgpack_numpy.patch()

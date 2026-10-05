@@ -1157,15 +1157,26 @@ class AioStream(popoto.EventStreamMixin, popoto.Model):
 _AIO_STREAM = "stream:test_aio_batch_effects"
 
 
-def test_an_async_save_joins_a_batch_on_the_loop(pg, monkeypatch):
+def test_an_async_save_joins_a_batch_on_the_loop(pg, admin, monkeypatch):
     """``await obj.async_save(pipeline=popoto.batch())``: the batch's
     transaction is opened on the loop's async pool, nothing blocks the loop
-    (no sync pool, no time.sleep), the Redis side effects wait for the
-    commit, and the batch is committed with ``await pipe.async_execute()``."""
+    (no sync pool, no time.sleep), the stream entries are appended at the
+    commit -- in the batch's own transaction, on the backend's events
+    tables (#759 M5), with nothing sent to Redis -- and the batch is
+    committed with ``await pipe.async_execute()``."""
     import psycopg_pool
 
     redis = get_REDIS_DB()
     redis.delete(_AIO_STREAM)
+
+    def entries():
+        # A raw admin connection: neither the sync pool nor Redis.
+        (n,) = admin.execute(
+            f'SELECT count(*) FROM "{pg.schema}"."popoto_stream_entry" '
+            "WHERE stream = %s",
+            [_AIO_STREAM],
+        ).fetchone()
+        return int(n)
 
     def no_sync_pool(*args, **kwargs):
         raise AssertionError("the sync pool was used on the event loop")
@@ -1175,19 +1186,19 @@ def test_an_async_save_joins_a_batch_on_the_loop(pg, monkeypatch):
 
     async def main():
         await AioStream.async_create(name="warm")
-        redis.delete(_AIO_STREAM)
+        base = entries()
         monkeypatch.setattr(psycopg_pool.ConnectionPool, "getconn", no_sync_pool)
         monkeypatch.setattr(time, "sleep", no_blocking_sleep)
 
         pipe = popoto.batch()
         assert await AioStream(name="a").async_save(pipeline=pipe) is pipe
         await AioStream(name="b").async_save(pipeline=pipe)
-        assert redis.xlen(_AIO_STREAM) == 0  # nothing before the commit
+        assert entries() == base  # nothing before the commit
         assert await AioStream.query.async_get(name="a") is None
         with pytest.raises(aio.BridgeMisuseError, match="async_execute"):
             pipe.execute()
         assert await pipe.async_execute() == []
-        assert redis.xlen(_AIO_STREAM) == 2
+        assert entries() == base + 2
         assert await AioStream.query.async_get(name="b") is not None
 
         pipe = popoto.batch()
@@ -1203,13 +1214,68 @@ def test_an_async_save_joins_a_batch_on_the_loop(pg, monkeypatch):
                 break
             await asyncio.sleep(0.01)
         assert await AioStream.query.async_get(name="d") is None
-        assert redis.xlen(_AIO_STREAM) == 2
+        assert entries() == base + 2
+        assert redis.xlen(_AIO_STREAM) == 0  # the stream never touched Redis
         assert _registry_empty(pg)
 
     try:
         asyncio.run(main())
     finally:
         redis.delete(_AIO_STREAM)
+
+
+def test_an_async_opened_batch_carries_its_events_and_notifies_to_commit(pg, admin):
+    """#787 x #784: a batch an ``async_*`` call opened commits on the loop.
+    The stream appends of its saves, a custom ``_xadd_event`` and a
+    ``Publisher``'s message handed the batch all ride that transaction:
+    appended and delivered at ``await pipe.async_execute()``'s COMMIT, and
+    none of them after ``await pipe.async_reset()``."""
+
+    def entries():
+        (n,) = admin.execute(
+            f'SELECT count(*) FROM "{pg.schema}"."popoto_stream_entry" '
+            "WHERE stream = %s",
+            [_AIO_STREAM],
+        ).fetchone()
+        return int(n)
+
+    sub = pg.pubsub()
+    sub.subscribe("aio-batch")
+    sub.get_message(timeout=0.2)
+    publisher = popoto.Publisher(channel_name="aio-batch")
+
+    def messages():
+        out = []
+        deadline = time.monotonic() + 0.5
+        while time.monotonic() < deadline:
+            m = sub.get_message(timeout=0.05)
+            if m is not None and m["type"] == "message":
+                out.append(m["data"])
+        return out
+
+    async def main(commit):
+        pipe = popoto.batch()
+        obj = AioStream(name=f"ev-{commit}")
+        await obj.async_save(pipeline=pipe)
+        obj._xadd_event("custom", extra_fields={"k": "v"}, pipeline=pipe)
+        assert publisher.publish({"n": commit}, pipeline=pipe) is pipe
+        assert entries() == base
+        if commit:
+            await pipe.async_execute()
+        else:
+            await pipe.async_reset()
+
+    AioStream.create(name="warm")
+    base = entries()
+    try:
+        asyncio.run(main(False))
+        assert entries() == base
+        assert messages() == []
+        asyncio.run(main(True))
+        assert entries() == base + 2  # the save's entry and the custom one
+        assert len(messages()) == 1
+    finally:
+        sub.close()
 
 
 def test_an_async_write_to_a_sync_opened_batch_is_refused(pg):

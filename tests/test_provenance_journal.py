@@ -325,6 +325,23 @@ class _CommandRecorder:
     def __init__(self, monkeypatch):
         self.spy = _PipelineSpy(monkeypatch)
         self.counter = _CallCounter(monkeypatch, ["eval"] + MUTATING_CLIENT_METHODS)
+        # On the Postgres leg the journal's writes are SQL statements, not
+        # Redis commands (since #759 M5 not even its stream XADD reaches
+        # Redis), so every write statement is counted too -- otherwise the
+        # "zero commands" cases there would be vacuous.
+        from popoto.backends import get_backend
+
+        self.sql_writes = 0
+        backend = get_backend(JournalEntry)
+        if backend.name != "redis":
+            real_run = backend._run
+
+            def counted_run(sql, params=(), *, uow=None, write=False):
+                if write:
+                    self.sql_writes += 1
+                return real_run(sql, params, uow=uow, write=write)
+
+            monkeypatch.setattr(backend, "_run", counted_run)
 
     @property
     def queued(self):
@@ -337,11 +354,13 @@ class _CommandRecorder:
         detail = dict(self.counter.nonzero)
         if self.queued:
             detail["queued"] = self.queued
+        if self.sql_writes:
+            detail["sql_writes"] = self.sql_writes
         return detail
 
     @property
     def total(self):
-        return sum(self.counter.counts.values()) + self.queued
+        return sum(self.counter.counts.values()) + self.queued + self.sql_writes
 
     @property
     def nonzero(self):
@@ -1911,17 +1930,18 @@ class TestAnnotationAtomicity:
                 assert_valid_from=True,
             )
 
-    @pytest.mark.redis_only(
-        reason=(
-            "injects the failure into the Redis pipeline's XADD; EventStreamMixin's "
-            "stream stays a Redis structure until #759 M5, outside the Postgres transaction"
-        )
-    )
     def test_an_xadd_failure_inside_the_pipeline_aborts_the_whole_annotation(
         self, monkeypatch
     ):
         """``EventStreamMixin`` re-raises in pipeline mode, so a stream failure
-        must take the annotation down with it rather than committing half."""
+        must take the annotation down with it rather than committing half.
+
+        The failure is injected on both legs' stream write (#759 M5): the
+        Redis pipeline's ``XADD``, and the Postgres stream store's append,
+        which runs inside the annotate-and-close transaction. Each injection
+        is inert on the other leg."""
+        from popoto.backends.postgres.events import StreamStore
+
         t0 = time.time() - 100.0
         target = _append(at=t0)
 
@@ -1936,7 +1956,11 @@ class TestAnnotationAtomicity:
             pipe.xadd = exploding_xadd
             return pipe
 
+        def exploding_append(*args, **kwargs):
+            raise RuntimeError("injected XADD failure")
+
         monkeypatch.setattr(get_REDIS_DB(), "pipeline", make_pipeline)
+        monkeypatch.setattr(StreamStore, "append", exploding_append)
         with pytest.raises(RuntimeError, match="injected XADD failure"):
             ProvenanceJournal.supersede(
                 target, agent_id=AGENT, statement="a correction", at=t0 + 50.0
