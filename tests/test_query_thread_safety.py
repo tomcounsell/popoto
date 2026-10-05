@@ -430,6 +430,8 @@ async def test_async_count_reports_filtered_not_total():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 def test_concurrent_geo_filters_attach_each_querys_own_distances():
     """Real concurrent geo filter() calls, each with a distinct center.
 
@@ -554,6 +556,14 @@ def test_concurrent_geo_filters_attach_each_querys_own_distances():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
+@pytest.mark.redis_only(
+    reason="forces the race through Query._filter_keys_with_pushdown, the Redis "
+    "filter body's key-set seam; a Postgres filter() is one select() with its "
+    "distances on the returned rows and never calls it, so thread A would wait "
+    "on a hook that never fires"
+)
 def test_deterministic_geo_distance_isolation():
     """Force thread B's entire filter() to run inside thread A's window.
 
@@ -690,9 +700,6 @@ def test_deterministic_geo_distance_isolation():
 
 @pytest.mark.conformance
 @pytest.mark.usefixtures("backend")
-@pytest.mark.redis_only(
-    reason="GeoField (GEOSEARCH WITHDIST) has no Postgres mapping until the M5 GeoField/PostGIS item; validate_spec refuses the model there"
-)
 @pytest.mark.asyncio
 async def test_async_geo_filter_attaches_distances():
     lat = 25.0
@@ -731,9 +738,6 @@ async def test_async_geo_filter_attaches_distances():
 
 @pytest.mark.conformance
 @pytest.mark.usefixtures("backend")
-@pytest.mark.redis_only(
-    reason="GeoField (GEOSEARCH WITHDIST) has no Postgres mapping until the M5 GeoField/PostGIS item; validate_spec refuses the model there"
-)
 @pytest.mark.asyncio
 async def test_async_geo_filter_concurrent_gather_do_not_clobber_each_other():
     """``asyncio.gather`` over distinct centers, each on its own unit.
@@ -823,6 +827,8 @@ async def test_async_geo_filter_concurrent_gather_do_not_clobber_each_other():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 def test_q_object_geo_query_attaches_distances():
     lat = 15.0
     offset_km = 4.0

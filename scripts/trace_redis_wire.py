@@ -51,6 +51,8 @@ default, so the default trace (and the hash earlier milestones recorded) is
 unchanged. ``--with-batch`` likewise appends the #759 M5 scenarios: TTL saves
 (``Meta.ttl``, ``_ttl``, ``_expire_at``) inside and outside ``popoto.batch()``,
 and batched deletes, increments, resets and ``transaction=False``.
+``--with-geo`` appends the ``GeoField`` scenarios (#759 M5): saves, a move, a
+clear, a refused point, and every search shape and refusal.
 
 The script refuses to run unless ``REDIS_URL`` names a non-zero database
 (CLAUDE.md, #577), and it clears only the keys its own models own.
@@ -1623,6 +1625,120 @@ if WITH_LONGTAIL:
         return [
             (_PLM.get_prediction_data(r) or {}).get("resolution_mode") for r in recs
         ] + [_PLM.get_highest_errors(TrLedger)]
+
+
+# -- GeoField (#759 M5), behind --with-geo -----------------------------------------
+#
+# M5 moves GeoField.filter_query's parameter parsing into GeoField.parse_query,
+# which the Postgres planner shares, and the planner groups a field's geo
+# parameters. These scenarios pin that a Redis-bound geo save, update, clear,
+# delete and every search shape (coordinates, latitude/longitude, member,
+# units, distances, a Q object, count, order_by/limit, the refusals) send what
+# they sent. Behind the flag, so the default trace and its hash are unchanged.
+
+WITH_GEO = "--with-geo" in sys.argv
+
+
+class TrGeo(popoto.Model):
+    name = popoto.KeyField()
+    bucket = popoto.IndexedField(type=str, null=True)
+    place = popoto.GeoField()
+
+
+if WITH_GEO:
+    MODELS = MODELS + (TrGeo,)
+
+    @scenario
+    def m5_geo_writes():
+        rome = TrGeo.create(name="rome", bucket="a", place=(41.902782, 12.496366))
+        TrGeo.create(name="vatican", bucket="a", place=(41.904755, 12.454628))
+        TrGeo.create(name="edge", bucket="b", place=(32.76, 180.0))
+        TrGeo.create(name="nowhere", bucket="b", place=(None, None))
+        moved = TrGeo.create(name="moved", bucket="b", place=(10.0, 10.0))
+        moved.place = (11.0, 11.0)
+        moved.save()
+        moved.place = (0.0, 0.0)
+        moved.save()
+        out: list[Any] = [rome.place]
+        try:
+            TrGeo.create(name="north", place=(86.0, 10.0))
+        except Exception as exc:  # noqa: BLE001 - recorded
+            out.append(f"{type(exc).__name__}: {exc}")
+        TrGeo.query.get(name="north").delete()
+        return out
+
+    @scenario
+    def m5_geo_searches():
+        rome = TrGeo.query.get(name="rome")
+        center = (41.902782, 12.496366)
+        return [
+            sorted(r.name for r in TrGeo.query.filter(place=center)),
+            sorted(
+                r.name
+                for r in TrGeo.query.filter(
+                    place_latitude=center[0],
+                    place_longitude=center[1],
+                    place_radius=10,
+                    place_radius_unit="km",
+                )
+            ),
+            [
+                (r.name, r._geo_distance, r._geo_distance_unit)
+                for r in TrGeo.query.filter(
+                    place_member=rome,
+                    place_radius=5,
+                    place_radius_unit="mi",
+                    place_with_distances=True,
+                )
+            ],
+            [
+                (r.name, r._geo_distance)
+                for r in TrGeo.query.filter(
+                    place=center,
+                    place_radius=20000,
+                    place_radius_unit="km",
+                    place_with_distances=True,
+                    order_by="-name",
+                    limit=2,
+                )
+            ],
+            [
+                (r.name, getattr(r, "_geo_distance", None))
+                for r in TrGeo.query.filter(
+                    popoto.Q(
+                        place=center,
+                        place_radius=3000,
+                        place_radius_unit="ft",
+                        place_with_distances=True,
+                    )
+                    | popoto.Q(bucket="b")
+                )
+            ],
+            TrGeo.query.count(place=center, place_radius=10, place_radius_unit="km"),
+            TrGeo.query.count(bucket="a", place=center, place_radius=1),
+        ]
+
+    @scenario
+    def m5_geo_refusals():
+        out = []
+        nowhere = TrGeo.query.get(name="nowhere")
+        for bad in (
+            {"place": (86.0, 1.0)},
+            {"place": (1.0, 1.0), "place_radius": -1},
+            {"place": (1.0, 1.0), "place_radius": "abc"},
+            {"place": (1.0, 1.0), "place_radius": True},
+            {"place": (1.0, 1.0), "place_radius_unit": "yd"},
+            {"place": [1.0, 1.0]},
+            {"place__isnull": True},
+            {"place_member": nowhere, "place_radius": 1},
+        ):
+            try:
+                out.append(len(list(TrGeo.query.filter(**bad))))
+            except Exception as exc:  # noqa: BLE001 - recorded
+                out.append(f"{type(exc).__name__}: {exc}")
+        for obj in TrGeo.query.all():
+            obj.delete()
+        return out
 
 
 def main() -> None:

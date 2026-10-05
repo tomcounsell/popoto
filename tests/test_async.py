@@ -458,10 +458,6 @@ async def test_async_relationship_lazy_load():
 # ============================================================================
 
 
-@pytest.mark.redis_only(
-    reason="GeoField (GEOADD/GEOSEARCH) has no Postgres mapping until the M5 "
-    "GeoField/PostGIS item; validate_spec refuses the model on Postgres"
-)
 @pytest.mark.asyncio
 async def test_async_filter_geofield():
     """Gap 4: async GeoField with radius filter."""

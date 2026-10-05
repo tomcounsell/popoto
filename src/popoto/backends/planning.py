@@ -35,9 +35,27 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from .types import And, Cond, Not, Op, Or, OrderTerm, Predicate, QueryCall, QueryPlan
+from .types import (
+    And,
+    ComputedCol,
+    Cond,
+    Not,
+    Op,
+    Or,
+    OrderTerm,
+    Predicate,
+    QueryCall,
+    QueryPlan,
+)
 
-__all__ = ["RESULT_MODIFIERS", "TRUE", "plan_from_call", "has_filters", "validity_cond"]
+__all__ = [
+    "RESULT_MODIFIERS",
+    "TRUE",
+    "geo_distances",
+    "plan_from_call",
+    "has_filters",
+    "validity_cond",
+]
 
 RESULT_MODIFIERS = ("limit", "order_by", "values")
 _SUFFIX_OPS = {
@@ -80,8 +98,9 @@ def _query_exception(message: str, kind: Optional[str] = None) -> Exception:
 class _Params:
     """The model's filter vocabulary, as ``Query.filter_for_keys_set`` sees it."""
 
-    def __init__(self, meta: Any) -> None:
+    def __init__(self, meta: Any, model_class: Any = None) -> None:
         self.meta = meta
+        self.model_class = model_class
         self.owner: dict[str, str] = {}
         for field_name, params in meta.filter_query_params_by_field.items():
             for param in params:
@@ -162,7 +181,30 @@ class _Params:
         if unknown:
             raise _query_exception(f"Invalid filter parameters: {','.join(unknown)}")
         self._check_partitions(params, filters)
-        return [self.cond(p, filters[p]) for p in params]
+        out: list[Predicate] = []
+        geo_done: set[str] = set()
+        for p in params:
+            owner = self.owner.get(p)
+            if owner is not None and self.kind(owner) == "GeoField":
+                # A geo filter is one search over all of its field's
+                # parameters (center, radius, unit, member, with_distances),
+                # as GeoField.filter_query takes them: one WITHIN leaf (M5).
+                if owner not in geo_done:
+                    geo_done.add(owner)
+                    out.append(self._geo_cond(owner, params, filters))
+                continue
+            out.append(self.cond(p, filters[p]))
+        return out
+
+    def _geo_cond(
+        self, field_name: str, params: list[str], filters: dict[str, Any]
+    ) -> Cond:
+        """``Cond(field, WITHIN, GeoQuery)``, parsed and refused exactly as
+        ``GeoField.filter_query`` parses them (``GeoField.parse_query``)."""
+        field = self.meta.fields[field_name]
+        own = {p: filters[p] for p in params if self.owner.get(p) == field_name}
+        query = type(field).parse_query(self.model_class, field_name, **own)
+        return Cond(field_name, Op.WITHIN, query)
 
     def _check_partitions(self, params: list[str], filters: dict[str, Any]) -> None:
         for field_name in self.meta.sorted_field_names:
@@ -229,7 +271,7 @@ def _q_predicate(params: _Params, q: Any) -> Predicate:
 def plan_from_call(call: QueryCall) -> QueryPlan:
     """Validate ``call`` the way the query layer does and compile it."""
     meta = call.query.model_class._meta
-    params = _Params(meta)
+    params = _Params(meta, call.query.model_class)
     kwargs = dict(call.kwargs)
     parts: list[Predicate] = params.leaf(kwargs)
     parts.extend(_q_predicate(params, q) for q in (call.q_objects or ()))
@@ -275,7 +317,30 @@ def plan_from_call(call: QueryCall) -> QueryPlan:
         order_by=tuple(terms),
         limit=limit if isinstance(limit, int) and limit > 0 else None,
         project=tuple(values) if values else None,
+        compute=geo_distances(where),
         source=call,
+    )
+
+
+def _within_leaves(p: Optional[Predicate]) -> list[Cond]:
+    if isinstance(p, Cond):
+        return [p] if p.op is Op.WITHIN else []
+    if isinstance(p, Not):
+        return _within_leaves(p.item)
+    if isinstance(p, (And, Or)):
+        return [c for item in p.items for c in _within_leaves(item)]
+    return []
+
+
+def geo_distances(where: Optional[Predicate]) -> tuple[ComputedCol, ...]:
+    """``ComputedCol("_geo_distance", GeoQuery)`` for each geo leaf that asks
+    ``with_distances``, in predicate order (M5): the backend searches the
+    leaf, carries each matched record's distance on its ``Row`` and orders by
+    it, as the Redis path attaches ``_geo_distance`` and sorts by it."""
+    return tuple(
+        ComputedCol("_geo_distance", c.value)
+        for c in _within_leaves(where)
+        if getattr(c.value, "with_distances", False)
     )
 
 

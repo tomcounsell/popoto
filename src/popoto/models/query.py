@@ -4088,6 +4088,13 @@ class Query:
         if values:
             return [{name: row.get(name) for name in values} for row in rows]
         results = [hydrate_decoded_row(self.model_class, row) for row in rows]
+        for obj, row in zip(results, rows):
+            # A geo search with_distances (#759 M5): the backend computed each
+            # matched record's distance (QueryPlan.compute) and already
+            # ordered by it, as the Redis path attaches and sorts.
+            if "_geo_distance" in row:
+                obj._geo_distance = row["_geo_distance"]
+                obj._geo_distance_unit = row["_geo_distance_unit"]
         if not _no_track and results:
             _fire_on_read(self.model_class, results)
         return results

@@ -44,7 +44,8 @@ Example:
 """
 
 from collections import namedtuple
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Optional
 import redis
 from .field import Field
 import logging
@@ -55,6 +56,36 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.GeoField")
+
+
+@dataclass(frozen=True)
+class GeoQuery:
+    """One geo filter, parsed (:meth:`GeoField.parse_query`) and not yet run.
+
+    ``latitude``/``longitude`` are the center exactly as given (``None`` for
+    a by-member search), ``member`` the model instance searched around, and
+    ``radius`` the radius as given -- a backend parses it as its server does.
+    The Postgres planner carries this as a ``Cond(field, Op.WITHIN, …)``
+    value (#759 M5); the Redis path turns it into ``GEORADIUS`` /
+    ``GEORADIUSBYMEMBER`` arguments.
+    """
+
+    field_name: str
+    latitude: Any
+    longitude: Any
+    member: Any
+    radius: Any
+    unit: str
+    with_distances: bool
+
+    @property
+    def member_key(self) -> Optional[str]:
+        """The member's record key (``GEORADIUSBYMEMBER``'s member), or
+        ``None`` for a search around a center."""
+        if self.member is None:
+            return None
+        key = self.member.db_key.redis_key
+        return key.decode() if isinstance(key, bytes) else str(key)
 
 
 class GeoField(Field):
@@ -395,49 +426,18 @@ class GeoField(Field):
             return get_REDIS_DB().zrem(geo_db_key.redis_key, geo_member)
 
     @classmethod
-    def filter_query(cls, model: "Model", field_name: str, **query_params):
+    def parse_query(cls, model, field_name: str, **query_params) -> "GeoQuery":
+        """Parse a geo filter's parameters, exactly as :meth:`filter_query`
+        always has, into a backend-neutral :class:`GeoQuery`.
+
+        Shared by the Redis path (:meth:`filter_query`) and the Postgres
+        backend's planner (#759 M5), so both refuse the same calls with the
+        same ``QueryException`` text: a center that is not a 2-tuple, a
+        ``_member`` that is not an instance of ``model``, a unit outside
+        ``m|km|ft|mi``, and neither a center nor a member. Parameters that
+        name none of these (``<field>__isnull``) are ignored, as they always
+        were. Nothing here touches a database.
         """
-        Execute a geospatial radius query and return matching model keys.
-
-        This is the core query method that translates Popoto's Django-like
-        filter syntax into Redis GEORADIUS or GEORADIUSBYMEMBER commands.
-        It supports two query modes:
-
-        1. Coordinate-based: Search around a specific (lat, lng) point
-        2. Member-based: Search around an existing model instance's location
-
-        Args:
-            model: The Model class to query.
-            field_name: The name of the GeoField to filter on.
-            **query_params: Filter parameters including:
-                - {field_name}: Coordinates tuple for search center
-                - {field_name}_latitude: Latitude of search center
-                - {field_name}_longitude: Longitude of search center
-                - {field_name}_member: Model instance to search around
-                - {field_name}_radius: Search radius (default: 1)
-                - {field_name}_radius_unit: 'm', 'km', 'ft', or 'mi' (default: 'm')
-
-        Returns:
-            set{db_key, db_key, ..} or tuple(set, distances_dict, unit) if with_distances=True.
-            A set of Redis keys (bytes) for model instances within the
-            specified radius. These keys can be used to fetch full model
-            objects via Query.get_many_objects().
-
-        Raises:
-            QueryException: If required coordinate parameters are missing,
-                if radius_unit is invalid, or if query_params are malformed.
-
-        Example:
-            # Find restaurants within 5km of Times Square
-            keys = GeoField.filter_query(
-                Restaurant,
-                'location',
-                location=(40.7580, -73.9855),
-                location_radius=5,
-                location_radius_unit='km'
-            )
-        """
-        geo_db_key = cls.get_geo_db_key(model, field_name)
         coordinates = GeoField.Coordinates(None, None)
         member, radius, unit = None, 1, "m"
         with_distances = False
@@ -481,6 +481,74 @@ class GeoField(Field):
             elif query_param.endswith("_with_distances"):
                 with_distances = bool(query_value)
 
+        if not member and not (
+            coordinates.latitude is not None and coordinates.longitude is not None
+        ):
+            from ..models.query import QueryException
+
+            raise QueryException(
+                "missing one or more required parameters. "
+                "geofilter requires either coordinates or instance of the same model"
+            )
+        return GeoQuery(
+            field_name=field_name,
+            latitude=coordinates.latitude,
+            longitude=coordinates.longitude,
+            member=member if member else None,
+            radius=radius,
+            unit=unit,
+            with_distances=with_distances,
+        )
+
+    @classmethod
+    def filter_query(cls, model: "Model", field_name: str, **query_params):
+        """
+        Execute a geospatial radius query and return matching model keys.
+
+        This is the core query method that translates Popoto's Django-like
+        filter syntax into Redis GEORADIUS or GEORADIUSBYMEMBER commands.
+        It supports two query modes:
+
+        1. Coordinate-based: Search around a specific (lat, lng) point
+        2. Member-based: Search around an existing model instance's location
+
+        Args:
+            model: The Model class to query.
+            field_name: The name of the GeoField to filter on.
+            **query_params: Filter parameters including:
+                - {field_name}: Coordinates tuple for search center
+                - {field_name}_latitude: Latitude of search center
+                - {field_name}_longitude: Longitude of search center
+                - {field_name}_member: Model instance to search around
+                - {field_name}_radius: Search radius (default: 1)
+                - {field_name}_radius_unit: 'm', 'km', 'ft', or 'mi' (default: 'm')
+
+        Returns:
+            set{db_key, db_key, ..} or tuple(set, distances_dict, unit) if with_distances=True.
+            A set of Redis keys (bytes) for model instances within the
+            specified radius. These keys can be used to fetch full model
+            objects via Query.get_many_objects().
+
+        Raises:
+            QueryException: If required coordinate parameters are missing,
+                if radius_unit is invalid, or if query_params are malformed.
+
+        Example:
+            # Find restaurants within 5km of Times Square
+            keys = GeoField.filter_query(
+                Restaurant,
+                'location',
+                location=(40.7580, -73.9855),
+                location_radius=5,
+                location_radius_unit='km'
+            )
+        """
+        geo_db_key = cls.get_geo_db_key(model, field_name)
+        query = cls.parse_query(model, field_name, **query_params)
+        coordinates = GeoField.Coordinates(query.latitude, query.longitude)
+        member, radius, unit = query.member, query.radius, query.unit
+        with_distances = query.with_distances
+
         if member:
             redis_db_keys_list = get_REDIS_DB().georadiusbymember(
                 geo_db_key.redis_key,
@@ -491,7 +559,8 @@ class GeoField(Field):
                 sort="ASC" if with_distances else None,
             )
 
-        elif coordinates.latitude is not None and coordinates.longitude is not None:
+        else:
+            # parse_query refused a call with neither a center nor a member.
             redis_db_keys_list = get_REDIS_DB().georadius(
                 geo_db_key.redis_key,
                 longitude=coordinates.longitude,
@@ -500,13 +569,6 @@ class GeoField(Field):
                 unit=unit,
                 withdist=with_distances,
                 sort="ASC" if with_distances else None,
-            )
-        else:
-            from ..models.query import QueryException
-
-            raise QueryException(
-                "missing one or more required parameters. "
-                "geofilter requires either coordinates or instance of the same model"
             )
 
         if with_distances:

@@ -43,8 +43,9 @@ class VsPlain(popoto.Model):
 
 
 class VsWide(popoto.Model):
-    """Fields Postgres still refuses after M1.1 (M2/M5 kinds, and an index on
-    a collection)."""
+    """Fields beyond M1.1: kinds later milestones store (M2a's decay clock,
+    M5's GeoField) and one Postgres still refuses (an index on a
+    collection)."""
 
     name = popoto.KeyField()
     place = popoto.GeoField()
@@ -144,8 +145,8 @@ def test_postgres_refuses_fields_beyond_m1_1_naming_each():
     with pytest.raises(BackendCapabilityError) as info:
         validate_spec(VsWide._meta.spec, "postgres")
     message = str(info.value)
-    assert "place (GeoField)" in message
-    # DecayingSortedField is stored on Postgres from #759 M2a.
+    # GeoField is stored on Postgres from #759 M5, DecayingSortedField from M2a.
+    assert "place" not in message
     assert "relevance" not in message
     assert "listed (IndexedField, type=list)" in message
     assert "indexed field needs a scalar column type" in message
@@ -171,6 +172,21 @@ def test_postgres_accepts_the_memory_fields_through_m5():
     validate_spec(VsMemory._meta.spec, "postgres")
     assert VsMemory._meta.spec.mixins == frozenset({"AccessTrackerMixin"})
     validate_spec(VsMemoryLater._meta.spec, "postgres")
+
+
+def test_postgres_accepts_a_geo_field_since_m5():
+    """#759 M5: a GeoField is plain columns on Postgres -- the geohash score
+    Redis stores and its decoded position -- with no PostGIS."""
+
+    class VsGeo(popoto.Model):
+        name = popoto.KeyField()
+        place = popoto.GeoField()
+        wish = popoto.GeoField(type=popoto.GeoField.Coordinates)
+
+        class Meta:
+            backend = "postgres"
+
+    validate_spec(VsGeo._meta.spec, "postgres")
 
 
 def test_postgres_accepts_a_prediction_ledger_since_m5():
@@ -251,11 +267,11 @@ def test_unknown_backend_name():
 
 
 def test_explicit_meta_backend_runs_the_check_at_class_creation():
-    with pytest.raises(BackendCapabilityError, match="GeoField"):
+    with pytest.raises(BackendCapabilityError, match="hooked"):
 
         class VsPgBad(popoto.Model):
             name = popoto.KeyField()
-            place = popoto.GeoField()
+            hooked = HookingField(type=str, null=True)
 
             class Meta:
                 backend = "postgres"
