@@ -50,7 +50,7 @@ Example:
 import logging
 import time
 
-from typing import Optional
+from typing import Callable, Optional, Sequence
 
 from ..exceptions import ModelException
 from ..models.canonical_key import canonical_key_str
@@ -209,7 +209,12 @@ class EventStreamMixin:
                 e,
             )
 
-    def _defer_xadd_mutation(self, op, after_commit, update_fields=None):
+    def _defer_xadd_mutation(
+        self,
+        op: str,
+        after_commit: Callable[[Callable[[], None]], None],
+        update_fields: Optional[Sequence[str]] = None,
+    ) -> None:
         """Register this save's mutation entry to be appended once the
         surrounding Postgres transaction commits (#759 M4b B2).
 
@@ -236,7 +241,7 @@ class EventStreamMixin:
             return
         maxlen = self._stream_max_length
 
-        def _emit():
+        def _emit() -> None:
             try:
                 get_REDIS_DB().xadd(stream_key, entry, maxlen=maxlen, approximate=True)
             except Exception as e:
