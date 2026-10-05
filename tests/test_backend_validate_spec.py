@@ -171,8 +171,9 @@ def test_postgres_accepts_the_m2a_memory_fields_and_refuses_later_ones():
     with pytest.raises(BackendCapabilityError) as info:
         validate_spec(VsMemoryLater._meta.spec, "postgres")
     message = str(info.value)
-    assert "certainty (ConfidenceField, partition_by=)" in message
-    assert "partitioned confidence arrives in M3" in message
+    # #759 M3: a partitioned ConfidenceField is stored (its partition is the
+    # row's own columns); the CyclicDecayField still waits for M5.
+    assert "certainty" not in message
     assert "rhythm (CyclicDecayField)" in message
 
 

@@ -35,7 +35,12 @@ import pytest
 np = pytest.importorskip("numpy")
 
 import popoto  # noqa: E402
-from popoto import AccessTrackerMixin, ConfidenceField  # noqa: E402
+from popoto import (  # noqa: E402
+    AccessTrackerMixin,
+    ConfidenceField,
+    SupersessionProtocol,
+    ValidityField,
+)
 from popoto.backends import get_backend  # noqa: E402
 from popoto.embeddings import AbstractEmbeddingProvider  # noqa: E402
 from popoto.fields.bm25_field import BM25Field  # noqa: E402
@@ -101,6 +106,18 @@ class PASimple(popoto.Model):
     agent_id = popoto.KeyField()
     content = popoto.Field(type=str)
     relevance = DecayingSortedField(partition_by="agent_id")
+
+
+class PAValid(popoto.Model):
+    """A partitioned decay field, a confidence field and a ValidityField: the
+    score proxy's validity gate (#777 review B1)."""
+
+    name = popoto.KeyField()
+    agent_id = popoto.KeyField()
+    content = popoto.Field(type=str, default="")
+    relevance = DecayingSortedField(partition_by="agent_id")
+    trust = ConfidenceField()
+    validity = ValidityField()
 
 
 class PADecay(popoto.Model):
@@ -840,3 +857,32 @@ def test_post_effects_then_on_context_used(backend):
     third = next(r for r in recs if r.name not in {acted.name, dismissed.name})
     data = ConfidenceField.get_confidence_data(third, "certainty")
     assert (data["contradictions"], data["evidence_count"]) == (1, 1)
+
+
+def test_the_score_proxy_gates_on_validity_at_now(backend):
+    """``assess_quality`` ranks the partition through the validity gate at
+    now on both legs (#777 review B1): a record closed now and one not yet
+    started score ``None`` and count as stale, so the quality numbers match
+    -- 1 of 2 selected records stale at ``as_of`` in the past, and a score
+    spread of 1.0 -- whatever the backend."""
+    now = time.time()
+    old = _save(PAValid, name="old", agent_id="a", validity=now - 1000)
+    cur = _save(PAValid, name="cur", agent_id="a", validity=now - 1000)
+    _save(PAValid, name="fut", agent_id="a", validity=now + 1e6)
+    SupersessionProtocol.invalidate(old, at=now - 500, superseded_by=cur)
+    assembler = ContextAssembler(
+        PAValid,
+        score_weights={"relevance": 1.0},
+        max_items=5,
+        retrieval_mode="composite",
+    )
+    result = assembler.assemble(
+        query_cues={"topic": "x"},
+        partition_filters={"agent_id": "a"},
+        as_of=now - 700,
+        assess_quality=True,
+    )
+    assert sorted(r.name for r in result.records) == ["cur", "old"]
+    quality = result.metadata["quality"]
+    assert quality.staleness_ratio == 0.5
+    assert quality.score_spread == 1.0
