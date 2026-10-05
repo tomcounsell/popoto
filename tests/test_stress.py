@@ -417,6 +417,8 @@ def test_bulk_mixed_field_types(performance_timer):
     timer.assert_under(8, "Mixed field types (500 items)")
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_async_concurrent_operations(performance_timer):

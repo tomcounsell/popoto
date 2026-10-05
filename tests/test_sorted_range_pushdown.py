@@ -948,6 +948,11 @@ class RangeCallRecorder:
         return [c for c in self.calls if field_name in str(c[1])]
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
+@pytest.mark.redis_only(
+    reason="counts HGETALLs on the redis.asyncio pipeline to prove the sorted-set range read is bounded; Postgres bounds with LIMIT in SQL"
+)
 @pytest.mark.asyncio
 async def test_async_bounded_query_hydrates_only_limit():
     """The headline defect: async_filter hydrated the whole range.
@@ -971,6 +976,11 @@ async def test_async_bounded_query_hydrates_only_limit():
     )
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
+@pytest.mark.redis_only(
+    reason="records ZRANGEBYSCORE/ZREVRANGEBYSCORE calls; Postgres has no sorted set to read"
+)
 @pytest.mark.asyncio
 async def test_async_range_read_is_bounded_and_direction_correct():
     """A descending async query must issue ZREVRANGEBYSCORE, with a num bound."""
@@ -1004,6 +1014,8 @@ async def test_async_range_read_is_bounded_and_direction_correct():
     ), f"an ascending query must read ascending: {calls}"
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 @pytest.mark.asyncio
 async def test_async_and_sync_agree_across_limits_and_directions():
     """Parity is the whole point: the bound may not change the answer."""
@@ -1031,6 +1043,11 @@ async def test_async_and_sync_agree_across_limits_and_directions():
             assert async_rows == sync_rows, f"{order_by} limit={limit}"
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
+@pytest.mark.redis_only(
+    reason="orphans sorted-set members by deleting their Redis hashes; Postgres indexes are transactional, so an orphaned index member cannot exist"
+)
 @pytest.mark.asyncio
 async def test_async_orphan_density_re_reads_and_returns_full(caplog):
     """Orphans past the margin must force a full re-read, not a short answer.
@@ -1058,6 +1075,8 @@ async def test_async_orphan_density_re_reads_and_returns_full(caplog):
     assert "clean_indexes" in joined, joined
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 @pytest.mark.asyncio
 async def test_async_pending_client_filter_suppresses_the_bound():
     """A pending plain-field filter must see every candidate before truncation.
@@ -1088,6 +1107,11 @@ async def test_async_pending_client_filter_suppresses_the_bound():
     )
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
+@pytest.mark.redis_only(
+    reason="seeds orphaned sorted-set members by deleting Redis hashes to arm the pushdown re-read; Postgres has neither"
+)
 @pytest.mark.asyncio
 async def test_concurrent_async_filters_do_not_clobber_each_other():
     """Query is one instance per model class, shared by every coroutine.
@@ -1131,6 +1155,11 @@ async def test_concurrent_async_filters_do_not_clobber_each_other():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
+@pytest.mark.redis_only(
+    reason="counts HGETALLs on the redis.asyncio pipeline to prove the Redis range bound; Postgres bounds with LIMIT in SQL"
+)
 @pytest.mark.asyncio
 async def test_async_meta_order_by_descending_supplies_direction_and_bound():
     """Async: descending Meta.order_by supplies direction and the Redis bound.
@@ -1153,6 +1182,11 @@ async def test_async_meta_order_by_descending_supplies_direction_and_bound():
     )
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
+@pytest.mark.redis_only(
+    reason="counts HGETALLs on the redis.asyncio pipeline to prove the Redis range bound is declined; Postgres has no pushdown to decline"
+)
 @pytest.mark.asyncio
 async def test_async_meta_order_by_other_field_disables_pushdown():
     """Async: Meta.order_by on a non-sorted field must decline the bound.
@@ -1176,6 +1210,11 @@ async def test_async_meta_order_by_other_field_disables_pushdown():
     assert counter.count > 3 + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
+@pytest.mark.redis_only(
+    reason="counts HGETALLs on the redis.asyncio pipeline to prove the key-list slice bound; Postgres bounds with LIMIT in SQL"
+)
 @pytest.mark.asyncio
 async def test_async_meta_order_by_supplies_direction_to_the_key_list_slice():
     """Async twin of the sync key-list-slice case: bucket declines the Redis bound."""

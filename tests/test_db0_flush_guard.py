@@ -147,6 +147,11 @@ class TestRealDb4Client:
 
 
 class TestAsyncDb0Refusal:
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(
+        reason="tests the redis.asyncio client's DB-0 FLUSHDB guard"
+    )
     @pytest.mark.asyncio
     async def test_async_flushdb_refused_never_reaches_server(self, monkeypatch):
         import redis.asyncio as aioredis
@@ -166,6 +171,9 @@ class TestAsyncDb0Refusal:
             await client.flushdb()
         await client.connection_pool.disconnect()
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(reason="tests the redis.asyncio pipeline's FLUSHALL guard")
     @pytest.mark.asyncio
     async def test_async_pipeline_flushall_refused_at_queue_time(self, monkeypatch):
         import redis.asyncio as aioredis

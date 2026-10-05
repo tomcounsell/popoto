@@ -1036,6 +1036,41 @@ The outage is logged at ERROR once per `Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS`
 (60 s), however many calls fail within that window. After a successful call
 the record resets, and a recovery is logged at WARNING.
 
+**A busy pool is not an outage.** When every connection the pool may hold
+(`Defaults.PG_POOL_MAX_SIZE`) is checked out by other callers -- more
+concurrent `async with transaction()` blocks or `async_*` calls on one event
+loop than that, or more threads -- a caller waits up to
+`Defaults.PG_CONNECT_TIMEOUT_SECONDS` for one to come back, and then raises
+**`popoto.backends.BackendBusyError`**, a subclass of
+`BackendRetryableError`. Every connection is in use, so this is contention:
+the health record is not touched and no dropped write is counted; the call
+sent nothing, so running it again is safe:
+
+```python
+from popoto.backends import BackendBusyError
+
+try:
+    await note.async_save()
+except BackendBusyError:
+    ...  # back off and retry, or bound your concurrency below PG_POOL_MAX_SIZE
+```
+
+A connection that cannot be *opened* is still `BackendUnavailableError` and
+an outage. The sync `psycopg_pool` reports both cases as one `PoolTimeout`,
+so on the sync path popoto calls a timeout busy only when every connection
+of the pool is checked out to a caller at that moment. The async pool
+applies the same rule to its own slots: a wait is busy only when every slot
+is held by a checked-out connection. During a partition (an unresponsive
+server, not a refused port) callers sit inside the connect holding slots
+while others queue behind them, and those queued waits time out as outages:
+health flips and each write is counted dropped. The rule says nothing about
+the server's state, only the pool's -- with every connection checked out and
+the server then going down, a new caller is still told the pool is busy,
+and the holders report the outage when their statements fail. Pinned by
+`tests/postgres/test_postgres_async.py::test_a_busy_async_pool_is_not_an_outage`,
+`test_a_partitioned_async_pool_is_an_outage_not_busy` and
+`test_a_busy_sync_pool_is_not_an_outage`.
+
 ## Transactions
 
 ```python
@@ -1137,16 +1172,54 @@ commits the rest, as on Redis. `batch(transaction=False)` is still one
 transaction on Postgres. A deadlock inside the batch raises
 `BackendRetryableError`, as inside any `transaction()`.
 
-**A lock this thread already holds.** Until it commits, a batch holds each
-record it wrote. A write from the same thread that would wait for one of
-those records outside the batch -- a second, nested `batch()` or
-`transaction()` that writes the same record, or a plain `save()` of it --
-could never be granted, because the only thread that can release it is the
-one waiting. Popoto refuses that write with `BackendCapabilityError` before
-sending it, instead of hanging until `PG_STATEMENT_TIMEOUT_MS`; the batch
-that holds the record is unharmed. Write through that batch, or `execute()`
-it first. Another thread's write simply waits for the commit. Nested batches
-that write different records work as on Redis.
+**A record lock this thread or task already holds.** Until it commits, a
+batch holds the record-key lock of each record it wrote. A write from the
+same thread that would wait for one of those locks outside the batch -- a
+second, nested `batch()` or `transaction()` that writes the same record, or
+a plain `save()` of it -- could never be granted, because the only thread
+that can release it is the one waiting. Popoto refuses that write with
+`BackendCapabilityError` before sending it, instead of hanging until
+`PG_STATEMENT_TIMEOUT_MS`; the batch that holds the record is unharmed.
+Write through that batch, or `execute()` it first. Another thread's write
+simply waits for the commit. Nested batches that write different records
+work as on Redis.
+
+Under asyncio the unit is the **task**, not the thread: every task's
+Postgres I/O runs on the event-loop thread ([Async](#async-m5)). Three
+rules decide whether a task's write that would wait on another unit's
+record lock waits or is refused:
+
+- **Its own transaction or batch:** refused at once, as for a thread.
+- **An ancestor's:** refused at once. An ancestor is a task that had a
+  `transaction()` or batch open on this backend when it created this task
+  (`asyncio.gather`, `create_task`, `TaskGroup`), directly or through
+  intermediate tasks. The parent typically awaits the child inside its
+  block, so it cannot commit until the child finishes and the wait would
+  hang until `PG_STATEMENT_TIMEOUT_MS`. The error says so: pass
+  `pipeline=uow` (the parent's unit or batch) to the child to join the
+  parent's transaction, or write the record after it ends. This applies even
+  to a child the parent never awaits (fire-and-forget): popoto cannot tell
+  the two shapes apart, so the child is refused rather than allowed to wait.
+- **Anyone else's** -- a sibling task, a task created before the
+  transaction opened, an unrelated task, another thread: an ordinary wait.
+  That unit can commit while this one waits, so it is never refused. Two
+  children of one parent, each in its own `transaction()`, that write
+  overlapping records serialize on the locks; neither is refused.
+
+The ancestry is carried in a context variable that the parent's task sets
+when an `async_*` call leaves it with a unit open, and that a task inherits
+when it is created. So a child created *before* the parent opened its
+transaction does not count as a descendant. Neither does the reverse case:
+a child that opened a batch and returned, with the parent then writing
+the same record outside that batch. Both still wait until
+`PG_STATEMENT_TIMEOUT_MS`.
+
+The check covers **record-key locks only** (the locks `save`, `delete`,
+`increment` and the other record writes take first). A nested write that
+would wait on any other lock an outer unit holds -- the `(model, field)`
+lock a `ValidityField` write takes, a `UNIQUE` value the outer unit wrote
+and has not committed -- is not detected, and waits until
+`PG_STATEMENT_TIMEOUT_MS`.
 
 **One batch, one backend.** A batch holding a Postgres transaction refuses a
 Redis command, and a batch with Redis commands queued refuses a Postgres
@@ -1264,6 +1337,137 @@ REDIS_URL=redis://localhost:6379/10 \
 POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
     python scripts/probe_ttl_parity.py --seeds 1 2 3 --shapes 120
 ```
+
+## Async (M5)
+
+On a Postgres-bound model every `async_*` method -- `async_save`,
+`async_create`, `async_delete`, `async_load`, `async_get_or_create`,
+`async_update_or_create`, the bulk twins, `async_delete_all`, and
+`Query.async_get`/`async_get_many`/`async_filter`/`async_all`/`async_count`/
+`async_keys` -- runs on the model's **async backend**, with its I/O on
+`psycopg.AsyncConnection` on the running event loop. Before M5 they ran the
+sync call in a worker thread. A Redis-bound model's `async_*` methods are
+unchanged, command for command (`scripts/trace_async_redis_wire.py`).
+
+```python
+from popoto.backends.postgres.aio import get_async_backend
+
+note = await Note.async_create(owner="a", slug="1")
+rows = await Note.query.async_filter(owner="a")
+
+backend = get_async_backend(Note)          # Postgres-bound models only
+async with backend.transaction() as uow:   # one READ COMMITTED transaction
+    await Note(owner="a", slug="2").async_save(pipeline=uow)
+    await Note(owner="a", slug="3").async_save(pipeline=uow)
+# both committed, or (on an exception) neither
+```
+
+**One implementation.** The async backend does not reimplement the sync one.
+It runs the sync backend's own code in a greenlet on the loop thread (the
+technique SQLAlchemy's asyncio extension uses) and swaps the one thing that
+does I/O: inside that greenlet, every statement the sync code issues is
+awaited on an `AsyncConnection` from the loop's pool. So the SQL, the lock
+order, the deadlock retry and `BackendRetryableError`, the #769 no-blind-retry
+rule, the `BackendUnavailableError` outage record (shared: `get_backend(M).health`
+counts async failures and dropped writes too), the savepoint a guarded save
+takes inside a caller's transaction, and the first-use version, encoding and
+DDL checks are the sync backend's, by construction. `greenlet` comes with the
+`postgres` extra; without it, the `async_*` methods fall back to the worker
+thread and log one warning. A unit of work from the async `transaction()` is
+for the `async_*` methods: handing it to a sync `save(pipeline=uow)` raises
+`BridgeMisuseError`.
+
+**`popoto.batch()` from async code.** An `async_*` write handed a batch
+joins it as a sync write does ([`popoto.batch()`](#popotobatch-m5)), but
+the batch's transaction is then opened on the loop's async pool, so commit
+it from the coroutine:
+
+```python
+pipe = popoto.batch()
+await Note(owner="a", slug="1").async_save(pipeline=pipe)
+await Note(owner="a", slug="2").async_save(pipeline=pipe)
+await pipe.async_execute()     # COMMIT on the loop; then the XADDs, in order
+```
+
+`pipe.execute()` on such a batch raises `BridgeMisuseError` naming
+`async_execute()`; `await pipe.async_reset()` rolls it back. A plain
+`reset()` or leaving a `with` block schedules the rollback on the running
+loop as a task. If that rollback fails (its connection broke), the failure
+is logged once at WARNING; the server rolls back a transaction whose
+connection is gone. The Redis side effects wait for the commit exactly as in a
+sync batch. `async_execute()` on any other batch (Redis commands, or a
+transaction a sync call opened) runs `execute()` in a worker thread.
+Pinned by `test_postgres_async.py::test_an_async_save_joins_a_batch_on_the_loop`.
+
+**A batch is driven by the side that opened it.** If an `async_*` write
+opened the batch, a sync write to it raises `BridgeMisuseError`. If a sync
+write opened it, an `async_*` write raises `BridgeMisuseError` too: the
+batch's connection is a blocking one, and driving it from the loop would
+stall every other task for each statement. Both are refused before anything
+is sent, and the batch stays usable from the side that opened it. A batch
+that outlives its loop (`asyncio.run()` returned before `async_execute()`)
+is rolled back as the loop shuts down, and its connection is closed at the
+socket by the next pool lookup or `close_pools()`. A later `reset()` of it
+is a no-op.
+
+**Concurrent transactions are per task.** Two tasks' `async with
+transaction()` blocks that write the same records wait on each other's
+record locks like two threads do; the refusal of a write that waits on a
+lock its *own* open transaction holds ([`popoto.batch()`](#popotobatch-m5))
+is per task. More concurrent transactions than `PG_POOL_MAX_SIZE` queue for
+a connection, and one that waits longer than `PG_CONNECT_TIMEOUT_SECONDS`
+raises `BackendBusyError`, not an outage ([Topology](#topology-and-the-outage-contract)).
+
+**What still leaves the loop.** An embedding provider is a sync API: its call,
+and the backfill's wait on it, run in a worker thread so they never block the
+loop. Redis I/O that a Postgres model's sync path makes (an
+`EventStreamMixin`'s `XADD`) is a blocking call on the loop thread.
+`async_check_indexes`/`async_clean_indexes`/`async_rebuild_indexes` stay on a
+worker thread on every backend: their bodies scan Redis index keys.
+
+**Model hooks run on the event-loop thread.** The bridge runs the whole sync
+method, so a model's overrides of `save()`, `pre_save()` and `delete()`, and
+its fields' `pre_save_validate`/`on_save`/`on_delete` hooks, run inside it, on
+the loop thread, with the loop running. Before M5 they ran in a worker thread.
+Two consequences:
+
+- A hook that calls `asyncio.run()` (or `loop.run_until_complete()`) now
+  raises `RuntimeError: asyncio.run() cannot be called from a running event
+  loop`. It worked under the thread shim. `asyncio.get_running_loop()` now
+  succeeds inside a hook, so a hook that branches on it sees a loop.
+- A hook that blocks (`time.sleep`, `requests`, a sync client of another
+  service) blocks the whole loop for that long, not one worker thread.
+
+Keep hooks to in-memory work on the instance. Do blocking or async work
+outside the save: `await` it before or after `async_save()`, or hand it to
+`asyncio.to_thread()` / a task from the calling coroutine. A hook that must
+stay blocking can be reached through the sync `save()` in
+`asyncio.to_thread(instance.save)`.
+
+**First use of a model from concurrent tasks.** The backend's first-use table
+check holds a `threading.RLock`, which separates threads, not tasks: every
+bridge greenlet runs on the loop thread, so for them the lock is re-entrant
+and concurrent first uses all pass it. What serialises them is the server:
+`ensure_table` takes a transaction-scoped advisory lock
+(`pg_advisory_xact_lock` on `popoto:ddl:<schema>`), so one task creates or
+checks the table and the others wait, then find it made.
+
+**Event loops.** Pools are per (DSN, process, event loop), lazy, each at most
+`Defaults.PG_POOL_MAX_SIZE` connections, validated on checkout like the sync
+pool's. A model used from two loops -- `asyncio.run()` twice, pytest-asyncio's
+function-scoped loops -- gets a pool per loop. A loop's pool closes with the
+loop: `loop.shutdown_asyncgens()`, which `asyncio.run`, `asyncio.Runner` and
+pytest-asyncio call, finalizes it. A loop closed without that call is swept,
+at the socket, by the next pool lookup from any loop, so `pg_stat_activity`
+does not grow with the number of loops a process has used
+(`tests/postgres/test_postgres_async.py`). A task cancelled at any point --
+`task.cancel()`, an `asyncio.wait_for` timeout -- including while its
+connection's checkout check is in flight, closes that connection rather than
+leaving it open and unowned, so the server's session count for a pool stays
+at or below `PG_POOL_MAX_SIZE` however often callers cancel. The pool is popoto's own, not
+`psycopg_pool.AsyncConnectionPool`: that pool's maintenance workers catch
+`CancelledError`, so one still open when its loop shuts down hangs
+`asyncio.run()`'s task cancellation whenever a worker is mid-task.
 
 ## Ranking and memory state (M2a)
 
@@ -1459,7 +1663,9 @@ cast to the column's type.
 | `ProvenanceJournal` with a caller `pipeline=` (M4) | a Redis pipeline: the annotation and close are queued, `target_closed` is `None` and `close_index` names the close in `execute()`'s results | the backend's unit of work only (anything else raises `ValueError`): the annotation and close run inside it, `target_closed` is known at the call, `close_index` is `None`. Pinned: `test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close` |
 | `EventStreamMixin` on a Postgres-bound model (`JournalEntry`, M4) | `XADD` in the save's pipeline, so it commits or is discarded with the write | `XADD` to Redis after the Postgres write commits (after the caller's `transaction()` commits, when there is one), never for a rolled-back write; best-effort, so with Redis down the row commits and no entry is sent; until the stream moves in M5 |
 | `AppendOnlyMixin`: two saves of one key in one unit of work (M4) | both pass the guard (the documented intra-pipeline shape) | the second is refused (the guard reads inside the transaction). Pinned: `test_postgres_recipes.py::test_append_only_sees_its_own_transaction` |
-| `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` | run the sync call in a worker thread (the async driver arrives in M5) |
+| `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` (reads); a worker thread (writes) | the async backend: the sync call's Postgres I/O on `psycopg.AsyncConnection`, on the running loop, no thread (M5, [Async](#async-m5)) |
+| `async_load(db_key=<str>)` (the type its signature names) | raises `AttributeError: 'str' object has no attribute 'redis_key'`: the native path reads `db_key.redis_key` (pre-existing, before M5). The sync `load(db_key=<str>)` works | runs the sync `load`: the record, or `None` when there is none. Pinned on both legs: `tests/test_async_parity.py::test_async_load_with_a_string_db_key_is_a_documented_divergence` |
+| `async_all` on an `AccessTrackerMixin` model | stages a read per record (its native path hydrates through `_async_get_many_objects`), although `all()` is non-tracking by design | does not stage, as `all()` does not (before M5 too) |
 | `ExistenceFilter.might_exist` (M2b) | a bloom filter: false positives are possible, and a deleted record stays "seen" | exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: `test_existence_filter.py::TestMembershipExactness` |
 | `FrequencySketch.get_frequency` (M2b) | a count-min sketch: never under, may be over | the exact count of saves (never decremented, like the sketch). Pinned: same class |
 | `ExistenceFilter.fill_ratio` (M2b) | the fraction of set bits | an estimate, `1 - e^(-k·n/m)` for the `n` distinct tokens stored |

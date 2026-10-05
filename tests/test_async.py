@@ -10,6 +10,14 @@ from src import popoto
 from src.popoto.redis_db import POPOTO_REDIS_DB
 import src.popoto.redis_db as redis_db_module
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this module
+# runs once per configured backend. On the Postgres leg the `async_*` methods
+# run on AsyncPostgresBackend (psycopg.AsyncConnection on the test's own event
+# loop -- pytest-asyncio gives each test a fresh one, so this file is also the
+# per-loop pool check). A `redis_only` mark names the Redis-only property the
+# test asserts.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 @pytest.fixture(autouse=True)
 def flush_redis():
@@ -223,6 +231,11 @@ async def test_async_filter_with_order_by():
     assert jobs[2].priority == 3
 
 
+@pytest.mark.redis_only(
+    reason="changes a KeyField with save(migrate_key=True), which rewrites the key "
+    "on Redis and raises BackendCapabilityError on Postgres in v2 (plan §1.1 "
+    "divergence)"
+)
 @pytest.mark.asyncio
 async def test_async_update_and_save():
     """Test updating a field and saving asynchronously."""
@@ -445,6 +458,10 @@ async def test_async_relationship_lazy_load():
 # ============================================================================
 
 
+@pytest.mark.redis_only(
+    reason="GeoField (GEOADD/GEOSEARCH) has no Postgres mapping until the M5 "
+    "GeoField/PostGIS item; validate_spec refuses the model on Postgres"
+)
 @pytest.mark.asyncio
 async def test_async_filter_geofield():
     """Gap 4: async GeoField with radius filter."""
@@ -559,6 +576,10 @@ async def test_async_get_returns_none_on_miss():
 # ============================================================================
 
 
+@pytest.mark.redis_only(
+    reason="async_scan_keys() is a Redis SCAN over the keyspace; a Postgres model "
+    "has no keys there"
+)
 @pytest.mark.asyncio
 async def test_async_scan_keys():
     """Gap 11: async_scan_keys functionality."""
@@ -584,6 +605,10 @@ async def test_async_scan_keys():
 # ============================================================================
 
 
+@pytest.mark.redis_only(
+    reason="keys(catchall=True) is a Redis KEYS debug API, refused on other "
+    "backends (plan §1)"
+)
 @pytest.mark.asyncio
 async def test_async_keys_catchall():
     """Gap 12: async_keys with catchall parameter."""
@@ -597,6 +622,10 @@ async def test_async_keys_catchall():
     assert len(keys) >= 1
 
 
+@pytest.mark.redis_only(
+    reason="keys(clean=True) repairs Redis index sets, refused on other backends "
+    "(plan §1)"
+)
 @pytest.mark.asyncio
 async def test_async_keys_clean():
     """Gap 12: async_keys with clean parameter."""
@@ -683,6 +712,10 @@ async def test_async_all_meta_order_by():
 # ============================================================================
 
 
+@pytest.mark.redis_only(
+    reason="asserts the Redis key TTL through POPOTO_REDIS_DB.ttl(); a Postgres "
+    "record has no key TTL to read (expiry there is _expires_at, the M5 TTL item)"
+)
 @pytest.mark.asyncio
 async def test_async_save_meta_ttl():
     """Gap 15: async_save respects Meta.ttl."""

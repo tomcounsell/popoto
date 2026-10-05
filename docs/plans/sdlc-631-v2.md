@@ -1062,6 +1062,83 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     stores cannot commit atomically together.
   - **Exit criterion:** `tests/postgres/test_postgres_ttl.py::
     test_an_expired_row_is_invisible_before_the_reaper_and_gone_after_a_write`.
+- **M5 async as shipped: departures from this plan, recorded.**
+  - **One implementation, two drivers, not an async copy.**
+    `AsyncPostgresBackend` (`backends/postgres/aio.py`) runs the sync
+    backend's own methods -- and, for the routed `async_*` model methods, the
+    whole sync `Model`/`Query` method -- in a greenlet on the loop thread;
+    inside it `_pool_for` returns a sync-shaped facade over the loop's
+    `AsyncConnection`s, so every statement is awaited on the loop. The SQL,
+    the §6 lock order, `BackendRetryableError`, the #769 no-blind-retry rule,
+    the `BackendUnavailableError` health record (shared with the sync
+    backend), the M3 savepoint rule and the first-use version/encoding/DDL
+    checks are therefore the sync backend's, not a parallel copy; the only
+    edits to the sync modules are the `_pool_for` hook and routing the two
+    retry back-offs (`_sleep`) and the three embedding-provider calls
+    (`_blocking`, to a worker thread) through the bridge. Cost: a new
+    dependency, `greenlet`, in the `postgres` extra (without it the methods
+    keep the thread shim and log once). The `AsyncBackend` protocol mirrors
+    groups A-C plus `field_call` (the methods `async_*` callers reach), not
+    all 24, and adds `run(fn, ...)`, which is how the model methods route.
+  - **The pool is popoto's own, not `psycopg_pool.AsyncConnectionPool`.**
+    That pool's maintenance workers catch `CancelledError`, so one left open
+    when its loop shuts down hangs `asyncio.run()`'s task cancellation
+    whenever a worker is mid-task: 5 hangs in 6 runs of two
+    `test_async.py` conformance tests under pytest-asyncio's
+    function-scoped loops. A per-loop pool has to survive loops nobody closes
+    it for, so this one has no background task: max `PG_POOL_MAX_SIZE`
+    connections, `PG_CONNECT_TIMEOUT_SECONDS` to wait for one (then
+    `PoolTimeout`), the empty-query checkout check, and a connection that
+    comes back not idle is closed. It closes with its loop through
+    `shutdown_asyncgens()`; a loop closed without that is swept at the socket
+    by the next lookup. Review of #784 found a task cancelled during the
+    checkout check left its connection open and unowned (500 cancelled saves:
+    1 session to 22 on a pool of 4); the check and the discard now close the
+    connection on any `BaseException`, every connection is tracked as idle or
+    checked out, and `aclose` closes any that is neither.
+  - **Hooks run on the loop thread.** The bridge runs the whole sync method,
+    so model and field hooks run inside it: a hook calling `asyncio.run()`
+    raises `RuntimeError`, and a blocking hook blocks the loop (documented in
+    the feature doc's Async section). The `_check_table` `RLock` does not
+    separate tasks on one thread; the server's `popoto:ddl:<schema>` advisory
+    lock is what serialises concurrent first use.
+  - **Not routed:** `async_check_indexes`/`async_clean_indexes`/
+    `async_rebuild_indexes` stay on a worker thread on every backend, because
+    their bodies scan Redis index keys (Postgres `maintain` is its own M5
+    item); routing them would block the loop on Redis I/O.
+  - **Merged with the TTL/`batch()` PR: three seams fixed.** (1) #783's
+    held-record-lock registry was per thread; under the bridge every task
+    shares the loop thread, so 18 of 20 concurrent async transactions on
+    overlapping records were refused as self-waits. It is keyed by
+    `asyncio.current_task()` (a bridge greenlet runs inside its driving
+    task's step), falling back to the thread; not a `ContextVar`, because
+    `_spawn` copies the context per call. (2) A pool checkout timeout under
+    contention was reported as an outage (health flipped, dropped writes
+    counted). It is now `BackendBusyError(BackendRetryableError)`, health
+    untouched; the async pool marks its own semaphore timeout, and on the
+    sync `psycopg_pool` (which reports "all in use" and "cannot connect"
+    as one `PoolTimeout`) a timeout is busy only when every connection is
+    checked out to a caller. (3) `await obj.async_save(pipeline=batch)`
+    opened the batch's transaction on the loop, which the sync `execute()`
+    cannot drive: `Batch.async_execute()`/`async_reset()` commit and roll
+    back through the bridge, and a sync `reset()` schedules the rollback on
+    the loop.
+  - **Second review of #784: two corrections.** (1) The async pool marked
+    every slot-wait timeout busy. Under a partition, though, the slots are
+    held by callers stuck in `connect()`, so 8 of 10 dropped writes went
+    uncounted. It now applies the sync rule: busy only when every slot is
+    held by a checked-out connection (`len(out) >= max_size`). Otherwise the
+    timeout is an outage. (2) A child task that writes a record its parent's
+    open transaction holds hung until the statement timeout and was then
+    booked as an outage. Scopes stay per task, but a task now refuses at
+    once a wait on a lock held by an *ancestor's* open unit. A ContextVar
+    holds the ancestry: `AsyncPostgresBackend.run` sets it in the task's own
+    context once a call leaves the task with a unit open, and children
+    inherit it when they are created. Siblings never see each other's units,
+    so they still wait. One cost is recorded: a fire-and-forget child the
+    parent never awaits is refused too. A batch opened by a sync write now
+    refuses an `async_*` write (it would block the loop), as the converse
+    already did.
 - **M5 long tail as shipped: departures from this plan, recorded.** The
   `CyclicDecayField` / `PredictionLedgerMixin` / `TDValueField` PR
   (`backends/postgres/longtail.py`).
