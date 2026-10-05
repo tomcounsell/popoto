@@ -786,13 +786,16 @@ class LongtailOpsMixin:
         f_l = _lit(math.nan if factor_n is None else factor_n)
         mx, mn = _lit(float(max_amplitude)), _lit(float(min_threshold))
         x = safe_mul("u.a", f_l)
+        # ``array_agg`` over no rows is NULL, not ``'{}'``: an empty stored
+        # cycles entry (Redis keeps the empty msgpack array) must stay empty,
+        # or the row carries periods with a NULL amplitude column.
         clamp = (
-            f"(SELECT array_agg((CASE WHEN w.y = {_NAN} THEN w.y "
+            f"COALESCE((SELECT array_agg((CASE WHEN w.y = {_NAN} THEN w.y "
             f"WHEN w.y < {mn} THEN {_ZERO} ELSE w.y END) ORDER BY w.o) FROM "
             f"(SELECT v.o, (CASE WHEN v.x = {_NAN} THEN v.x WHEN v.x < {_ZERO} "
             f"THEN {_ZERO} WHEN v.x > {mx} THEN {mx} ELSE v.x END) AS y FROM "
             f"(SELECT u.o, {x} AS x FROM unnest({ca}) WITH ORDINALITY AS u(a, o) "
-            f"OFFSET 0) AS v) AS w)"
+            f"OFFSET 0) AS v) AS w), '{{}}'::float8[])"
         )
         sql, params = self._record_locked(
             ts,
@@ -1046,7 +1049,7 @@ class LongtailOpsMixin:
             # The script's ZADD refuses a NaN score -- after its HSET, which
             # Redis does not roll back. Refused here before anything is
             # written (a documented divergence).
-            raise ValueError("resulting score is not a number (NaN)")
+            raise ValueError("value is not a valid float (the prediction error is NaN)")
         ts = self._table(spec, write=True)
         ledger = self._engine(LEDGER_TABLE)
         errors = self._engine(ERROR_TABLE)

@@ -902,9 +902,12 @@ and adds a text round trip to every row a ranking scans.
   line, word for word as on Redis. No second statement: the merge is atomic
   with the row it belongs to.
 - `CYCLES_ADJUST_LUA` (`strengthen_cycle` / `weaken_cycle`) is one `UPDATE …
-  SET f__cycle_amp = (SELECT array_agg(<clamp(a * factor)> ORDER BY o) …)
-  WHERE f__cycle_amp IS NOT NULL RETURNING …` behind the record's key lock; a
-  `NaN` amplitude passes every comparison untouched, as in Lua.
+  SET f__cycle_amp = coalesce((SELECT array_agg(<clamp(a * factor)> ORDER BY o) …), '{}')
+  WHERE f__cycle_period IS NOT NULL RETURNING …` behind the record's key lock; a
+  `NaN` amplitude passes every comparison untouched, as in Lua. The
+  `coalesce` is load-bearing: `array_agg` over no rows is `NULL`, and an
+  empty cycles entry must stay empty, as the script's re-pack of an empty
+  array does (`test_adjusting_an_empty_cycles_entry_keeps_it_empty`).
   `resolve_pressure` is one `UPDATE` of the two pressure columns.
 
 **`TDValueField`.** `TD_UPDATE_LUA` is one statement behind the record's key
@@ -1281,7 +1284,7 @@ cast to the column's type.
 | `td_update(…, pipeline=uow)` with a Postgres `transaction()` (M5) | (a Redis pipeline queues the script and returns `None`) | the update runs inside the transaction, so the TD error is returned, as `update_confidence` does |
 | A NaN `td_update` value (M5) | stored as `tostring(nan)`, `"nan"` or `"-nan"` by platform | `numeric` `NaN`, unsigned |
 | The key order of a resolved ledger entry (M5) | cmsgpack's Lua-table iteration order | the entry's own order. Dicts compare equal |
-| A NaN prediction error (M5) | the script marks the entry resolved, then its `ZADD` refuses the score (`ResponseError`), and Redis does not roll the `HSET` back | refused before anything is written (`ValueError`) |
+| A NaN prediction error (M5) (`inf` against a number, `inf - inf`) | the script marks the entry resolved, then its `ZADD` refuses the score (`ResponseError: value is not a valid float`), and Redis does not roll the `HSET` back: the entry reads resolved with a NaN error and no error-set member | refused before anything is written: `ValueError` with the same text, and the entry stays unresolved. Pinned on both legs: `test_backend_parity_longtail.py::test_a_nan_prediction_error_is_a_documented_divergence`; the probe's `ledger_nan_error` class |
 | An integer in a ledger entry that rounds to `2**63` or more as a double (M5) | cmsgpack's conversion is undefined behaviour in C: the re-packed value differs by platform (`-2**63`, `-1`) | the double |
 | `execute_supersede(mode="open")` naming a member with no record (M3) | `ZADD NX` indexes the member anyway | writes nothing: the interval is the record's row. Only a direct `execute_supersede` call can ask for it. Pinned: `tests/postgres/test_postgres_validity.py::test_mode_open_on_a_member_with_no_record_writes_nothing` |
 | An open-claim pointer naming a record that does not exist (M3) | storable (a manual `SET`, or a partial `import_state`); `supersede` reads it as "no incumbent" | unrepresentable: the pointer table's foreign key refuses it, and deleting a record cascades to its pointers. `import_state` for a record that is not stored raises `ValidityMemberAbsentError` (a `ValidityError`, so a `ValueError`) chained from the driver's `ForeignKeyViolation`; Redis's `import_state` never raises there. Pinned: `test_a_pointer_cannot_name_a_record_that_does_not_exist` |

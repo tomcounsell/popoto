@@ -1064,10 +1064,17 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   - **`DataFrameField` is a documented `validate_spec` refusal**, with its
     reason (the `dataframe` extra is installed by no CI job), not a `bytea`
     column.
-  - **The probe** (`scripts/probe_longtail_parity.py`, 3 seeds × 500 shapes
-    on PostgreSQL 18.6 and Redis 8.10.2, macOS arm64): 6,207 cyclic ranking
-    scores bit-identical, 0 undocumented mismatches across the ranking,
-    merge, adjustment, query, TD, ledger and observation classes.
+  - **The probe** (`scripts/probe_longtail_parity.py`, seeds 1–6 × 500
+    shapes on PostgreSQL 18.6 and Redis 8.10.2, macOS arm64): 11,691 cyclic
+    ranking scores bit-identical (max deviation 0 ulp), 0 undocumented
+    mismatches across the ranking, merge, adjustment, query, TD, ledger and
+    observation classes. Two classes surfaced only past seed 1–3's first
+    run and were settled before merge: an adjustment of an *empty* cycles
+    entry (`array_agg` over no rows is `NULL`, which left a row with periods
+    and no amplitudes and failed the next save) -- **fixed**, `coalesce(…,
+    '{}')`; and a NaN prediction error (seed 6) -- **documented and pinned**
+    (`ledger_nan_error`; Redis's `HSET` survives its refused `ZADD`,
+    Postgres refuses first, both with "value is not a valid float").
 
 ## 6. Carried forward from the POC
 

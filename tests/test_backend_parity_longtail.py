@@ -266,6 +266,27 @@ def test_cycles_and_pressure_round_trip_through_export_and_import():
     ]
 
 
+def test_adjusting_an_empty_cycles_entry_keeps_it_empty():
+    """``CYCLES_ADJUST_LUA`` over an empty entry re-packs an empty array; the
+    SQL's ``array_agg`` over no rows is NULL, which left Postgres a row with
+    periods and no amplitudes, and the next save's reset report raised
+    ``TypeError`` (the long-tail probe, seed 2 shape 398)."""
+    record = LtRhythm.create(name="empty")
+    _plant(record, [], None)
+    assert record.weaken_cycle("relevance", factor=1e-9) == []
+    assert CyclicDecayField.export_state(record, "relevance", None).get("cycles") == []
+    field = LtRhythm._meta.fields["relevance"]
+    original = field.cycles
+    field.cycles = []
+    try:
+        record.save()
+    finally:
+        field.cycles = original
+    assert (
+        CyclicDecayField.export_state(record, "relevance", None).get("cycles") is None
+    )
+
+
 # -- TD_UPDATE_LUA ------------------------------------------------------------------------
 
 
@@ -353,6 +374,29 @@ def test_a_bytes_prediction_cannot_be_resolved():
     assert PredictionLedgerMixin.resolve_prediction(record, actual={"raw": 1}) is None
     assert PredictionLedgerMixin.auto_resolve(record, "acted") is None
     assert PredictionLedgerMixin.get_prediction_data(record)["resolved"] is False
+    assert PredictionLedgerMixin.get_highest_errors(LtLedger) == []
+
+
+def test_a_nan_prediction_error_is_a_documented_divergence(backend_is_redis):
+    """``inf`` against a number is a NaN error. The script's ``ZADD`` refuses
+    it after its ``HSET``, which Redis does not roll back, so the entry reads
+    resolved with no error-set member; Postgres refuses it before anything is
+    written. The same text on both legs, a different class (a row of the
+    divergence table; the probe's ``ledger_nan_error`` class)."""
+    import redis
+
+    record = LtLedger.create(name="nan")
+    PredictionLedgerMixin.record_prediction(record, predicted={"rel": math.inf})
+    expected = redis.exceptions.ResponseError if backend_is_redis else ValueError
+    with pytest.raises(expected, match="value is not a valid float"):
+        PredictionLedgerMixin.resolve_prediction(record, actual={"rel": 1.0})
+    data = PredictionLedgerMixin.get_prediction_data(record)
+    if backend_is_redis:
+        assert data["resolved"] is True
+        assert math.isnan(data["prediction_error"])
+    else:
+        assert data["resolved"] is False
+        assert data["prediction_error"] is None
     assert PredictionLedgerMixin.get_highest_errors(LtLedger) == []
 
 

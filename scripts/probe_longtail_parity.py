@@ -37,7 +37,9 @@ Documented classes (counted, not failures): a ``NaN`` ranking score (the
 Lua comparator is inconsistent around it -- M2a's rule: every member's score
 must agree and Postgres's order must be the sorted one), and a ``NaN``
 ``td_update`` value's sign (Lua prints ``-nan``/``nan`` by platform;
-``numeric`` has one ``NaN``).
+``numeric`` has one ``NaN``), and a ``NaN`` prediction error (Redis's
+``ResponseError`` after the script's un-rolled-back ``HSET``, Postgres's
+``ValueError`` before any write: the shape is counted from that step on).
 
 Safety: Redis is bound from ``REDIS_URL`` *before* importing popoto and
 database 0 is refused (CLAUDE.md, #577); on Postgres the script creates its
@@ -1105,6 +1107,16 @@ class Probe:
                 )
             out[leg] = trace
         r, p = out["redis"], out["postgres"]
+        same = [len(r) == len(p) and _identical(a, b) for a, b in zip(r, p)]
+        if len(r) == len(p) and not all(same):
+            first = r[same.index(False)], p[same.index(False)]
+            if first == (("!!", "ResponseError"), ("!!", "ValueError")):
+                # Documented: a NaN prediction error. The script's ZADD
+                # refuses it after its HSET, which Redis does not roll back;
+                # Postgres refuses it before writing. The legs' ledgers part
+                # from there, so the shape is counted, not compared further.
+                self.checks["ledger_nan_error (documented)"] += 1
+                return
         self.check(
             "ledger",
             len(r) == len(p) and all(_identical(a, b) for a, b in zip(r, p)),
