@@ -15,11 +15,11 @@ increments for the field types listed below, including indexed, unique, tag,
 relationship and collection fields, plus decay ranking, confidence
 (partitioned too), read tracking, the write filter, `ObservationProtocol` and
 `composite_score`, BM25 keyword search, pgvector embeddings, exact membership
-filters, fusion and `recall()`, the assembler over all of them, and
-`ValidityField` with `SupersessionProtocol`, and `CoOccurrenceField` with
-its graph expansion. Models that use other fields stay on Redis until their
-milestone. Popoto refuses them when you declare them, so
-they never fail halfway through.
+filters, fusion and `recall()`, the assembler over all of them,
+`ValidityField` with `SupersessionProtocol`, `CoOccurrenceField` with its
+graph expansion, and the remaining recipes and mixins on top. Models that
+use other fields stay on Redis until their milestone. Popoto refuses them
+when you declare them, so they never fail halfway through.
 
 ## Selecting the backend
 
