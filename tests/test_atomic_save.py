@@ -84,6 +84,8 @@ class TestAtomicSave:
         found_keys = [r.db_key.redis_key for r in results]
         assert obj.db_key.redis_key in found_keys
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
     @pytest.mark.asyncio
     async def test_async_create_then_async_filter(self):
         """async_create() + async_filter() must find the record."""

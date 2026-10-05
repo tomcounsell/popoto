@@ -125,6 +125,11 @@ class TestSyncGet:
 
 
 class TestAsyncGet:
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(
+        reason="asserts the $AT:NoTrackItem:staged/access_log Redis lists; Postgres stages reads in the _staged_reads column (tests/test_async_parity.py covers async_get's staging there)"
+    )
     @pytest.mark.asyncio
     async def test_no_track_direct_key_stages_nothing(self, saved):
         loaded = await NoTrackItem.query.async_get(
@@ -135,12 +140,22 @@ class TestAsyncGet:
         assert not get_REDIS_DB().exists(_staged_key(saved))
         assert not get_REDIS_DB().exists(_access_log_key(saved))
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(
+        reason="asserts the $AT:NoTrackItem:staged Redis list length; Postgres stages reads in the _staged_reads column (tests/test_async_parity.py covers async_get's staging there)"
+    )
     @pytest.mark.asyncio
     async def test_default_direct_key_still_stages_one_read(self, saved):
         loaded = await NoTrackItem.query.async_get(redis_key=saved.db_key.redis_key)
         assert loaded is not None
         assert _staged_len(saved) == 1
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(
+        reason="asserts the $AT:NoTrackItem:staged Redis key is absent; Postgres stages reads in the _staged_reads column"
+    )
     @pytest.mark.asyncio
     async def test_missing_key_returns_none_and_stages_nothing(self):
         ghost = NoTrackItem(name="ghost")
@@ -152,6 +167,11 @@ class TestAsyncGet:
         )
         assert not get_REDIS_DB().exists(_staged_key(ghost))
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(
+        reason="asserts the $AT:NoTrackItem:staged Redis list length; Postgres stages reads in the _staged_reads column (tests/test_async_parity.py covers async_get's staging there)"
+    )
     @pytest.mark.asyncio
     async def test_no_track_on_filter_fallback(self, saved):
         loaded = await NoTrackItem.query.async_get(tag="t1", _no_track=True)
