@@ -231,6 +231,10 @@ jobs:
       # it and drops it at teardown; schema `public` is never touched.
       POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/postgres
       POPOTO_CONFORMANCE_BACKENDS: redis,postgres
+      # tests/postgres/test_migrate_redis_to_postgres.py (#756) serves its
+      # snapshot from a private redis-server binary, installed below. Here a
+      # missing binary fails the module instead of skipping it.
+      POPOTO_REQUIRE_REDIS_SERVER: "1"
 
     steps:
       - uses: actions/checkout@v7
@@ -249,6 +253,19 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev,embeddings,benchmark,postgres]"
+
+      # The #756 migration tool starts its own throwaway redis-server on a
+      # snapshot; the Redis service container is not a binary it can start.
+      # policy-rc.d keeps apt from starting the packaged service, which would
+      # fight the container for port 6379.
+      - name: Install redis-server binary
+        run: |
+          printf '#!/bin/sh\nexit 101\n' | sudo tee /usr/sbin/policy-rc.d >/dev/null
+          sudo chmod +x /usr/sbin/policy-rc.d
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends redis-server
+          sudo rm -f /usr/sbin/policy-rc.d
+          redis-server --version
 
       - name: Verify servers reachable
         run: |
