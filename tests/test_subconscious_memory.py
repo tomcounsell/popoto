@@ -38,6 +38,13 @@ from popoto.recipes.context_assembler import AssemblyResult
 from popoto.recipes.subconscious_memory import SubconsciousMemory
 from popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Test Model
 # ---------------------------------------------------------------------------

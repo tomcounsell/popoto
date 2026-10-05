@@ -50,7 +50,7 @@ Example:
 import logging
 import time
 
-from typing import Optional
+from typing import Callable, Optional, Sequence
 
 from ..exceptions import ModelException
 from ..models.canonical_key import canonical_key_str
@@ -208,6 +208,46 @@ class EventStreamMixin:
                 type(self).__name__,
                 e,
             )
+
+    def _defer_xadd_mutation(
+        self,
+        op: str,
+        after_commit: Callable[[Callable[[], None]], None],
+        update_fields: Optional[Sequence[str]] = None,
+    ) -> None:
+        """Register this save's mutation entry to be appended once the
+        surrounding Postgres transaction commits (#759 M4b B2).
+
+        A Postgres unit of work is not a Redis pipeline, so there is nothing
+        to queue the ``XADD`` onto; issuing it at once would log a mutation
+        whose write the caller may still roll back. The entry is built now --
+        from the record as this save wrote it, like a queued ``XADD`` -- and
+        sent by ``after_commit``'s callback, which the transaction runs only
+        after a successful ``COMMIT``. Sending is best-effort, as on the
+        no-pipeline path: the write has committed, so a failing ``XADD`` is
+        logged, never raised.
+
+        Args:
+            op: Operation type ("create" or "update").
+            after_commit: The unit of work's ``after_commit`` registrar.
+            update_fields: Optional list of field names that were updated.
+        """
+        name = type(self).__name__
+        try:
+            stream_key = self._get_stream_key()
+            entry = self._build_stream_entry(op, update_fields=update_fields)
+        except Exception as e:
+            logger.warning("EventStreamMixin XADD failed for %s: %s", name, e)
+            return
+        maxlen = self._stream_max_length
+
+        def _emit() -> None:
+            try:
+                get_REDIS_DB().xadd(stream_key, entry, maxlen=maxlen, approximate=True)
+            except Exception as e:
+                logger.warning("EventStreamMixin XADD failed for %s: %s", name, e)
+
+        after_commit(_emit)
 
     def _xadd_event(self, op, extra_fields=None, pipeline=None):
         """Append a custom event entry to the Redis Stream.

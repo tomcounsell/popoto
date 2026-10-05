@@ -88,7 +88,7 @@ from ..types import (
     UnitOfWork,
 )
 from .plan import render_where, to_column_value
-from .schema import Column, TableSpec, quote_ident
+from .schema import Column, TableSpec, engine_table_ddl, quote_ident
 from .validity import NOT_HANDLED as _VALIDITY_NOT_HANDLED
 from .validity import (
     VALIDITY_KIND,
@@ -1000,16 +1000,15 @@ class PostgresMemoryOps(PostgresValidityOps):
                     f"{self.schema}.{RECALL_TABLE} does not exist and "
                     "POPOTO_SCHEMA_AUTO=0"
                 )
-            self._run(
-                "SELECT pg_advisory_xact_lock(hashtext(%s)); "
-                f"CREATE SCHEMA IF NOT EXISTS {quote_ident(self.schema)}; "
-                f"CREATE TABLE IF NOT EXISTS {qualified} (model text NOT NULL, "
-                "part text NOT NULL, member text NOT NULL, "
+            # The schema lock first, as ensure_table takes it (#759 M4b B1).
+            sql, params = engine_table_ddl(
+                self.schema,
+                RECALL_TABLE,
+                "model text NOT NULL, part text NOT NULL, member text NOT NULL, "
                 "surfaced_at double precision NOT NULL, "
-                "PRIMARY KEY (model, part, member))",
-                [f"popoto:ddl:{self.schema}.{RECALL_TABLE}"],
-                write=True,
+                "PRIMARY KEY (model, part, member)",
             )
+            self._run(sql, params, write=True)
         self._recall_ready = True
         return qualified
 

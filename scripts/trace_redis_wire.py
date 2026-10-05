@@ -28,6 +28,11 @@ Usage -- trace a base tree and the working tree, then compare::
         python scripts/trace_redis_wire.py > head.trace
     cmp base.trace head.trace
 
+``--with-recipes`` appends the recipe-layer scenarios (#759 M4):
+``idle_seconds``, a sorted field's partition reads, counters and
+``DefaultMemory``'s eviction, ``MemoryLifecycle``'s tombstones and the negative
+prior, ``NeverRecordMixin``, ``AppendOnlyMixin`` and the question queue.
+
 ``--with-graph`` appends the ``CoOccurrenceField`` scenarios (#759 M4): every
 graph write and read, a record delete's edge cleanup, export/import, the
 ``composite_score`` boost and ``graph_traversal.traverse``.
@@ -1147,6 +1152,194 @@ if WITH_GRAPH:
         return graph_traversal.traverse(
             TrNode, ["a"], co_occurrence_field=_links(), depth=2, decay_per_hop=0.5
         )
+
+
+# -- the recipes, mixins and the question queue (#759 M4) ----------------------
+# M4 routes idle_seconds, a sorted field's partition reads, counters, the
+# tombstone stores, NeverRecordMixin's audit log, AppendOnlyMixin's guard and
+# the question queue to a non-Redis backend. These scenarios pin that a
+# Redis-bound model's wire through each of them is unchanged. Off by default.
+
+WITH_RECIPES = "--with-recipes" in sys.argv
+
+if WITH_RECIPES:
+    from popoto import counters  # noqa: E402
+    from popoto.fields.append_only import AppendOnlyMixin  # noqa: E402
+    from popoto.fields.tombstone_prior import TombstonePriorStore  # noqa: E402
+    from popoto.privacy.never_record import NeverRecordMixin  # noqa: E402
+    from popoto.recipes import question_queue as _qq  # noqa: E402
+    from popoto.recipes.default_memory import DefaultMemory  # noqa: E402
+    from popoto.recipes.memory_lifecycle import MemoryLifecycle  # noqa: E402
+
+    class TrTiered(popoto.AccessTrackerMixin, popoto.Model):
+        key = popoto.AutoKeyField()
+        tier = popoto.KeyField(default="episodic")
+        relevance = popoto.DecayingSortedField(decay_rate=0.5)
+        confidence = popoto.ConfidenceField()
+
+    class TrPrivate(NeverRecordMixin, popoto.Model):
+        name = popoto.KeyField()
+        content = popoto.StringField(default="")
+
+    class TrLedger(AppendOnlyMixin, popoto.Model):
+        entry = popoto.KeyField()
+        amount = popoto.FloatField(default=0.0)
+
+    class TrQFact(popoto.Model):
+        name = popoto.UniqueKeyField()
+        certainty = popoto.ConfidenceField()
+
+    MODELS = MODELS + (
+        TrTiered,
+        TrPrivate,
+        TrLedger,
+        TrQFact,
+        DefaultMemory,
+        _qq.QuestionCandidate,
+    )
+
+    @scenario
+    def m4_idle_and_sorted_reads():
+        t = TrTiered()
+        t.save()
+        field = TrTiered._meta.fields["relevance"]
+        user = TrUser(name="ida", org="acme", rank=7, pscore=1.5)
+        user.save()
+        TrUser(name="ivy", org="acme", rank=8, pscore=1.5).save()
+        pfield = TrUser._meta.fields["pscore"]
+        return [
+            TrTiered.idle_seconds(redis_key=t.db_key.redis_key),
+            TrTiered.idle_seconds("TrTiered:nobody:episodic"),
+            field.count(t, "relevance"),
+            field.members(t, "relevance", 0, -1),
+            field.score(t, "relevance"),
+            pfield.count(user, "pscore"),
+            pfield.members(user, "pscore", -2, -1, reverse=True),
+            pfield.score(user, "pscore"),
+            pfield.score(user, "pscore", partitioned=False),
+        ]
+
+    @scenario
+    def m4_counters_and_eviction():
+        import os as _os
+
+        _os.environ["POPOTO_DEFAULT_MEMORY_MAX_RECORDS"] = "2"
+        try:
+            for i in range(4):
+                DefaultMemory(agent_id="TrQFact-ev", content=f"memory {i}").save()
+        finally:
+            del _os.environ["POPOTO_DEFAULT_MEMORY_MAX_RECORDS"]
+        return [
+            counters.increment("$trace:TrQFact:c", 2),
+            counters.read("$trace:TrQFact:c"),
+            DefaultMemory.query.filter(agent_id="TrQFact-ev").count(),
+        ]
+
+    @scenario
+    def m4_lifecycle_tombstones():
+        lifecycle = MemoryLifecycle(model_class=TrTiered, importance_field="relevance")
+        lifecycle.FORGET_IMPORTANCE_FLOOR = 2.0
+        lifecycle.FORGET_IDLE_SECONDS = -1.0
+        lifecycle.PROMOTION_ACCESS_COUNT = 10**6
+        records = []
+        for _ in range(2):
+            r = TrTiered()
+            r.save()
+            records.append(r)
+        summary = lifecycle.tick()
+        listed = lifecycle.list_tombstones()
+        restored = lifecycle.restore(listed[0]) if listed else None
+        prior = TombstonePriorStore(TrTiered)
+        prior.record_burial("some content", 5.0)
+        prior.note_penalty(1.0, 0.5)
+        return [
+            {k: v for k, v in summary.items() if k != "duration_ms"},
+            [t.redis_key for t in listed],
+            None if restored is None else restored.db_key.redis_key,
+            lifecycle.tombstone_count(),
+            prior.burial_count("some content"),
+            prior.stats(),
+            prior.count(),
+            lifecycle.purge_all_tombstones(),
+            prior.purge_all(),
+        ]
+
+    @scenario
+    def m4_never_record_and_append_only():
+        secret = "key sk-ant-api03-" + "Q" * 40
+        blocked = TrPrivate(name="p", content=secret).save()
+        clean = TrPrivate(name="q", content="fine").save()
+        e = TrLedger(entry="e1", amount=1.0)
+        e.save()
+        try:
+            TrLedger(entry="e1", amount=2.0).save()
+            refused = None
+        except Exception as exc:  # noqa: BLE001 - recorded
+            refused = type(exc).__name__
+        return [
+            blocked,
+            clean,
+            TrPrivate.never_record_counts(),
+            [sorted(entry) for entry in TrPrivate.never_record_log()],
+            refused,
+            TrLedger.hard_delete(e),
+        ]
+
+    @scenario
+    def m4_question_queue():
+        keys = [TrQFact.create(name=n).db_key.redis_key for n in ("x", "y")]
+        out = []
+        for i, k in enumerate(keys):
+            c = _qq.propose(
+                agent_id="TrQFact-tq",
+                question_text=f"Is fact {i} about deploys still true?",
+                kind="confirmation",
+                source_module="trace",
+                target_keys=[k],
+                options=[
+                    {"label": "yes", "acted": [k]},
+                    {"label": "no", "contradicted": [k]},
+                ],
+                ambiguity_signal="gate_refusal",
+                turn=0,
+            )
+            out.append(c.candidate_id)
+        out.append(_qq.note_use("TrQFact-tq", keys, 1))
+        q = _qq.next_question("TrQFact-tq", turn=1, query_cues="deploys")
+        out.append(None if q is None else q.candidate_id)
+        out.append(_qq.next_question("TrQFact-tq", turn=2))
+        if q is not None:
+            res = _qq.record_answer(q, "yes", turn=3)
+            out.append((res.applied, res.reason))
+        out.append(_qq.expire_stale("TrQFact-tq", 100))
+        out.append(_qq.prune("TrQFact-tq", 10_000))
+        return out
+
+    @scenario
+    def m4_provenance_journal():
+        from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+        from popoto.recipes.reconciliation import drop_cached_embedding
+
+        first = ProvenanceJournal.append(
+            agent_id="TrQFact-j", statement="the launch slipped", at=1_700_000_000.0
+        ).entry
+        second = ProvenanceJournal.supersede(
+            first, agent_id="TrQFact-j", statement="no, it did not", at=1_700_000_050.0
+        )
+        out = [second.target_closed, second.close_index]
+        pipe = get_REDIS_DB().pipeline()
+        third = ProvenanceJournal.confirm(
+            second.entry, agent_id="TrQFact-j", pipeline=pipe
+        )
+        out.append((third.target_closed, third.close_index))
+        out.append(len(pipe.execute()))
+        out.append([e.statement for e in ProvenanceJournal.annotations_for(first)])
+        out.append(JournalEntry.hard_delete(second.entry))
+        drop_cached_embedding(first.db_key.redis_key)
+        out.append(JournalEntry.hard_delete(first))
+        for entry in JournalEntry.query.filter(agent_id="TrQFact-j"):
+            JournalEntry.hard_delete(entry)
+        return out
 
 
 def main() -> None:

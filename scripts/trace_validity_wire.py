@@ -248,9 +248,7 @@ def gated_rankings():
         TrFact.query.top_by_decay(n=10),
         TrFact.query.top_by_decay(n=10, as_of=T0 - 10.0),
         TrFact.query.composite_score({"relevance": 0.5, "certainty": 0.5}, limit=10),
-        TrFact.query.composite_score(
-            {"relevance": 1.0}, limit=10, as_of=T0 - 10.0
-        ),
+        TrFact.query.composite_score({"relevance": 1.0}, limit=10, as_of=T0 - 10.0),
     ]
 
 

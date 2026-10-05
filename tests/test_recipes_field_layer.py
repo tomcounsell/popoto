@@ -15,6 +15,13 @@ import os
 
 import pytest
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): this module asserts
+# recipe *source*, not storage, so both legs run the same scan. It is in M4's
+# gate (b) list because what it pins -- a recipe reaches storage only through
+# the field and model layers -- is what lets an unchanged recipe run on a
+# Postgres-bound model.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 RECIPES_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "src",

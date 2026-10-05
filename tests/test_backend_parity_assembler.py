@@ -543,8 +543,11 @@ def test_proxy_is_neutral_when_no_evidence_has_been_recorded(backend):
     proxy = _score_proxy_for_records(
         recs, model_class=PADecayConf, score_weights={"relevance": 1.0}
     )
+    # rel_tol 1e-6, not 1e-9: the decay is ~t^-0.5 at t = 10 days, so each
+    # millisecond between backdate() and the proxy read moves the value by
+    # ~6e-10 relative; a 2.6 ms gap in a full run failed at 1e-9.
     for r, w in zip(recs, (1.0, 3.0)):
-        assert math.isclose(proxy[r.db_key.redis_key], w * 10 ** (-0.5), rel_tol=1e-9)
+        assert math.isclose(proxy[r.db_key.redis_key], w * 10 ** (-0.5), rel_tol=1e-6)
 
 
 def test_emit_trace_scores_are_the_decayed_proxy(backend):

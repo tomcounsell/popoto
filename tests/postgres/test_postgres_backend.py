@@ -244,6 +244,31 @@ def test_transaction_is_atomic(pg):
     assert PgNote.query.count() == 2
 
 
+def test_after_commit_callbacks_run_only_after_commit(pg, caplog):
+    """``PostgresUnitOfWork.after_commit`` (#759 M4b B2): dropped on a
+    rollback; on a commit run in order once the block has exited, and one
+    that raises is logged without stopping the rest or failing the
+    committed transaction."""
+    ran = []
+    with pytest.raises(RuntimeError):
+        with pg.transaction() as uow:
+            uow.after_commit(lambda: ran.append("rolled back"))
+            raise RuntimeError("roll it back")
+    assert ran == []
+
+    def boom():
+        raise ValueError("callback failed")
+
+    with pg.transaction() as uow:
+        uow.after_commit(lambda: ran.append("first"))
+        uow.after_commit(boom)
+        uow.after_commit(lambda: ran.append(PgNote.query.count()))
+        PgNote(owner="o", slug="cb").save(pipeline=uow)
+        assert ran == []
+    assert ran == ["first", 1]
+    assert "callback failed" in caplog.text
+
+
 def test_bulk_create_is_one_transaction(pg):
     good = PgAccount(username="a", email="same@x")
     dup = PgAccount(username="b", email="same@x")
@@ -297,11 +322,12 @@ def test_unknown_filter_operator_is_refused(pg):
     "call",
     [
         lambda: PgNote.load_raw_hash("PgNote:o:s"),
-        lambda: PgNote.idle_seconds("PgNote:o:s"),
         lambda: PgNote.query.keys(catchall=True),
         lambda: PgNote.query.keys(clean=True),
     ],
-    ids=["load_raw_hash", "idle_seconds", "keys_catchall", "keys_clean"],
+    # idle_seconds left this list in #759 M4: it is a field_call adapter now
+    # (tests/postgres/test_postgres_recipes.py::test_idle_seconds_*).
+    ids=["load_raw_hash", "keys_catchall", "keys_clean"],
 )
 def test_redis_only_apis_refuse_instead_of_reading_redis(pg, call):
     with pytest.raises(BackendCapabilityError):

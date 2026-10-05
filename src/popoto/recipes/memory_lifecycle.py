@@ -461,6 +461,7 @@ class MemoryLifecycle:
 
         # --- Capability detection ---
         self._validate_fields()
+        self._refuse_key_tier_off_redis()
 
         # Detect AccessTrackerMixin (soft dependency — degrades gracefully)
         from ..fields.access_tracker import AccessTrackerMixin
@@ -550,6 +551,40 @@ class MemoryLifecycle:
                 f"not found on {self.model_class.__name__}. "
                 f"Available fields: {list(fields.keys())}"
             )
+
+    def _refuse_key_tier_off_redis(self) -> None:
+        """Refuse a ``KeyField`` tier on a non-Redis model at construction.
+
+        A ``KeyField`` tier makes every promotion a key migration
+        (``save(migrate_key=True)``), which the Postgres backend refuses in
+        v2 (#759 M4, plan §1.1). Refusing here, as
+        ``SubconsciousMemory(auditable_extraction=)`` is refused, replaces a
+        ``tick()`` that would log and skip every promotion on every pass --
+        and that, with a ``should_forget`` that ignores the tier, tombstoned
+        records Redis would have promoted and kept.
+
+        Raises:
+            BackendCapabilityError: the model is not Redis-bound and
+                ``tier_field`` is a ``KeyField``.
+        """
+        from ..backends.routing import non_redis_backend
+        from ..fields.key_field_mixin import KeyFieldMixin
+
+        field = self.model_class._meta.fields[self.tier_field]
+        if not isinstance(field, KeyFieldMixin):
+            return
+        backend = non_redis_backend(self.model_class)
+        if backend is None:
+            return
+        from ..backends import BackendCapabilityError
+
+        raise BackendCapabilityError(
+            f"MemoryLifecycle: tier_field '{self.tier_field}' on "
+            f"{self.model_class.__name__} is a {type(field).__name__}, so every "
+            f"promotion is a key migration (save(migrate_key=True)), which the "
+            f"{backend.name!r} backend refuses; declare the tier as an "
+            f"IndexedField instead"
+        )
 
     # -------------------------------------------------------------------
     # Public API
@@ -802,7 +837,7 @@ class MemoryLifecycle:
             # load_raw_hash, not a decoded load: restore() feeds this straight
             # back through decode_popoto_model_hashmap, which needs the bytes
             # exactly as Redis returned them.
-            raw_hash = self.model_class.load_raw_hash(live_key)
+            raw_hash = self._archived_hash(live_key)
         except Exception as exc:
             logger.warning("tombstone: HGETALL failed for %s: %s", live_key, exc)
             return None
@@ -878,6 +913,24 @@ class MemoryLifecycle:
 
         logger.debug("tombstoned %s (reason=%s)", live_key, reason)
         return tomb
+
+    def _archived_hash(self, live_key: str) -> Any:
+        """The record's stored hash, as ``restore()`` will decode it.
+
+        On Redis, ``load_raw_hash``: the bytes exactly as stored. A
+        non-Redis backend (#759 M4) stores typed columns, not a hash, so the
+        stored row is read back (untracked) and encoded the way a Redis save
+        would write it -- the same ``decode_popoto_model_hashmap`` round trip,
+        from the values the backend holds. ``{}`` when the record is gone.
+        """
+        from ..backends import get_backend
+
+        if get_backend(self.model_class).name == "redis":
+            return self.model_class.load_raw_hash(live_key)
+        from ..models.encoding import encode_popoto_model_obj
+
+        stored = self.model_class.query.get(redis_key=live_key, _no_track=True)
+        return {} if stored is None else encode_popoto_model_obj(stored)
 
     def _enforce_tombstone_retention(self) -> int:
         """Age out the oldest tombstones beyond TOMBSTONE_RETENTION_LIMIT.

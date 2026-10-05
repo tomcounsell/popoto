@@ -173,7 +173,7 @@ beyond the stream bound noted on the class.
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterator, Optional, Sequence, Type, Union
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Sequence, Type, Union, cast
 
 import redis.client
 import redis.exceptions
@@ -1091,6 +1091,23 @@ class ProvenanceJournal:
 
         # 6. A non-transactional caller pipeline would silently void the
         #    atomicity guarantee, so it is refused rather than honored.
+        from ..backends.routing import non_redis_backend
+
+        backend = non_redis_backend(model)
+        if backend is not None:
+            # #759 M4: a journal stored on another backend appends (and
+            # closes) inside that backend's transaction, which is atomic by
+            # construction; only its own unit of work can carry the write.
+            return _append_on_backend(
+                model,
+                entry,
+                stored_target=stored_target,
+                target_key=target_key,
+                kind=kind,
+                instant=instant,
+                pipeline=pipeline,
+                backend=backend,
+            )
         if pipeline is not None:
             if not isinstance(pipeline, redis.client.Pipeline):
                 raise ValueError(
@@ -1301,6 +1318,95 @@ class ProvenanceJournal:
             coupling_enabled=coupling_enabled,
             pipeline=None,
         )
+
+
+def _append_on_backend(
+    model: Any,
+    entry: Any,
+    *,
+    stored_target: Any,
+    target_key: Optional[str],
+    kind: str,
+    instant: float,
+    pipeline: Any,
+    backend: Any,
+) -> "AnnotationResult":
+    """The write half of ``_append`` on a non-Redis backend (#759 M4).
+
+    The pre-flight above has already run, unchanged. The entry is saved --
+    and, for a closing kind, the target's interval closed -- in **one
+    transaction**: ``SupersessionProtocol.save_and_invalidate`` owns it when
+    no ``pipeline`` is passed, and runs inside the caller's when the
+    backend's own unit of work is passed. Either way the close's outcome is
+    known at the call, so ``target_closed`` is the truth (on Redis a caller
+    pipeline reports ``None``, "unknown until you execute") and there is no
+    ``close_index`` to read. A Redis pipeline cannot carry the write and is
+    refused, as ``SupersessionProtocol`` refuses it; a typed validity error is
+    raised at the call, with nothing written, where Redis maps the script's
+    reply after ``EXEC`` has kept the entry."""
+    from ..backends.types import UnitOfWork
+
+    if pipeline is not None and (
+        not isinstance(pipeline, UnitOfWork) or pipeline.is_redis_pipeline
+    ):
+        raise ValueError(
+            f"{model.__name__}: the journal is stored on the {backend.name!r} "
+            f"backend, so pipeline must be a unit of work from that backend's "
+            f"transaction(), got {type(pipeline).__name__}"
+        )
+    coupling_enabled = bool(Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED)
+    should_close = model.kind_is_closing(kind) and target_key is not None
+    if should_close and not coupling_enabled:
+        _warn_uncoupled_once(model.__name__)
+    target_closed = False
+    if should_close and coupling_enabled:
+        try:
+            result = SupersessionProtocol.save_and_invalidate(
+                entry,
+                closes=stored_target,
+                at=instant,
+                field_name=VALIDITY_FIELD_NAME,
+                # A backend unit of work: save_and_invalidate's annotation
+                # names the Redis pipeline its Redis path takes.
+                pipeline=cast(Any, pipeline),
+            )
+        except SupersedeDeclinedError as exc:
+            verdict = getattr(exc, "verdict", None)
+            reason = (
+                f"the never-record firewall ({verdict.reason})"
+                if verdict is not None
+                else "an early-return gate in Model.save()"
+            )
+            raise RuntimeError(
+                f"{model.__name__}: the annotation was not written -- "
+                f"{reason} stopped it, and Model.save() signals that by "
+                f"returning rather than raising. Nothing further is "
+                f"issued. This is a bug in this module (the pre-flight should "
+                f"have caught it), not a caller error."
+            ) from exc
+        target_closed = bool(result.closed_key)
+    else:
+        saved = entry.save(pipeline=pipeline)
+        blocked = getattr(entry, "_never_record_verdict", None)
+        if not saved or blocked is not None:
+            reason = (
+                f"the never-record firewall ({blocked.reason})"
+                if blocked is not None
+                else "an early-return gate in Model.save()"
+            )
+            raise RuntimeError(
+                f"{model.__name__}: the annotation was not written -- "
+                f"{reason} stopped it, and Model.save() signals that by "
+                f"returning rather than raising. This is a bug in this module "
+                f"(the pre-flight should have caught it), not a caller error."
+            )
+    return AnnotationResult(
+        entry=entry,
+        target_closed=target_closed,
+        coupling_enabled=coupling_enabled,
+        pipeline=pipeline,
+        close_index=None,
+    )
 
 
 #: Every field a journal entry model must declare. Checked in full by

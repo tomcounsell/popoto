@@ -634,8 +634,17 @@ def cached_embedding(entry: Any, provider: Any = None) -> Optional[List[float]]:
     signal :func:`shortlist_candidates` uses to take its index-scan fallback.
     """
     redis_key = entry.pk
-    client = get_REDIS_DB()
-    raw = client.hget(EMBEDDING_CACHE_KEY, redis_key)
+    backend = _cache_backend(type(entry))
+    if backend is not None:
+        cached = backend.field_call(
+            type(entry)._meta.spec, "_embed_cache", "get", redis_key
+        )
+        if cached:
+            return list(cached)
+        raw = None
+    else:
+        client = get_REDIS_DB()
+        raw = client.hget(EMBEDDING_CACHE_KEY, redis_key)
     if raw:
         try:
             return list(json.loads(raw))
@@ -658,17 +667,36 @@ def cached_embedding(entry: Any, provider: Any = None) -> Optional[List[float]]:
     if not vectors or not vectors[0]:
         return None
     vector = [float(v) for v in vectors[0]]
-    client.hset(EMBEDDING_CACHE_KEY, redis_key, json.dumps(vector))
+    if backend is not None:
+        backend.field_call(
+            type(entry)._meta.spec, "_embed_cache", "set", redis_key, vector
+        )
+    else:
+        client.hset(EMBEDDING_CACHE_KEY, redis_key, json.dumps(vector))
     return vector
 
 
-def drop_cached_embedding(redis_key: str) -> None:
+def _cache_backend(model: Any) -> Any:
+    """The entry model's backend when it is not Redis (#759 M4): the cache is
+    then that backend's ``popoto_embedding_cache`` table, beside the
+    entries, rather than a Redis hash."""
+    from ..backends.routing import non_redis_backend
+
+    return non_redis_backend(model)
+
+
+def drop_cached_embedding(redis_key: str, model: Any = None) -> None:
     """Delete one entry's cached vector.
 
     Part of :func:`erase_entry`'s cascade: an embedding is a lossy encoding of
     ``statement``, so the cache is content-derived state in a store
-    ``hard_delete()`` does not reach.
+    ``hard_delete()`` does not reach. ``model`` names the entry model, whose
+    backend holds the cache when it is not Redis (#759 M4).
     """
+    backend = _cache_backend(model) if model is not None else None
+    if backend is not None:
+        backend.field_call(model._meta.spec, "_embed_cache", "drop", redis_key)
+        return
     get_REDIS_DB().hdel(EMBEDDING_CACHE_KEY, redis_key)
 
 
@@ -1541,7 +1569,7 @@ def erase_entry(entry: Any) -> bool:
     erased = JournalEntry.hard_delete(entry)
     if row is not None:
         row.delete()
-    drop_cached_embedding(redis_key)
+    drop_cached_embedding(redis_key, type(entry))
     if class_id:
         _recompute_class(class_id)
     return bool(erased)

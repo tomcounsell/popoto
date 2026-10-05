@@ -16,19 +16,44 @@ Import by path (``from popoto import counters``); it is deliberately absent
 from the ``popoto`` package namespace.
 """
 
+from typing import Any, Optional, cast
+
 from .redis_db import get_REDIS_DB
 
 
-def increment(key: str, delta: int = 1) -> int:
+def _backend(model: Any) -> Any:
+    """The model's backend when one is named and it is not Redis (#759 M4)."""
+    if model is None:
+        return None
+    from .backends.routing import non_redis_backend
+
+    return non_redis_backend(model)
+
+
+def increment(key: str, delta: int = 1, *, model: Optional[Any] = None) -> int:
     """Add ``delta`` to the counter at ``key`` and return the new total.
 
     Creates the key at ``delta`` when it does not exist (``INCRBY``
     semantics). ``delta`` may be ``0`` to read-through atomically.
+
+    ``model`` names the model whose state the counter reports (#759 M4): on a
+    Postgres-bound model the counter is a row of that backend's
+    ``popoto_counter`` table, so recording it needs no Redis. Without it, or
+    on a Redis-bound model, it is the Redis string, as before.
     """
+    backend = _backend(model)
+    if backend is not None:
+        spec = cast(Any, model)._meta.spec
+        return int(backend.field_call(spec, "_counter", "increment", key, delta))
     return int(get_REDIS_DB().incrby(key, delta))
 
 
-def read(key: str) -> int:
-    """Current value of the counter at ``key``, or ``0`` when absent."""
+def read(key: str, *, model: Optional[Any] = None) -> int:
+    """Current value of the counter at ``key``, or ``0`` when absent (from
+    ``model``'s backend when it is not Redis, as :func:`increment`)."""
+    backend = _backend(model)
+    if backend is not None:
+        spec = cast(Any, model)._meta.spec
+        return int(backend.field_call(spec, "_counter", "read", key))
     raw = get_REDIS_DB().get(key)
     return int(raw) if raw is not None else 0
