@@ -289,6 +289,16 @@ deadlocking with it. Transactions that each take several records in
 different orders can still deadlock; that surfaces as
 `BackendRetryableError`. Pinned by
 `test_a_confidence_update_then_save_cannot_deadlock_a_save` and its control.
+A record delete on a model with a symmetric `CoOccurrenceField` (M4) writes
+rows in its *partners'* edge sets too (the reverse edges), so it takes the
+partners' record-key locks with the deleted keys', in one sorted sequence,
+before it touches a row. The lock statement runs twice: the first takes the
+locks in order with the partners its snapshot saw, the second picks up a
+partner linked while the first waited (none, normally; once the deleted keys
+are held no new partner can appear, since a `link` takes both keys' locks).
+Pinned by `tests/postgres/test_postgres_graph.py::test_a_delete_cannot_deadlock_a_transaction_holding_a_partner_set`
+and its control, where a transaction holding a partner's set and then linking
+into the deleted record deadlocks a delete that skips the partners' locks.
 
 ### BM25
 
@@ -539,7 +549,7 @@ two weights of a pair can differ exactly as they can on Redis (a prune or a
 `weaken_all` touches one side). There is no foreign key: Redis links any two
 key strings, records or not. Deleting a record removes its own edges and,
 for a symmetric field, the reverse edge in every set it linked to, as CTEs of
-the record's `DELETE`. Every tie-break is `COLLATE "C"`, the sorted set's
+the record's `DELETE`, behind those partners' record-key locks as well as its own (see "One lock order for every writer"). Every tie-break is `COLLATE "C"`, the sorted set's
 member order. Pinned: `tests/postgres/test_postgres_graph.py::test_the_edge_table_ddl_is_pinned`.
 
 **Writes.** Each one is a statement behind the record-key advisory locks of
@@ -597,8 +607,49 @@ SELECT pk, max(w) FROM "_walk"
  GROUP BY pk ORDER BY max(w) DESC, pk COLLATE "C"
 ```
 
-`safe_mul` is the saturating product of the decay SQL (M2a). Outside that
-domain -- a threshold at or below `0` (or under `1e-290`), a negative or
+`safe_mul` is the saturating product of the decay SQL (M2a).
+
+That statement only runs while it expands at most
+`Defaults.PG_GRAPH_RECURSIVE_MAX_LAYERS` (2) layers, i.e. `ceil(depth) <= 2`
+(the default `depth=2`). A recursive CTE sees only the previous layer, so it
+cannot apply the visited map: it re-expands every reached node on every layer
+until `depth` runs out or the weights drop under the threshold. Up to two
+layers that is exactly the pruned work (layer one expands the seeds, layer two
+every first arrival); past that it grows with depth × fan-out where the Lua
+stops. The #781 review measured a 400-node clique at `depth=50, decay=0.99` at
+24.9 s against Redis's 0.10 s, and at larger depths (or a decay near 1) the
+statement ran into `statement_timeout`, which the outage contract reports as
+`BackendUnavailableError`. A deeper call therefore runs one statement per
+layer instead: each frontier node's top `max_edges` neighbours, the same
+product and threshold, each node's heaviest arrival (`GROUP BY`), and
+between layers the Lua's visited rule -- a node goes on only when it arrived
+strictly heavier than at any earlier layer. A pruned arrival is dominated by
+the earlier one, so the answer is the recursive statement's; the work is at
+most the Lua's, and the loop stops after the last layer that improved a node
+whatever `depth` is (the contraction guard keeps `decay * cap < 1`, so an
+improving walk is a simple path: at most one layer per node reached). A
+statement timeout is never what bounds a graph read. Measured on the review's
+graphs (macOS arm64, PostgreSQL 18.6, Redis 8.10, load average 4.2-4.9,
+median of 5 runs; 7 for the probe shapes):
+
+| graph, call | Redis | Postgres |
+|---|---|---|
+| 400-node clique, `depth=50, decay=0.99, threshold=0.01` | 77 ms | 300 ms |
+| same, `depth=1000, threshold=1e-6` | 86 ms | 295 ms |
+| same, `depth=1e6, decay=0.999` | 81 ms | 290 ms |
+| same, `depth=1e6, decay=0.5, threshold=1e-280` | 84 ms | 288 ms |
+| same, `depth=inf, decay=0.99` | 82 ms | 289 ms |
+| the review probe's five ≤12-node shapes at `depth=1e9, decay=0.999999` | 0.21-0.32 ms | 1.15-1.55 ms |
+| 50k edges, fan-out 10, `depth=2` / `3` / `5`, `threshold=0.01` | 2.7 / 11 / 35 ms | 1.8 / 10 / 61 ms |
+
+The deep calls run their layers on one pooled connection in one read
+transaction, so a layer costs one round trip. Every answer is identical to Redis's. Pinned:
+`test_a_dense_clique_at_any_depth_answers_inside_the_statement_timeout`
+(a 40-node clique at `depth=1e9` with the timeout lowered to 3 s; the health
+record sees no failure), `test_a_deep_propagate_prunes_as_the_visited_map_does`
+and `test_the_three_bfs_paths_agree`.
+
+Outside that domain -- a threshold at or below `0` (or under `1e-290`), a negative or
 infinite `decay_per_hop` -- the step is not monotone and the visited map's
 order decides the answer, so the backend replays the Lua's queue exactly in
 Python, over the same neighbour lists fetched one layer per statement.
@@ -616,11 +667,13 @@ decay modulation (M2a/M2c). `ContextAssembler`'s graph arm and
 **The seeded probe.** `scripts/probe_graph_parity.py` replays the same random
 sequence of writes on both legs -- weights from typical to `-inf`, ties and the
 cap; deltas from `1e-12` past the cap; factors `0`, tiny and `1`; record
-deletes and `import_state` -- comparing every return, then each key's full
-edge set, `get_linked`, `propagate` on both Postgres paths, `export_state`,
-`composite_score` with the boost and `traverse()`. Its classes are in the PR
-that introduced M4; `tests/postgres/test_postgres_graph.py` runs a 25-shape
-slice in CI.
+deletes and `import_state` (NaN weights included) -- comparing every return,
+then each key's full edge set, `get_linked` (`limit=None` and a NaN bound
+included), `propagate` (depths up to `1e9` and `inf`, decays up to `0.999999`)
+on all three Postgres paths, `export_state`, `composite_score` with the boost
+and `traverse()`. Its classes are in its docstring and the PR that introduced
+M4; the documented ones are the M4 rows of the table above.
+`tests/postgres/test_postgres_graph.py` runs a 25-shape slice in CI.
 
 ```bash
 REDIS_URL=redis://localhost:6379/13 \
@@ -908,6 +961,9 @@ cast to the column's type.
 | `composite_score({"priority": …})` (M2a) | ranks by the WriteFilter priority set | raises `BackendCapabilityError`: the priority tier is a no-op on Postgres (plan §5 M2) |
 | `composite_score(similarity_boost=…, co_occurrence_boost=…)` (M2b, M4) | injects each boost as an arm | an arm on both. A key with no record cannot take a top-K slot on Postgres, where on Redis it takes one and is then dropped at hydration, so Redis can return fewer records (never in another order). Pinned: `test_backend_parity_memory.py::test_composite_co_occurrence_boost_is_an_arm_on_both_backends`; the graph probe's `composite_orphan_slot` class |
 | A NaN edge weight (`link(…, initial_weight=nan)` on a new edge, a NaN `strengthen` or `weaken_all` result) (M4) | `ZADD` refuses it: `ResponseError: value is not a valid float`. A symmetric write whose *second* script fails keeps the first script's write | `ValueError` with the same text, and the whole write rolls back. Pinned: `test_postgres_graph.py::test_a_nan_weight_raises_value_error` |
+| A NaN weight in `CoOccurrenceField.import_state` (one that survives the `max_edges` truncation) (M4) | `DELETE` runs, then `ZADD` refuses the NaN: `ResponseError: value is not a valid float`, and the record's edge set is left **empty** | refused before any write: `ValueError` with the same text, and the edge set is unchanged. No NaN edge is stored on either (stored, Postgres would rank it above every weight and `least(NaN, cap)` is the cap). Pinned on both legs: `test_co_occurrence_field.py::TestImportStateAndErrorParity::test_a_nan_import_is_refused_a_documented_divergence`; the graph probe's `nan_import_keeps_set` class |
+| `CoOccurrenceField.get_linked(…, limit=None)` (M4) | redis-py refuses it client-side: `DataError: ``start`` and ``num`` must both be specified` (before any NaN-bound check) | `ValueError` with the same text, in the same order. Pinned on both legs: `test_get_linked_limit_none_a_documented_divergence`; the graph probe's `limit_none_error_type` class |
+| A NaN `min_weight` in `CoOccurrenceField.get_linked` (M4) | `ResponseError: min or max is not a float` | `ValueError` with the same text. Pinned on both legs: `test_get_linked_nan_min_weight_a_documented_divergence`; the probe's `nan_error_type` class |
 | The order of `propagate()`'s dict, and so of equal weights in `graph_traversal.traverse()` (M4) | Lua table iteration order | weight descending, then key bytewise. The dict and its weights are equal on both; `traverse()` sorts by weight, so only ties can be listed in another order (the graph probe's `traverse_tie_order` class) |
 | `link()`'s reply for a weight at or past `2**63` in magnitude (M4) | the server's C `(long long)` cast of the Lua number: `-inf` and anything under `-2**63` reply `-2**63` on arm64 and x86-64; above `2**63` (only with a cap past it) arm64 saturates to `2**63 - 1`, x86-64 replies `-2**63` | the arm64 values |
 | `CoOccurrenceField.strengthen()` on a model with `EventStreamMixin` (M4) | appends a `strengthen` entry to the model's Redis stream | no entry: the event stream is Redis-only until M5 |
