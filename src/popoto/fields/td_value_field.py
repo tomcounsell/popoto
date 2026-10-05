@@ -209,6 +209,22 @@ class TDValueField(DecimalField):
                     f"Cannot operate on unsaved " f"{type(model_instance).__name__}"
                 )
 
+        from ..backends.routing import non_redis_backend
+
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            return _td_update_on_backend(
+                backend,
+                model_instance,
+                field_name,
+                redis_key,
+                reward=reward,
+                max_future_q=max_future_q,
+                alpha=alpha,
+                gamma=gamma,
+                pipeline=pipeline,
+            )
+
         # Client resolved at call time (module attribute, not an import-time
         # binding) so a rebound connection or a test spy still intercepts.
         # This is already immune to the #655 staleness bug by the same
@@ -233,3 +249,54 @@ class TDValueField(DecimalField):
             return None
 
         return float(td_error)
+
+
+def _td_update_on_backend(
+    backend: Any,
+    model_instance: Any,
+    field_name: str,
+    redis_key: str,
+    *,
+    reward: float,
+    max_future_q: float,
+    alpha: float,
+    gamma: float,
+    pipeline: Any,
+) -> Optional[float]:
+    """``td_update`` on a non-Redis backend (#759 M5): ``TD_UPDATE_LUA`` as
+    one ``UPDATE`` of the field's column, the same arithmetic in the same
+    order (``reward + gamma * max_future_q`` here, as the script evaluates
+    it first; the rest in SQL on the stored value), the new value stored
+    through the script's ``tostring``.
+
+    Each argument reaches the script as ``str(x)`` and is read back with
+    ``tonumber``; a value that does not read back as a number fails the
+    script's arithmetic on Redis and raises ``ValueError`` here. With a Redis
+    pipeline (which cannot carry a Postgres write) the update runs at once and
+    ``None`` is returned, as a queued update returns; with the backend's own
+    unit of work it runs inside that transaction and the TD error is returned,
+    as ``ConfidenceField.update_confidence`` does.
+    """
+    from ..backends import RecordId, UnitOfWork
+    from ..backends.postgres.longtail import lua_tonumber
+
+    numbers = [lua_tonumber(v) for v in (reward, alpha, gamma, max_future_q)]
+    if any(n is None for n in numbers):
+        raise ValueError(
+            "td_update(): reward, alpha, gamma and max_future_q must be numbers "
+            "(the script's tonumber() of each must not be nil)"
+        )
+    r, a, g, m = (float(n) for n in numbers)  # type: ignore[arg-type]
+    uow = pipeline if isinstance(pipeline, UnitOfWork) else None
+    td_error = backend.field_call(
+        model_instance._meta.spec,
+        field_name,
+        "td_update",
+        RecordId.from_key(model_instance._meta.model_name, redis_key),
+        target=r + g * m,
+        alpha=a,
+        uow=uow,
+    )
+    if pipeline is not None and uow is None:
+        return None
+    return float(td_error)

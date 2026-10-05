@@ -35,10 +35,49 @@ import msgpack
 
 from typing import Any, Optional
 
+from ..backends.routing import non_redis_backend
 from ..redis_db import get_REDIS_DB, run_lua
 from .constants import Defaults
 
 logger = logging.getLogger("POPOTO.PredictionLedger")
+
+#: ``field_call`` pseudo-field of the ledger on a non-Redis backend (#759 M5).
+_LEDGER = "_ledger"
+
+
+def _ledger_backend(model: Any) -> Any:
+    """The model's backend when it is not Redis (``None`` on Redis): there
+    the ledger is two engine tables (``popoto.backends.postgres.longtail``),
+    reached through ``field_call(spec, "_ledger", op, ...)``."""
+    return non_redis_backend(model)
+
+
+def _rid(instance: Any, member_key: str) -> Any:
+    from ..backends import RecordId
+
+    return RecordId.from_key(instance._meta.model_name, member_key)
+
+
+def _exists(backend: Any, instance: Any, member_key: str, uow: Any = None) -> bool:
+    """The ``EXISTS member_key`` guard through the record's backend -- inside
+    ``uow`` when one is given, so a record saved earlier in the same
+    transaction exists."""
+    return bool(
+        backend.field_call(
+            instance._meta.spec,
+            _LEDGER,
+            "exists",
+            _rid(instance, member_key),
+            uow=uow,
+        )
+    )
+
+
+def _uow_of(pipeline: Any) -> Any:
+    from ..backends import UnitOfWork
+
+    return pipeline if isinstance(pipeline, UnitOfWork) else None
+
 
 # Lua script: atomic prediction resolution.
 # KEYS[1] = meta hash key ($PL:{ClassName}:meta:{pk})
@@ -142,6 +181,27 @@ class PredictionLedgerMixin:
             return None
 
         meta_key = cls._meta_key(model_instance)
+        backend = _ledger_backend(model_instance)
+        if backend is not None:
+            try:
+                entry = backend.field_call(
+                    model_instance._meta.spec,
+                    _LEDGER,
+                    "get",
+                    _rid(model_instance, member_key),
+                )
+            except ValueError:
+                logger.warning(
+                    f"Could not decode prediction metadata for {member_key} "
+                    f"in {meta_key}; skipping export"
+                )
+                return None
+            if not entry or not isinstance(entry, dict):
+                return None
+            return {
+                "entry": entry,
+                "partition": str(getattr(model_instance, "_pl_partition", "default")),
+            }
         raw = get_REDIS_DB().hget(meta_key, member_key)
         if not raw:
             return None
@@ -188,6 +248,19 @@ class PredictionLedgerMixin:
         try:
             member_key = model_instance.db_key.redis_key
         except Exception:
+            return None
+
+        backend = _ledger_backend(model_instance)
+        if backend is not None:
+            msgpack.packb(entry)  # what Redis would refuse to pack, refused
+            backend.field_call(
+                model_instance._meta.spec,
+                _LEDGER,
+                "import",
+                _rid(model_instance, member_key),
+                entry,
+                state.get("partition") or "default",
+            )
             return None
 
         get_REDIS_DB().hset(
@@ -329,6 +402,31 @@ class PredictionLedgerMixin:
         except Exception:
             raise TypeError("record_prediction() requires a saved model instance")
 
+        backend = _ledger_backend(instance)
+        if backend is not None:
+            if not _exists(backend, instance, member_key, _uow_of(pipeline)):
+                raise TypeError("record_prediction() requires a saved model instance")
+            data = {
+                "predicted": predicted,
+                "resolved": False,
+                "resolution_mode": None,
+                "prediction_error": None,
+                "resolved_at": None,
+                "recorded_at": time.time(),
+            }
+            # msgpack's refusals (an unpackable value, an int past 64 bits)
+            # are Redis's; the entry itself is stored as jsonb (#759 M5).
+            msgpack.packb(data)
+            backend.field_call(
+                instance._meta.spec,
+                _LEDGER,
+                "record",
+                _rid(instance, member_key),
+                data,
+                uow=_uow_of(pipeline),
+            )
+            return None
+
         if not get_REDIS_DB().exists(member_key):
             raise TypeError("record_prediction() requires a saved model instance")
 
@@ -372,6 +470,27 @@ class PredictionLedgerMixin:
             member_key = instance.db_key.redis_key
         except Exception:
             raise TypeError("resolve_prediction() requires a saved model instance")
+
+        backend = _ledger_backend(instance)
+        if backend is not None:
+            uow = _uow_of(pipeline)
+            if not _exists(backend, instance, member_key, uow):
+                raise TypeError("resolve_prediction() requires a saved model instance")
+            data = backend.field_call(
+                instance._meta.spec,
+                _LEDGER,
+                "get",
+                _rid(instance, member_key),
+                uow=uow,
+            )
+            if data is None or data.get("resolved"):
+                return None
+            prediction_error = cls.compute_prediction_error(
+                data.get("predicted", {}), actual
+            )
+            return cls._resolve_on_backend(
+                backend, instance, member_key, prediction_error, "explicit", pipeline
+            )
 
         if not get_REDIS_DB().exists(member_key):
             raise TypeError("resolve_prediction() requires a saved model instance")
@@ -453,6 +572,29 @@ class PredictionLedgerMixin:
         except Exception:
             return None
 
+        backend = _ledger_backend(instance)
+        if backend is not None:
+            uow = _uow_of(pipeline)
+            if not _exists(backend, instance, member_key, uow):
+                return None
+            data = backend.field_call(
+                instance._meta.spec,
+                _LEDGER,
+                "get",
+                _rid(instance, member_key),
+                uow=uow,
+            )
+            if data is None or data.get("resolved"):
+                return None
+            return cls._resolve_on_backend(
+                backend,
+                instance,
+                member_key,
+                error_map[outcome],
+                "observed",
+                pipeline,
+            )
+
         if not get_REDIS_DB().exists(member_key):
             return None
 
@@ -510,12 +652,57 @@ class PredictionLedgerMixin:
         except Exception:
             return None
 
+        backend = _ledger_backend(instance)
+        if backend is not None:
+            return backend.field_call(
+                instance._meta.spec, _LEDGER, "get", _rid(instance, member_key)
+            )
+
         meta_key = cls._meta_key(instance)
         raw = get_REDIS_DB().hget(meta_key, member_key)
         if raw is None:
             return None
 
         return msgpack.unpackb(raw, raw=False)
+
+    @classmethod
+    def _resolve_on_backend(
+        cls,
+        backend: Any,
+        instance: Any,
+        member_key: str,
+        prediction_error: Any,
+        mode: str,
+        pipeline: Any,
+    ) -> Any:
+        """``RESOLVE_PREDICTION_LUA`` and its follow-ups on a non-Redis
+        backend (#759 M5): the atomic resolution (one statement), then the
+        confidence feedback and the event, exactly as on Redis. Inside a
+        backend unit of work (the observation batch) every write joins that
+        transaction -- the ledger rows behind the record's key lock, which
+        the batch already holds -- so the feedback's confidence ``UPDATE``
+        never waits on the batch's own row lock."""
+        from ..backends.postgres.longtail import lua_tonumber
+
+        uow = _uow_of(pipeline)
+        partition = getattr(instance, "_pl_partition", "default")
+        error_number = lua_tonumber(str(prediction_error))
+        result = backend.field_call(
+            instance._meta.spec,
+            _LEDGER,
+            "resolve",
+            _rid(instance, member_key),
+            part=partition,
+            error=float("nan") if error_number is None else error_number,
+            mode=mode,
+            resolved_at=str(time.time()),
+            uow=uow,
+        )
+        if result == 0:
+            return None
+        cls._apply_confidence_feedback(instance, prediction_error, pipeline=uow)
+        cls._log_resolution_event(instance, prediction_error, mode, pipeline)
+        return prediction_error
 
     @classmethod
     def get_highest_errors(cls, model_class, partition="default", limit=10):
@@ -530,6 +717,11 @@ class PredictionLedgerMixin:
             list: List of (member_key_str, error_float) tuples, ordered by
                 descending error.
         """
+        backend = _ledger_backend(model_class)
+        if backend is not None:
+            return backend.field_call(
+                model_class._meta.spec, _LEDGER, "highest", partition, limit
+            )
         error_key = cls._error_key(model_class, partition)
         results = get_REDIS_DB().zrevrange(error_key, 0, limit - 1, withscores=True)
         return [
@@ -673,6 +865,12 @@ class PredictionLedgerMixin:
                 f"Known bucketers: {sorted(cls._BUILTIN_GROUP_BY)}."
             )
 
+        backend = _ledger_backend(model_class)
+        if backend is not None:
+            return cls._error_summary_on_backend(
+                backend, model_class, partition, group_by, limit
+            )
+
         error_key = cls._error_key(model_class, partition)
 
         # Optional large-set warning per plan Risk 4.
@@ -745,6 +943,37 @@ class PredictionLedgerMixin:
                 continue
             decoded_meta.append((member_key, err, data))
 
+        return cls._summarize(decoded_meta, group_by)
+
+    @classmethod
+    def _error_summary_on_backend(
+        cls, backend, model_class, partition, group_by, limit
+    ):
+        """``error_summary``'s reads on a non-Redis backend (#759 M5): the
+        error set's top ``limit`` and each member's entry, from the engine
+        tables; the grouping and statistics are the shared Python below."""
+        rows = backend.field_call(
+            model_class._meta.spec, _LEDGER, "rows", partition, limit
+        )
+        if not rows:
+            if group_by is not None:
+                return {}
+            return {"__all__": cls._stats_for([])}
+        decoded_meta = []
+        for member_key, err, data in rows:
+            if isinstance(data, Exception):
+                logger.warning(
+                    "error_summary: corrupt msgpack for %s — skipping (%s)",
+                    member_key,
+                    data,
+                )
+                continue
+            decoded_meta.append((member_key, err, data))
+        return cls._summarize(decoded_meta, group_by)
+
+    @classmethod
+    def _summarize(cls, decoded_meta, group_by):
+        """Group ``(member_key, error, meta)`` rows and compute the stats."""
         # Group and compute.
         if group_by is None:
             errors_only = [err for _, err, _ in decoded_meta]
@@ -778,12 +1007,15 @@ class PredictionLedgerMixin:
         return {label: cls._stats_for(errs) for label, errs in groups.items()}
 
     @classmethod
-    def _apply_confidence_feedback(cls, instance, prediction_error):
+    def _apply_confidence_feedback(cls, instance, prediction_error, pipeline=None):
         """If error exceeds threshold and model has ConfidenceField, reduce confidence.
 
         Args:
             instance: A Model instance.
             prediction_error: The computed prediction error.
+            pipeline: A backend unit of work to run the update in (#759 M5:
+                the observation batch's transaction). Redis callers never pass
+                one, so the Redis update still runs at once, as before.
         """
         threshold = getattr(instance, "_pl_confidence_error_threshold", 0.7)
         low_signal = getattr(instance, "_pl_confidence_low_signal", 0.2)
@@ -796,9 +1028,14 @@ class PredictionLedgerMixin:
         for field_name, field in instance._meta.fields.items():
             if isinstance(field, ConfidenceField):
                 try:
-                    ConfidenceField.update_confidence(
-                        instance, field_name, signal=low_signal
-                    )
+                    if pipeline is not None:
+                        ConfidenceField.update_confidence(
+                            instance, field_name, signal=low_signal, pipeline=pipeline
+                        )
+                    else:
+                        ConfidenceField.update_confidence(
+                            instance, field_name, signal=low_signal
+                        )
                 except (TypeError, ValueError):
                     pass  # Graceful degradation for unsaved instances
 
@@ -814,6 +1051,15 @@ class PredictionLedgerMixin:
         """
         from .event_stream import EventStreamMixin
 
+        after_commit = getattr(pipeline, "after_commit", None)
+        if isinstance(instance, EventStreamMixin) and after_commit is not None:
+            # A Postgres unit of work (#759 M5): the stream is still Redis, so
+            # the XADD is sent once the transaction commits, never for one
+            # that rolls back (the M4b rule for EventStreamMixin).
+            after_commit(
+                lambda: cls._log_resolution_event(instance, prediction_error, mode)
+            )
+            return
         if isinstance(instance, EventStreamMixin):
             try:
                 instance._xadd_event(

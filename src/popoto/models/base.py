@@ -2306,6 +2306,23 @@ class Model(metaclass=ModelBase):
 
         now = time.time()
         member_key = self._redis_key or self.db_key.redis_key
+
+        backend = get_backend(type(self))
+        if backend.name != "redis":
+            # #759 M5: the blind HSET, as one UPDATE of the row's pressure
+            # columns. A Redis pipeline cannot carry it: the write runs at
+            # once and the pipeline comes back untouched, as touch() does.
+            backend.field_call(
+                self._meta.spec,
+                field_name,
+                "resolve_pressure",
+                RecordId.from_key(self._meta.model_name, member_key),
+                field.pressure_rate,
+                now,
+                uow=_as_uow(pipeline),
+            )
+            return pipeline if pipeline is not None else now
+
         pressure_hash_key = field.get_pressure_hash_key(self, field_name)
 
         pressure_data = {
@@ -2423,10 +2440,32 @@ class Model(metaclass=ModelBase):
         import msgpack
 
         member_key = self._redis_key or self.db_key.redis_key
-        cycles_hash_key = field.get_cycles_hash_key(self, field_name)
 
         max_amplitude = 100.0
         min_threshold = 0.01
+
+        backend = get_backend(type(self))
+        if backend.name != "redis":
+            # #759 M5: CYCLES_ADJUST_LUA as one UPDATE of the amplitudes. With
+            # a Redis pipeline the write runs at once and the pipeline comes
+            # back, as touch() does; a backend unit of work carries it.
+            cycles = backend.field_call(
+                self._meta.spec,
+                field_name,
+                "adjust",
+                RecordId.from_key(self._meta.model_name, member_key),
+                str(factor),
+                max_amplitude,
+                min_threshold,
+                uow=_as_uow(pipeline),
+            )
+            if pipeline is not None:
+                return pipeline
+            if cycles is None:
+                return []
+            return [[c[0], float(c[1]), float(c[2])] for c in cycles]
+
+        cycles_hash_key = field.get_cycles_hash_key(self, field_name)
 
         if isinstance(pipeline, redis.client.Pipeline):
             run_lua(

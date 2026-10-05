@@ -151,9 +151,10 @@ def test_postgres_refuses_fields_beyond_m1_1_naming_each():
     assert "indexed field needs a scalar column type" in message
 
 
-def test_postgres_accepts_the_m2a_memory_fields_and_refuses_later_ones():
-    """#759 M2a: the decay clock and ConfidenceField are stored on Postgres;
-    a partitioned ConfidenceField (M3) and a CyclicDecayField (M5) are not."""
+def test_postgres_accepts_the_memory_fields_through_m5():
+    """#759 M2a stored the decay clock and ConfidenceField on Postgres, M3 a
+    partitioned ConfidenceField, M5 the CyclicDecayField (its cycles and
+    pressure are columns beside the clock) and the TDValueField."""
 
     class VsMemory(popoto.AccessTrackerMixin, popoto.Model):
         name = popoto.KeyField()
@@ -165,23 +166,18 @@ def test_postgres_accepts_the_m2a_memory_fields_and_refuses_later_ones():
         project = popoto.KeyField()
         certainty = popoto.ConfidenceField(partition_by="project")
         rhythm = popoto.CyclicDecayField()
+        q_value = popoto.TDValueField()
 
     validate_spec(VsMemory._meta.spec, "postgres")
     assert VsMemory._meta.spec.mixins == frozenset({"AccessTrackerMixin"})
-    with pytest.raises(BackendCapabilityError) as info:
-        validate_spec(VsMemoryLater._meta.spec, "postgres")
-    message = str(info.value)
-    # #759 M3: a partitioned ConfidenceField is stored (its partition is the
-    # row's own columns); the CyclicDecayField still waits for M5.
-    assert "certainty" not in message
-    assert "rhythm (CyclicDecayField)" in message
+    validate_spec(VsMemoryLater._meta.spec, "postgres")
 
 
-def test_postgres_refuses_a_prediction_ledger_at_bind():
-    """#773 review: the ledger lives in Redis structures until M5, so a
-    Postgres model declaring it is refused statically instead of letting
-    ``record_prediction`` / ``auto_resolve`` issue Redis commands for a
-    record Redis does not hold."""
+def test_postgres_accepts_a_prediction_ledger_since_m5():
+    """#773 review refused the ledger at bind while it lived in Redis
+    structures only; since #759 M5 it is two engine tables on Postgres, so a
+    Postgres model may declare it (and the refusal table is empty)."""
+    from popoto.backends import _POSTGRES_REFUSED_MIXINS
     from popoto.fields.prediction_ledger import PredictionLedgerMixin
 
     class VsLedger(PredictionLedgerMixin, popoto.AccessTrackerMixin, popoto.Model):
@@ -189,18 +185,38 @@ def test_postgres_refuses_a_prediction_ledger_at_bind():
 
     assert "PredictionLedgerMixin" in VsLedger._meta.spec.mixins
     validate_spec(VsLedger._meta.spec, "redis")
+    validate_spec(VsLedger._meta.spec, "postgres")
+    assert _POSTGRES_REFUSED_MIXINS == {}
+
+    class VsLedgerPg(PredictionLedgerMixin, popoto.Model):
+        name = popoto.KeyField()
+
+        class Meta:
+            backend = "postgres"
+
+
+def test_postgres_refuses_a_dataframe_field_with_its_reason():
+    """#759 M5's documented refusal: a ``DataFrameField`` is not stored on
+    Postgres in v2, and the refusal says why and what to use instead (built
+    by hand: the field itself needs the optional pandas extra)."""
+    spec = ModelSpec(
+        name="VsFrame",
+        key_fields=("name",),
+        fields={
+            "name": FieldSpec("name", "KeyField", str, False, {}),
+            "frame": FieldSpec("frame", "DataFrameField", None, True, {}),
+        },
+        order_by=None,
+        ttl=None,
+        indexes=(),
+    )
+    validate_spec(spec, "redis")
     with pytest.raises(BackendCapabilityError) as info:
-        validate_spec(VsLedger._meta.spec, "postgres")
+        validate_spec(spec, "postgres")
     message = str(info.value)
-    assert "PredictionLedgerMixin is not supported yet" in message
-    assert "M5" in message and "AccessTrackerMixin" not in message
-    with pytest.raises(BackendCapabilityError, match="PredictionLedgerMixin"):
-
-        class VsLedgerPg(PredictionLedgerMixin, popoto.Model):
-            name = popoto.KeyField()
-
-            class Meta:
-                backend = "postgres"
+    assert "frame (DataFrameField)" in message
+    assert "not stored on Postgres in v2" in message
+    assert "DictField or a BytesField" in message
 
 
 def test_postgres_refuses_hook_overriding_custom_fields_only():

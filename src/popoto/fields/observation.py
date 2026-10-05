@@ -294,18 +294,36 @@ def _on_context_used_on_backend(
 
 def _apply_outcome_on_backend(instance: Any, outcome: str, uow: Any) -> None:
     """The effects matrix for one instance on a non-Redis backend, inside
-    ``uow``. Fields and mixins a non-Redis model cannot declare yet
-    (CyclicDecayField, PredictionLedgerMixin) are refused at bind by
-    ``validate_spec``, so they have no effect to apply here -- in particular
-    no Redis command is issued for a ledger (#773 review). A
-    ``ValidityField`` (#759 M3) gets ``contradicted``'s supersession, inside
-    the same transaction; the batch's ``(model, field)`` lock was taken
-    before its row locks."""
+    ``uow``, in the order the Redis ``_apply_*`` functions apply them:
+
+    * ``acted``: ``touch`` every decay clock, confirm the staged reads,
+      ``strengthen_cycle`` (and ``resolve_pressure`` when the field has a
+      pressure rate) on every ``CyclicDecayField``, the confidence signal,
+      then ``auto_resolve`` of a ``PredictionLedgerMixin`` prediction.
+    * ``used``: confirm the staged reads, ``auto_resolve``.
+    * ``dismissed``: discard the staged reads, ``weaken_cycle``,
+      ``auto_resolve``.
+    * ``deferred``: discard the staged reads.
+    * ``contradicted``: discard the staged reads, the aggressive
+      ``weaken_cycle``, the confidence signal, ``auto_resolve``, the
+      pressure auto-discharge (when the confidence, read inside this
+      transaction, is now clearly below the threshold), then the
+      supersession of a ``ValidityField``.
+
+    Every write runs in the batch's transaction: the cycles, pressure and
+    ledger writes (#759 M5) take the record-key lock the batch already holds,
+    and the ledger's confidence feedback runs on the same connection, so no
+    effect can wait on the batch's own row lock. The batch's ``(model,
+    field)`` lock for a ``ValidityField`` (#759 M3) was taken before its row
+    locks."""
     from .confidence_field import ConfidenceField
+    from .cyclic_decay_field import CyclicDecayField
     from .decaying_sorted_field import DecayingSortedField
+    from .prediction_ledger import PredictionLedgerMixin
 
     fields = instance._meta.fields
     tracked = hasattr(instance, "confirm_access") and callable(instance.confirm_access)
+    cyclic = [(n, f) for n, f in fields.items() if isinstance(f, CyclicDecayField)]
 
     if outcome == "acted":
         for field_name, field in fields.items():
@@ -325,6 +343,24 @@ def _apply_outcome_on_backend(instance: Any, outcome: str, uow: Any) -> None:
     ):
         instance.discard_staged_access(pipeline=uow)
 
+    for field_name, field in cyclic:
+        try:
+            if outcome == "acted":
+                instance.strengthen_cycle(
+                    field_name, factor=ACTED_CYCLE_STRENGTHEN_FACTOR, pipeline=uow
+                )
+                if field.pressure_rate > 0:
+                    instance.resolve_pressure(field_name, pipeline=uow)
+            elif outcome in ("dismissed", "contradicted"):
+                factor = (
+                    DISMISSED_CYCLE_WEAKEN_FACTOR
+                    if outcome == "dismissed"
+                    else CONTRADICTED_CYCLE_WEAKEN_FACTOR
+                )
+                instance.weaken_cycle(field_name, factor=factor, pipeline=uow)
+        except (TypeError, ValueError):
+            pass  # Graceful degradation for unsaved instances
+
     signal = {
         "acted": ACTED_CONFIDENCE_SIGNAL,
         "contradicted": CONTRADICTED_CONFIDENCE_SIGNAL,
@@ -338,8 +374,46 @@ def _apply_outcome_on_backend(instance: Any, outcome: str, uow: Any) -> None:
                     )
                 except (TypeError, ValueError):
                     pass
+
+    if outcome != "deferred" and isinstance(instance, PredictionLedgerMixin):
+        try:
+            PredictionLedgerMixin.auto_resolve(instance, outcome, pipeline=uow)
+        except (TypeError, ValueError):
+            pass  # Graceful degradation
+
     if outcome == "contradicted":
+        _auto_discharge_on_backend(instance, cyclic, uow)
         _apply_supersession(instance, uow)
+
+
+def _auto_discharge_on_backend(instance: Any, cyclic: Any, uow: Any) -> None:
+    """``_apply_contradicted``'s pressure auto-discharge, reading the
+    confidence inside ``uow`` -- the value this batch's updates left, as the
+    Redis path reads it right after its own immediate updates."""
+    from ..backends import record_id
+    from .confidence_field import ConfidenceField
+
+    if not cyclic:
+        return
+    backend = non_redis_backend(instance)
+    for field_name, field in instance._meta.fields.items():
+        if not isinstance(field, ConfidenceField):
+            continue
+        try:
+            state = backend.field_call(
+                instance._meta.spec,
+                field_name,
+                "state",
+                record_id(instance, key=_get_instance_key(instance)),
+                uow=uow,
+            )
+            conf = field.initial_confidence if state is None else state["confidence"]
+            if conf < AUTO_DISCHARGE_CONFIDENCE_THRESHOLD - CONFIDENCE_EPSILON:
+                for cdf_name, cdf_field in cyclic:
+                    if cdf_field.pressure_rate > 0:
+                        instance.resolve_pressure(cdf_name, pipeline=uow)
+        except (TypeError, ValueError, AttributeError):
+            pass
 
 
 def _get_instance_key(instance):

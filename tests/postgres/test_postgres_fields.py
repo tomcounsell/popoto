@@ -217,8 +217,10 @@ def test_unsupported_index_types_are_refused_at_declaration():
                 backend = "postgres"
 
 
-def test_unregistered_field_calls_name_their_milestone(pg):
+def test_unregistered_field_calls_are_refused(pg):
+    """Every field kind's adapters exist since #759 M5, so an unregistered
+    ``(field, op)`` is refused by name rather than by milestone."""
     PgItem.create(sku="s", email="e", recent=[])
     spec = PgItem._meta.spec
-    with pytest.raises(BackendCapabilityError, match="arrives in"):
+    with pytest.raises(BackendCapabilityError, match="has no adapter"):
         get_backend(PgItem).field_call(spec, "things", "push")
