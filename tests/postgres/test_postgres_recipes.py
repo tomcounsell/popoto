@@ -688,16 +688,15 @@ def test_engine_table_first_use_is_race_free_on_a_fresh_schema(pg_schema, admin)
 
 
 def test_post_save_redis_side_effects_wait_for_commit(pg, monkeypatch):
-    """#759 M4b B2, generalised: every Redis side effect of a Postgres-bound
-    save -- ``WriteFilterMixin``'s priority tag and ``EventStreamMixin``'s
-    ``XADD`` -- is registered on the unit of work's ``after_commit`` hook.
-    A rolled-back transaction runs neither and sends Redis nothing; a
-    committed one runs each exactly once, after ``COMMIT``. (The tag is a
-    no-op off Redis, so its run sends nothing either: the ``XADD`` is the
-    one command.) Without a caller transaction both run at the save."""
+    """#759 M4b B2, generalised: ``WriteFilterMixin``'s priority tag, the
+    one Redis-side effect left of a Postgres-bound save, is registered on the
+    unit of work's ``after_commit`` hook -- a rolled-back transaction runs it
+    not at all, a committed one exactly once, after ``COMMIT`` (it is a no-op
+    off Redis, so its run sends nothing). ``EventStreamMixin``'s entry is no
+    longer one of them (#759 M5): it is appended in the save's own
+    transaction, so it rolls back with the record and Redis is sent nothing
+    at any point. Without a caller transaction both happen at the save."""
     client = popoto.get_redis()
-    stream = RecSideEffects(name="probe")._get_stream_key()
-    client.delete(stream)
     sent, tagged = [], []
     real_execute = client.execute_command
     real_tag = WriteFilterMixin._tag_priority
@@ -718,21 +717,17 @@ def test_post_save_redis_side_effects_wait_for_commit(pg, monkeypatch):
             RecSideEffects(name="rolled").save(pipeline=uow)
             raise RuntimeError("roll back")
     assert (sent, tagged) == ([], [])
-    assert client.xlen(stream) == 0
-    sent.clear()
+    assert RecSideEffects.stream_len() == 0
 
     with pg.transaction() as uow:
         RecSideEffects(name="kept").save(pipeline=uow)
         assert (sent, tagged) == ([], [])  # nothing before COMMIT
     assert tagged == ["kept"]
-    assert sent == ["XADD"]
-    entries = client.xrange(stream)
+    entries = RecSideEffects.stream_range()
     assert len(entries) == 1
     assert entries[0][1][b"pk"].decode() == "RecSideEffects:kept"
 
-    sent.clear()
     RecSideEffects(name="plain").save()
     assert tagged == ["kept", "plain"]
-    assert sent == ["XADD"]
-    assert client.xlen(stream) == 2
-    client.delete(stream)
+    assert RecSideEffects.stream_len() == 2
+    assert sent == []

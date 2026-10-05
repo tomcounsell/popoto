@@ -1023,6 +1023,29 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   `test_content_field.py`, `test_check_indexes.py`, `test_clean_indexes.py`,
   `test_transfer_roundtrip.py`, `test_transfer_key_regeneration.py`.
 
+- **M5 events as shipped: departures from this plan, recorded.** Event
+  streams, consumer groups and pub/sub on Postgres (`backends/postgres/events.py`,
+  `pubsub.py`); gate (b) on `test_event_stream_mixin.py`,
+  `test_stream_consumer.py` and `test_pubsub.py`.
+  - **Not `bigserial`: Redis's `<ms>-<seq>` ids**, minted from the server
+    clock under the stream row's lock (`popoto_stream`), which is held to the
+    end of the appending transaction -- so ids commit in id order and a group
+    cursor never skips an entry that commits later. The entry is written **in
+    the record write's own transaction** (a caller's: just before `COMMIT`,
+    `PostgresUnitOfWork.before_commit`, so the stream lock is the last lock
+    taken, after §6's record-key and row locks), replacing M4b's after-commit
+    Redis `XADD`. Cost: a save takes its own transaction (p50 +0.5 ms).
+  - **The stream commands keep redis-py's surface** (`stream_client()`
+    returns the Redis client or the backend's `StreamStore`), so
+    `StreamConsumer` keeps one body for both backends and the gate-(b) files
+    run unchanged against either. `MAXLEN ~` trims exactly (a documented
+    divergence); `XINFO GROUPS` `entries-read`/`lag` follow Redis 8's rules.
+  - **One notification channel per schema** for pub/sub, patterns matched
+    client-side, payloads over 8000 bytes refused (not chunked); a separate
+    per-schema events channel wakes blocking `XREADGROUP`s. Both `LISTEN` on
+    dedicated sessions (`POPOTO_POSTGRES_LISTEN_URL`), with a 1 s fallback
+    poll and reconnection.
+
 ## 6. Carried forward from the POC
 
 | Ref (WS4 §7 / feature doc) | Lesson | v2 disposition |

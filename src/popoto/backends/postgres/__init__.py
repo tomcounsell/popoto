@@ -62,6 +62,7 @@ from ..types import (
 )
 from ..planning import has_filters
 from .codec import decode_json, encode_json_element
+from .events import EventsMixin, stream_deletes
 from .graph import GraphMixin, graph_delete_lock_sql, graph_delete_sql
 from .recipes import RecipeOpsMixin
 from .memory import NOT_HANDLED, PostgresMemoryOps
@@ -263,12 +264,13 @@ class PostgresUnitOfWork(UnitOfWork):
     ``bool(uow)`` is always ``True`` (TD-10).
     """
 
-    __slots__ = ("conn", "_after_commit")
+    __slots__ = ("conn", "_after_commit", "_before_commit")
 
     def __init__(self, conn: Any) -> None:
         super().__init__(None, backend="postgres")
         self.conn = conn
         self._after_commit: list[Callable[[], Any]] = []
+        self._before_commit: list[Callable[[], Any]] = []
 
     def after_commit(self, callback: Callable[[], Any]) -> None:
         """Run ``callback`` once this transaction has committed; drop it if
@@ -278,6 +280,19 @@ class PostgresUnitOfWork(UnitOfWork):
         and the connection is back in the pool; one that raises is logged and
         the rest still run, because the transaction has already committed."""
         self._after_commit.append(callback)
+
+    def before_commit(self, callback: Callable[[], Any]) -> None:
+        """Run ``callback`` inside this transaction, just before its
+        ``COMMIT``; an exception from it rolls the whole unit back. A save's
+        ``EventStreamMixin`` entry is appended this way (#759 M5), so the
+        stream's lock is the last lock the transaction takes and the entry
+        commits or rolls back with the record. Callbacks run in registration
+        order; one registered while they run runs too."""
+        self._before_commit.append(callback)
+
+    def _run_before_commit(self) -> None:
+        while self._before_commit:
+            self._before_commit.pop(0)()
 
     def _run_after_commit(self) -> None:
         callbacks, self._after_commit = self._after_commit, []
@@ -329,7 +344,9 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 # -- the backend --------------------------------------------------------------
 
 
-class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin):
+class PostgresBackend(
+    SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin, EventsMixin
+):
     """The Postgres implementation of :class:`popoto.backends.Backend`.
 
     Search -- ``keyword_search``, ``vector_search``, ``membership_*`` and the
@@ -625,6 +642,8 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
                     conn.execute(f"SET LOCAL statement_timeout = {ms}")
                 uow = PostgresUnitOfWork(conn)
                 yield uow
+                # #759 M5: the stream appends, inside the transaction.
+                uow._run_before_commit()
         # Reached only after COMMIT succeeded: an exception in the block, or
         # at COMMIT, propagates past this line and the callbacks are dropped.
         uow._run_after_commit()
@@ -709,6 +728,9 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         """
         if expiry is not None:
             raise BackendCapabilityError("save(expiry=) arrives on Postgres in M5")
+        # EventStreamMixin (#759 M5): the mutation entry this save appends,
+        # in the save's own transaction (EventsMixin._write_with_stream).
+        stream = list(options.pop("stream_entries", None) or ())
         spec = obj._meta.spec
         ts = self._table(spec, write=True)
         new_key = obj.db_key.redis_key
@@ -784,11 +806,13 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
                     found, _ = self._run(sql, params, uow=tx, write=True)
                     if not found:
                         refuse_valid_from_conflict(self, spec, obj, uow=tx)
+                    if stream:
+                        self.stream_append_all(stream, uow=tx)
                     return found
 
                 rows = self._atomically(guarded, uow=uow)
             else:
-                rows, _ = self._run(sql, params, uow=uow, write=True)
+                rows, _ = self._write_with_stream(sql, params, uow, stream)
         except psycopg.errors.UniqueViolation as exc:
             constraint = exc.diag.constraint_name or ""
             covered = ts.unique_indexes.get(constraint, ())
@@ -944,7 +968,10 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             sql, params = lock_sql + statement, lock_params + [keys] * (uses + 1)
         else:
             sql, params = self._record_locked(ts, keys, statement, [keys] * (uses + 1))
-        rows, count = self._run(sql, params, uow=uow, write=True)
+        # EventStreamMixin (#759 M5): each instance's "delete" entry, in the
+        # delete's own transaction.
+        stream = stream_deletes(options.get("objs") or ())
+        rows, count = self._write_with_stream(sql, params, uow, stream)
         for obj in options.get("objs") or ():
             obj._db_content = dict()
             obj._saved_field_values = dict()

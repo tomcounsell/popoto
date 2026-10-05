@@ -1635,7 +1635,24 @@ class Model(metaclass=ModelBase):
         queued = isinstance(pipeline, redis.client.Pipeline)
         uow = _as_uow(pipeline)
         previous_key = self._redis_key
-        outcome = get_backend(type(self)).save(
+        backend = get_backend(type(self))
+        # EventStreamMixin on a non-Redis backend (#759 M5): the mutation
+        # entry is handed to the save, which appends it in its own
+        # transaction -- the record and its entry commit or roll back
+        # together. On Redis the XADD follows the save, below.
+        native_stream = isinstance(self, EventStreamMixin) and backend.name != "redis"
+        stream_kwargs = (
+            {
+                "stream_entries": self._native_stream_entries(
+                    "create" if _is_create else "update",
+                    update_fields=update_fields,
+                    strict=pipeline is not None,
+                )
+            }
+            if native_stream
+            else {}
+        )
+        outcome = backend.save(
             self,
             fields=update_fields,
             previous_id=(
@@ -1645,6 +1662,7 @@ class Model(metaclass=ModelBase):
             ),
             uow=uow,
             ignore_errors=ignore_errors,
+            **stream_kwargs,
             **kwargs,
         )
         result = outcome.result
@@ -1656,7 +1674,8 @@ class Model(metaclass=ModelBase):
         # write); registered on a Postgres unit of work's after_commit hook,
         # so it runs once that transaction commits and never for a rolled
         # back write (#759 M4b B2); otherwise immediately, which is after the
-        # save's own commit.
+        # save's own commit. (A non-Redis model's stream entry is no longer
+        # one of them: it went into the save itself, above -- #759 M5.)
         after_commit = getattr(uow, "after_commit", None)
         # WriteFilterMixin: tag priority after successful save
         if isinstance(self, WriteFilterMixin):
@@ -1667,12 +1686,10 @@ class Model(metaclass=ModelBase):
             else:
                 self._tag_priority()
         # EventStreamMixin: log mutation after successful save
-        if isinstance(self, EventStreamMixin):
+        if isinstance(self, EventStreamMixin) and not native_stream:
             _op = "create" if _is_create else "update"
             if queued:
                 self._xadd_mutation(_op, pipeline=result, **mutation_kwargs)
-            elif after_commit is not None:
-                self._defer_xadd_mutation(_op, after_commit, **mutation_kwargs)
             else:
                 self._xadd_mutation(_op, **mutation_kwargs)
         return result

@@ -159,12 +159,9 @@ record's own columns, so its partition is the row's partition columns, and a
 partition change that keeps the key keeps the state.
 `PredictionLedgerMixin` keeps its ledger in Redis until M5 and is refused on a
 Postgres model too, rather than issuing Redis commands for a record Redis does
-not hold. `EventStreamMixin` is allowed where that one is refused because its
-stream is a derived, append-only log *of* the record, never read back to
-rebuild it: each entry is built from the row this save wrote and is sent only
-after that write commits, so Redis never holds state that the Postgres row
-contradicts. A ledger is the record's own state, and splitting it across two
-stores would make it disagree with itself after a rollback.
+not hold. `EventStreamMixin` writes its stream to the backend's events tables
+(M5, [Event streams and pub/sub](#event-streams-and-pubsub-m5)), in the
+save's own transaction.
 
 Fields that arrive later: `GeoField`, `Meta.ttl` and the rest (M5); an `IndexedField` on a collection type is refused. A model
 that uses one of them raises
@@ -783,14 +780,14 @@ cascades) and clears the `<f>__supersedes` / `<f>__superseded_by` columns of
 the records that named it, the value side of the Redis chain hashes. The
 reconciler's statement-vector cache is `popoto_embedding_cache (model,
 member, vector)`, beside the entries, and `erase_entry` drops it there.
-`JournalEntry` composes `EventStreamMixin`, whose stream is a Redis structure
-until M5: a Postgres-bound journal still `XADD`s its mutation log to Redis,
-and the reconciler's `StreamConsumer` trigger reads it there. The `XADD` is
-sent after the write commits: right after the save's own commit, or, inside a
-caller's `transaction()`, after that transaction's `COMMIT`
-(`PostgresUnitOfWork.after_commit`). A rolled-back write sends none. Sending
-is best-effort: with Redis unreachable the committed row stays and the
-failure is logged. Pinned by `tests/postgres/test_postgres_journal.py`.
+`JournalEntry` composes `EventStreamMixin`: on Postgres its mutation log is
+the backend's events table (M5), appended in the journal write's own
+transaction, and the reconciler's `StreamConsumer` trigger
+(`reconciliation_consumer`, which names `JournalEntry` as its model) reads it
+there. A rolled-back write leaves no entry, and a Postgres-bound journal and
+its reconciler send Redis no command at all. Pinned by
+`tests/postgres/test_postgres_journal.py` and
+`tests/postgres/test_postgres_events.py::test_a_postgres_journal_and_its_reconciler_send_redis_nothing`.
 
 **Not on Postgres yet.** `MemoryTelemetry`'s `AssemblyEvent` declares
 `Meta.ttl`, refused until M5, so a Postgres-bound telemetry recorder fails
@@ -810,6 +807,142 @@ REDIS_URL=redis://localhost:6379/13 \
 POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
     python scripts/probe_queue_parity.py --seeds 1 2 3 --shapes 200
 ```
+
+## Event streams and pub/sub (M5)
+
+`EventStreamMixin`, `StreamConsumer`, `Publisher` and `Subscriber` run on
+Postgres with no Redis command at all. The stream lives where the model that
+writes it lives: a Redis stream for a Redis-bound model, the backend's events
+tables for a Postgres-bound one.
+
+**The entry is part of the write.** A save (create, update, partial update)
+or delete of a Postgres-bound `EventStreamMixin` model appends its mutation
+entry **in the same transaction** as the record: the record and its entry
+commit together or not at all. On Redis the `XADD` rides the save's
+`MULTI`/`EXEC`, which applies queued commands without rollback, so this is
+strictly stronger. Without a caller transaction the save takes one of its own
+(the write, then the append); inside a caller's `transaction()` the entry is
+appended just before that transaction's `COMMIT` (`uow.before_commit`).
+`ConfidenceField.update_confidence` and `CoOccurrenceField.strengthen` log
+their events to the same stream, as on Redis. The cost is the owned
+transaction: a save of an `EventStreamMixin` model measured p50 0.83-0.99 ms
+against 0.32-0.38 ms for a plain model (3 runs × 400 saves, PostgreSQL 18.6
+on localhost, Apple M1 Max, load 4.7-4.9).
+
+**Tables** (one set per schema, created on first use):
+
+| Table | Holds |
+|---|---|
+| `popoto_stream (stream, last_ms, last_seq, length, entries_added, max_del_ms, max_del_seq, created_at)` | one row per stream key: its last generated id and counters. The row is the key: an empty stream keeps it, as Redis keeps an empty stream key. Its row lock is the append lock |
+| `popoto_stream_entry (stream, ms, seq, fields bytea[], created_at)` | one row per entry; `fields` is the flat `k1, v1, k2, v2` array, in order, of the bytes `XADD` would send |
+| `popoto_stream_group`, `popoto_stream_consumer`, `popoto_stream_pending` | each consumer group's cursor and logical read counter, its consumers, and its pending entries list (owner, last delivery time, delivery count) |
+| `popoto_stream_attempt` | `StreamConsumer`'s handler-attempt counter (the `_hattempts:` hash on Redis) |
+| `popoto_pubsub_listener` | live `Subscriber` registrations, for `publish`'s count |
+
+**Ids** are Redis's `<ms>-<seq>`: the server's millisecond clock, with `seq`
+restarting at 0 each new millisecond, strictly increasing per stream (a clock
+that steps back keeps the last `ms` and bumps `seq`; the last id survives
+deleting the entry that holds it). Because the stream row stays locked until
+the appending transaction ends, ids **commit in id order**: every snapshot
+sees an id prefix of the stream, so a group cursor never skips an entry that
+commits later. Explicit ids (`XADD key 5-1 …`, `5-*`, `7`) are validated with
+Redis's rules and error text.
+
+**Reading.** `Model.stream_range()`, `Model.stream_revrange()` and
+`Model.stream_len()` read a model's stream on either backend, and
+`popoto.streams.stream_client(model)` returns the client that holds it: the
+Redis client on Redis, the backend's stream store on Postgres, with the same
+redis-py methods and replies (`xadd`, `xrange`, `xrevrange`, `xlen`, `xdel`,
+`xtrim`, `xgroup_*`, `xreadgroup`, `xack`, `xpending`, `xpending_range`,
+`xclaim`, `xautoclaim`, `xinfo_groups`, `xinfo_consumers`, `delete`,
+`exists`). Errors keep Redis's message text (`BUSYGROUP …`, `NOGROUP …`) as
+`StreamCommandError`, and redis-py's client-side checks as `StreamDataError`.
+
+**`StreamConsumer`** finds its backend from `backend=` or `model=`, else from
+the `EventStreamMixin` models that write its `stream_key` (and their `dead:`
+streams), else the process default; `reconciliation_consumer` names
+`JournalEntry`. On Postgres:
+
+- `XREADGROUP >` advances the group's cursor under the group row's lock, so
+  two consumers never receive one entry; the entries join the pending list in
+  the same transaction. At-least-once delivery, retries, reclaim and
+  dead-lettering are the Redis consumer's own logic, unchanged.
+- `XCLAIM`/`XAUTOCLAIM` take pending rows `FOR UPDATE SKIP LOCKED`: a row a
+  concurrent claimer holds is passed over rather than waited on or claimed
+  twice. `XAUTOCLAIM` scans as Redis does (`count × 10` entries looked at),
+  and reports entries deleted from the stream in its third list.
+- **Blocking reads** (`block_ms`) wait on `LISTEN`: each append sends
+  `pg_notify` on the schema's events channel inside its transaction, so the
+  notification arrives when the entry is visible. `LISTEN` needs a session,
+  so the wait runs on a **dedicated connection per consumer, never a pooled
+  one** -- PgBouncer in transaction mode would hand a pooled connection to
+  another client between statements (§3 Topology). Its DSN is
+  `POPOTO_POSTGRES_LISTEN_URL` when set (point it past a transaction-mode
+  pooler at the server), else the backend's own. The session `LISTEN`s
+  before the read it backs up, so an append that commits in between is not
+  missed. A wait is capped at one second (`STREAM_WAIT_POLL_SECONDS`), after
+  which the read runs again anyway -- the fallback poll that bounds a lost
+  notification -- and a dropped `LISTEN` connection is reopened on the next
+  wait. `consumer.close()` (or the end of `run()`) closes the session.
+
+**Pub/sub.** `Publisher.publish` is one `pg_notify` and `Subscriber` polls a
+`PostgresPubSub`, a redis-py-shaped `PubSub` (`subscribe`, `psubscribe`,
+`unsubscribe`, `punsubscribe`, `get_message`, `listen`, `close`, the same
+message dicts) on its own dedicated `LISTEN` session. A publisher uses its
+model's backend, `backend=`, or the process default; a subscriber `backend=`
+or the default.
+
+- One notification channel per schema carries every popoto channel: the
+  payload names the channel, so channel names are not bound by Postgres's
+  63-byte identifier limit. **Pattern subscriptions are matched
+  client-side**, with Redis's glob rules translated to a regular expression;
+  every subscriber of the schema receives every message and keeps what its
+  subscriptions match.
+- `NOTIFY` is transactional: a message published with the backend's unit of
+  work as `pipeline=` is delivered when that transaction commits, and never
+  if it rolls back.
+- **Payload limit.** A `NOTIFY` payload must be shorter than 8000 bytes, and
+  the message travels base64-encoded beside the channel name, so about
+  5.9 KB of message fits. A larger one is **refused** with
+  `PubSubPayloadTooLarge` (a `PublisherException`) before anything is sent,
+  not split: a split message could be half-delivered to a subscriber that
+  joins between its parts. Publish a key and keep the body in a record.
+- `publish` returns the number of live subscriptions reached, counted from
+  `popoto_pubsub_listener` rows whose session pid is live
+  (`pg_stat_activity`); a subscriber deletes its rows on `close()`, and rows
+  of a session that died stop counting and are swept by the next subscriber
+  to connect. The `LISTEN` URL must reach the same server.
+
+**Divergences** (stream and pub/sub; Redis behaviour unchanged):
+
+| Behaviour | Redis | Postgres |
+|---|---|---|
+| `MAXLEN ~ N` (the mixin's `_stream_max_length`, and `XTRIM ~`) | trims whole radix-tree nodes, so keeps at least `N`, often more | keeps exactly `N`, the newest. The probe's documented `approx_trim` class; pinned by `test_postgres_events.py::test_maxlen_trims_exactly_a_documented_divergence` |
+| An append that fails at the server after an immediate save | the `XADD` failure is logged and the record stays | the save raises and nothing is kept (one transaction). An entry that cannot be *built* (an empty `_stream_name`) is logged and skipped on both, or raises with a `pipeline=` on both. Pinned: `test_a_failing_append_fails_the_save_and_keeps_no_record` |
+| Error types | `redis.exceptions.ResponseError` / `DataError` | `StreamCommandError` / `StreamDataError`, same text (the Postgres backend never imports `redis`) |
+| `XADD … MINID`/`LIMIT`, `XTRIM … LIMIT`, `XCLAIM … FORCE`, `XREADGROUP … CLAIM` | supported | `StreamDataError` |
+| Stream keys, groups, consumers, channels | binary-safe | UTF-8 text without NUL |
+| A pending row another transaction holds during `XCLAIM`/`XAUTOCLAIM` | single-threaded: never contended | skipped (`SKIP LOCKED`) |
+| A message published inside a transaction | `MULTI`/`EXEC` sends it at `EXEC` | delivered at `COMMIT`, never after a rollback |
+| A pub/sub message whose payload encodes to 8000 bytes or more | delivered | `PubSubPayloadTooLarge` |
+| Pattern subscriptions | matched by the server | matched by each subscriber; every subscriber of the schema receives every message |
+
+The seeded probe, `scripts/probe_events_parity.py`, replays random sessions
+on both legs -- appends with auto and explicit ids, ranges with every bound
+form, deletes, exact trims, group create/destroy, reads (new and history,
+`NOACK`), acks, pending summaries and ranges, claims and autoclaims, `XINFO
+GROUPS` (including `entries-read` and `lag`), key deletes, a model's saves,
+partial saves, deletes and rolled-back writes, and `StreamConsumer` batches
+with a failing handler (retry, reclaim, dead-letter) -- renames each leg's
+ids `e1, e2, …` in creation order, and compares every reply and error.
+`test_postgres_events.py` runs a 20-shape slice in CI.
+
+```bash
+REDIS_URL=redis://localhost:6379/13 \
+POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
+    python scripts/probe_events_parity.py --seeds 1 2 3 4 5 6 7 8 --shapes 100
+```
+
 
 ## Topology and the outage contract
 
@@ -890,13 +1023,19 @@ registration order after `COMMIT` returns. A rolled-back transaction drops
 them, and so does a failure at `COMMIT`. A callback that raises is logged at
 WARNING; the remaining callbacks still run, and the exception is not raised,
 because the write has already committed. This hook is how a Postgres-bound
-save runs its Redis side effects: the `EventStreamMixin` `XADD` and the
-`WriteFilterMixin` priority tag. On Redis both are queued on the save's
-pipeline, so a rolled-back transaction must not send them. (The priority tag
-is a no-op off Redis, so today only the `XADD` sends anything.) Without a
-caller transaction, the save has already committed by the time these effects
-run, so they run immediately. Pinned by
+save runs the `WriteFilterMixin` priority tag (a no-op off Redis). Without a
+caller transaction, the save has already committed by the time it runs, so
+it runs immediately. Pinned by
 `test_after_commit_callbacks_run_only_after_commit` and
+`tests/postgres/test_postgres_recipes.py::test_post_save_redis_side_effects_wait_for_commit`.
+
+**Before-commit hook (M5).** `uow.before_commit(fn)` runs `fn` *inside* the
+transaction, just before its `COMMIT`, in registration order; an exception
+from it rolls the whole unit back and propagates. A save's or delete's
+`EventStreamMixin` entry is appended this way inside a caller's
+`transaction()`, so the stream's row lock is the last lock the transaction
+takes (after every record-key and row lock, the one lock order of §6) and the
+entry commits or rolls back with the record. Pinned by
 `tests/postgres/test_postgres_journal.py::test_the_mutation_stream_is_written_only_after_commit`.
 
 Before #759 M2a's patch these reached the caller as raw psycopg
@@ -1096,7 +1235,6 @@ cast to the column's type.
 | A proposal that duplicates two or more open candidates (M4) | folds into the first in `QuestionCandidate.query.filter(agent_id=…)`'s order: set order | the first in `_pk` order (the "order of results" row above, seen through dedup). Pinned on both legs by `tests/test_question_queue.py::TestPropose::test_a_proposal_duplicating_two_candidates_folds_into_the_first`, and counted as the queue probe's `dedup_order` class |
 | `DefaultMemory`'s eviction counter (M4) | a Redis string `MemoryService.status()` reads | a `popoto_counter` row: a Postgres-bound `DefaultMemory` needs no Redis, and the Redis-only `MemoryService` does not report it |
 | `ProvenanceJournal` with a caller `pipeline=` (M4) | a Redis pipeline: the annotation and close are queued, `target_closed` is `None` and `close_index` names the close in `execute()`'s results | the backend's unit of work only (anything else raises `ValueError`): the annotation and close run inside it, `target_closed` is known at the call, `close_index` is `None`. Pinned: `test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close` |
-| `EventStreamMixin` on a Postgres-bound model (`JournalEntry`, M4) | `XADD` in the save's pipeline, so it commits or is discarded with the write | `XADD` to Redis after the Postgres write commits (after the caller's `transaction()` commits, when there is one), never for a rolled-back write; best-effort, so with Redis down the row commits and no entry is sent; until the stream moves in M5 |
 | `AppendOnlyMixin`: two saves of one key in one unit of work (M4) | both pass the guard (the documented intra-pipeline shape) | the second is refused (the guard reads inside the transaction). Pinned: `test_postgres_recipes.py::test_append_only_sees_its_own_transaction` |
 | `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` | run the sync call in a worker thread (the async driver arrives in M5) |
 | `ExistenceFilter.might_exist` (M2b) | a bloom filter: false positives are possible, and a deleted record stays "seen" | exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: `test_existence_filter.py::TestMembershipExactness` |
@@ -1119,7 +1257,6 @@ cast to the column's type.
 | A NaN `min_weight` in `CoOccurrenceField.get_linked` (M4) | `ResponseError: min or max is not a float` | `ValueError` with the same text. Pinned on both legs: `test_get_linked_nan_min_weight_a_documented_divergence`; the probe's `nan_error_type` class |
 | The order of `propagate()`'s dict, and so of equal weights in `graph_traversal.traverse()` (M4) | Lua table iteration order | weight descending, then key bytewise. The dict and its weights are equal on both; `traverse()` sorts by weight, so only ties can be listed in another order (the graph probe's `traverse_tie_order` class) |
 | `link()`'s reply for a weight at or past `2**63` in magnitude (M4) | the server's C `(long long)` cast of the Lua number: `-inf` and anything under `-2**63` reply `-2**63` on arm64 and x86-64; above `2**63` (only with a cap past it) arm64 saturates to `2**63 - 1`, x86-64 replies `-2**63` | the arm64 values |
-| `CoOccurrenceField.strengthen()` on a model with `EventStreamMixin` (M4) | appends a `strengthen` entry to the model's Redis stream | no entry: the event stream is Redis-only until M5 |
 | Where a NaN decay score ranks (M2a) | NaN (`0 * inf`: a `-inf` clock with above-prior confidence) makes the script's comparator inconsistent (`x > nan` is always false), so `table.sort` places it arbitrarily and can misorder real scores around it | real scores sorted, NaN last; every member's score is the same on both. Pinned: `test_where_a_nan_score_ranks_is_a_documented_divergence` |
 | A NaN decay score in `composite_score` (M2a) | `rank_decayed` replies `nan` (`0 * inf`: a `-inf` clock with above-prior confidence) and the composite's `ZADD` refuses it: `ResponseError: value is not a valid float` | that arm scores 0 for the record, the value `ZUNIONSTORE` gives a NaN product. Pinned: `test_a_nan_decay_score_in_composite_is_a_documented_divergence` |
 | The confirmed access log (M2a) | a capped list of read timestamps (`$AT:…:access_log`) | not kept: `access_count` and `last_accessed` are. It is read only by `export_state`, which arrives with `transfer/` in M5 |

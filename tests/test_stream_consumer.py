@@ -13,6 +13,9 @@ Tests cover:
 - Empty stream — consumer blocks briefly then returns 0
 - Handler exception — entries stay pending, consumer loop continues
 - process_batch() returns int count including reclaimed entries
+
+Runs on both conformance legs (#759 M5): on Postgres the stream, its groups
+and pending lists are the backend's events tables.
 """
 
 import sys
@@ -28,6 +31,9 @@ from src import popoto  # noqa: E402
 from src.popoto.streams.consumer import StreamConsumer  # noqa: E402
 from src.popoto.fields.event_stream import EventStreamMixin  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
+from src.popoto.streams import stream_client  # noqa: E402
+
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
 
 # --- Test Models ---
 
@@ -47,10 +53,17 @@ STREAM_KEY = "stream:consumer_test"
 DEAD_LETTER_KEY = f"dead:{STREAM_KEY}"
 
 
+def _streams():
+    """The client holding ``STREAM_KEY`` (#759 M5): the Redis client on the
+    Redis leg, the Postgres backend's stream store on the Postgres leg --
+    the same commands and replies, so every assertion below reads alike."""
+    return stream_client(ConsumerTestItem)
+
+
 def _cleanup_streams():
     """Remove all test streams and consumer groups."""
     for key in [STREAM_KEY, DEAD_LETTER_KEY]:
-        POPOTO_REDIS_DB.delete(key)
+        _streams().delete(key)
 
 
 def _cleanup_model():
@@ -69,7 +82,7 @@ def _xadd_entries(stream_key, count, prefix="entry"):
     """Add test entries directly to a stream."""
     ids = []
     for i in range(count):
-        entry_id = POPOTO_REDIS_DB.xadd(
+        entry_id = _streams().xadd(
             stream_key,
             {
                 "model": "Test",
@@ -135,7 +148,7 @@ class TestConsumerGroupCreation:
         assert count == 0
 
         # Verify group exists via XINFO GROUPS
-        groups = POPOTO_REDIS_DB.xinfo_groups(STREAM_KEY)
+        groups = _streams().xinfo_groups(STREAM_KEY)
         group_names = [
             g["name"].decode() if isinstance(g["name"], bytes) else g["name"]
             for g in groups
@@ -159,7 +172,7 @@ class TestConsumerGroupCreation:
         # Second call should succeed (BUSYGROUP caught)
         consumer.process_batch_sync()
 
-        groups = POPOTO_REDIS_DB.xinfo_groups(STREAM_KEY)
+        groups = _streams().xinfo_groups(STREAM_KEY)
         group_names = [
             g["name"].decode() if isinstance(g["name"], bytes) else g["name"]
             for g in groups
@@ -223,7 +236,7 @@ class TestBatchProcessing:
         consumer.process_batch_sync()
 
         # Check pending count — should be 0 after ACK
-        pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, "ack_group")
+        pending = _streams().xpending(STREAM_KEY, "ack_group")
         assert pending["pending"] == 0
 
     def test_empty_stream_returns_zero(self):
@@ -281,7 +294,7 @@ class TestHandlerException:
             consumer.process_batch_sync()
 
         # Entries should still be pending (sync client unaffected by async loop)
-        pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, "fail_group")
+        pending = _streams().xpending(STREAM_KEY, "fail_group")
         assert pending["pending"] == 2
 
 
@@ -298,11 +311,9 @@ class TestDeadLetter:
         raises, 2 handler invocations trigger dead-lettering on the next cycle.
         """
         _xadd_entries(STREAM_KEY, 1)
-        POPOTO_REDIS_DB.xgroup_create(STREAM_KEY, "dl_group", id="0", mkstream=True)
+        _streams().xgroup_create(STREAM_KEY, "dl_group", id="0", mkstream=True)
         # Initial delivery: entry enters PEL
-        POPOTO_REDIS_DB.xreadgroup(
-            "dl_group", "crashed-worker", {STREAM_KEY: ">"}, count=1
-        )
+        _streams().xreadgroup("dl_group", "crashed-worker", {STREAM_KEY: ">"}, count=1)
 
         async def always_failing_handler(entries):
             raise RuntimeError("Always fails")
@@ -319,7 +330,7 @@ class TestDeadLetter:
 
         # Run until dead-lettered (max_retries handler calls + 1 dead-letter cycle)
         for _ in range(6):
-            dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
+            dead_entries = _streams().xrange(DEAD_LETTER_KEY)
             if dead_entries:
                 break
             try:
@@ -328,7 +339,7 @@ class TestDeadLetter:
                 pass  # expected when handler fails during redelivery
 
         # Check that the dead-letter stream has the entry
-        dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
+        dead_entries = _streams().xrange(DEAD_LETTER_KEY)
         assert len(dead_entries) >= 1
 
         _, dead_fields = dead_entries[0]
@@ -338,20 +349,18 @@ class TestDeadLetter:
         assert b"dead_letter_ts" in dead_fields
 
         # Entry is gone from XPENDING
-        pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, "dl_group")
+        pending = _streams().xpending(STREAM_KEY, "dl_group")
         assert pending["pending"] == 0
 
     def test_dead_letter_max_length(self):
         """Dead-letter stream respects max_length with entries from real claim cycles."""
-        POPOTO_REDIS_DB.xgroup_create(STREAM_KEY, "dl_max_group", id="0", mkstream=True)
+        _streams().xgroup_create(STREAM_KEY, "dl_max_group", id="0", mkstream=True)
         n_entries = 5
 
         for i in range(n_entries):
             _xadd_entries(STREAM_KEY, 1, prefix=f"dl_max_{i}")
             # Initial delivery: entry enters PEL
-            POPOTO_REDIS_DB.xreadgroup(
-                "dl_max_group", "crashed", {STREAM_KEY: ">"}, count=1
-            )
+            _streams().xreadgroup("dl_max_group", "crashed", {STREAM_KEY: ">"}, count=1)
 
         # Must use a failing handler — successful delivery ACKs entries without
         # dead-lettering them, so max_length would never be exercised.
@@ -372,7 +381,7 @@ class TestDeadLetter:
         # Run until all entries are cleared from XPENDING
         # With max_retries=1: 1 handler call per entry, then dead-letter on next cycle
         for _ in range(n_entries * 3 + 3):
-            pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, "dl_max_group")
+            pending = _streams().xpending(STREAM_KEY, "dl_max_group")
             if pending["pending"] == 0:
                 break
             try:
@@ -380,7 +389,7 @@ class TestDeadLetter:
             except RuntimeError:
                 pass
 
-        dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
+        dead_entries = _streams().xrange(DEAD_LETTER_KEY)
         # With approximate trimming, may be slightly over, but should be bounded
         assert len(dead_entries) <= n_entries  # approximate MAXLEN allows some over
 
@@ -545,9 +554,9 @@ def _setup_crashed_consumer(stream_key, group_name, n_entries=1, prefix="crash")
     Returns the list of entry IDs added.
     """
     entry_ids = _xadd_entries(stream_key, n_entries, prefix=prefix)
-    POPOTO_REDIS_DB.xgroup_create(stream_key, group_name, id="0", mkstream=True)
+    _streams().xgroup_create(stream_key, group_name, id="0", mkstream=True)
     # Deliver but do NOT XACK — simulates the consumer crashing mid-process
-    POPOTO_REDIS_DB.xreadgroup(
+    _streams().xreadgroup(
         group_name,
         "crashed-consumer",
         {stream_key: ">"},
@@ -581,7 +590,7 @@ class TestXClaimRedelivery:
         )
 
         # Confirm entries are pending before recovery
-        pending_before = POPOTO_REDIS_DB.xpending(STREAM_KEY, "crash_group")
+        pending_before = _streams().xpending(STREAM_KEY, "crash_group")
         assert pending_before["pending"] == 2
 
         # Wait for idle time to accumulate beyond claim_timeout_ms
@@ -605,7 +614,7 @@ class TestXClaimRedelivery:
         ), f"Expected 2 reclaimed entries handled, got {len(collected)}"
 
         # BLOCKER-1: entries are GONE from XPENDING (recurrence guard)
-        pending_after = POPOTO_REDIS_DB.xpending(STREAM_KEY, "crash_group")
+        pending_after = _streams().xpending(STREAM_KEY, "crash_group")
         assert (
             pending_after["pending"] == 0
         ), f"Entries still pending after reclaim: {pending_after['pending']}"
@@ -635,13 +644,13 @@ class TestXClaimRedelivery:
         assert len(collected) == 1
 
         # Entry is NOT in dead-letter stream
-        dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
+        dead_entries = _streams().xrange(DEAD_LETTER_KEY)
         assert (
             len(dead_entries) == 0
         ), f"Entry was incorrectly dead-lettered: {dead_entries}"
 
         # Entry is gone from XPENDING
-        pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, "success_group")
+        pending = _streams().xpending(STREAM_KEY, "success_group")
         assert pending["pending"] == 0
 
     def test_redelivery_handler_exception_leaves_entry_pending(self):
@@ -670,13 +679,13 @@ class TestXClaimRedelivery:
             consumer.process_batch_sync()
 
         # Entry remains in XPENDING — not ACKed, not dead-lettered
-        pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, "fail_redeliver_group")
+        pending = _streams().xpending(STREAM_KEY, "fail_redeliver_group")
         assert pending["pending"] == 1, (
             f"Entry should still be pending after handler exception, "
             f"got {pending['pending']}"
         )
 
-        dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
+        dead_entries = _streams().xrange(DEAD_LETTER_KEY)
         assert len(dead_entries) == 0
 
     def test_process_batch_return_count_includes_reclaimed(self):
@@ -724,7 +733,7 @@ class TestXClaimRedelivery:
         )
 
         # Delete the entry from the stream while it's still in the PEL
-        POPOTO_REDIS_DB.xdel(STREAM_KEY, entry_ids[0])
+        _streams().xdel(STREAM_KEY, entry_ids[0])
 
         time.sleep(0.1)
 
@@ -751,7 +760,7 @@ class TestXClaimRedelivery:
         )
 
         # Entry is gone from XPENDING (ACKed)
-        pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, "del_group")
+        pending = _streams().xpending(STREAM_KEY, "del_group")
         assert (
             pending["pending"] == 0
         ), f"Deleted PEL entry should be ACKed, still pending: {pending['pending']}"
@@ -785,8 +794,8 @@ class TestDeadLetterThreshold:
         _xadd_entries(STREAM_KEY, 1, prefix=f"thresh_{max_retries_val}")
 
         # Initial delivery (entry enters PEL)
-        POPOTO_REDIS_DB.xgroup_create(STREAM_KEY, group, id="0", mkstream=True)
-        POPOTO_REDIS_DB.xreadgroup(group, "crashed", {STREAM_KEY: ">"}, count=1)
+        _streams().xgroup_create(STREAM_KEY, group, id="0", mkstream=True)
+        _streams().xreadgroup(group, "crashed", {STREAM_KEY: ">"}, count=1)
 
         # Track actual handler invocations
         handler_call_count = {"n": 0}
@@ -807,7 +816,7 @@ class TestDeadLetterThreshold:
 
         # Run enough cycles — need max_retries_val handler calls + 1 cycle to dead-letter
         for _ in range(max_retries_val + 3):
-            dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
+            dead_entries = _streams().xrange(DEAD_LETTER_KEY)
             if dead_entries:
                 break
             try:
@@ -815,7 +824,7 @@ class TestDeadLetterThreshold:
             except RuntimeError:
                 pass  # handler exception is expected when entry is redelivered
 
-        dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
+        dead_entries = _streams().xrange(DEAD_LETTER_KEY)
         assert len(dead_entries) >= 1, (
             f"Expected entry in dead-letter after {max_retries_val} handler "
             f"invocations, but found none"
@@ -828,7 +837,7 @@ class TestDeadLetterThreshold:
         )
 
         # Entry is gone from XPENDING after dead-lettering
-        pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, group)
+        pending = _streams().xpending(STREAM_KEY, group)
         assert pending["pending"] == 0, (
             f"Dead-lettered entry should be ACKed from PEL, "
             f"still pending: {pending['pending']}"
@@ -847,9 +856,9 @@ class TestDeadLetterThreshold:
         max_retries = 2
 
         _xadd_entries(STREAM_KEY, 1, prefix="fc_entry")
-        POPOTO_REDIS_DB.xgroup_create(STREAM_KEY, group, id="0", mkstream=True)
+        _streams().xgroup_create(STREAM_KEY, group, id="0", mkstream=True)
         # Initial delivery: times_delivered = 1
-        POPOTO_REDIS_DB.xreadgroup(group, "crashed", {STREAM_KEY: ">"}, count=1)
+        _streams().xreadgroup(group, "crashed", {STREAM_KEY: ">"}, count=1)
 
         # Must use a failing handler — successful delivery ACKs the entry and
         # cleans up the handler-attempt counter, so dead-lettering never triggers.
@@ -868,7 +877,7 @@ class TestDeadLetterThreshold:
 
         # Run enough cycles to trigger dead-lettering
         for _ in range(max_retries + 3):
-            dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
+            dead_entries = _streams().xrange(DEAD_LETTER_KEY)
             if dead_entries:
                 break
             try:
@@ -876,7 +885,7 @@ class TestDeadLetterThreshold:
             except RuntimeError:
                 pass
 
-        dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
+        dead_entries = _streams().xrange(DEAD_LETTER_KEY)
         assert len(dead_entries) >= 1
 
         _, dead_fields = dead_entries[0]
@@ -902,12 +911,12 @@ class TestDeadLetterThreshold:
         max_retries = 1  # dead-letter quickly (after 1 handler attempt)
         dead_letter_max_length = 3
 
-        POPOTO_REDIS_DB.xgroup_create(STREAM_KEY, group, id="0", mkstream=True)
+        _streams().xgroup_create(STREAM_KEY, group, id="0", mkstream=True)
 
         for i in range(n_entries):
             _xadd_entries(STREAM_KEY, 1, prefix=f"maxlen_{i}")
             # Initial delivery — simulate crashed consumer that never ACKs
-            POPOTO_REDIS_DB.xreadgroup(group, "crashed", {STREAM_KEY: ">"}, count=1)
+            _streams().xreadgroup(group, "crashed", {STREAM_KEY: ">"}, count=1)
 
         async def always_failing_handler(entries):
             raise RuntimeError("Always fails — drives dead-lettering")
@@ -925,8 +934,8 @@ class TestDeadLetterThreshold:
 
         # Run until all entries are dead-lettered (multiple cycles needed)
         for _ in range(n_entries * 3 + 5):
-            dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
-            pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, group)
+            dead_entries = _streams().xrange(DEAD_LETTER_KEY)
+            pending = _streams().xpending(STREAM_KEY, group)
             if len(dead_entries) >= n_entries or pending["pending"] == 0:
                 break
             try:
@@ -934,7 +943,7 @@ class TestDeadLetterThreshold:
             except RuntimeError:
                 pass
 
-        dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
+        dead_entries = _streams().xrange(DEAD_LETTER_KEY)
         # Entries ARE actually dead-lettered (not vacuously zero)
         assert (
             len(dead_entries) >= 1

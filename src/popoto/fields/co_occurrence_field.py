@@ -42,6 +42,39 @@ from .field import Field
 logger = logging.getLogger("POPOTO.CoOccurrenceField")
 
 
+def _strengthen_event(
+    model_class: Any, source_pk: str, target_pk: str, delta: float
+) -> tuple[str, dict[str, str], int]:
+    """The ``EventStreamMixin`` entry ``strengthen`` logs: its stream key
+    (partitioned by the *source key* when the model partitions its stream,
+    as it always has), its fields, and the stream's ``MAXLEN``."""
+    import time
+
+    from .event_stream import EventStreamMixin
+
+    stream_name = getattr(model_class, "_stream_name", EventStreamMixin._stream_name)
+    max_length = getattr(
+        model_class,
+        "_stream_max_length",
+        EventStreamMixin._stream_max_length,
+    )
+    stream_key = f"stream:{stream_name}"
+    partition_field = getattr(model_class, "_stream_partition_field", None)
+    if partition_field:
+        stream_key = f"{stream_key}:{source_pk}"
+    entry = {
+        "model": model_class.__name__,
+        "pk": str(source_pk),
+        "op": "strengthen",
+        "ts": str(time.time()),
+        "changed_fields": "",
+        "source_pk": str(source_pk),
+        "target_pk": str(target_pk),
+        "delta": str(delta),
+    }
+    return stream_key, entry, max_length
+
+
 def _graph_backend(model: Any) -> Any:
     """The model's backend when it is not Redis (#759 M4), else ``None``:
     the edges then live in its edge table, and every method below hands the
@@ -639,8 +672,6 @@ class CoOccurrenceField(Field):
         cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
         backend = _graph_backend(model_class)
         if backend is not None:
-            # No EventStreamMixin entry: its stream is a Redis structure,
-            # and Postgres pub/sub arrives in M5.
             uow = _uow(pipeline)
             weight = backend.graph_update(
                 _spec(model_class),
@@ -654,6 +685,22 @@ class CoOccurrenceField(Field):
             )
             if pipeline and uow is None:
                 return None  # a Redis pipeline: the queued call's reply
+            from .event_stream import EventStreamMixin
+
+            if not pipeline and issubclass(model_class, EventStreamMixin):
+                # #759 M5: the strengthen entry, on the backend's stream --
+                # best-effort and only without a pipeline, as on Redis.
+                try:
+                    from ..backends.postgres.events import StreamAppend
+
+                    stream_key, entry, max_length = _strengthen_event(
+                        model_class, source_pk, target_pk, delta
+                    )
+                    backend.stream_append(
+                        StreamAppend.of(stream_key, entry, maxlen=max_length)
+                    )
+                except Exception:
+                    pass  # Best-effort, don't block strengthen
             return float(weight)
 
         source_key = self.get_edge_key(model_class, source_pk)
@@ -685,30 +732,9 @@ class CoOccurrenceField(Field):
 
         if not pipeline and issubclass(model_class, EventStreamMixin):
             try:
-                import time
-
-                stream_name = getattr(
-                    model_class, "_stream_name", EventStreamMixin._stream_name
+                stream_key, entry, max_length = _strengthen_event(
+                    model_class, source_pk, target_pk, delta
                 )
-                max_length = getattr(
-                    model_class,
-                    "_stream_max_length",
-                    EventStreamMixin._stream_max_length,
-                )
-                stream_key = f"stream:{stream_name}"
-                partition_field = getattr(model_class, "_stream_partition_field", None)
-                if partition_field:
-                    stream_key = f"{stream_key}:{source_pk}"
-                entry = {
-                    "model": model_class.__name__,
-                    "pk": str(source_pk),
-                    "op": "strengthen",
-                    "ts": str(time.time()),
-                    "changed_fields": "",
-                    "source_pk": str(source_pk),
-                    "target_pk": str(target_pk),
-                    "delta": str(delta),
-                }
                 get_REDIS_DB().xadd(
                     stream_key, entry, maxlen=max_length, approximate=True
                 )
