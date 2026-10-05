@@ -112,6 +112,14 @@ from popoto.fields.constants import Defaults
 - `wilson_ci_lower(successes, total)` — Wilson score confidence interval lower bound
 - `chi_squared_uniform(observed)` — chi-squared test against uniform distribution
 
+## On Postgres
+
+`PolicyEntry` runs unchanged on a Postgres-bound model (#759 M5): its
+`TDValueField`, `PredictionLedgerMixin`, `ConfidenceField`, decay clock,
+co-occurrence graph and existence filter are all stored there, and its
+`EventStreamMixin` mutation log is still sent to Redis after each write
+commits. See [Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+
 ## See Also
 
 - [ContextAssembler](context-assembler.md) — retrieval-to-injection bridge

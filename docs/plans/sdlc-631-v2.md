@@ -1022,6 +1022,52 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   `test_prediction_ledger.py`, `test_td_value_field.py`,
   `test_content_field.py`, `test_check_indexes.py`, `test_clean_indexes.py`,
   `test_transfer_roundtrip.py`, `test_transfer_key_regeneration.py`.
+- **M5 long tail as shipped: departures from this plan, recorded.** The
+  `CyclicDecayField` / `PredictionLedgerMixin` / `TDValueField` PR
+  (`backends/postgres/longtail.py`).
+  - **The cycles are four parallel `double precision[]` columns, not
+    `jsonb`** (`<f>__cycle_period`, `<f>__cycle_amp`, `<f>__cycle_phase`,
+    `<f>__cycle_base`), the pressure two `double precision` columns
+    (`<f>__pressure_rate`, `<f>__pressure_at`), `NULL` = no companion-hash
+    entry. An amplitude can be `NaN` or `±inf` and the ranking multiplies
+    it; a `jsonb` number is `numeric`, which holds neither, and would add a
+    text round trip per scanned row. M2a's clock rule, applied to the cycles.
+  - **`CYCLES_MERGE_LUA` is part of the save's upsert, not a second
+    statement:** a new row takes the declaration, and `ON CONFLICT` merges
+    the amplitudes in one sub-select (period-keyed FIFO pairing by the
+    period's bits, #698's three-way rule); `RETURNING old.…` hands back the
+    replaced cycles, from which the reset line is logged as on Redis. On
+    Redis the merge is a separate `EVAL` after the `HSET`.
+  - **The ledger is two engine tables**, `popoto_prediction_ledger (model,
+    member, entry jsonb, lua_packed)` and `popoto_prediction_error (model,
+    part, member, error)`, not a per-model companion: the `$PL:` keys are
+    keyed by class name and are not removed with the record, and engine
+    tables (M4b's shape) keep both properties. `lua_packed` marks an entry
+    the resolution re-packed, so a read applies cmsgpack's transformation
+    (an integral number an `int`, an empty map a list, a `nil` field
+    dropped) and a resolved entry reads exactly as on Redis; a `bytes`
+    prediction is unresolvable on both legs (Redis's cmsgpack reads no
+    `bin`).
+  - **`TD_UPDATE_LUA` stores `tostring(q')` through `to_char(…, 'EEEE')`**
+    (C's `%.13e`, the same 14 significant digits as `%.14g`), trailing zeros
+    trimmed, in one statement; its constants enter through a
+    `MATERIALIZED` CTE because the planner folds a constant subexpression
+    inside an unreached `CASE` arm, and the clamped helpers' `x / 2` of a
+    subnormal constant then raised "underflow" at plan time.
+  - **`ObservationProtocol`'s Postgres batch applies the whole effects
+    matrix** in the Redis functions' order, inside its one transaction; the
+    ledger's confidence feedback and the auto-discharge's confidence read
+    run on the batch's connection (`_apply_confidence_feedback(pipeline=)`,
+    the confidence `state` adapter with `uow=`), so neither waits on the
+    batch's own row lock. Ledger and cycle writes take the record-key lock
+    the batch already holds: the one lock order is unchanged.
+  - **`DataFrameField` is a documented `validate_spec` refusal**, with its
+    reason (the `dataframe` extra is installed by no CI job), not a `bytea`
+    column.
+  - **The probe** (`scripts/probe_longtail_parity.py`, 3 seeds × 500 shapes
+    on PostgreSQL 18.6 and Redis 8.10.2, macOS arm64): 6,207 cyclic ranking
+    scores bit-identical, 0 undocumented mismatches across the ranking,
+    merge, adjustment, query, TD, ledger and observation classes.
 
 ## 6. Carried forward from the POC
 

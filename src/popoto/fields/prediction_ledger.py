@@ -947,8 +947,13 @@ class PredictionLedgerMixin:
 
     @classmethod
     def _error_summary_on_backend(
-        cls, backend, model_class, partition, group_by, limit
-    ):
+        cls,
+        backend: Any,
+        model_class: Any,
+        partition: Any,
+        group_by: Any,
+        limit: int,
+    ) -> dict[Any, Any]:
         """``error_summary``'s reads on a non-Redis backend (#759 M5): the
         error set's top ``limit`` and each member's entry, from the engine
         tables; the grouping and statistics are the shared Python below."""
@@ -972,7 +977,7 @@ class PredictionLedgerMixin:
         return cls._summarize(decoded_meta, group_by)
 
     @classmethod
-    def _summarize(cls, decoded_meta, group_by):
+    def _summarize(cls, decoded_meta: Any, group_by: Any) -> dict[Any, Any]:
         """Group ``(member_key, error, meta)`` rows and compute the stats."""
         # Group and compute.
         if group_by is None:

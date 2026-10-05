@@ -625,8 +625,9 @@ def _rows_cycles(
             lua_num(float(amps[i])) if amps is not None else None,
             lua_num(float(phases[i])) if phases is not None else 0,
         ]
-        if bases is not None and bases[i] is not None:
-            entry.append(lua_num(float(bases[i])))
+        base = bases[i] if bases is not None else None
+        if base is not None:
+            entry.append(lua_num(float(base)))
         out.append(entry)
     return out
 

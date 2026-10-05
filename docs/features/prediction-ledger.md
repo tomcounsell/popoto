@@ -139,6 +139,15 @@ one being invented.
 See [Export and import](../guides/export-import.md#fidelity-what-crosses-and-what-does-not)
 for how this compares with the other history-shaped subsystems.
 
+## On Postgres
+
+On a Postgres-bound model (#759 M5) the ledger entry and the error sorted set
+are two engine tables, `popoto_prediction_ledger` and
+`popoto_prediction_error`; `RESOLVE_PREDICTION_LUA` is one statement, and a
+resolved entry reads back exactly as the script's `cmsgpack` re-pack left it
+on Redis. `ObservationProtocol`'s auto-resolve runs inside its batch
+transaction. See [Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+
 ## Architecture
 
 - **Meta hash**: `$PL:{ClassName}:meta:{pk}` — msgpack prediction metadata per instance

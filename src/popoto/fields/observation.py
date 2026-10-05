@@ -393,9 +393,9 @@ def _auto_discharge_on_backend(instance: Any, cyclic: Any, uow: Any) -> None:
     from ..backends import record_id
     from .confidence_field import ConfidenceField
 
-    if not cyclic:
-        return
     backend = non_redis_backend(instance)
+    if not cyclic or backend is None:
+        return
     for field_name, field in instance._meta.fields.items():
         if not isinstance(field, ConfidenceField):
             continue

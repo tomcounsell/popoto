@@ -37,6 +37,13 @@ prior, ``NeverRecordMixin``, ``AppendOnlyMixin`` and the question queue.
 graph write and read, a record delete's edge cleanup, export/import, the
 ``composite_score`` boost and ``graph_traversal.traverse``.
 
+``--with-longtail`` appends the long-tail scenarios (#759 M5):
+``CyclicDecayField``'s save-time merge (with a #698 reset), adjustments and
+pressure on and off a pipeline, its rankings and export/import;
+``TDValueField.td_update`` direct and pipelined; ``PolicyEntry``; the
+prediction ledger's record/resolve/auto-resolve/reads and export/import; and
+``ObservationProtocol``'s five outcomes over a model with all of them.
+
 ``--with-assembler`` appends the ``ContextAssembler`` scenarios (#759 M2c):
 ``assemble()`` in every mode with scopes, tags, budgets and the gate,
 ``assess()``, the score proxy and ``on_context_used()``. They are off by
@@ -1340,6 +1347,213 @@ if WITH_RECIPES:
         for entry in JournalEntry.query.filter(agent_id="TrQFact-j"):
             JournalEntry.hard_delete(entry)
         return out
+
+
+# -- the long tail (#759 M5), behind --with-longtail ------------------------------
+#
+# CyclicDecayField, TDValueField and PredictionLedgerMixin gained a non-Redis
+# branch in their field methods, the prediction ledger's confidence feedback
+# and event logging gained a unit-of-work path, and ObservationProtocol's
+# backend batch applies their effects. These scenarios pin that a Redis-bound
+# model's wire through every one of them is unchanged. Off by default.
+
+WITH_LONGTAIL = "--with-longtail" in sys.argv
+
+if WITH_LONGTAIL:
+    import logging as _logging  # noqa: E402
+
+    from popoto import (  # noqa: E402
+        AccessTrackerMixin as _ATM,
+        ConfidenceField as _CF,
+        CyclicDecayField as _CDF,
+        ObservationProtocol as _OP,
+    )
+    from popoto.fields.event_stream import EventStreamMixin as _ESM  # noqa: E402
+    from popoto.fields.prediction_ledger import (  # noqa: E402
+        PredictionLedgerMixin as _PLM,
+    )
+    from popoto.fields.td_value_field import TDValueField as _TDF  # noqa: E402
+    from popoto.recipes.policy_cache import (  # noqa: E402
+        PolicyEntry as _PolicyEntry,
+        update_q_value as _update_q_value,
+    )
+
+    class TrRhythm(popoto.Model):
+        name = popoto.KeyField()
+        agent = popoto.KeyField()
+        weight = popoto.FloatField(default=1.0)
+        relevance = _CDF(
+            decay_rate=0.5,
+            partition_by="agent",
+            base_score_field="weight",
+            cycles=[(86400, 2.0, 0), (604800, 3.0, 100)],
+            pressure_rate=0.1,
+        )
+        certainty = _CF()
+
+    class TrValue(popoto.Model):
+        name = popoto.KeyField()
+        q_value = _TDF(default=Decimal("0"))
+
+    class TrLedger(_ESM, _ATM, _PLM, popoto.Model):
+        name = popoto.KeyField()
+        relevance = _CDF(decay_rate=0.5, cycles=[(604800, 4.0, 0)], pressure_rate=0.2)
+        certainty = _CF()
+
+    MODELS = MODELS + (TrRhythm, TrValue, TrLedger, _PolicyEntry)
+
+    def _clear_longtail() -> None:
+        client = get_REDIS_DB()
+        for pattern in ("*TrRhythm*", "*TrValue*", "*TrLedger*", "*PolicyEntry*"):
+            for key in client.scan_iter(match=pattern, count=1000):
+                client.delete(key)
+
+    @scenario
+    def m5_cyclic_save_merge_and_reset():
+        _clear_longtail()
+        out = []
+        a = TrRhythm(name="a", agent="x")
+        out.append(a.save())
+        out.append(a.strengthen_cycle("relevance", factor=1.5))
+        out.append(a.weaken_cycle("relevance", factor=0.5))
+        field = TrRhythm._meta.fields["relevance"]
+        original = field.cycles
+        lines = []
+
+        class _H(_logging.Handler):
+            def emit(self, record):
+                lines.append(record.getMessage())
+
+        h = _H()
+        lg = _logging.getLogger("POPOTO.CyclicDecayField")
+        lg.addHandler(h)
+        prior = lg.level
+        lg.setLevel(_logging.INFO)
+        try:
+            field.cycles = [(86400, 9.0, 0), (31536000, 1.0, 5)]
+            out.append(a.save())
+        finally:
+            field.cycles = original
+            lg.removeHandler(h)
+            lg.setLevel(prior)
+        out.append(lines)
+        out.append(a.save())
+        return out
+
+    @scenario
+    def m5_cyclic_adjust_and_pressure_pipelines():
+        _clear_longtail()
+        a = TrRhythm.create(name="p", agent="x")
+        pipe = get_REDIS_DB().pipeline()
+        out = [
+            a.strengthen_cycle("relevance", factor=1.2, pipeline=pipe),
+            a.resolve_pressure("relevance", pipeline=pipe),
+            len(pipe.execute()),
+            a.resolve_pressure("relevance"),
+        ]
+        b = TrRhythm.create(name="q", agent="x")
+        get_REDIS_DB().hdel(
+            TrRhythm._meta.fields["relevance"].get_cycles_hash_key(b, "relevance"),
+            b.db_key.redis_key,
+        )
+        out.append(b.strengthen_cycle("relevance"))
+        return out
+
+    @scenario
+    def m5_cyclic_rankings():
+        _clear_longtail()
+        for i, w in enumerate((1.0, 3.0, 0.5)):
+            TrRhythm.create(name=f"r{i}", agent="x", weight=w)
+        TrRhythm.create(name="other", agent="y")
+        q = TrRhythm.query.filter(agent="x")
+        return [
+            [r.name for r in q.top_by_decay(n=2)],
+            [r.name for r in q.composite_score({"relevance": 1.0, "certainty": 0.5})],
+            [
+                r.name
+                for r in q.composite_score({"relevance": 1.0}, min_score=0.0, limit=2)
+            ],
+        ]
+
+    @scenario
+    def m5_cyclic_export_import():
+        _clear_longtail()
+        a = TrRhythm.create(name="e", agent="x")
+        state = _CDF.export_state(a, "relevance", None)
+        b = TrRhythm.create(name="f", agent="x")
+        _CDF.import_state(b, "relevance", state)
+        return [state, _CDF.export_state(b, "relevance", None)]
+
+    @scenario
+    def m5_td_value_updates():
+        _clear_longtail()
+        v = TrValue.create(name="v", q_value=Decimal("0.25"))
+        out = [
+            _TDF.td_update(v, "q_value", reward=1.0),
+            _TDF.td_update(v, "q_value", reward=-0.5, max_future_q=2.0, alpha=0.3),
+        ]
+        pipe = get_REDIS_DB().pipeline()
+        out.append(_TDF.td_update(v, "q_value", reward=0.1, pipeline=pipe))
+        out.append(pipe.execute())
+        out.append(TrValue.query.get(name="v").q_value)
+        return out
+
+    @scenario
+    def m5_policy_cache_entry():
+        _clear_longtail()
+        entry = _PolicyEntry(
+            agent_id="tr",
+            state_fingerprint="fp",
+            state_features={"a": 1},
+            action_type="run",
+            action_spec={"b": 2},
+            q_value=Decimal("0.5"),
+        )
+        entry.save()
+        out = [_update_q_value(entry, reward=1.0)]
+        _PLM.record_prediction(entry, predicted={"reward": 1.0})
+        out.append(_PLM.resolve_prediction(entry, actual={"reward": 0.25}))
+        return out
+
+    @scenario
+    def m5_ledger_record_resolve_and_reads():
+        _clear_longtail()
+        a = TrLedger.create(name="a")
+        b = TrLedger.create(name="b")
+        out = [
+            _PLM.record_prediction(a, predicted={"x": 1.0, "s": "y"}),
+            _PLM.resolve_prediction(a, actual={"x": 0.5, "s": "y"}),
+            _PLM.resolve_prediction(a, actual={"x": 0.0}),
+            _PLM.record_prediction(b, predicted={"x": 1.0}),
+            _PLM.auto_resolve(b, "contradicted"),
+            _PLM.auto_resolve(b, "acted"),
+            _PLM.get_highest_errors(TrLedger),
+            _PLM.get_highest_errors(TrLedger, limit=0),
+            _PLM.error_summary(TrLedger),
+        ]
+        pipe = get_REDIS_DB().pipeline()
+        out.append(_PLM.record_prediction(a, predicted={"y": 2}, pipeline=pipe))
+        out.append(len(pipe.execute()))
+        state = _PLM.export_state(a)
+        c = TrLedger.create(name="c")
+        _PLM.import_state(c, state)
+        out.append(_PLM.get_prediction_data(c))
+        return out
+
+    @scenario
+    def m5_observation_effects():
+        _clear_longtail()
+        recs = [TrLedger.create(name=f"o{i}") for i in range(5)]
+        for rec in recs:
+            _PLM.record_prediction(rec, predicted={"x": 1.0})
+            rec.on_read()
+        outcomes = ["acted", "dismissed", "deferred", "contradicted", "used"]
+        _OP.on_context_used(
+            recs, {r.db_key.redis_key: o for r, o in zip(recs, outcomes)}
+        )
+        return [
+            (_PLM.get_prediction_data(r) or {}).get("resolution_mode") for r in recs
+        ] + [_PLM.get_highest_errors(TrLedger)]
 
 
 def main() -> None:
