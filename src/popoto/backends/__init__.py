@@ -202,7 +202,8 @@ class Backend(Protocol):
     ) -> SaveOutcome:
         """Persist ``obj``; ``fields`` is ``update_fields``. ``expiry=None``
         means the instance's own TTL settings (``Meta.ttl``, ``_ttl``,
-        ``_expire_at``). Redis options: ``ignore_errors`` and the caller's hook ``**kwargs``."""
+        ``_expire_at``). Redis options: ``ignore_errors`` and the caller's hook ``**kwargs``.
+        """
         ...
 
     def load(
