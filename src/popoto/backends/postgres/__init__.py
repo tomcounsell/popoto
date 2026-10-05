@@ -70,6 +70,7 @@ from ..types import (
 )
 from ..planning import has_filters
 from .codec import decode_json, encode_json_element
+from .events import EventsMixin, stream_deletes
 from .geo import geo_save_values, resolve_geo
 from .graph import GraphMixin, graph_delete_lock_sql, graph_delete_sql
 from .longtail import LongtailOpsMixin, cyclic_save_parts
@@ -411,12 +412,22 @@ class PostgresUnitOfWork(UnitOfWork):
     ``bool(uow)`` is always ``True`` (TD-10).
     """
 
-    __slots__ = ("conn", "_after_commit", "reap", "locked")
+    __slots__ = (
+        "conn",
+        "_after_commit",
+        "_before_commit",
+        "_stream_appends",
+        "reap",
+        "locked",
+    )
 
     def __init__(self, conn: Any) -> None:
         super().__init__(None, backend="postgres")
         self.conn = conn
         self._after_commit: list[Callable[[], Any]] = []
+        self._before_commit: list[Callable[[], Any]] = []
+        # Stream appends (#759 M5), keyed by stream: run at COMMIT, sorted.
+        self._stream_appends: list[tuple[str, Callable[[], Any]]] = []
         # Meta.ttl tables written in this unit (M5): reaped after it commits.
         self.reap: dict[str, TableSpec] = {}
         # Record-key locks this unit holds (#783): another open unit -- or an
@@ -426,12 +437,41 @@ class PostgresUnitOfWork(UnitOfWork):
 
     def after_commit(self, callback: Callable[[], Any]) -> None:
         """Run ``callback`` once this transaction has committed; drop it if
-        the transaction rolls back. ``EventStreamMixin`` sends its Redis
-        ``XADD`` this way, so a rolled-back write logs no mutation (#759 M4b
-        B2). Callbacks run in registration order, after ``COMMIT`` returns
+        the transaction rolls back. ``WriteFilterMixin``'s priority tag runs
+        this way (#759 M4b B2); ``EventStreamMixin``'s entry no longer does --
+        since M5 it is appended inside the transaction (:meth:`defer_stream_append`).
+        Callbacks run in registration order, after ``COMMIT`` returns
         and the connection is back in the pool; one that raises is logged and
         the rest still run, because the transaction has already committed."""
         self._after_commit.append(callback)
+
+    def before_commit(self, callback: Callable[[], Any]) -> None:
+        """Run ``callback`` inside this transaction, just before its
+        ``COMMIT``; an exception from it rolls the whole unit back. Callbacks
+        run in registration order; one registered while they run runs too.
+        A save's ``EventStreamMixin`` entry is not queued here but with
+        :meth:`defer_stream_append`, which runs after these, in stream-key
+        order (#759 M5)."""
+        self._before_commit.append(callback)
+
+    def defer_stream_append(self, stream: str, callback: Callable[[], Any]) -> None:
+        """Queue one stream append (``callback`` appends to ``stream``) for
+        this transaction's ``COMMIT`` (#759 M5). Appends run after the
+        :meth:`before_commit` callbacks, **sorted by stream key** (stably, so
+        one stream's entries keep the order they were queued in): every
+        transaction then takes its ``popoto_stream`` row locks in one global
+        order, after all of its record locks, and two transactions that
+        append to the same streams in opposite orders cannot deadlock."""
+        self._stream_appends.append((stream, callback))
+
+    def _run_before_commit(self) -> None:
+        while self._before_commit or self._stream_appends:
+            while self._before_commit:
+                self._before_commit.pop(0)()
+            pending, self._stream_appends = self._stream_appends, []
+            pending.sort(key=lambda queued: queued[0])
+            for _stream, callback in pending:
+                callback()
 
     def _run_after_commit(self) -> None:
         callbacks, self._after_commit = self._after_commit, []
@@ -496,6 +536,7 @@ class PostgresBackend(
     PostgresMemoryOps,
     GraphMixin,
     RecipeOpsMixin,
+    EventsMixin,
     LongtailOpsMixin,
     MaintainOpsMixin,
 ):
@@ -1005,6 +1046,9 @@ class PostgresBackend(
                 units.append(uow)
                 try:
                     yield uow
+                    # #759 M5: the stream appends, inside the transaction,
+                    # while the unit is still registered as open.
+                    uow._run_before_commit()
                 finally:
                     units.remove(uow)
         # Reached only after COMMIT succeeded: an exception in the block, or
@@ -1111,6 +1155,9 @@ class PostgresBackend(
         handed to a Postgres model cannot carry the write, so it runs at once
         and the pipeline is returned untouched for its caller to execute.
         """
+        # EventStreamMixin (#759 M5): the mutation entry this save appends,
+        # in the save's own transaction (EventsMixin._write_with_stream).
+        stream = list(options.pop("stream_entries", None) or ())
         spec = obj._meta.spec
         # M5: the expiry this save writes (``expiry=``, else the instance's
         # _ttl / _expire_at), or None to keep the stored one. Refused before
@@ -1216,11 +1263,13 @@ class PostgresBackend(
                     found, _ = self._run(sql, params, uow=tx, write=True)
                     if not found:
                         refuse_valid_from_conflict(self, spec, obj, uow=tx)
+                    if stream:
+                        self.stream_append_all(stream, uow=tx)
                     return found
 
                 rows = self._atomically(guarded, uow=uow)
             else:
-                rows, _ = self._run(sql, params, uow=uow, write=True)
+                rows, _ = self._write_with_stream(sql, params, uow, stream)
         except psycopg.errors.UniqueViolation as exc:
             constraint = exc.diag.constraint_name or ""
             covered = ts.unique_indexes.get(constraint, ())
@@ -1389,7 +1438,10 @@ class PostgresBackend(
             sql, params = lock_sql + statement, lock_params + [keys] * (uses + 1)
         else:
             sql, params = self._record_locked(ts, keys, statement, [keys] * (uses + 1))
-        rows, count = self._run(sql, params, uow=uow, write=True)
+        # EventStreamMixin (#759 M5): each instance's "delete" entry, in the
+        # delete's own transaction.
+        stream = stream_deletes(options.get("objs") or ())
+        rows, count = self._write_with_stream(sql, params, uow, stream)
         for obj in options.get("objs") or ():
             obj._db_content = dict()
             obj._saved_field_values = dict()

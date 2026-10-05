@@ -1025,8 +1025,9 @@ def test_command_allowlist_no_hsetnx_or_set_nx_in_the_source():
 @pytest.mark.redis_only(
     reason=(
         "spies the Redis client's command stream; a Postgres-bound reconcile sends "
-        "Redis only its EventStreamMixin XADDs (a Redis structure until #759 M5), "
-        "so the allowlist is not exercised there"
+        "Redis no command at all, which the twin pins with the client patched to "
+        "raise (tests/postgres/test_postgres_events.py::"
+        "test_a_postgres_journal_and_its_reconciler_send_redis_nothing)"
     )
 )
 def test_command_allowlist_no_such_command_reaches_the_client():

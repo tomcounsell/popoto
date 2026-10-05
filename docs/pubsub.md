@@ -233,3 +233,32 @@ logging.getLogger("POPOTO-subscriber").setLevel(logging.DEBUG)
 
 Enable DEBUG level during development to see every message published and received. In
 production, INFO level shows subscription setup without the per-message noise.
+
+## On Postgres
+
+On the Postgres backend (`Meta.backend = "postgres"` or
+`POPOTO_BACKEND=postgres`), `Publisher` and `Subscriber` keep this API and
+these message shapes over Postgres `NOTIFY`/`LISTEN`, with no Redis
+connection. A subscriber holds a dedicated `LISTEN` session (never a pooled
+connection; set `POPOTO_POSTGRES_LISTEN_URL` to reach the server past a
+transaction-mode pooler) and is polled the same way; call
+`subscriber.pubsub.close()` to end it. Pass `backend="postgres"` to a
+standalone `Publisher` or `Subscriber` to choose it explicitly.
+
+Three things differ:
+
+- **Transactions.** Publishing with the backend's unit of work as
+  `pipeline=` delivers the message when that transaction commits, and never
+  if it rolls back.
+- **Size.** A message must encode to under 8000 bytes as a `NOTIFY` payload
+  (about 5.9 KB of msgpack data); a larger one raises
+  `PubSubPayloadTooLarge`, a `PublisherException`, before anything is sent.
+  Publish a key and keep the body in a record.
+- **Patterns** (`subscriber.pubsub.psubscribe("orders.*")`) are matched by
+  each subscriber with Redis's glob rules, so every subscriber receives every
+  message published in the schema and drops what it did not ask for.
+
+`publish()` still returns the number of subscriptions reached, counted from
+the live subscribers' registrations. See
+[Postgres Backend: event streams and pub/sub](features/postgres-backend.md#event-streams-and-pubsub-m5).
+

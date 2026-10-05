@@ -170,6 +170,10 @@ class Batch(GuardedPipeline):
         # transaction() context runs its after-commit step on this path too.
         uow.reap.clear()
         uow._after_commit.clear()
+        # The stream appends (#759 M5) run only on the commit path, which a
+        # rollback never reaches; cleared anyway so none can outlive it.
+        uow._before_commit.clear()
+        uow._stream_appends.clear()
         import psycopg
 
         # psycopg's transaction block swallows its own Rollback signal, so
@@ -198,6 +202,8 @@ class Batch(GuardedPipeline):
         backend, stack, uow = pg
         uow.reap.clear()
         uow._after_commit.clear()
+        uow._before_commit.clear()
+        uow._stream_appends.clear()
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:

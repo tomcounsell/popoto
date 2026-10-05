@@ -43,6 +43,11 @@ twins), ``raw_update``, partial-write cleanup, filtered and full
 ``export_records``, ``import_records`` with key regeneration, and the
 confidence / embedding / access-tracker ``export_state`` / ``import_state``.
 
+``--with-streams`` appends the event-stream scenarios (#759 M5): a Redis-bound
+``EventStreamMixin`` model's saves, partial saves, deletes, pipelines,
+partitioned keys and field events, a ``StreamConsumer`` cycle through retry,
+reclaim and dead-letter, and a ``Publisher``/``Subscriber`` round trip.
+
 ``--with-longtail`` appends the long-tail scenarios (#759 M5):
 ``CyclicDecayField``'s save-time merge (with a #698 reset), adjustments and
 pressure on and off a pipeline, its rankings and export/import;
@@ -1425,6 +1430,168 @@ if WITH_RECIPES:
             JournalEntry.hard_delete(entry)
         return out
 
+
+# -- event streams, StreamConsumer and pub/sub (#759 M5), behind --with-streams --
+#
+# M5 routes EventStreamMixin's entry, StreamConsumer's commands and
+# Publisher/Subscriber to a non-Redis backend's events tables and LISTEN
+# session. These scenarios pin that a Redis-bound model's wire through each of
+# them is unchanged. Only the public API that exists on main is used, so the
+# base tree runs them too. Stream ids are server-clock values, so the results
+# carry entry fields and counts, never an auto id; the consumer scenario adds
+# its entries with explicit ids, so even the XACK / XAUTOCLAIM arguments are
+# fixed. Off by default.
+
+WITH_STREAMS = "--with-streams" in sys.argv
+
+if WITH_STREAMS:
+    from popoto import ConfidenceField as _SConfidence  # noqa: E402
+    from popoto.fields.co_occurrence_field import (  # noqa: E402
+        CoOccurrenceField as _SCoOccurrence,
+    )
+    from popoto.fields.event_stream import EventStreamMixin  # noqa: E402
+    from popoto.streams import StreamConsumer  # noqa: E402
+
+    class TrEvItem(EventStreamMixin, popoto.Model):
+        _stream_name = "TrEvItem"
+        _stream_metadata_fields = ("tag",)
+        _stream_max_length = 50
+
+        name = popoto.KeyField()
+        tag = popoto.StringField(default="")
+        trust = _SConfidence()
+        links = _SCoOccurrence()
+
+    class TrEvPart(EventStreamMixin, popoto.Model):
+        _stream_name = "TrEvPart"
+        _stream_partition_field = "tenant"
+
+        name = popoto.KeyField()
+        tenant = popoto.StringField(default="t1")
+
+    MODELS = MODELS + (TrEvItem, TrEvPart)
+
+    # StreamConsumer speaks redis.asyncio, whose connections pack their own
+    # commands: hook that packer too, the same way (#759 M5).
+    import redis.asyncio.connection as _aconn  # noqa: E402
+
+    _real_async_pack = _aconn.AbstractConnection.pack_command
+
+    def _async_pack(self: Any, *args: Any) -> Any:
+        if _TRACE is not None:
+            tokens = []
+            for arg in args:
+                if isinstance(arg, str) and " " in arg and arg.split()[0].isupper():
+                    tokens.extend(part.encode() for part in arg.split())
+                else:
+                    tokens.append(self.encoder.encode(arg))
+            _TRACE.append(tokens)
+        return _real_async_pack(self, *args)
+
+    _aconn.AbstractConnection.pack_command = _async_pack  # type: ignore[method-assign]
+
+    def _stream_fields(key: str) -> list:
+        return [fields for _, fields in get_REDIS_DB().xrange(key)]
+
+    @scenario
+    def m5_event_stream_writes():
+        a = TrEvItem(name="a", tag="x")
+        a.save()
+        a.tag = "y"
+        a.save(update_fields=["tag"])
+        b = TrEvItem.create(name="b")
+        b.delete()
+        TrEvPart(name="p", tenant="acme").save()
+        TrEvPart(name="q", tenant=None).save()
+        return [
+            _stream_fields("stream:TrEvItem"),
+            _stream_fields("stream:TrEvPart:acme"),
+            _stream_fields("stream:TrEvPart"),
+        ]
+
+    @scenario
+    def m5_event_stream_pipelines():
+        pipe = get_REDIS_DB().pipeline()
+        TrEvItem(name="c").save(pipeline=pipe)
+        TrEvItem(name="d").delete(pipeline=pipe)
+        replies = pipe.execute()
+        discarded = get_REDIS_DB().pipeline()
+        TrEvItem(name="e").save(pipeline=discarded)
+        discarded.reset()
+        return [len(replies), _stream_fields("stream:TrEvItem")[-2:]]
+
+    @scenario
+    def m5_event_stream_field_events():
+        a = TrEvItem(name="f")
+        a.save()
+        b = TrEvItem(name="g")
+        b.save()
+        conf = _SConfidence.update_confidence(a, "trust", signal=0.9)
+        links = TrEvItem._meta.fields["links"]
+        links.link(TrEvItem, "f", "g", initial_weight=0.5)
+        weight = links.strengthen(TrEvItem, "f", "g", delta=0.25)
+        return [conf, weight, _stream_fields("stream:TrEvItem")[-2:]]
+
+    @scenario
+    def m5_stream_consumer_cycle():
+        key = "stream:TrEvItem:consumer"
+        client = get_REDIS_DB()
+        for i in range(1, 6):
+            client.xadd(key, {"pk": f"TrEvItem:{i}", "op": "create"}, id=f"{i}-1")
+        seen: list = []
+        calls = {"n": 0}
+
+        async def handler(entries):
+            calls["n"] += 1
+            seen.append([eid for eid, _ in entries])
+            if calls["n"] in (1, 2):
+                raise RuntimeError("handler failed")
+
+        consumer = StreamConsumer(
+            key,
+            "TrEvGroup",
+            "w1",
+            handler,
+            batch_size=2,
+            block_ms=1,
+            max_retries=1,
+            claim_timeout_ms=0,
+            dead_letter_max_length=10,
+        )
+        outcomes = []
+        for _ in range(4):
+            try:
+                outcomes.append(consumer.process_batch_sync())
+            except RuntimeError as exc:
+                outcomes.append(str(exc))
+        dead = [
+            {k: v for k, v in f.items() if k != b"dead_letter_ts"}
+            for f in _stream_fields("dead:" + key)
+        ]
+        return [outcomes, seen, dead, client.xpending(key, "TrEvGroup")["pending"]]
+
+    @scenario
+    def m5_pubsub_publish_and_poll():
+        class TrEvSubscriber(popoto.Subscriber):
+            sub_channel_names = ["TrEvItem-channel"]
+
+            def handle(self, channel, data, *args, **kwargs):
+                got.append((channel, data))
+
+        got: list = []
+        sub = TrEvSubscriber()
+        first = sub.pubsub.get_message(timeout=1.0)
+        count = popoto.Publisher().publish({"k": 1}, channel_name="TrEvItem-channel")
+        pipe = get_REDIS_DB().pipeline()
+        piped = popoto.Publisher().publish({"k": 2}, pipeline=pipe)
+        pipe.execute()
+        for _ in range(200):
+            sub()
+            if got:
+                break
+            time.sleep(0.005)
+        sub.pubsub.close()
+        return [first and first["type"], count, piped is pipe, got]
 
 # -- the long tail (#759 M5), behind --with-longtail ------------------------------
 #

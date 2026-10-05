@@ -689,6 +689,20 @@ class ConfidenceField(Field):
             raise TypeError("update_confidence() requires a saved model instance")
         new_confidence = state["confidence"]
         setattr(model_instance, field_name, new_confidence)
+        if pipeline is None:
+            # EventStreamMixin (#759 M5): the event the Redis path logs after
+            # an immediate update, on the backend's stream.
+            from .event_stream import EventStreamMixin
+
+            if isinstance(model_instance, EventStreamMixin):
+                model_instance._xadd_event(
+                    op="confidence_update",
+                    extra_fields={
+                        "field": field_name,
+                        "signal": str(signal),
+                        "new_confidence": str(new_confidence),
+                    },
+                )
         return new_confidence
 
     @classmethod

@@ -1579,7 +1579,8 @@ def erase_entry(entry: Any) -> bool:
 # Production trigger: the StreamConsumer on the "journal" stream
 # ---------------------------------------------------------------------------
 
-#: The journal's Redis stream key. ``JournalEntry`` is deliberately
+#: The journal's stream key (a Redis stream, or a Postgres-bound journal's
+#: events table, #759 M5). ``JournalEntry`` is deliberately
 #: unpartitioned -- ``StreamConsumer`` takes exactly one ``stream_key`` and has
 #: no partition-discovery mechanism -- so ``agent_id`` rides in the stream
 #: metadata and a consumer filters on it without hydrating the record.
@@ -1670,6 +1671,9 @@ def reconciliation_consumer(
         group_name=group_name,
         consumer_name=consumer_name,
         handler=make_reconciliation_handler(agent_id, client=client, provider=provider),
+        # The journal's own backend holds the stream: Redis, or a
+        # Postgres-bound journal's events table (#759 M5).
+        model=JournalEntry,
     )
 
 

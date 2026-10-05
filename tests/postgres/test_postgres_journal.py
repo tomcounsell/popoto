@@ -141,18 +141,18 @@ def test_a_caller_unit_of_work_carries_the_annotation_and_the_close(pg):
 
 
 def _stream_entries(entry):
-    """The Redis stream ``EventStreamMixin`` writes for ``entry``'s model:
-    a Redis structure on either leg until M5."""
-    return popoto.get_redis().xrange(entry._get_stream_key())
+    """The stream ``EventStreamMixin`` writes for ``entry``'s model: on a
+    Postgres-bound journal, the backend's events table (#759 M5)."""
+    return type(entry).stream_range()
 
 
 def test_the_mutation_stream_is_written_only_after_commit(pg):
-    """#759 M4b B2: on Redis the entry and its ``XADD`` are one
-    ``MULTI``/``EXEC``. A Postgres unit of work has no pipeline to queue
-    onto, so the ``XADD`` waits for ``COMMIT``: a rolled-back append leaves
-    no stream entry (the reconciler's ``StreamConsumer`` would otherwise see
-    a phantom mutation), a committed one leaves exactly one, sent after the
-    block and not inside it."""
+    """#759 M4b B2, M5: on Redis the entry and its ``XADD`` are one
+    ``MULTI``/``EXEC``. On Postgres the entry is appended in the write's own
+    transaction, just before its ``COMMIT``: a rolled-back append leaves no
+    stream entry (the reconciler's ``StreamConsumer`` would otherwise see a
+    phantom mutation), a committed one leaves exactly one, and nothing is
+    visible from outside the block before it commits."""
     probe = _append(statement="warm up")
     baseline = len(_stream_entries(probe))
     assert baseline == 1  # outside a caller transaction: after the save's commit

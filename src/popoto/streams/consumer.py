@@ -11,6 +11,12 @@ Design:
     - Recovery: ``XAUTOCLAIM`` reclaims crashed-consumer entries and re-delivers them
       through decode → handler → XACK (at-least-once; handlers must be idempotent)
     - No Redis modules — only core Streams commands (Valkey compatible)
+    - Backend-neutral (#759 M5): a stream written by a Postgres-bound
+      ``EventStreamMixin`` model lives in that backend's events tables, and
+      the same commands run there (``FOR UPDATE SKIP LOCKED`` claims, blocking
+      reads on a dedicated ``LISTEN`` session) with the same replies; the
+      consumer finds the backend from ``backend=``/``model=``, else from the
+      models that write ``stream_key``, else the process default.
 
 Redis Commands Used:
     - XGROUP CREATE — create consumer group (idempotent with BUSYGROUP handling)
@@ -41,7 +47,7 @@ Example:
 import asyncio
 import logging
 import time
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 from ..redis_db import get_async_redis_db
 
@@ -70,6 +76,11 @@ class StreamConsumer:
             (3 minutes).
         dead_letter_max_length: Optional MAXLEN for the dead-letter stream.
             Defaults to None (unbounded unless set).
+        backend: The backend holding the stream (an instance or a name).
+            Defaults to ``model``'s backend, else the backend of the
+            ``EventStreamMixin`` models that write ``stream_key``, else the
+            process default (#759 M5).
+        model: An ``EventStreamMixin`` model whose backend holds the stream.
     """
 
     def __init__(
@@ -83,6 +94,8 @@ class StreamConsumer:
         max_retries: int = 3,
         claim_timeout_ms: int = 180_000,
         dead_letter_max_length: Optional[int] = None,
+        backend: Any = None,
+        model: Any = None,
     ):
         self.stream_key = stream_key
         self.group_name = group_name
@@ -99,6 +112,57 @@ class StreamConsumer:
         # Cursor for XAUTOCLAIM — advances across cycles so we don't always
         # restart from the beginning of the PEL. Reset to b'0-0' each full pass.
         self._xclaim_cursor: bytes = b"0-0"
+        self._backend_arg = backend
+        self._model = model
+        self._native: Any = None  # the Postgres async stream store, once resolved
+
+    async def _client(self) -> Any:
+        """The stream client for this consumer: the async Redis client on
+        Redis (the exact call this class always made), or -- when the
+        stream's backend is not Redis -- that backend's awaitable stream
+        store, created once with its own ``LISTEN`` session."""
+        if self._native is not None:
+            return self._native
+        from . import resolve_stream_backend
+
+        backend = resolve_stream_backend(
+            self.stream_key, model=self._model, backend=self._backend_arg
+        )
+        if getattr(backend, "name", "redis") == "redis":
+            return await get_async_redis_db()
+        self._native = backend.async_streams()
+        return self._native
+
+    def _attempts_key(self) -> str:
+        return f"_hattempts:{self.stream_key}:{self.group_name}"
+
+    @staticmethod
+    def _is_native(redis: Any) -> bool:
+        return bool(getattr(redis, "is_postgres_stream_store", False))
+
+    async def _attempts_get(self, redis: Any, entry_id: str) -> Any:
+        if self._is_native(redis):
+            return await redis.attempts_get(self.stream_key, self.group_name, entry_id)
+        return await redis.hget(self._attempts_key(), entry_id)
+
+    async def _attempts_incr(self, redis: Any, entry_id: str) -> Any:
+        if self._is_native(redis):
+            return await redis.attempts_incr(self.stream_key, self.group_name, entry_id)
+        return await redis.hincrby(self._attempts_key(), entry_id, 1)
+
+    async def _attempts_drop(self, redis: Any, *entry_ids: str) -> Any:
+        if self._is_native(redis):
+            return await redis.attempts_drop(
+                self.stream_key, self.group_name, *entry_ids
+            )
+        return await redis.hdel(self._attempts_key(), *entry_ids)
+
+    def close(self) -> None:
+        """Close the ``LISTEN`` session a Postgres-backed consumer holds
+        (nothing to do on Redis). ``run()`` calls it on exit."""
+        native, self._native = self._native, None
+        if native is not None:
+            native.close()
 
     async def _ensure_group(self) -> None:
         """Create the consumer group if it does not already exist.
@@ -113,7 +177,7 @@ class StreamConsumer:
         if self._group_ensured:
             return
 
-        redis = await get_async_redis_db()
+        redis = await self._client()
         try:
             await redis.xgroup_create(
                 self.stream_key, self.group_name, id="0", mkstream=True
@@ -227,7 +291,7 @@ class StreamConsumer:
         reclaimed_count = await self._claim_pending()
 
         # Read new entries
-        redis = await get_async_redis_db()
+        redis = await self._client()
         response = await redis.xreadgroup(
             self.group_name,
             self.consumer_name,
@@ -282,17 +346,20 @@ class StreamConsumer:
             self.consumer_name,
         )
 
-        while self._running:
-            try:
-                await self.process_batch()
-            except Exception as e:
-                logger.error(
-                    "Error in process_batch for stream '%s': %s",
-                    self.stream_key,
-                    e,
-                )
-                # Backoff to avoid tight error loops
-                await asyncio.sleep(1)
+        try:
+            while self._running:
+                try:
+                    await self.process_batch()
+                except Exception as e:
+                    logger.error(
+                        "Error in process_batch for stream '%s': %s",
+                        self.stream_key,
+                        e,
+                    )
+                    # Backoff to avoid tight error loops
+                    await asyncio.sleep(1)
+        finally:
+            self.close()
 
         logger.info(
             "StreamConsumer stopped: stream='%s' group='%s' consumer='%s'",
@@ -329,7 +396,7 @@ class StreamConsumer:
                  the handler and ACKed in this cycle (excludes dead-lettered and
                  deleted entries).
         """
-        redis = await get_async_redis_db()
+        redis = await self._client()
         n_reclaimed = 0
         n_dead_lettered = 0
 
@@ -367,8 +434,7 @@ class StreamConsumer:
                     for eid in deleted_message_ids
                 ]
                 if deleted_ids_str:
-                    hattempts_key = f"_hattempts:{self.stream_key}:{self.group_name}"
-                    await redis.hdel(hattempts_key, *deleted_ids_str)
+                    await self._attempts_drop(redis, *deleted_ids_str)
 
             if not claimed_messages:
                 logger.info(
@@ -387,8 +453,6 @@ class StreamConsumer:
             # else → increment counter → redeliver.
             # This is decoupled from XAUTOCLAIM's times_delivered, which is
             # inflated by claim cycles that never call the handler.
-            hattempts_key = f"_hattempts:{self.stream_key}:{self.group_name}"
-
             # Fetch xpending_range for actual_delivery_count metadata in dead-letter.
             # NOT used for the gate decision — only for failure_count metadata.
             delivery_counts: dict[str, int] = {}
@@ -424,7 +488,7 @@ class StreamConsumer:
                     else entry_id_bytes
                 )
                 # Read current handler-attempt count from Redis hash
-                raw_count = await redis.hget(hattempts_key, entry_id_str)
+                raw_count = await self._attempts_get(redis, entry_id_str)
                 handler_attempts = int(raw_count) if raw_count is not None else 0
 
                 if handler_attempts >= self.max_retries:
@@ -446,12 +510,12 @@ class StreamConsumer:
                         actual_delivery_count=actual_delivery_count,
                     )
                     # Clean up the handler-attempt counter for dead-lettered entry
-                    await redis.hdel(hattempts_key, entry_id_str)
+                    await self._attempts_drop(redis, entry_id_str)
                     n_dead_lettered += 1
                 else:
                     # Increment handler-attempt counter before redelivery.
                     # Counter persists across process_batch_sync() calls (Redis-backed).
-                    await redis.hincrby(hattempts_key, entry_id_str, 1)
+                    await self._attempts_incr(redis, entry_id_str)
                     to_redeliver.append((entry_id_bytes, fields))
                     to_redeliver_ids.append(entry_id_str)
 
@@ -484,8 +548,7 @@ class StreamConsumer:
             # pending and the counter remains incremented — correct, because the
             # handler was actually called and failed.
             if to_redeliver_ids:
-                hattempts_key = f"_hattempts:{self.stream_key}:{self.group_name}"
-                await redis.hdel(hattempts_key, *to_redeliver_ids)
+                await self._attempts_drop(redis, *to_redeliver_ids)
 
         logger.info(
             "Reclaim cycle: %d reclaimed, %d dead-lettered from '%s'",
@@ -519,7 +582,7 @@ class StreamConsumer:
                 entry at the time of dead-lettering. If None, falls back to
                 ``self.max_retries`` for backward compatibility.
         """
-        redis = await get_async_redis_db()
+        redis = await self._client()
         dead_letter_key = f"dead:{stream_key}"
 
         # Use the actual delivery count so the metadata reflects reality,

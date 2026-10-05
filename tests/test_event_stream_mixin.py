@@ -16,8 +16,13 @@ Tests cover:
 - Empty _stream_name raises ModelException
 - Invalid _stream_partition_field raises ModelException
 - None-valued metadata fields included as empty string
+
+Runs on both conformance legs (#759 M5): on Postgres the stream is the
+backend's events table, read through ``popoto.streams.stream_client``, which
+is the Redis client itself on the Redis leg.
 """
 
+import contextlib
 import sys
 import os
 import time
@@ -28,7 +33,11 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import pytest  # noqa: E402
 from src import popoto  # noqa: E402
 from src.popoto.fields.event_stream import EventStreamMixin  # noqa: E402
+from src.popoto.backends import get_backend  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
+from src.popoto.streams import stream_client  # noqa: E402
+
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
 
 # --- Test Models ---
 
@@ -119,15 +128,35 @@ class StreamedItemBadPartition(EventStreamMixin, popoto.Model):
 # --- Helpers ---
 
 
+def _streams():
+    """The client holding this module's streams: the Redis client on the
+    Redis leg, the Postgres backend's stream store on the Postgres leg."""
+    return stream_client(StreamedItem)
+
+
 def _read_stream(stream_key, count=100):
-    """Read all entries from a Redis Stream."""
-    entries = POPOTO_REDIS_DB.xrange(stream_key, count=count)
+    """Read all entries from a stream."""
+    entries = _streams().xrange(stream_key, count=count)
     return entries
 
 
 def _delete_stream(stream_key):
-    """Delete a Redis Stream."""
-    POPOTO_REDIS_DB.delete(stream_key)
+    """Delete a stream."""
+    _streams().delete(stream_key)
+
+
+@contextlib.contextmanager
+def _unit_of_work():
+    """A Redis pipeline executed on exit, or the Postgres backend's
+    transaction: what ``pipeline=`` takes on each leg."""
+    backend = get_backend(StreamedItem)
+    if backend.name == "redis":
+        pipe = POPOTO_REDIS_DB.pipeline()
+        yield pipe
+        pipe.execute()
+    else:
+        with backend.transaction() as uow:
+            yield uow
 
 
 def _cleanup_model(model_class):
@@ -330,10 +359,9 @@ class TestMaxlenTrimming:
 
 class TestPipelineSupport:
     def test_save_with_pipeline(self):
-        pipe = POPOTO_REDIS_DB.pipeline()
-        item = StreamedItem(name="test_pipe", value="piped")
-        item.save(pipeline=pipe)
-        pipe.execute()
+        with _unit_of_work() as pipe:
+            item = StreamedItem(name="test_pipe", value="piped")
+            item.save(pipeline=pipe)
 
         entries = _read_stream("stream:mutations")
         assert len(entries) == 1
@@ -346,9 +374,8 @@ class TestPipelineSupport:
 
         _delete_stream("stream:mutations")
 
-        pipe = POPOTO_REDIS_DB.pipeline()
-        item.delete(pipeline=pipe)
-        pipe.execute()
+        with _unit_of_work() as pipe:
+            item.delete(pipeline=pipe)
 
         entries = _read_stream("stream:mutations")
         assert len(entries) == 1

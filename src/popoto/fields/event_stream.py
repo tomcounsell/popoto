@@ -4,6 +4,14 @@ This module provides a mixin class that automatically appends to a Redis Stream
 on every save() or delete() call. It captures model class, primary key,
 operation type, timestamp, and configurable metadata fields.
 
+On a Postgres-bound model (#759 M5) the stream is the backend's events table,
+not Redis: the entry is appended in the save's (or delete's) own transaction,
+so the record and its mutation entry commit or roll back together, with the
+same stream keys, ids and fields. Read either with :meth:`stream_range` /
+:meth:`stream_revrange`, or ``popoto.streams.stream_client(model)``, which is
+the Redis client on Redis and the backend's redis-py-shaped stream store on
+Postgres.
+
 Design:
     - _xadd_mutation() is called by base.py after successful save/delete
     - _xadd_event() is a public method for non-save operations (e.g.,
@@ -49,14 +57,19 @@ Example:
 
 import logging
 import time
+import weakref
 
-from typing import Callable, Optional, Sequence
+from typing import Any, Optional
 
 from ..exceptions import ModelException
 from ..models.canonical_key import canonical_key_str
 from ..redis_db import get_REDIS_DB
 
 logger = logging.getLogger("POPOTO.EventStream")
+
+#: Every class that composes the mixin, so a ``StreamConsumer`` given only a
+#: stream key can find which backend holds it (``popoto.streams``).
+STREAM_MODELS: "weakref.WeakSet[type]" = weakref.WeakSet()
 
 
 class EventStreamMixin:
@@ -101,6 +114,65 @@ class EventStreamMixin:
         "record. The destination begins a fresh stream. Permanent contract, "
         "not pending work."
     )
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        STREAM_MODELS.add(cls)
+
+    # -- reading (backend-neutral) -----------------------------------------------
+
+    @classmethod
+    def stream_client(cls) -> Any:
+        """The client that holds this model's stream: the Redis client on a
+        Redis-bound model, the backend's redis-py-shaped stream store on a
+        Postgres-bound one. Same methods, same replies."""
+        from ..streams import stream_client
+
+        return stream_client(cls)
+
+    @classmethod
+    def _stream_key_for(cls, partition: Any = None) -> str:
+        if not cls._stream_name:
+            raise ModelException(f"{cls.__name__} has empty _stream_name")
+        key = f"stream:{cls._stream_name}"
+        if partition is not None:
+            key = f"{key}:{canonical_key_str(partition)}"
+        return key
+
+    @classmethod
+    def stream_range(
+        cls,
+        min: Any = "-",
+        max: Any = "+",
+        count: Optional[int] = None,
+        partition: Any = None,
+    ) -> list[Any]:
+        """``XRANGE`` over this model's stream (``partition``: the
+        partition field's value, for a partitioned stream): a list of
+        ``(id, {field: value})`` in id order, ``bytes`` throughout."""
+        return cls.stream_client().xrange(
+            cls._stream_key_for(partition), min=min, max=max, count=count
+        )
+
+    @classmethod
+    def stream_revrange(
+        cls,
+        max: Any = "+",
+        min: Any = "-",
+        count: Optional[int] = None,
+        partition: Any = None,
+    ) -> list[Any]:
+        """``XREVRANGE`` over this model's stream: newest first."""
+        return cls.stream_client().xrevrange(
+            cls._stream_key_for(partition), max=max, min=min, count=count
+        )
+
+    @classmethod
+    def stream_len(cls, partition: Any = None) -> int:
+        """``XLEN`` of this model's stream."""
+        return int(cls.stream_client().xlen(cls._stream_key_for(partition)))
+
+    # -- writing ----------------------------------------------------------------
 
     def _get_stream_key(self):
         """Build the Redis Stream key for this instance.
@@ -209,45 +281,45 @@ class EventStreamMixin:
                 e,
             )
 
-    def _defer_xadd_mutation(
+    def _stream_append(
         self,
         op: str,
-        after_commit: Callable[[Callable[[], None]], None],
-        update_fields: Optional[Sequence[str]] = None,
-    ) -> None:
-        """Register this save's mutation entry to be appended once the
-        surrounding Postgres transaction commits (#759 M4b B2).
+        update_fields: Optional[Any] = None,
+        extra_fields: Optional[Any] = None,
+    ) -> Any:
+        """This instance's entry as a backend append (#759 M5): the stream
+        key, the fields ``XADD`` would send, and the configured ``MAXLEN``.
+        Raises what building the key or entry raises."""
+        from ..backends.postgres.events import StreamAppend
 
-        A Postgres unit of work is not a Redis pipeline, so there is nothing
-        to queue the ``XADD`` onto; issuing it at once would log a mutation
-        whose write the caller may still roll back. The entry is built now --
-        from the record as this save wrote it, like a queued ``XADD`` -- and
-        sent by ``after_commit``'s callback, which the transaction runs only
-        after a successful ``COMMIT``. Sending is best-effort, as on the
-        no-pipeline path: the write has committed, so a failing ``XADD`` is
-        logged, never raised.
+        return StreamAppend.of(
+            self._get_stream_key(),
+            self._build_stream_entry(
+                op, update_fields=update_fields, extra_fields=extra_fields
+            ),
+            maxlen=self._stream_max_length,
+            approximate=True,
+        )
 
-        Args:
-            op: Operation type ("create" or "update").
-            after_commit: The unit of work's ``after_commit`` registrar.
-            update_fields: Optional list of field names that were updated.
-        """
-        name = type(self).__name__
+    def _native_stream_entries(
+        self, op: str, update_fields: Optional[Any] = None, strict: bool = False
+    ) -> list[Any]:
+        """The entries a save on a non-Redis backend appends in its own
+        transaction (``Model.save`` hands them to ``backend.save``). Errors
+        follow the Redis paths: ``strict`` (a ``pipeline=`` was given)
+        re-raises, as the queued ``XADD`` does; otherwise the failure is
+        logged and the save goes ahead without an entry."""
         try:
-            stream_key = self._get_stream_key()
-            entry = self._build_stream_entry(op, update_fields=update_fields)
+            return [self._stream_append(op, update_fields=update_fields)]
         except Exception as e:
-            logger.warning("EventStreamMixin XADD failed for %s: %s", name, e)
-            return
-        maxlen = self._stream_max_length
-
-        def _emit() -> None:
-            try:
-                get_REDIS_DB().xadd(stream_key, entry, maxlen=maxlen, approximate=True)
-            except Exception as e:
-                logger.warning("EventStreamMixin XADD failed for %s: %s", name, e)
-
-        after_commit(_emit)
+            if strict:
+                raise
+            logger.warning(
+                "EventStreamMixin XADD failed for %s: %s",
+                type(self).__name__,
+                e,
+            )
+            return []
 
     def _xadd_event(self, op, extra_fields=None, pipeline=None):
         """Append a custom event entry to the Redis Stream.
@@ -261,6 +333,30 @@ class EventStreamMixin:
             extra_fields: Optional dict of additional fields to include in the entry.
             pipeline: Optional Redis pipeline to queue the XADD onto.
         """
+        from ..backends.routing import non_redis_backend
+
+        backend = non_redis_backend(self)
+        if backend is not None:
+            # #759 M5: the backend's stream, inside the caller's unit of work
+            # when one is passed, or the transaction of a popoto.batch() it
+            # joins (appended just before that COMMIT, so a batch that is
+            # reset() appends nothing).
+            from ..batch import unit_of
+
+            try:
+                backend.stream_append(
+                    self._stream_append(op, extra_fields=extra_fields),
+                    uow=unit_of(pipeline, backend),
+                )
+            except Exception as e:
+                if pipeline:
+                    raise
+                logger.warning(
+                    "EventStreamMixin _xadd_event failed for %s: %s",
+                    type(self).__name__,
+                    e,
+                )
+            return
         try:
             stream_key = self._get_stream_key()
             entry = self._build_stream_entry(op, extra_fields=extra_fields)
