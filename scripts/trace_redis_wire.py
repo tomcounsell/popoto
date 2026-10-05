@@ -37,6 +37,12 @@ prior, ``NeverRecordMixin``, ``AppendOnlyMixin`` and the question queue.
 graph write and read, a record delete's edge cleanup, export/import, the
 ``composite_score`` boost and ``graph_traversal.traverse``.
 
+``--with-maintain`` appends the maintenance and transfer scenarios (#759 M5):
+``check_indexes`` / ``clean_indexes`` / ``rebuild_indexes`` (and their async
+twins), ``raw_update``, partial-write cleanup, filtered and full
+``export_records``, ``import_records`` with key regeneration, and the
+confidence / embedding / access-tracker ``export_state`` / ``import_state``.
+
 ``--with-streams`` appends the event-stream scenarios (#759 M5): a Redis-bound
 ``EventStreamMixin`` model's saves, partial saves, deletes, pipelines,
 partitioned keys and field events, a ``StreamConsumer`` cycle through retry,
@@ -1792,6 +1798,161 @@ if WITH_LONGTAIL:
         return [
             (_PLM.get_prediction_data(r) or {}).get("resolution_mode") for r in recs
         ] + [_PLM.get_highest_errors(TrLedger)]
+
+
+# -- maintenance and transfer (#759 M5), behind --with-maintain -------------------
+#
+# check_indexes / clean_indexes / rebuild_indexes / raw_update gained a
+# non-Redis branch, transfer's import reconciliation and filtered export
+# resolve through the backend on a non-Redis model, and ConfidenceField /
+# EmbeddingField / AccessTrackerMixin export_state / import_state route to a
+# backend adapter. These scenarios pin that a Redis-bound model's wire through
+# each of them is unchanged. Off by default.
+
+WITH_MAINTAIN = "--with-maintain" in sys.argv
+
+if WITH_MAINTAIN:
+    import asyncio as _asyncio  # noqa: E402
+    import io as _io  # noqa: E402
+
+    from popoto import (  # noqa: E402
+        AccessTrackerMixin as _MATM,
+        ConfidenceField as _MCF,
+    )
+    from popoto.transfer import (  # noqa: E402
+        export_records as _export_records,
+        import_records as _import_records,
+    )
+
+    class _MaintProvider(AbstractEmbeddingProvider):
+        def embed(self, texts, input_type=None):
+            return [[float(len(t)), 1.0, 0.5, -1.0] for t in texts]
+
+        @property
+        def dimensions(self):
+            return 4
+
+        @property
+        def max_batch_size(self):
+            return 8
+
+    class TrMaint(_MATM, popoto.Model):
+        name = popoto.KeyField()
+        project = popoto.KeyField()
+        rank = popoto.SortedField(type=float, partition_by="project", default=0.0)
+        text = popoto.StringField(default="")
+        certainty = _MCF()
+        lexical = BM25Field(source="text")
+        vector = EmbeddingField(source="text", provider=_MaintProvider())
+        seen = ExistenceFilter(fingerprint_fn=lambda m: m.text)
+
+        class Meta:
+            indexes = ((("text", "name"), False),)
+
+    class TrMaintAuto(popoto.Model):
+        label = popoto.Field(type=str, null=True)
+
+    class TrMaintLink(popoto.Model):
+        label = popoto.Field(type=str, null=True)
+        parent = popoto.Relationship(model=TrMaintAuto, null=True)
+
+    MODELS = MODELS + (TrMaint, TrMaintAuto, TrMaintLink)
+
+    def _clear_maintain() -> None:
+        client = get_REDIS_DB()
+        for pattern in ("*TrMaint*",):
+            for key in client.scan_iter(match=pattern, count=1000):
+                client.delete(key)
+
+    def _maint_seed() -> list[Any]:
+        a = TrMaint.create(name="a", project="p", rank=1.0, text="alpha beta")
+        b = TrMaint.create(name="b", project="q", rank=2.0, text="gamma")
+        _MCF.update_confidence(a, "certainty", 0.9)
+        a.on_read()
+        a.confirm_access()
+        return [a, b]
+
+    @scenario
+    def m5_maintain_check_clean_rebuild():
+        _clear_maintain()
+        a, b = _maint_seed()
+        out = [TrMaint.check_indexes(), TrMaint.check_indexes(batch_size=1)]
+        get_REDIS_DB().delete(b.db_key.redis_key)
+        out.append(TrMaint.check_indexes())
+        out.append(TrMaint.clean_indexes())
+        out.append(TrMaint.check_indexes())
+        result = TrMaint.rebuild_indexes(batch_size=1)
+        out.append([int(result), result.diverged_keys])
+        out.append(_asyncio.run(TrMaint.async_check_indexes()))
+        out.append(_asyncio.run(TrMaint.async_clean_indexes()))
+        out.append(int(_asyncio.run(TrMaint.async_rebuild_indexes())))
+        return out
+
+    @scenario
+    def m5_maintain_partial_writes_and_raw_update():
+        _clear_maintain()
+        keep = TrMaintAuto.create(label="keep")
+        client = get_REDIS_DB()
+        ghost = "TrMaintAuto:" + "deadbeef" * 4
+        client.hset(ghost, mapping={"label": "ghost"})
+        client.sadd(TrMaintAuto._meta.db_class_set_key.redis_key, ghost)
+        out = [TrMaintAuto.check_indexes(), TrMaintAuto.clean_indexes()]
+        out.append(TrMaintAuto.raw_update([keep.db_key.redis_key], label="raw"))
+        out.append(TrMaintAuto.raw_update([], label="none"))
+        out.append(TrMaintAuto.query.get(keep.db_key.redis_key))
+        return out
+
+    @scenario
+    def m5_transfer_export_import():
+        _clear_maintain()
+        _maint_seed()
+        full = _export_records(TrMaint)
+        filtered = _export_records(TrMaint, project="p")
+        out = [full.record_count, filtered.record_count, filtered.filter]
+        out.append(
+            _import_records(
+                TrMaint, _io.StringIO(full.data), on_conflict="overwrite"
+            ).summary()
+        )
+        out.append(
+            _import_records(TrMaint, _io.StringIO(full.data), on_conflict="skip").count(
+                "skipped"
+            )
+        )
+        root = TrMaintAuto.create(label="root")
+        TrMaintLink.create(label="child", parent=root)
+        roots = _export_records(TrMaintAuto)
+        links = _export_records(TrMaintLink)
+        first = _import_records(
+            TrMaintAuto, _io.StringIO(roots.data), preserve_keys=False
+        )
+        second = _import_records(
+            TrMaintLink,
+            _io.StringIO(links.data),
+            preserve_keys=False,
+            key_map=first.key_map,
+        )
+        out.append([first.count("landed"), second.count("landed")])
+        out.append(TrMaintLink.query.all())
+        return out
+
+    @scenario
+    def m5_transfer_field_state():
+        _clear_maintain()
+        a, b = _maint_seed()
+        conf = _MCF.export_state(a, "certainty", None)
+        vec = EmbeddingField.export_state(a, "vector", None)
+        access = TrMaint.export_state(a)
+        _MCF.import_state(b, "certainty", conf)
+        EmbeddingField.import_state(b, "vector", vec)
+        TrMaint.import_state(b, access)
+        return [
+            conf,
+            sorted(vec),
+            access,
+            _MCF.export_state(b, "certainty", None),
+            TrMaint.export_state(b),
+        ]
 
 
 # -- GeoField (#759 M5), behind --with-geo -----------------------------------------

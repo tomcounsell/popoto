@@ -38,6 +38,13 @@ from popoto.fields.field import Field as BaseField
 from popoto.models.query import QueryException
 from popoto.transfer import export_records, import_records
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Fixture models
 # ---------------------------------------------------------------------------

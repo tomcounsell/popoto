@@ -59,6 +59,7 @@ __all__ = [
     "SchemaDriftError",
     "BackendRetryableError",
     "BackendBusyError",
+    "MaintenanceIncompleteError",
     "Scored",
     "UnitOfWork",
 ]
@@ -139,6 +140,54 @@ class BackendBusyError(BackendRetryableError):
     cannot be *opened* (the server is down or unreachable) is still
     :class:`BackendUnavailableError`, and so is a wait for a slot held by a
     caller stuck connecting to an unresponsive server."""
+
+
+class MaintenanceIncompleteError(BackendRetryableError):
+    """``rebuild_indexes()`` on Postgres repaired what it could, then a
+    ``REINDEX TABLE CONCURRENTLY`` / ``ANALYZE`` step did not finish (#759 M5,
+    #788 review): it waited longer than ``Defaults.PG_MAINTAIN_LOCK_TIMEOUT_MS``
+    on another session's lock (an idle-in-transaction session that wrote the
+    table is the usual one), ran past ``Defaults.PG_MAINTAIN_STATEMENT_TIMEOUT_MS``,
+    was cancelled, or failed on the server.
+
+    This is maintenance that stopped early, **not** an outage: the backend's
+    ``health`` record is untouched and no dropped write is counted. Every
+    companion-row repair and orphan removal before the failed step has
+    already committed, and running ``rebuild_indexes()`` again is safe (it is
+    idempotent, and it first drops the ``*_ccnew`` indexes a failed
+    ``CONCURRENTLY`` leaves behind), which is why it is a
+    :class:`BackendRetryableError`.
+
+    Attributes:
+        indexed: records the side-row pass covered (the int a successful
+            ``rebuild_indexes()`` returns).
+        diverged_keys: rows skipped because their key columns no longer
+            produce their stored ``_pk``.
+        completed: the steps that finished, in order (``"side_rows"``,
+            ``"orphans"``, then ``"reindex <table>"`` per table).
+        failed_step: the step that did not finish.
+        invalid_indexes: INVALID indexes the failure left on the model's
+            tables that could not be dropped at once (the next
+            ``rebuild_indexes()`` or ``clean_indexes()`` drops them, and
+            ``check_indexes()`` reports them as ``invalid_indexes``).
+    """
+
+    def __init__(
+        self,
+        message: Any,
+        *,
+        indexed: int = 0,
+        diverged_keys: Any = (),
+        completed: Any = (),
+        failed_step: str = "",
+        invalid_indexes: Any = (),
+    ) -> None:
+        super().__init__(message)
+        self.indexed = int(indexed)
+        self.diverged_keys = list(diverged_keys)
+        self.completed = tuple(completed)
+        self.failed_step = failed_step
+        self.invalid_indexes = list(invalid_indexes)
 
 
 # -- identity -----------------------------------------------------------------

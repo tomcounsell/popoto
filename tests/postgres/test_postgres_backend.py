@@ -334,13 +334,16 @@ def test_redis_only_apis_refuse_instead_of_reading_redis(pg, call):
         call()
 
 
-def test_later_groups_raise_capability_error(pg):
-    # touch / rank_decayed arrived in M2a (tests/postgres/test_postgres_memory.py),
-    # graph_update / graph_expand in M4 (tests/postgres/test_postgres_graph.py),
-    # supersede / chain in M3 (tests/postgres/test_postgres_validity.py).
-    for method in ("maintain",):
-        with pytest.raises(BackendCapabilityError, match="arrives in"):
-            getattr(pg, method)(PgNote._meta.spec, "score")
+def test_maintain_refuses_a_call_it_cannot_serve(pg):
+    # Every protocol method has arrived: touch / rank_decayed in M2a, supersede
+    # / chain in M3, graph_update / graph_expand in M4, maintain in M5
+    # (tests/postgres/test_postgres_maintain.py). What is left to pin is that
+    # maintain refuses an unknown op, and a call without the Model class it
+    # derives companion rows from.
+    with pytest.raises(ValueError, match="check/clean/rebuild"):
+        pg.maintain(PgNote._meta.spec, "score", model=PgNote)
+    with pytest.raises(BackendCapabilityError, match="model="):
+        pg.maintain(PgNote._meta.spec, "check")
 
 
 def test_hydrated_instance_matches_a_fresh_one(pg):

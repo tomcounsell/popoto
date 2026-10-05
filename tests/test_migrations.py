@@ -7,6 +7,13 @@ import pytest
 from popoto import Model, KeyField, Field, SortedField
 from popoto.redis_db import POPOTO_REDIS_DB
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class MigrationModel(Model):
     """Model for testing migration save flags."""
@@ -252,6 +259,13 @@ class TestRebuildIndexes:
     def teardown_method(self):
         MigrationModel.delete_all()
 
+    @pytest.mark.redis_only(
+        reason=(
+            "deletes a Redis index key through the raw client and asserts queries "
+            "break; a Postgres B-tree is the table's own and cannot be deleted from "
+            "under it"
+        )
+    )
     def test_rebuild_sorted_field_indexes(self):
         """rebuild_indexes() should reconstruct sorted set indexes."""
         # Create instances with sorted fields
@@ -276,6 +290,13 @@ class TestRebuildIndexes:
         results = list(MigrationModel.query.filter(score__gte=1.0, score__lte=3.0))
         assert len(results) == 3
 
+    @pytest.mark.redis_only(
+        reason=(
+            "deletes a Redis index key through the raw client and asserts queries "
+            "break; a Postgres B-tree is the table's own and cannot be deleted from "
+            "under it"
+        )
+    )
     def test_rebuild_class_set(self):
         """rebuild_indexes() should reconstruct the class set."""
         MigrationModel.create(key="a", score=1.0)
@@ -358,6 +379,14 @@ class TestRawUpdate:
         reloaded = MigrationModel.query.get(key="test1")
         assert reloaded.name == "updated_via_raw"
 
+    @pytest.mark.redis_only(
+        reason=(
+            "asserts the Redis sorted-set index goes stale under raw_update; a "
+            "Postgres B-tree follows the row in its own transaction (raw_update "
+            "leaves companion tables stale instead, "
+            "tests/postgres/test_postgres_maintain.py)"
+        )
+    )
     def test_raw_update_does_not_trigger_hooks(self):
         """raw_update should NOT update sorted set indexes."""
         instance = MigrationModel.create(key="test1", name="original", score=1.0)

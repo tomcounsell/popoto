@@ -78,6 +78,13 @@ from src.popoto.fields.write_filter import WriteFilterMixin  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 from src.popoto.transfer import export_records, import_records  # noqa: E402
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 EMBEDDING_DIM = 4
 STREAM_NAME = "test_transfer_fidelity_mutations"
 
@@ -334,6 +341,9 @@ class TestStackedModelRoundTrip:
 class TestIdentityPreserved:
     """A naive to_dict() -> save() mints a fresh UUID. Import must not."""
 
+    @pytest.mark.redis_only(
+        reason="asserts on the record hash through the raw Redis client"
+    )
     def test_auto_key_and_redis_key_are_preserved(self):
         doc = _make_stacked()
         source_auto_key = doc._auto_key
@@ -442,6 +452,9 @@ class TestDecayTimestampPreserved:
             "every decay-ordered query would silently reorder"
         )
 
+    @pytest.mark.redis_only(
+        reason="reads the decay sorted-set score through the raw Redis client"
+    )
     def test_sorted_set_score_matches_the_old_timestamp(self):
         doc = _make_stacked(age_days=730)
         source_ts = doc.relevance
@@ -497,6 +510,13 @@ class TestCyclicDecayStatePreserved:
             ),
         )
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads and seeds the cycles/pressure companion hashes through the raw "
+            "Redis client; the Postgres columns are checked in "
+            "tests/postgres/test_postgres_transfer.py"
+        )
+    )
     def test_learned_amplitude_and_pressure_age_survive(self):
         doc = CyclicDoc(name="cyc1")
         doc.save()
@@ -542,6 +562,13 @@ class TestCyclicDecayStatePreserved:
         assert manifest["fields"]["relevance"]["policy"] == "carry"
         assert "relevance" in records[0]["state"]
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads and seeds the cycles/pressure companion hashes through the raw "
+            "Redis client; the Postgres columns are checked in "
+            "tests/postgres/test_postgres_transfer.py"
+        )
+    )
     def test_declared_baseline_slot_exports_but_import_drops_it(self):
         """#698 / critique C2 -- the declared-baseline slot is deployment-
         local and ``import_state`` deliberately does not carry it, so the
@@ -607,6 +634,13 @@ class TestEmbeddingCarryAndProvenance:
             records[0]["state"]["vector"]["vector_npy_b64"] = encoded
         return _render(manifest, records)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the vector from its .npy file, where the Redis backend keeps it; "
+            "Postgres keeps it in a vector column "
+            "(tests/postgres/test_postgres_transfer.py)"
+        )
+    )
     def test_vector_survives_byte_for_byte(self):
         doc = _make_stacked(title="vectors carry verbatim")
         redis_key = doc.db_key.redis_key
@@ -648,6 +682,13 @@ class TestEmbeddingCarryAndProvenance:
         assert "vector" in message
         assert StackedDoc.query.count() == 0, "nothing may be written before the raise"
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the vector from its .npy file, where the Redis backend keeps it; "
+            "Postgres keeps it in a vector column "
+            "(tests/postgres/test_postgres_transfer.py)"
+        )
+    )
     def test_carry_imports_the_mismatched_vector_anyway(self):
         doc = _make_stacked()
         redis_key = doc.db_key.redis_key
@@ -662,6 +703,13 @@ class TestEmbeddingCarryAndProvenance:
         restored = _load_vector(StackedDoc, redis_key)
         assert np.allclose(restored, np.asarray(marker, dtype=np.float32))
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the vector from its .npy file, where the Redis backend keeps it; "
+            "Postgres keeps it in a vector column "
+            "(tests/postgres/test_postgres_transfer.py)"
+        )
+    )
     def test_regenerate_drops_the_carried_vector(self):
         doc = _make_stacked(title="regenerate me")
         redis_key = doc.db_key.redis_key
@@ -779,6 +827,9 @@ class TestDerivedFieldsRebuildOnImport:
         assert StackedDoc.seen.might_exist(StackedDoc, "kubernetes")
         assert StackedDoc.seen.definitely_missing(StackedDoc, "zzzabsenttoken")
 
+    @pytest.mark.redis_only(
+        reason="reads the $WF: priority sorted set through the raw Redis client"
+    )
     def test_write_filter_priority_zset_is_rebuilt(self):
         doc = _make_stacked(title="critical runbook", importance=0.95)
         redis_key = doc.db_key.redis_key

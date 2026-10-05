@@ -254,6 +254,11 @@ class _SyncConnection:
     def rollback(self) -> None:
         _await(self._conn.rollback())
 
+    def close(self) -> None:
+        """Close a connection the bridge opened outside the pool
+        (:meth:`_Bridge.connect`); pooled ones are returned, never closed."""
+        _await(self._conn.close())
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._conn, name)  # closed, broken, info, pgconn...
 
@@ -704,6 +709,15 @@ class _Bridge:
     @staticmethod
     def pool(dsn: str) -> _SyncPool:
         return _SyncPool(_await(_pool_for_loop(dsn)))
+
+    @staticmethod
+    def connect(dsn: str, **kwargs: Any) -> _SyncConnection:
+        """A dedicated ``AsyncConnection`` on this loop, outside the pool:
+        ``rebuild_indexes()``'s maintenance connection (#788 review). The
+        caller closes it."""
+        import psycopg
+
+        return _SyncConnection(_await(psycopg.AsyncConnection.connect(dsn, **kwargs)))
 
     @staticmethod
     def sleep(seconds: float) -> None:

@@ -41,6 +41,13 @@ from src.popoto.fields.prediction_ledger import PredictionLedgerMixin  # noqa: E
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 from src.popoto.transfer import export_records, import_records  # noqa: E402
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # --- Test models ---
 
 
@@ -151,6 +158,9 @@ class TestPredictionLedgerCarry:
         assert after["prediction_error"] == before["prediction_error"]
         assert after["recorded_at"] == before["recorded_at"]
 
+    @pytest.mark.redis_only(
+        reason="reads the $PL: errors sorted set through the raw Redis client"
+    )
     def test_resolved_prediction_restores_its_error_sorted_set_member(self):
         item = HistPrediction.create(name="p3", content="x")
         HistPrediction.record_prediction(item, {"score": 0.0})
@@ -206,6 +216,13 @@ class TestCoOccurrenceCarry:
             for m, s in raw
         }
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the $CoOcF: edge sorted set through the raw Redis client; the "
+            "Postgres edge table is checked in "
+            "tests/postgres/test_postgres_transfer.py"
+        )
+    )
     def test_edge_weights_carry_verbatim(self):
         source = HistAssoc.create(name="a")
         field = HistAssoc._meta.fields["edges"]
@@ -221,6 +238,13 @@ class TestCoOccurrenceCarry:
         after = self._edges_of(HistAssoc, restored)
         assert after == pytest.approx(before)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the $CoOcF: edge sorted set through the raw Redis client; the "
+            "Postgres edge table is checked in "
+            "tests/postgres/test_postgres_transfer.py"
+        )
+    )
     def test_import_replaces_the_destination_edge_set_wholesale(self):
         source = HistAssoc.create(name="b")
         field = HistAssoc._meta.fields["edges"]
@@ -243,6 +267,13 @@ class TestCoOccurrenceCarry:
             "would silently invent an association history"
         )
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the $CoOcF: edge sorted set through the raw Redis client; the "
+            "Postgres edge table is checked in "
+            "tests/postgres/test_postgres_transfer.py"
+        )
+    )
     def test_edges_are_truncated_to_the_destination_max_edges(self):
         source = HistAssoc.create(name="c")
         field = HistAssoc._meta.fields["edges"]
@@ -261,6 +292,13 @@ class TestCoOccurrenceCarry:
         # Truncation keeps the heaviest edges, matching the Lua prune.
         assert set(after) == {"t3", "t2"}
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the $CoOcF: edge sorted set through the raw Redis client; the "
+            "Postgres edge table is checked in "
+            "tests/postgres/test_postgres_transfer.py"
+        )
+    )
     def test_an_edge_to_a_record_outside_the_export_still_lands(self):
         """A dangling edge is the expected result of a filtered export.
 
@@ -286,6 +324,13 @@ class TestCoOccurrenceCarry:
         )
         assert "HistAssoc:never-exported" in scores
 
+    @pytest.mark.redis_only(
+        reason=(
+            "reads the $CoOcF: edge sorted set through the raw Redis client; the "
+            "Postgres edge table is checked in "
+            "tests/postgres/test_postgres_transfer.py"
+        )
+    )
     def test_carried_weights_are_clamped_to_the_weight_cap(self):
         dest = HistAssoc.create(name="d")
         cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
@@ -314,6 +359,13 @@ class TestAccessTrackerCarry:
             for ts in POPOTO_REDIS_DB.lrange(instance._at_key("access_log"), 0, -1)
         ]
 
+    @pytest.mark.redis_only(
+        reason=(
+            "the confirmed access log is a Redis list ($AT:...:access_log) that "
+            "Postgres does not keep (a documented divergence, "
+            "docs/features/postgres-backend.md)"
+        )
+    )
     def test_confirmed_log_carries_alongside_the_counters(self):
         item = HistAccess.create(name="a1", content="x")
         for _ in range(3):
@@ -336,6 +388,9 @@ class TestAccessTrackerCarry:
         assert restored.access_count == before_count
         assert self._log_of(restored) == pytest.approx(before_log)
 
+    @pytest.mark.redis_only(
+        reason="reads the $AT: staged list through the raw Redis client"
+    )
     def test_staged_reads_are_not_carried(self):
         item = HistAccess.create(name="a2", content="x")
         item.on_read()  # staged, never confirmed
@@ -360,6 +415,13 @@ class TestAccessTrackerCarry:
         assert item.access_count == 7
         assert self._log_of(item) == []
 
+    @pytest.mark.redis_only(
+        reason=(
+            "the confirmed access log is a Redis list ($AT:...:access_log) that "
+            "Postgres does not keep (a documented divergence, "
+            "docs/features/postgres-backend.md)"
+        )
+    )
     def test_a_carried_log_is_trimmed_to_the_destination_cap(self):
         item = HistAccess.create(name="a4", content="x")
         cap = HistAccess._max_access_log
@@ -396,6 +458,13 @@ class TestExportWireShape:
         _wipe(HistAssoc)
         _wipe(HistAccess)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "the confirmed access log is a Redis list ($AT:...:access_log) that "
+            "Postgres does not keep (a documented divergence, "
+            "docs/features/postgres-backend.md)"
+        )
+    )
     def test_carried_structures_are_plain_json(self):
         assoc = HistAssoc.create(name="w1")
         field = HistAssoc._meta.fields["edges"]

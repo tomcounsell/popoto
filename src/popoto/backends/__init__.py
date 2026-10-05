@@ -78,6 +78,7 @@ from .types import (
     Cond,
     Expiry,
     FieldKind,
+    MaintenanceIncompleteError,
     FieldSpec,
     ModelSpec,
     Not,
@@ -115,6 +116,7 @@ __all__ = [
     "Cond",
     "Expiry",
     "FieldKind",
+    "MaintenanceIncompleteError",
     "FieldSpec",
     "ModelSpec",
     "Not",
@@ -417,7 +419,12 @@ class Backend(Protocol):
         op: Literal["check", "clean", "rebuild"],
         *,
         batch_size: int = 1000,
+        model: Any = None,
     ) -> Any: ...
+
+    # ``model`` (#759 M5): the Model class -- deriving companion state needs
+    # its live fields (a fingerprint function, a content store), which a
+    # ModelSpec does not carry.
 
     def field_call(
         self,

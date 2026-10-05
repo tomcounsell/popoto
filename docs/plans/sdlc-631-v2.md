@@ -1220,6 +1220,87 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     `strtod`'s rounding boundaries (`±inf` / `±0`, exact), where the cast
     raised "out of range"; `Decimal('-0')` is a documented divergence. The
     long-tail writers join a `popoto.batch()`.
+- **M5 `maintain` and `transfer/` as shipped: departures, recorded.** The
+  index maintenance and same-backend transfer PR
+  (`backends/postgres/maintain.py`).
+  - **`check` does not return "zero drift by construction".** §2 assumed
+    every index is transactional. The five Redis index kinds are (the table
+    and its B-trees), and keep their dict keys at `0`. But popoto writes the
+    companion tables itself, so they can drift. `check_indexes()` therefore
+    adds `side_tables: {field: {orphans, missing, stale}}` for BM25
+    postings and lengths, narrow vector rows, `ExistenceFilter` tokens and
+    validity open-claim pointers, and (after review) co-occurrence edges.
+    Orphans of the foreign-keyed companions need a foreign-key bypass (a
+    trigger-less load, the shape a #756 copy may take). Edges have no foreign
+    key, so any SQL `DELETE` of a record orphans them; an edge counts when
+    an endpoint in the model's key space has no row (its `src` always, its
+    `dst` only in a symmetric field). Missing and stale rows need direct SQL
+    or a `raw_update()` of a source column. `partial_writes` is a
+    `NULL`/`''` auto-key column, and `invalid_indexes` counts the INVALID
+    `*_ccnew` indexes a failed `CONCURRENTLY` left. Not checked, as on Redis:
+    `FrequencySketch` counts, the shared engine tables with no foreign key
+    (tombstones, embedding cache, recall proposals, the prediction ledger and
+    error tables), and state held in the record row.
+  - **`rebuild` is more than `REINDEX` + `ANALYZE`.** It first recomputes
+    the drifted companion rows from the live records, a keyset page per
+    transaction, behind the page's record-key locks (the one lock order).
+    Rows whose key columns no longer produce their `_pk` are skipped and
+    reported as `diverged_keys`, as on Redis. It then deletes orphans and
+    runs `REINDEX TABLE CONCURRENTLY`, not plain `REINDEX`, so writes are not
+    blocked, followed by `ANALYZE`. It never re-counts a `FrequencySketch` or
+    calls the embedding provider, both of which a Redis rebuild's `on_save`
+    replay does.
+  - **The `REINDEX` is bounded (#788 review).** As first shipped it ran on a
+    pooled connection with no timeout, so inside a `popoto.batch()` it waited
+    on the batch's own transaction forever, a cancel was counted as an
+    outage, and a failed `CONCURRENTLY` left INVALID `_ccnew` indexes that
+    nothing dropped. Now `rebuild` is refused inside an open
+    `transaction()`/batch (`BackendCapabilityError`). It runs on a dedicated
+    autocommit connection with `PG_MAINTAIN_LOCK_TIMEOUT_MS` /
+    `PG_MAINTAIN_STATEMENT_TIMEOUT_MS`. Stopping early raises
+    `MaintenanceIncompleteError` (a `BackendRetryableError` that reports the
+    completed steps; `health` is untouched). The leftovers are dropped at
+    once when possible, otherwise by the next `clean` or `rebuild`, and
+    `check` reports them.
+  - **The protocol's `maintain` takes `model=`** (the `Model` class). The
+    derivation needs the live fields, such as a fingerprint function or a
+    `ContentField` store, which a `ModelSpec` does not carry. `raw_update` is
+    a `field_call` adapter (`_maintain`, `raw_update`), not a protocol
+    method.
+  - **Transfer is composed as §2 said**, plus three routes: import's
+    existence check (`exists`), a filtered export (one id-only `select`), and
+    `export_state`/`import_state` for `ConfidenceField`, `EmbeddingField` and
+    `AccessTrackerMixin` as `field_call` adapters. The record format is
+    unchanged and backend-neutral. An `EmbeddingField` vector travels as the
+    same float32 `.npy` bytes on both backends.
+  - **Cross-backend (toward #756).** A Redis export of a plain model, Valor's
+    memory slice and the carried long tail imports into Postgres and
+    re-exports identically, except for the confirmed access log, which
+    Postgres does not keep. The cycles' declared-baseline slot is dropped on
+    import on both backends (#698).
+  - **The async variants run on the async backend.** Built before #784
+    merged, they first stayed on the thread path. After the merge,
+    `async_check/clean/rebuild_indexes` go through `_off_loop`. Redis
+    models keep `to_thread`, and Postgres models run `maintain` in the bridge,
+    including the `REINDEX` connection, which is an `AsyncConnection`.
+  - **The #756 gap list is in the feature doc** ("Cross-backend migration
+    notes"): `ContentField` crosses as a file reference (Redis) versus inline
+    text (Postgres). Per-record TTL is carried by neither backend (pinned).
+    `FrequencySketch` is rebuilt from the imported saves. The access log and
+    the cycles baseline slot are dropped.
+  - **Wire trace:** `trace_redis_wire.py --with-maintain` covers every
+    rerouted Redis path, and is byte-identical to `main` with all flags.
+  - **Graph edges match Redis.** An edge whose endpoint has no record (never
+    saved, reaped, deleted outside popoto) is kept by `clean`/`rebuild`;
+    `check` reports it as `side_tables["graph_edges"]["dangling"]`, outside
+    `total`.
+  - **Follow-ups.**
+    - **Maintenance DSN setting.** `REINDEX` needs session `SET`s
+      (`lock_timeout`, `statement_timeout`), which PgBouncer in transaction
+      mode does not keep. Maintenance uses the DSN popoto is configured with,
+      so it has to be a direct or session-mode DSN. A setting that names a
+      separate maintenance DSN would let the application stay on the pooler.
+
 - **M5 geo as shipped: departures from this plan, recorded.** The
   `GeoField` PR (`backends/postgres/geo.py`).
   - **No PostGIS** (coordinator decision, superseding §3's

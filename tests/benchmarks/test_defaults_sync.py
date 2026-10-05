@@ -243,6 +243,13 @@ class TestDefaultsSync:
             # per-layer one (tests and the graph probe monkeypatch it). Both
             # give the same answer, so it bounds latency, not a score.
             "PG_GRAPH_RECURSIVE_MAX_LAYERS",
+            # Postgres index maintenance (#759 M5, #788 review): read from
+            # Defaults when rebuild_indexes() opens its REINDEX connection
+            # (the maintenance tests monkeypatch them short). They bound a
+            # maintenance statement's waits, not a score.
+            "PG_MAINTAIN_LOCK_TIMEOUT_MS",
+            "PG_MAINTAIN_STATEMENT_TIMEOUT_MS",
+            "PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

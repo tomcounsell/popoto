@@ -20,6 +20,7 @@ import io
 import logging
 from typing import TYPE_CHECKING, Any, Protocol, TextIO, cast
 
+from ..backends.routing import non_redis_backend
 from .format import build_manifest, dump_line, to_jsonable
 from .results import ExportResult
 
@@ -229,6 +230,36 @@ def _model_state(instance: "Model", result: ExportResult) -> "dict[str, Any]":
     return state
 
 
+def _backend_filter_keys(
+    backend: Any,
+    model_class: "type[Model]",
+    q_objects: "list[Any]",
+    filters: "dict[str, Any]",
+) -> "set[str]":
+    """The keys a filter matches on a non-Redis backend: one id-only
+    ``select`` compiled from the same call the query layer compiles, with any
+    ``limit``/``order_by``/``values`` modifier dropped (export takes the whole
+    matched set, as the Redis key-set evaluation does)."""
+    import dataclasses
+
+    from ..backends.planning import plan_from_call
+    from ..backends.types import QueryCall
+
+    kwargs = {
+        key: value
+        for key, value in filters.items()
+        if key not in {"limit", "order_by", "values"}
+    }
+    call = QueryCall(
+        query=model_class.query, kind="filter", kwargs=kwargs, q_objects=q_objects
+    )
+    plan = dataclasses.replace(
+        plan_from_call(call), project=(), limit=None, offset=0, order_by=()
+    )
+    rows = backend.select(model_class._meta.spec, plan)
+    return {row["_id"].key for row in rows}
+
+
 def _matches_client_filters(
     instance: "Model", client_filters: "dict[str, Any]"
 ) -> bool:
@@ -301,8 +332,19 @@ def export_records(
         }
         # Evaluation happens after provenance capture, so a zero-match filter
         # is still fully reported. Unknown params raise from here.
-        resolved = query._evaluate_filter_args(builder_q_objects, builder_filters)
-        client_filters = dict(getattr(query, "_pending_client_filters", None) or {})
+        backend = non_redis_backend(model_class)
+        if backend is not None:
+            # #759 M5: another backend evaluates the whole filter in its own
+            # select (the Redis key-set evaluation reads Redis indexes the
+            # record was never written to), id-only, so nothing hydrates or
+            # fires on_read here. No predicate is left for the client.
+            resolved = _backend_filter_keys(
+                backend, model_class, builder_q_objects, builder_filters
+            )
+            client_filters = {}
+        else:
+            resolved = query._evaluate_filter_args(builder_q_objects, builder_filters)
+            client_filters = dict(getattr(query, "_pending_client_filters", None) or {})
         if client_filters:
             result.warnings.append(
                 f"client-side (unindexed) equality filter applied after "

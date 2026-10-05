@@ -1184,6 +1184,245 @@ joins the batch's transaction, as a save does: nothing lands before
 `execute()`, a `reset()` writes nothing, and the record locks it takes are
 the batch's (`test_long_tail_writes_join_a_batch`).
 
+## Index maintenance and transfer (M5)
+
+`check_indexes()`, `clean_indexes()`, `rebuild_indexes()` (and their
+`async_` twins, which run them on the async backend: every statement,
+`REINDEX` included, is an `AsyncConnection` on the running loop),
+`raw_update()` and `popoto.transfer` all work on a Postgres-bound model. The
+code is `backends/postgres/maintain.py`.
+
+### What drifts
+
+On Redis every index is a separate key written by a second command, so it
+can point at a hash that is gone. On Postgres the class set, key-field sets,
+sorted sets, geo set and composite-index hashes are the table and its
+B-trees, maintained by the server inside the row's own transaction. Their
+counts keep their Redis keys in the `check_indexes()` dict and are always
+`0`. What can drift is the state popoto keeps in companion tables:
+
+| Side table | Orphans (side rows naming no record) | Missing (live record, no side rows) | Stale (live record, wrong side rows) |
+|---|---|---|---|
+| BM25 postings and lengths (`__post`, `__dl`) | counted per row | tokens but no postings and no length | postings or length that are not the tokenization of the source column, or a scope other than the record's |
+| Narrow vector rows (`__vec`) | counted per row | the record has a vector but no narrow row | a narrow row whose vector or scope differs from the record's, or a narrow row for a record with no vector |
+| `ExistenceFilter` tokens (`__tok`) | counted per row | a fingerprint token of the record's current values is absent (extra tokens are `membership_add`'s, never drift) | — |
+| Validity open-claim pointers (`__open`) | counted per row | — (carried state) | — |
+| `CoOccurrenceField` edges (`__edge`) | never an orphan: see below | — | — |
+
+The first four companions name a record through `REFERENCES … ON DELETE
+CASCADE`, so popoto's own deletes never leave an orphan there. Only a load
+or restore run with triggers disabled (`session_replication_role = replica`,
+`pg_restore --disable-triggers`, the shape a #756 copy may take) can.
+
+Edges are different, and they match Redis: an edge has no foreign key,
+because Redis links any two key strings, records or not. **An edge whose
+endpoint has no record is kept**, by `clean_indexes()` and
+`rebuild_indexes()` and so by `check_indexes()`' `total`. That covers a key
+that was never saved, a record the TTL reaper removed, and a record deleted
+outside popoto (a raw SQL `DELETE`, or a Redis `DEL` of the hash). Only
+popoto's own `delete()` removes a record's edges (and, in a symmetric field,
+the reverse edges). `check_indexes()` reports the edges whose endpoint is
+missing apart from the drift, as
+`side_tables["graph_edges"]["dangling"]`, which `total` leaves out, so a
+`Meta.ttl` model with edges reports `total == 0` after a reap, as on Redis.
+`dangling` counts a missing `src` in every field and a missing `dst` in a
+symmetric field, both only for keys in the model's own key space
+(`<Model>:`); an asymmetric edge *to* a deleted record is not counted. It is
+information for a person to act on; remove such an edge with `unlink`. Pinned
+on both legs: `test_backend_parity_ttl.py::test_edges_to_never_saved_endpoints_survive_maintenance`
+and `::test_a_ttl_reaped_records_edges_survive_maintenance`; on Postgres,
+`test_postgres_maintain.py::test_dangling_edges_are_reported_apart_and_kept`.
+
+Missing and stale rows come from direct SQL, or from `raw_update()` of a
+source column, which, like the Redis method, runs no hooks.
+
+**Invalid indexes.** A `REINDEX ... CONCURRENTLY` that fails (a lock
+timeout or a cancel) leaves INVALID `*_ccnew` indexes behind. Every write
+still maintains them, including an extra HNSW index, no read uses them, and
+a later `REINDEX` does not remove them. `check_indexes()` counts them as
+`invalid_indexes`. `clean_indexes()` and `rebuild_indexes()` drop them with
+`DROP INDEX CONCURRENTLY`, skipping any table that has an index build in
+progress.
+
+Not checked, matching Redis:
+
+- `FrequencySketch` counts, which are never decremented, as the sketch never
+  is.
+- The shared engine tables keyed by `(model, member)` with no foreign key:
+  `popoto_tombstone`, `popoto_embedding_cache`, `popoto_recall_proposal`,
+  `popoto_prediction_ledger` and `popoto_prediction_error`. Each outlives
+  its record on Redis too, and Redis does not check them either.
+- State held in the record row's own columns: confidence, access tracking,
+  validity intervals and cycles.
+- The validity pointers' content, which is carried state. Only their
+  orphans count.
+
+`EventStreamMixin`'s events (the backend's events tables, not the model's
+table) are not checked, cleaned or rebuilt here.
+
+`partial_writes` keeps its Redis meaning on a model whose key is a single
+`AutoKeyField`: a live row whose auto-key column is `NULL` or `''`.
+
+```python
+result = Memory.check_indexes()
+# {'class_set': 0, 'partial_writes': 0, 'key_fields': {...}, 'sorted_fields': {...},
+#  'geo_fields': {}, 'composite_indexes': {},
+#  'side_tables': {'lexical': {'orphans': 0, 'missing': 0, 'stale': 1}, ...},
+#  'invalid_indexes': 0, 'total': 1}
+```
+
+`total` sums `partial_writes`, `invalid_indexes` and every `side_tables`
+count.
+
+### What each operation does
+
+- **`check_indexes()`** is read-only and takes no locks. It counts orphans with
+  one anti-join per side table, then pages over the live records in
+  `batch_size` keyset pages (`_pk COLLATE "C"`). For each page it derives
+  the side rows a save would write, using the same tokenizer, scope and
+  fingerprint as the save path, and compares them with what is stored.
+- **`clean_indexes()`** deletes orphan side rows (never edges),
+  partial-write rows and invalid indexes, and returns how many. Each page of
+  orphans is deleted behind its keys' record locks and re-checked in the
+  statement, so a record saved under that key in the meantime keeps its
+  rows. Inside an open `transaction()` or batch it leaves invalid indexes
+  alone, because the drop would wait on that transaction. Missing and stale
+  rows are left for `rebuild_indexes()`, which needs the record's values, as
+  on Redis.
+- **`rebuild_indexes()`** first drops the invalid indexes left by an earlier
+  failed run. It then pages over the live records. Each page is one
+  transaction that takes the page's record-key locks first, in `_pk` byte
+  order (the backend's one lock order), then reads the rows and rewrites
+  only the drifted records' side rows. It then removes orphans and runs
+  `REINDEX TABLE CONCURRENTLY` plus `ANALYZE` on the table and every
+  companion. `REINDEX` repairs a corrupt B-tree, the only way a Postgres
+  index drifts. `CONCURRENTLY` keeps writes flowing while it runs. The
+  return value is the Redis one: an `int` of records indexed, with
+  `.diverged_keys` listing rows whose key columns no longer produce their
+  stored `_pk` (direct SQL on a key column). Those rows are skipped, as Redis
+  skips a hash whose derived key differs from its own. The rebuild never
+  calls the embedding provider: the vector is carried state, and the
+  backfill owns its freshness.
+
+#### How a rebuild's `REINDEX` is bounded
+
+`REINDEX ... CONCURRENTLY` waits for every transaction that holds a lock on
+the table to finish. That includes an idle-in-transaction session that wrote
+the table, such as another agent's open transaction on the shared server,
+and it includes the caller's own open transaction. Three rules keep that
+wait from hanging the call or being mistaken for an outage:
+
+1. **Inside a transaction it is refused.** Calling `rebuild_indexes()` while
+   a `transaction()` or a `popoto.batch()` holding Postgres writes is open in
+   the same thread or task (or in a parent task awaiting it) raises
+   `BackendCapabilityError` at once. Without the refusal the `REINDEX` would
+   wait on that transaction forever. Run it after the batch executes.
+2. **Every wait is bounded.** `REINDEX` and `ANALYZE` run on a dedicated
+   autocommit connection that is opened for the call and closed afterwards.
+   It never takes a pool slot, so its session settings cannot leak to other
+   callers. That connection sets `lock_timeout =
+   Defaults.PG_MAINTAIN_LOCK_TIMEOUT_MS` (10 s) and `statement_timeout =
+   Defaults.PG_MAINTAIN_STATEMENT_TIMEOUT_MS` (30 min). The statement
+   timeout cancels any single statement that runs longer, so a legitimate
+   `REINDEX` of a very large table (an HNSW index especially) is cancelled at
+   30 min too, and a retry fails the same way: raise that default for such a
+   table. Behind PgBouncer in transaction mode those session `SET`s do not
+   stick: a `SET` lands on whichever server connection ran it, so
+   `lock_timeout`, `statement_timeout` and `client_connection_check_interval`
+   can leak into other clients' transactions, and the `REINDEX` itself may
+   run on a server connection that never got them, and wait without a bound
+   again. Run maintenance on a direct or session-mode connection. There is
+   no separate setting yet: maintenance uses the DSN popoto is configured
+   with (`POPOTO_POSTGRES_URL`, or the `dsn` of `PostgresBackend`). So run it
+   from a maintenance process configured with a direct DSN, such as
+   `set_backend(PostgresBackend(dsn=<direct DSN>, schema=...))`. A
+   *maintenance DSN* setting is a follow-up.
+3. **Stopping early is not an outage.** A lock timeout (`55P03`), a
+   statement timeout or cancel (`57014`), a deadlock or any SQL error raises
+   `MaintenanceIncompleteError`. It is a `BackendRetryableError`, because
+   rerunning the rebuild is safe. The backend's `health` is untouched and
+   no dropped write is counted. The error reports what completed: `.completed`
+   (`"side_rows"`, `"orphans"`, then `"reindex <table>"` for each table that
+   finished), `.failed_step`, `.indexed`, `.diverged_keys`, and
+   `.invalid_indexes`. Every side-row repair before the failure has
+   committed. It tries once at once to drop the `*_ccnew` indexes the
+   failure left, with a short `PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS` (1 s).
+   The session that blocked the `REINDEX` usually blocks that drop too, so
+   any it could not drop are listed and left for the next `check`, `clean`
+   or `rebuild`. A lost connection or a server shutdown is still an outage
+   (`BackendUnavailableError`).
+
+```python
+from popoto.backends import MaintenanceIncompleteError
+
+try:
+    Memory.rebuild_indexes()
+except MaintenanceIncompleteError as exc:
+    log.warning("rebuild stopped at %s after %s", exc.failed_step, exc.completed)
+    # rerun later; check_indexes()['invalid_indexes'] shows any leftovers
+```
+- **`raw_update(keys, **values)`** is an `UPDATE` of those columns on the rows
+  that exist, with no hooks, no `auto_now` and no side-table work.
+
+Every operation honours the TTL read filter. An expired row is neither checked
+nor rebuilt, and its side rows belong to the reaper, so they are never
+counted as orphans.
+
+### Transfer
+
+`export_records` / `import_records` and the `popoto-transfer` CLI use the
+same JSON Lines format on both backends. The format carries each record's
+field values plus each field's semantic state. It never carries Redis
+structures or SQL, so it reads the same whichever backend wrote it. Three
+transfer paths now go through the backend on a Postgres model:
+
+- import's existence check, which uses `exists` instead of a Redis `EXISTS`;
+- a filtered export, which runs one id-only `select` compiled from the same
+  filter;
+- the carried state of `ConfidenceField` (the four state columns),
+  `EmbeddingField` (the vector column, exported as the same float32 `.npy`
+  bytes the Redis backend keeps on disk) and `AccessTrackerMixin`
+  (`access_count`, `last_accessed`).
+
+`CyclicDecayField`, `PredictionLedgerMixin`, `ValidityField` and
+`CoOccurrenceField` already went through the backend. Rebuilt fields (BM25,
+`ExistenceFilter`, the indexes) are rebuilt by the import's save, as on
+Redis. `preserve_keys=False` mints keys and remaps `Relationship` values the
+same way on both backends.
+
+**Cross-backend.** An export taken from a Redis-bound model imports into the
+same model bound to Postgres. A re-export then matches the Redis export, and
+`to_dict()` matches for every record. This is pinned for a plain model
+(key, indexed, tag, relationship, collection, decimal, datetime and sorted
+fields), Valor's memory slice (decay, confidence, BM25, embedding,
+existence, access tracking) and the carried long tail (validity and
+supersession, co-occurrence edges, cycles and pressure, the prediction
+ledger) in
+`tests/postgres/test_postgres_transfer.py::test_a_redis_export_imports_into_postgres_and_reads_identically`.
+That is most of what #756's one-off copy needs. The gaps are listed in
+the next section.
+
+#### Cross-backend migration notes (for #756)
+
+Everything a Redis → Postgres copy loses or changes when it goes through
+`popoto.transfer`, and what to do about it:
+
+| What | What happens | What #756 must do |
+|---|---|---|
+| `ContentField` | A Redis export carries the `$CF:<sha>:<Model>/<key>.txt` **file reference**, not the text. A Postgres import resolves it through the content store, so it works only if the same `POPOTO_CONTENT_PATH` is reachable. A Postgres re-export carries the **inline text**, so the re-export is not byte-identical to the Redis export. | Copy the content files out of band, or make them reachable, before importing. Compare content by value, not by the export bytes. |
+| Per-record TTL | **Not carried on either backend.** The format has no TTL. An imported record expires `Meta.ttl` after its import, whatever was left of a per-instance `_ttl` (3570 s left becomes 60 s on a `Meta.ttl = 60` model). An expired record is not exported at all. | Re-apply any per-record TTL after import, or accept `Meta.ttl`. Pinned: `test_a_per_record_ttl_is_not_carried_on_either_backend`. |
+| `FrequencySketch` | Not carried on either backend. It is rebuilt from the imported saves, so it counts each imported record once, and counts that came from records deleted before the export are lost. | Accept the reset. The sketch is approximate by design. |
+| `AccessTrackerMixin`'s confirmed access log | Postgres keeps no access log (see the divergences below). `access_count` and `last_accessed` cross. | Nothing, unless the log is needed. |
+| A cycles entry's declared-baseline slot | It is deployment-local, and `import_state` drops it on both backends (#698). | Re-declare baselines on the destination. |
+| `GeoField` | Nothing geo-specific is carried: the import re-saves the coordinates and the save rebuilds the geo columns (`roundtrip_policy = "rebuild"`). | Nothing. |
+| `DataFrameField` | Refused on Postgres. | Keep those models on Redis. |
+| `EventStreamMixin` | The record crosses; the event stream does not (the format carries records, not the stream or its consumer groups). | Out of scope for the copy. |
+| `CoOccurrenceField` | An import truncates each record's edge set to the destination field's `max_edges`, on both backends. Edges beyond it are dropped. | Raise `max_edges` on the destination before the import if the source's sets are larger. |
+| `WriteFilterMixin` priority, Valor's outcome telemetry | Not exercised on Postgres by M5. Unverified. | Verify before relying on it. |
+
+Merging several Redis stores into one schema and the `_migrated_from`
+provenance also remain #756's work.
+
 ## Geo (M5)
 
 A `GeoField` needs no extension: plain columns reproduce what Redis does
@@ -2029,7 +2268,10 @@ cast to the column's type.
 | `link()`'s reply for a weight at or past `2**63` in magnitude (M4) | the server's C `(long long)` cast of the Lua number: `-inf` and anything under `-2**63` reply `-2**63` on arm64 and x86-64; above `2**63` (only with a cap past it) arm64 saturates to `2**63 - 1`, x86-64 replies `-2**63` | the arm64 values |
 | Where a NaN decay score ranks (M2a) | NaN (`0 * inf`: a `-inf` clock with above-prior confidence) makes the script's comparator inconsistent (`x > nan` is always false), so `table.sort` places it arbitrarily and can misorder real scores around it | real scores sorted, NaN last; every member's score is the same on both. Pinned: `test_where_a_nan_score_ranks_is_a_documented_divergence` |
 | A NaN decay score in `composite_score` (M2a) | `rank_decayed` replies `nan` (`0 * inf`: a `-inf` clock with above-prior confidence) and the composite's `ZADD` refuses it: `ResponseError: value is not a valid float` | that arm scores 0 for the record, the value `ZUNIONSTORE` gives a NaN product. Pinned: `test_a_nan_decay_score_in_composite_is_a_documented_divergence` |
-| The confirmed access log (M2a) | a capped list of read timestamps (`$AT:…:access_log`) | not kept: `access_count` and `last_accessed` are. It is read only by `export_state`, which arrives with `transfer/` in M5 |
+| The confirmed access log (M2a) | a capped list of read timestamps (`$AT:…:access_log`) | not kept: `access_count` and `last_accessed` are. `export_state` carries the counters only, and a Redis export's `access_log` is dropped on import (M5). The tests that read the log are `redis_only` |
+| `raw_update()` (M5) | `HSET` on each key, creating a partial hash for a key with no record; every index stays stale until `rebuild_indexes()` | an `UPDATE` of the rows that exist (a missing key is not created; the return value counts updated rows); unknown names and fields with no column (`BM25Field`…) raise `BackendCapabilityError`. B-trees follow the row at once; only companion tables (BM25 postings, narrow vectors, existence tokens) stay stale until `rebuild_indexes()`. Pinned: `tests/postgres/test_postgres_maintain.py` |
+| `check_indexes()` (M5) | counts orphan index entries of five kinds | those five are always `0` (they are the table's own B-trees); the dict adds `side_tables` (the companion-table drift) and `invalid_indexes`, plus `side_tables["graph_edges"]["dangling"]` (informational, not in `total`: Redis keeps such edges) (see [Index maintenance](#index-maintenance-and-transfer-m5)) |
+| `rebuild_indexes()` (M5) | deletes every index key and re-runs each field's `on_save`, so a `FrequencySketch` counts each record again and an `EmbeddingField` may call the provider; runs inside a batch | rewrites only drifted companion rows, never counts a sketch twice and never calls the provider; then `REINDEX TABLE CONCURRENTLY` and `ANALYZE`, bounded by `PG_MAINTAIN_*` timeouts. Refused (`BackendCapabilityError`) inside an open `transaction()`/batch; a `REINDEX` that stops early raises `MaintenanceIncompleteError`, not an outage |
 | `update_confidence(…, pipeline=uow)` with a Postgres `transaction()` (M2a) | (a Redis pipeline queues the update and returns `None`) | the update runs inside the transaction, so its value is returned and the attribute synced |
 | `CyclicDecayField.rank_decayed(zset_key, …)` (M5) | ranks that sorted set with `CYCLIC_DECAY_LUA` | raises `BackendCapabilityError` naming `top_by_decay`, as `DecayingSortedField.rank_decayed` does |
 | A cycles entry written raw (`import_state`) (M5) | Python msgpack keeps the importer's `float` for an integral period or baseline until the next save or adjustment re-packs it through cmsgpack | cmsgpack's `int` at once. Values identical (probe class `cyclic_merge_raw_types`) |
