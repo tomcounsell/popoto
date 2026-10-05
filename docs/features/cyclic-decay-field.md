@@ -242,6 +242,17 @@ All three structures are maintained automatically by `on_save()` and `on_delete(
     plain decay rather than raising, and is fixed in
     [#662](https://github.com/tomcounsell/popoto/issues/662).
 
+## On Postgres
+
+On a Postgres-bound model (#759 M5) the clock is the field's column and the
+two companion hashes are columns beside it: the cycles as four parallel
+`double precision[]` columns, the pressure as two `double precision` columns.
+The scoring formula below, the save-time merge (#698's three-way rule) and
+`strengthen_cycle` / `weaken_cycle` / `resolve_pressure` are the same SQL
+transcriptions of the three scripts, bit for bit, and the ranking has the same
+missing validity gate. See
+[Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+
 ## Scoring Formula
 
 The extended Lua script computes per member:

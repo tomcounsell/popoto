@@ -43,6 +43,8 @@ from popoto import (  # noqa: E402
     SupersessionProtocol,
     ValidityField,
 )
+from popoto import CyclicDecayField  # noqa: E402
+from popoto.fields.prediction_ledger import PredictionLedgerMixin  # noqa: E402
 from popoto.redis_db import get_REDIS_DB  # noqa: E402
 
 T0 = 1_760_000_000.0
@@ -57,7 +59,18 @@ class TrFact(popoto.Model):
     validity = ValidityField()
 
 
-MODELS = (TrFact,)
+class TrCyclicFact(PredictionLedgerMixin, popoto.Model):
+    """The long-tail fields beside a ValidityField (#759 M5): the cyclic
+    script's missing gate, and ``contradicted``'s cycle, discharge and
+    ledger effects next to its supersession."""
+
+    name = popoto.KeyField()
+    relevance = CyclicDecayField(cycles=[(86400, 2.0, 0)], pressure_rate=0.1)
+    certainty = ConfidenceField()
+    validity = ValidityField()
+
+
+MODELS = (TrFact, TrCyclicFact)
 SCENARIOS: list[tuple[str, Callable[[], Any]]] = []
 
 
@@ -275,6 +288,27 @@ def contradicted_supersession():
     return [
         ValidityField.is_valid_at(TrFact, "validity", "TrFact:o1"),
         ValidityField.is_valid_at(TrFact, "validity", "TrFact:o3"),
+    ]
+
+
+@scenario
+def cyclic_gap_and_contradicted_effects():
+    """#759 M5: the cyclic ranking has no gate (``TestCyclicDecayGatingGap``),
+    the composite mask still applies, and ``contradicted`` weakens the cycles,
+    auto-resolves the prediction and may discharge pressure beside the
+    supersession."""
+    old, new = TrCyclicFact(name="c1"), TrCyclicFact(name="c2")
+    old.save()
+    new.save()
+    PredictionLedgerMixin.record_prediction(old, predicted={"x": 1.0})
+    old._superseded_by = new
+    ObservationProtocol.on_context_used([old], {old.db_key.redis_key: "contradicted"})
+    return [
+        TrCyclicFact.query.top_by_decay("relevance", n=10),
+        TrCyclicFact.query.composite_score({"relevance": 1.0}, limit=10),
+        PredictionLedgerMixin.get_prediction_data(old),
+        CyclicDecayField.export_state(old, "relevance", None),
+        TrCyclicFact.delete_all(),
     ]
 
 
