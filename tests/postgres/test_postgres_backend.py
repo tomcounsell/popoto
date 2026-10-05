@@ -244,6 +244,31 @@ def test_transaction_is_atomic(pg):
     assert PgNote.query.count() == 2
 
 
+def test_after_commit_callbacks_run_only_after_commit(pg, caplog):
+    """``PostgresUnitOfWork.after_commit`` (#759 M4b B2): dropped on a
+    rollback; on a commit run in order once the block has exited, and one
+    that raises is logged without stopping the rest or failing the
+    committed transaction."""
+    ran = []
+    with pytest.raises(RuntimeError):
+        with pg.transaction() as uow:
+            uow.after_commit(lambda: ran.append("rolled back"))
+            raise RuntimeError("roll it back")
+    assert ran == []
+
+    def boom():
+        raise ValueError("callback failed")
+
+    with pg.transaction() as uow:
+        uow.after_commit(lambda: ran.append("first"))
+        uow.after_commit(boom)
+        uow.after_commit(lambda: ran.append(PgNote.query.count()))
+        PgNote(owner="o", slug="cb").save(pipeline=uow)
+        assert ran == []
+    assert ran == ["first", 1]
+    assert "callback failed" in caplog.text
+
+
 def test_bulk_create_is_one_transaction(pg):
     good = PgAccount(username="a", email="same@x")
     dup = PgAccount(username="b", email="same@x")

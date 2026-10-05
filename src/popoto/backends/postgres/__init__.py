@@ -44,7 +44,7 @@ import random
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Iterator, Optional, Sequence, Union
+from typing import Any, Callable, Iterator, Optional, Sequence, Union
 
 from ...fields.constants import Defaults
 from ..types import (
@@ -263,11 +263,29 @@ class PostgresUnitOfWork(UnitOfWork):
     ``bool(uow)`` is always ``True`` (TD-10).
     """
 
-    __slots__ = ("conn",)
+    __slots__ = ("conn", "_after_commit")
 
     def __init__(self, conn: Any) -> None:
         super().__init__(None, backend="postgres")
         self.conn = conn
+        self._after_commit: list[Callable[[], Any]] = []
+
+    def after_commit(self, callback: Callable[[], Any]) -> None:
+        """Run ``callback`` once this transaction has committed; drop it if
+        the transaction rolls back. ``EventStreamMixin`` sends its Redis
+        ``XADD`` this way, so a rolled-back write logs no mutation (#759 M4b
+        B2). Callbacks run in registration order, after ``COMMIT`` returns
+        and the connection is back in the pool; one that raises is logged and
+        the rest still run, because the transaction has already committed."""
+        self._after_commit.append(callback)
+
+    def _run_after_commit(self) -> None:
+        callbacks, self._after_commit = self._after_commit, []
+        for callback in callbacks:
+            try:
+                callback()
+            except Exception as exc:
+                logger.warning("after-commit callback %r failed: %s", callback, exc)
 
     @property
     def is_redis_pipeline(self) -> bool:
@@ -605,7 +623,11 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
                 ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
                 if ms > 0:
                     conn.execute(f"SET LOCAL statement_timeout = {ms}")
-                yield PostgresUnitOfWork(conn)
+                uow = PostgresUnitOfWork(conn)
+                yield uow
+        # Reached only after COMMIT succeeded: an exception in the block, or
+        # at COMMIT, propagates past this line and the callbacks are dropped.
+        uow._run_after_commit()
 
     def close(self) -> None:
         close_pools()

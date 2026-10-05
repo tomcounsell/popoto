@@ -24,7 +24,9 @@ from popoto.fields.access_tracker import AccessTrackerMixin
 from popoto.fields.append_only import AppendOnlyMixin
 from popoto.fields.confidence_field import ConfidenceField
 from popoto.fields.decaying_sorted_field import DecayingSortedField
+from popoto.fields.event_stream import EventStreamMixin
 from popoto.fields.tombstone_prior import TombstonePriorStore, digest_fingerprint
+from popoto.fields.write_filter import WriteFilterMixin
 from popoto.privacy.never_record import NeverRecordMixin
 from popoto.recipes import default_memory as dm_module
 from popoto.recipes.default_memory import EVICTION_COUNTER_PREFIX, DefaultMemory
@@ -73,6 +75,17 @@ class RecPrivate(NeverRecordMixin, popoto.Model):
 class RecLedger(AppendOnlyMixin, popoto.Model):
     entry = popoto.KeyField()
     amount = popoto.FloatField(default=0.0)
+
+
+class RecSideEffects(WriteFilterMixin, EventStreamMixin, popoto.Model):
+    """Both post-save Redis side effects: the priority tag and the stream."""
+
+    _stream_name = "rec_side_effects"
+    name = popoto.KeyField()
+    score = popoto.FloatField(default=0.9)
+
+    def compute_filter_score(self):
+        return self.score
 
 
 class _RedisRecorder:
@@ -337,9 +350,9 @@ def _ready(model, **kwargs):
 
 
 def test_lifecycle_promotes_a_non_key_tier(pg):
-    """The twin of the promotion tests: a tier that is not part of the key
-    promotes on Postgres with a plain save (a ``KeyField`` tier would be a
-    key migration, which Postgres refuses in v2)."""
+    """A tier that is not part of the key promotes on Postgres with a plain
+    save (a ``KeyField`` tier would be a key migration, which Postgres
+    refuses in v2, so ``MemoryLifecycle`` refuses it at construction)."""
     lifecycle = MemoryLifecycle(model_class=RecTier, importance_field="relevance")
     lifecycle.PROMOTION_ACCESS_COUNT = 1
     lifecycle.PROMOTION_CONFIDENCE_THRESHOLD = 0.0
@@ -360,22 +373,36 @@ def test_lifecycle_promotes_a_non_key_tier(pg):
     assert RecTier.query.get(key=fresh.key).tier == "semantic"
 
 
-def test_a_key_tier_promotion_is_refused_on_postgres(pg, caplog):
-    """The documented divergence the redis_only promotion tests name:
-    ``tick()`` logs the refused key migration and skips the record; a direct
-    ``tag_new`` raises it."""
-    lifecycle = MemoryLifecycle(model_class=RecKeyTier, importance_field="relevance")
-    lifecycle.PROMOTION_ACCESS_COUNT = 0
-    lifecycle.PROMOTION_CONFIDENCE_THRESHOLD = 0.0
-    lifecycle.PROMOTION_MIN_AGE_SECONDS = 0.0
-    lifecycle.FORGET_IMPORTANCE_FLOOR = 0.0
+def test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres(pg):
+    """#759 M4b: a ``KeyField`` tier makes every promotion a key migration,
+    which Postgres refuses in v2, so ``MemoryLifecycle`` refuses the
+    declaration when it is built -- as ``SubconsciousMemory(
+    auditable_extraction=)`` is -- rather than have ``tick()`` log and skip
+    every promotion on every pass. That also closes the hazard the skip
+    opened: a ``should_forget`` that ignores the tier tombstoned the records
+    Redis would have promoted and kept. The message names the declaration
+    that works (``test_lifecycle_promotes_a_non_key_tier``), and the refusal
+    writes nothing."""
     r = RecKeyTier(tier="episodic")
     r.save()
-    caplog.set_level(logging.WARNING, logger="POPOTO.MemoryLifecycle")
-    assert lifecycle.tick()["promoted"] == 0
-    assert any("migrate_key" in rec.getMessage() for rec in caplog.records)
-    with pytest.raises(BackendCapabilityError, match="migrate_key"):
-        lifecycle.tag_new(r, tier="semantic")
+    ts = pg._table(RecKeyTier._meta.spec)
+    tables = "SELECT tablename FROM pg_tables WHERE schemaname = %s ORDER BY 1"
+    before = pg._run(tables, [pg.schema])[0]
+
+    def forget_everything(record, lifecycle):
+        return True
+
+    for kwargs in ({}, {"should_forget": forget_everything}):
+        with pytest.raises(BackendCapabilityError, match="IndexedField") as info:
+            MemoryLifecycle(
+                model_class=RecKeyTier, importance_field="relevance", **kwargs
+            )
+        assert "migrate_key" in str(info.value)
+        assert "'postgres'" in str(info.value)
+    assert pg._run(f"SELECT tier FROM {ts.qualified}")[0] == [("episodic",)]
+    assert pg._run(tables, [pg.schema])[0] == before
+    # A non-key tier on the same backend constructs.
+    assert MemoryLifecycle(model_class=RecTier, importance_field="relevance")
 
 
 def test_the_forget_guard_skips_a_vanished_row(pg):
@@ -579,3 +606,133 @@ def test_the_auditable_extraction_path_is_refused_on_postgres(pg):
     assert memory.decision_log is None
     saved = memory.extract_memories("Alice deployed the service on Tuesday.")
     assert saved and all(m.agent_id == "plain" for m in saved)
+
+
+_FIRST_USE_CHILD = """
+import random, sys, time
+from popoto.backends.postgres import PostgresBackend
+from popoto.backends.postgres.recipes import ENGINE_TABLES
+
+url, schema, start, seed = sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4])
+pg = PostgresBackend(dsn=url, schema=schema)
+names = list(ENGINE_TABLES) + ["<recall>"]
+random.Random(seed).shuffle(names)
+while time.time() < start:
+    time.sleep(0.001)
+for name in names:
+    if name == "<recall>":
+        pg._recall_table()
+    else:
+        pg._engine(name)
+pg.close()
+"""
+
+
+def test_engine_table_first_use_is_race_free_on_a_fresh_schema(pg_schema, admin):
+    """#759 M4b B1: sixteen processes first-use every engine table (and
+    ``popoto_recall_proposal``) at the same instant, in shuffled orders, on a
+    schema that does not exist yet. Each first use takes the schema's DDL
+    lock before ``CREATE SCHEMA``, as ``ensure_table`` does, so none of them
+    races another into ``pg_namespace``. With only the per-table lock this
+    failed about once per round with a ``pg_namespace_nspname_index`` unique
+    violation."""
+    import os
+    import subprocess
+    import sys
+    import uuid
+
+    from psycopg import sql
+
+    from popoto.backends.postgres.recipes import ENGINE_TABLES
+
+    redis_db = popoto.get_redis().connection_pool.connection_kwargs.get("db", 15)
+    env = dict(os.environ, REDIS_URL=f"redis://localhost:6379/{redis_db}")
+    failures = []
+    for round_no in range(3):
+        schema = f"popoto_test_{uuid.uuid4().hex}"
+        start = time.time() + 3.0
+        procs = [
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    _FIRST_USE_CHILD,
+                    pg_schema.url,
+                    schema,
+                    repr(start),
+                    str(seed),
+                ],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            for seed in range(16)
+        ]
+        try:
+            for proc in procs:
+                _, err = proc.communicate(timeout=120)
+                if proc.returncode:
+                    failures.append(err.strip().splitlines()[-1])
+            tables = admin.execute(
+                "SELECT count(*) FROM pg_tables WHERE schemaname = %s", (schema,)
+            ).fetchone()[0]
+            assert tables == len(ENGINE_TABLES) + 1, (round_no, tables)
+        finally:
+            admin.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema)
+                )
+            )
+    assert failures == []
+
+
+def test_post_save_redis_side_effects_wait_for_commit(pg, monkeypatch):
+    """#759 M4b B2, generalised: every Redis side effect of a Postgres-bound
+    save -- ``WriteFilterMixin``'s priority tag and ``EventStreamMixin``'s
+    ``XADD`` -- is registered on the unit of work's ``after_commit`` hook.
+    A rolled-back transaction runs neither and sends Redis nothing; a
+    committed one runs each exactly once, after ``COMMIT``. (The tag is a
+    no-op off Redis, so its run sends nothing either: the ``XADD`` is the
+    one command.) Without a caller transaction both run at the save."""
+    client = popoto.get_redis()
+    stream = RecSideEffects(name="probe")._get_stream_key()
+    client.delete(stream)
+    sent, tagged = [], []
+    real_execute = client.execute_command
+    real_tag = WriteFilterMixin._tag_priority
+
+    def spy_execute(*args, **kwargs):
+        sent.append(args[0])
+        return real_execute(*args, **kwargs)
+
+    def spy_tag(self, pipeline=None):
+        tagged.append(self.name)
+        return real_tag(self, pipeline=pipeline)
+
+    monkeypatch.setattr(client, "execute_command", spy_execute)
+    monkeypatch.setattr(WriteFilterMixin, "_tag_priority", spy_tag)
+
+    with pytest.raises(RuntimeError, match="roll back"):
+        with pg.transaction() as uow:
+            RecSideEffects(name="rolled").save(pipeline=uow)
+            raise RuntimeError("roll back")
+    assert (sent, tagged) == ([], [])
+    assert client.xlen(stream) == 0
+    sent.clear()
+
+    with pg.transaction() as uow:
+        RecSideEffects(name="kept").save(pipeline=uow)
+        assert (sent, tagged) == ([], [])  # nothing before COMMIT
+    assert tagged == ["kept"]
+    assert sent == ["XADD"]
+    entries = client.xrange(stream)
+    assert len(entries) == 1
+    assert entries[0][1][b"pk"].decode() == "RecSideEffects:kept"
+
+    sent.clear()
+    RecSideEffects(name="plain").save()
+    assert tagged == ["kept", "plain"]
+    assert sent == ["XADD"]
+    assert client.xlen(stream) == 2
+    client.delete(stream)

@@ -140,6 +140,52 @@ def test_a_caller_unit_of_work_carries_the_annotation_and_the_close(pg):
     assert again.target_closed is False  # the idempotency guard: one close
 
 
+def _stream_entries(entry):
+    """The Redis stream ``EventStreamMixin`` writes for ``entry``'s model:
+    a Redis structure on either leg until M5."""
+    return popoto.get_redis().xrange(entry._get_stream_key())
+
+
+def test_the_mutation_stream_is_written_only_after_commit(pg):
+    """#759 M4b B2: on Redis the entry and its ``XADD`` are one
+    ``MULTI``/``EXEC``. A Postgres unit of work has no pipeline to queue
+    onto, so the ``XADD`` waits for ``COMMIT``: a rolled-back append leaves
+    no stream entry (the reconciler's ``StreamConsumer`` would otherwise see
+    a phantom mutation), a committed one leaves exactly one, sent after the
+    block and not inside it."""
+    probe = _append(statement="warm up")
+    baseline = len(_stream_entries(probe))
+    assert baseline == 1  # outside a caller transaction: after the save's commit
+    with pytest.raises(RuntimeError, match="roll back"):
+        with pg.transaction() as uow:
+            ProvenanceJournal.append(
+                agent_id=AGENT, statement="rolled back", pipeline=uow
+            )
+            raise RuntimeError("roll back")
+    assert len(_stream_entries(probe)) == baseline
+    assert _count(pg, JournalEntry) == 1
+
+    with pg.transaction() as uow:
+        kept = ProvenanceJournal.append(
+            agent_id=AGENT, statement="committed", pipeline=uow
+        ).entry
+        assert len(_stream_entries(probe)) == baseline  # not before COMMIT
+    entries = _stream_entries(probe)
+    assert len(entries) == baseline + 1
+    _, fields = entries[-1]
+    assert fields[b"pk"].decode() == kept.db_key.redis_key
+    assert fields[b"op"] == b"create"
+
+    # A transaction refused at its second save rolls back whole: no entry.
+    with pytest.raises(AppendOnlyViolation):
+        with pg.transaction() as uow:
+            twice = JournalEntry(agent_id=AGENT, statement="twice", kind="assert")
+            twice.save(pipeline=uow)
+            twice.save(pipeline=uow)
+    assert len(_stream_entries(probe)) == baseline + 1
+    assert _count(pg, JournalEntry) == 2
+
+
 def test_only_the_backends_unit_of_work_is_accepted(pg):
     target = _append()
     for bad in (popoto.get_redis().pipeline(), object()):

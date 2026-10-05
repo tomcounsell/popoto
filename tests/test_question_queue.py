@@ -170,6 +170,62 @@ class TestPropose:
         other = _confirmation(a.db_key.redis_key, text="Is p1 still true?")
         assert other.candidate_id != first.candidate_id
 
+    def test_a_proposal_duplicating_two_candidates_folds_into_the_first(self, backend):
+        """The documented ``dedup_order`` divergence (#759 M4b; the queue
+        probe's class of that name), pinned on both legs side by side.
+
+        A proposal that duplicates two open candidates folds into the first
+        one ``QuestionCandidate.query.filter(agent_id=…)`` returns, and that
+        order is each backend's "order of results with no ``order_by``":
+        Redis set order on Redis, ``_pk`` order on Postgres. The candidate
+        with the larger ``_pk`` is saved first, so on Postgres the fold goes
+        to the one saved *second*. On both legs exactly one candidate is
+        touched and none is created."""
+        high, low = "f" * 32, "0" * 32
+        for candidate_id, key in ((high, "QQFact:dup-a"), (low, "QQFact:dup-b")):
+            QuestionCandidate(
+                candidate_id=candidate_id,
+                agent_id=AGENT,
+                question_text=f"Which one did you mean, {candidate_id[0]}?",
+                kind="referent",
+                source_module="test",
+                target_keys=[key],
+                status="pending",
+                created_turn=0,
+                expires_turn=qq.QUESTION_EXPIRY_TURNS,
+                last_seen_turn=0,
+            ).save()
+        filter_order = [c.candidate_id for c in qq._candidates(AGENT)]
+        assert sorted(filter_order) == [low, high]
+
+        folded = qq.propose(
+            agent_id=AGENT,
+            question_text="Did you mean a or b?",
+            kind="referent",
+            source_module="test",
+            target_keys=["QQFact:dup-a", "QQFact:dup-b"],
+            ambiguity_signal="evidence_gap",
+            turn=5,
+        )
+
+        # The shared contract: the first duplicate in filter order.
+        assert folded.candidate_id == filter_order[0]
+        if backend.name == "redis":
+            # Set order: the IndexedField filter returns a Python set of keys,
+            # so either candidate may come first (it varies with the hash
+            # seed); only the shared contract above holds.
+            assert folded.candidate_id in (low, high)
+        else:
+            # _pk order: the lower key wins although it was saved second.
+            assert filter_order == [low, high]
+            assert folded.candidate_id == low
+        other = high if folded.candidate_id == low else low
+        stored = {
+            c.candidate_id: c.last_seen_turn
+            for c in QuestionCandidate.query.filter(agent_id=AGENT)
+        }
+        assert stored == {folded.candidate_id: 5, other: 0}
+
     @pytest.mark.parametrize(
         "kwargs",
         [

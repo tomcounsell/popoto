@@ -159,7 +159,12 @@ record's own columns, so its partition is the row's partition columns, and a
 partition change that keeps the key keeps the state.
 `PredictionLedgerMixin` keeps its ledger in Redis until M5 and is refused on a
 Postgres model too, rather than issuing Redis commands for a record Redis does
-not hold.
+not hold. `EventStreamMixin` is allowed where that one is refused because its
+stream is a derived, append-only log *of* the record, never read back to
+rebuild it: each entry is built from the row this save wrote and is sent only
+after that write commits, so Redis never holds state that the Postgres row
+contradicts. A ledger is the record's own state, and splitting it across two
+stores would make it disagree with itself after a rollback.
 
 Fields that arrive later: `GeoField`, `Meta.ttl` and the rest (M5); an `IndexedField` on a collection type is refused. A model
 that uses one of them raises
@@ -186,7 +191,12 @@ CREATE INDEX "note__sort__score__idx" ON "popoto"."note" ("owner", "score", "_pk
 `popoto.popoto_schema`, along with the DDL, the popoto version that wrote it
 and a schema-format version. The first use in each process creates a missing
 table or applies an **additive** change (a new nullable column, a new index)
-under `pg_advisory_xact_lock`. No manual step is needed. Anything else raises
+under `pg_advisory_xact_lock`: the schema's lock first, then the table's.
+Every first use takes the schema lock before `CREATE SCHEMA`, a model table's
+and an engine table's alike, so any number of processes can start on a schema
+that does not exist yet without racing each other into `pg_namespace`
+(`test_engine_table_first_use_is_race_free_on_a_fresh_schema`). No manual
+step is needed. Anything else raises
 `SchemaDriftError` with the diff instead of writing: a dropped or retyped
 column, a key change, a schema written by a newer popoto, or a table popoto
 did not create. Set `POPOTO_SCHEMA_AUTO=0` to turn off even the automatic
@@ -721,10 +731,13 @@ the records that named it, the value side of the Redis chain hashes. The
 reconciler's statement-vector cache is `popoto_embedding_cache (model,
 member, vector)`, beside the entries, and `erase_entry` drops it there.
 `JournalEntry` composes `EventStreamMixin`, whose stream is a Redis structure
-until M5: a Postgres-bound journal still `XADD`s its mutation log to Redis
-(best-effort, outside the Postgres transaction), and the reconciler's
-`StreamConsumer` trigger reads it there. Pinned by
-`tests/postgres/test_postgres_journal.py`.
+until M5: a Postgres-bound journal still `XADD`s its mutation log to Redis,
+and the reconciler's `StreamConsumer` trigger reads it there. The `XADD` is
+sent after the write commits: right after the save's own commit, or, inside a
+caller's `transaction()`, after that transaction's `COMMIT`
+(`PostgresUnitOfWork.after_commit`). A rolled-back write sends none. Sending
+is best-effort: with Redis unreachable the committed row stays and the
+failure is logged. Pinned by `tests/postgres/test_postgres_journal.py`.
 
 **Not on Postgres yet.** `MemoryTelemetry`'s `AssemblyEvent` declares
 `Meta.ttl`, refused until M5, so a Postgres-bound telemetry recorder fails
@@ -817,6 +830,21 @@ for attempt in range(3):
     except BackendRetryableError:
         continue  # rolled back by a concurrent transaction; safe to rerun
 ```
+
+**After-commit hook.** `uow.after_commit(fn)` registers a no-argument
+callable to run once this transaction has committed. Callbacks run in
+registration order after `COMMIT` returns. A rolled-back transaction drops
+them, and so does a failure at `COMMIT`. A callback that raises is logged at
+WARNING; the remaining callbacks still run, and the exception is not raised,
+because the write has already committed. This hook is how a Postgres-bound
+save runs its Redis side effects: the `EventStreamMixin` `XADD` and the
+`WriteFilterMixin` priority tag. On Redis both are queued on the save's
+pipeline, so a rolled-back transaction must not send them. (The priority tag
+is a no-op off Redis, so today only the `XADD` sends anything.) Without a
+caller transaction, the save has already committed by the time these effects
+run, so they run immediately. Pinned by
+`test_after_commit_callbacks_run_only_after_commit` and
+`tests/postgres/test_postgres_journal.py::test_the_mutation_stream_is_written_only_after_commit`.
 
 Before #759 M2a's patch these reached the caller as raw psycopg
 `DeadlockDetected` / `SerializationFailure`. A statement whose completion is
@@ -1010,12 +1038,12 @@ cast to the column's type.
 | `push()` on a capped `ListField` whose record was deleted (M1.1) | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
 | `load_raw_hash`, `Query.keys(catchall=/clean=)` | Redis debug and inspection APIs | raise `BackendCapabilityError` |
 | `Model.idle_seconds` (M4) | `OBJECT IDLETIME`: any read or write resets it (an `HGETALL` included) | whole seconds since the row's last write or, with `AccessTrackerMixin`, its last confirmed read; an unconfirmed read does not reset it. Pinned: `tests/postgres/test_postgres_recipes.py::test_idle_seconds_counts_a_confirmed_read` |
-| `MemoryLifecycle` promotion of a `KeyField` tier (`tick()`, `tag_new`) (M4) | a key migration (`save(migrate_key=True)`) | refused, as every key migration is in v2: `tick()` logs and skips the record, `tag_new` raises `BackendCapabilityError`. Declare the tier as a non-key field (an `IndexedField`) on Postgres. Pinned: `test_a_key_tier_promotion_is_refused_on_postgres`, `test_lifecycle_promotes_a_non_key_tier` |
+| `MemoryLifecycle` with a `KeyField` tier (M4) | promotion is a key migration (`save(migrate_key=True)`) | refused when you build it: `MemoryLifecycle(...)` raises `BackendCapabilityError` naming `IndexedField`, because every promotion would be a key migration, which v2 refuses. Declare the tier as an `IndexedField` on Postgres; promotion is then a plain save. Pinned: `test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres`, `test_lifecycle_promotes_a_non_key_tier`, and `tests/test_memory_lifecycle.py`, whose Postgres leg runs every test against `IndexedField`-tier twins of its models |
 | A question-queue delivery when another transaction holds a candidate's row (M4) | the script runs after the other write and sees it | `FOR UPDATE SKIP LOCKED`: that candidate is passed over for the next, as one another worker claimed would be. Pinned: `test_postgres_question_queue.py::test_a_candidate_another_writer_holds_is_skipped` |
-| A proposal that duplicates two or more open candidates (M4) | folds into the first in `QuestionCandidate.query.filter(agent_id=…)`'s order: set order | the first in `_pk` order (the "order of results" row above, seen through dedup); the queue probe's `dedup_order` class |
+| A proposal that duplicates two or more open candidates (M4) | folds into the first in `QuestionCandidate.query.filter(agent_id=…)`'s order: set order | the first in `_pk` order (the "order of results" row above, seen through dedup). Pinned on both legs by `tests/test_question_queue.py::TestPropose::test_a_proposal_duplicating_two_candidates_folds_into_the_first`, and counted as the queue probe's `dedup_order` class |
 | `DefaultMemory`'s eviction counter (M4) | a Redis string `MemoryService.status()` reads | a `popoto_counter` row: a Postgres-bound `DefaultMemory` needs no Redis, and the Redis-only `MemoryService` does not report it |
 | `ProvenanceJournal` with a caller `pipeline=` (M4) | a Redis pipeline: the annotation and close are queued, `target_closed` is `None` and `close_index` names the close in `execute()`'s results | the backend's unit of work only (anything else raises `ValueError`): the annotation and close run inside it, `target_closed` is known at the call, `close_index` is `None`. Pinned: `test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close` |
-| `EventStreamMixin` on a Postgres-bound model (`JournalEntry`, M4) | `XADD` in the save's pipeline | `XADD` to Redis after the Postgres write, best-effort and outside its transaction, until the stream moves in M5 |
+| `EventStreamMixin` on a Postgres-bound model (`JournalEntry`, M4) | `XADD` in the save's pipeline, so it commits or is discarded with the write | `XADD` to Redis after the Postgres write commits (after the caller's `transaction()` commits, when there is one), never for a rolled-back write; best-effort, so with Redis down the row commits and no entry is sent; until the stream moves in M5 |
 | `AppendOnlyMixin`: two saves of one key in one unit of work (M4) | both pass the guard (the documented intra-pipeline shape) | the second is refused (the guard reads inside the transaction). Pinned: `test_postgres_recipes.py::test_append_only_sees_its_own_transaction` |
 | `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` | run the sync call in a worker thread (the async driver arrives in M5) |
 | `ExistenceFilter.might_exist` (M2b) | a bloom filter: false positives are possible, and a deleted record stays "seen" | exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: `test_existence_filter.py::TestMembershipExactness` |

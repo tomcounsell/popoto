@@ -1651,10 +1651,19 @@ class Model(metaclass=ModelBase):
         mutation_kwargs = (
             {"update_fields": update_fields} if update_fields is not None else {}
         )
+        # Every Redis side effect of the save below runs at the same point
+        # on each path: queued on a Redis pipeline (one MULTI/EXEC with the
+        # write); registered on a Postgres unit of work's after_commit hook,
+        # so it runs once that transaction commits and never for a rolled
+        # back write (#759 M4b B2); otherwise immediately, which is after the
+        # save's own commit.
+        after_commit = getattr(uow, "after_commit", None)
         # WriteFilterMixin: tag priority after successful save
         if isinstance(self, WriteFilterMixin):
             if queued:
                 self._tag_priority(pipeline=result)
+            elif after_commit is not None:
+                after_commit(self._tag_priority)
             else:
                 self._tag_priority()
         # EventStreamMixin: log mutation after successful save
@@ -1662,6 +1671,8 @@ class Model(metaclass=ModelBase):
             _op = "create" if _is_create else "update"
             if queued:
                 self._xadd_mutation(_op, pipeline=result, **mutation_kwargs)
+            elif after_commit is not None:
+                self._defer_xadd_mutation(_op, after_commit, **mutation_kwargs)
             else:
                 self._xadd_mutation(_op, **mutation_kwargs)
         return result

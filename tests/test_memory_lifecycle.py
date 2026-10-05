@@ -90,13 +90,65 @@ LinkedMemory.related = popoto.Relationship(model=LinkedMemory, null=True)
 LinkedMemory._meta.add_field("related", LinkedMemory.related)
 
 
+# The Postgres leg's declarations (#759 M4b). A KeyField tier makes every
+# promotion a key migration, which Postgres refuses in v2, so MemoryLifecycle
+# refuses a KeyField tier at construction on a Postgres-bound model
+# (tests/postgres/test_postgres_recipes.py::
+# test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres). On that
+# leg each test runs against a twin that declares the tier as an IndexedField,
+# the declaration the refusal points to; the Redis leg keeps the KeyField
+# models above, unchanged.
+
+
+class TrackedMemoryIndexedTier(AccessTrackerMixin, popoto.Model):
+    key = popoto.AutoKeyField()
+    tier = popoto.IndexedField(type=str, default="episodic")
+    relevance = DecayingSortedField(decay_rate=0.5)
+    confidence = ConfidenceField(initial_confidence=0.5)
+
+
+class UntrackedMemoryIndexedTier(popoto.Model):
+    key = popoto.AutoKeyField()
+    tier = popoto.IndexedField(type=str, default="episodic")
+    relevance = DecayingSortedField(decay_rate=0.5)
+
+
+class LinkedMemoryIndexedTier(popoto.Model):
+    key = popoto.AutoKeyField()
+    tier = popoto.IndexedField(type=str, default="episodic")
+    relevance = DecayingSortedField(decay_rate=0.5)
+    confidence = ConfidenceField(initial_confidence=0.5)
+
+
+LinkedMemoryIndexedTier.related = popoto.Relationship(
+    model=LinkedMemoryIndexedTier, null=True
+)
+LinkedMemoryIndexedTier._meta.add_field("related", LinkedMemoryIndexedTier.related)
+
+_INDEXED_TIER_TWINS = {
+    "TrackedMemory": TrackedMemoryIndexedTier,
+    "UntrackedMemory": UntrackedMemoryIndexedTier,
+    "LinkedMemory": LinkedMemoryIndexedTier,
+}
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
-def clean_db():
+def _leg_models(backend, monkeypatch):
+    """On a non-Redis leg, rebind the KeyField-tier models to their
+    IndexedField-tier twins for the test (the module globals are read at
+    call time, so the test bodies and helpers need no change)."""
+    if not backend.is_redis:
+        for name, twin in _INDEXED_TIER_TWINS.items():
+            monkeypatch.setitem(globals(), name, twin)
+
+
+@pytest.fixture(autouse=True)
+def clean_db(_leg_models):
     """Flush all test models before and after each test."""
     models = [
         TrackedMemory,
@@ -202,14 +254,6 @@ def test_tag_new_sets_tier(lifecycle):
     assert reloaded.tier == "episodic"
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "promotes a KeyField tier, which is a key migration: Postgres refuses "
-        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
-        "the twin promotes a non-key tier on Postgres "
-        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
-    )
-)
 def test_tag_new_sets_semantic_tier(lifecycle):
     """tag_new can set tier to 'semantic'."""
     record = TrackedMemory()
@@ -220,14 +264,6 @@ def test_tag_new_sets_semantic_tier(lifecycle):
     assert reloaded.tier == "semantic"
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "promotes a KeyField tier, which is a key migration: Postgres refuses "
-        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
-        "the twin promotes a non-key tier on Postgres "
-        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
-    )
-)
 def test_tag_new_is_idempotent(lifecycle):
     """Calling tag_new multiple times overwrites — no conflict."""
     record = TrackedMemory()
@@ -254,14 +290,6 @@ def test_tag_new_defaults_to_episodic(lifecycle):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "promotes a KeyField tier, which is a key migration: Postgres refuses "
-        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
-        "the twin promotes a non-key tier on Postgres "
-        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
-    )
-)
 def test_tick_promotes_eligible_episodic():
     """Records meeting all promotion criteria get tier='semantic'."""
     # Use a lifecycle with low thresholds so the test record qualifies
@@ -456,14 +484,6 @@ def test_tick_corpus_filter_excludes_semantic_records():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "promotes a KeyField tier, which is a key migration: Postgres refuses "
-        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
-        "the twin promotes a non-key tier on Postgres "
-        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
-    )
-)
 def test_tick_is_idempotent():
     """Running tick twice produces the same result as once."""
     lifecycle = MemoryLifecycle(
@@ -503,14 +523,6 @@ def test_empty_corpus_tick(lifecycle):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "promotes a KeyField tier, which is a key migration: Postgres refuses "
-        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
-        "the twin promotes a non-key tier on Postgres "
-        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
-    )
-)
 def test_tick_large_corpus():
     """200 records are all promoted in a single tick() pass."""
     lifecycle = MemoryLifecycle(
@@ -545,14 +557,6 @@ def test_tick_large_corpus():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "promotes a KeyField tier, which is a key migration: Postgres refuses "
-        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
-        "the twin promotes a non-key tier on Postgres "
-        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
-    )
-)
 def test_custom_should_promote():
     """Custom should_promote callable overrides default logic."""
 
@@ -673,14 +677,6 @@ def test_assess_returns_lifecycle_state_type(lifecycle):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "promotes a KeyField tier, which is a key migration: Postgres refuses "
-        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
-        "the twin promotes a non-key tier on Postgres "
-        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
-    )
-)
 def test_untracked_model_tick_works():
     """tick() works correctly on models without AccessTrackerMixin."""
     lifecycle = MemoryLifecycle(
@@ -888,14 +884,6 @@ def test_tick_produces_zero_staged_entries_with_partition_filters():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "promotes a KeyField tier, which is a key migration: Postgres refuses "
-        "save(migrate_key=True) in v2 (plan §1.1), so tick() logs and skips it; "
-        "the twin promotes a non-key tier on Postgres "
-        "(tests/postgres/test_postgres_recipes.py::test_lifecycle_promotes_a_non_key_tier)"
-    )
-)
 def test_tick_single_pass_hydration():
     """200 records are all promoted in a single-pass tick() (no batch slicing).
 

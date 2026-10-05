@@ -36,8 +36,10 @@ adapter        Postgres
 =============  =============================================================
 
 The engine tables are created on first use under ``pg_advisory_xact_lock``,
-like ``popoto_recall_proposal``, and carry the same caveat on a shared
-schema: they are keyed by model *name*.
+like ``popoto_recall_proposal``: the schema's DDL lock first, as
+``ensure_table`` takes it, then the table's (``schema.engine_table_ddl``), so
+concurrent first uses serialise on ``CREATE SCHEMA``. They carry the same
+caveat on a shared schema: they are keyed by model *name*.
 
 **Delivery.** ``_DELIVER_LUA`` grants the agent's one ask per ``K`` turns
 *and* claims a candidate in one atomic step. Here that step is one
@@ -60,7 +62,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ..types import ModelSpec, RecordId, UnitOfWork
 from .memory import _NOT_HANDLED
-from .schema import quote_ident
+from .schema import engine_table_ddl, quote_ident
 
 __all__ = [
     "COUNTER_FIELD",
@@ -154,13 +156,10 @@ class RecipeOpsMixin:
                 raise SchemaDriftError(
                     f"{self.schema}.{name} does not exist and POPOTO_SCHEMA_AUTO=0"
                 )
-            self._run(
-                "SELECT pg_advisory_xact_lock(hashtext(%s)); "
-                f"CREATE SCHEMA IF NOT EXISTS {quote_ident(self.schema)}; "
-                f"CREATE TABLE IF NOT EXISTS {qualified} ({ENGINE_TABLES[name]})",
-                [f"popoto:ddl:{self.schema}.{name}"],
-                write=True,
-            )
+            # The schema lock first, as ensure_table takes it: a per-table
+            # lock alone lets two first uses race on CREATE SCHEMA (B1).
+            sql, params = engine_table_ddl(self.schema, name, ENGINE_TABLES[name])
+            self._run(sql, params, write=True)
         ready.add(name)
         return qualified
 

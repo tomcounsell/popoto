@@ -461,6 +461,7 @@ class MemoryLifecycle:
 
         # --- Capability detection ---
         self._validate_fields()
+        self._refuse_key_tier_off_redis()
 
         # Detect AccessTrackerMixin (soft dependency — degrades gracefully)
         from ..fields.access_tracker import AccessTrackerMixin
@@ -550,6 +551,40 @@ class MemoryLifecycle:
                 f"not found on {self.model_class.__name__}. "
                 f"Available fields: {list(fields.keys())}"
             )
+
+    def _refuse_key_tier_off_redis(self) -> None:
+        """Refuse a ``KeyField`` tier on a non-Redis model at construction.
+
+        A ``KeyField`` tier makes every promotion a key migration
+        (``save(migrate_key=True)``), which the Postgres backend refuses in
+        v2 (#759 M4, plan §1.1). Refusing here, as
+        ``SubconsciousMemory(auditable_extraction=)`` is refused, replaces a
+        ``tick()`` that would log and skip every promotion on every pass --
+        and that, with a ``should_forget`` that ignores the tier, tombstoned
+        records Redis would have promoted and kept.
+
+        Raises:
+            BackendCapabilityError: the model is not Redis-bound and
+                ``tier_field`` is a ``KeyField``.
+        """
+        from ..backends.routing import non_redis_backend
+        from ..fields.key_field_mixin import KeyFieldMixin
+
+        field = self.model_class._meta.fields[self.tier_field]
+        if not isinstance(field, KeyFieldMixin):
+            return
+        backend = non_redis_backend(self.model_class)
+        if backend is None:
+            return
+        from ..backends import BackendCapabilityError
+
+        raise BackendCapabilityError(
+            f"MemoryLifecycle: tier_field '{self.tier_field}' on "
+            f"{self.model_class.__name__} is a {type(field).__name__}, so every "
+            f"promotion is a key migration (save(migrate_key=True)), which the "
+            f"{backend.name!r} backend refuses; declare the tier as an "
+            f"IndexedField instead"
+        )
 
     # -------------------------------------------------------------------
     # Public API
