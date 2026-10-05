@@ -1139,6 +1139,23 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     parent never awaits is refused too. A batch opened by a sync write now
     refuses an `async_*` write (it would block the loop), as the converse
     already did.
+  - **After merge: main red on CI, the slot-state rule replaced.** The
+    second review's rule ("busy only when every slot is checked out") also
+    read a slot held by a caller still *validating* an idle connection (the
+    checkout check's round trip) or connecting to a healthy server as an
+    outage. On the loaded CI runner a waiter in
+    `test_unsorted_concurrent_async_transactions_fail_only_retryably` timed
+    out (1 s) with a slot in transit -- no connect or discard happens
+    mid-run, so the check (or the semaphore hand-off just before it) is the
+    window; slowing the check to 0.3 s locally failed that test 2 of 2 runs
+    -- and was booked as a dropped write. Because the `pg` fixture shared
+    the session backend's health record, twelve later tests asserting
+    `dropped_writes == 0` failed with it (run 37344318326). Two fixes: `pg`
+    hands each test a fresh `Health` record, and a timed-out waiter that
+    finds a slot not checked out waits (at most one connect timeout) for
+    the outcome of the connect or checkout check in progress -- the server
+    answering makes it busy, a failed connect or no answer an outage. The
+    black-holed-port case still counts every write dropped.
 - **M5 long tail as shipped: departures from this plan, recorded.** The
   `CyclicDecayField` / `PredictionLedgerMixin` / `TDValueField` PR
   (`backends/postgres/longtail.py`).

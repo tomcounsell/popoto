@@ -360,3 +360,17 @@ def test_table_name_mapping():
 def test_backend_instance_holds_no_connection_until_used():
     backend = PostgresBackend(dsn="postgresql://127.0.0.1:1/never", schema="s")
     assert backend.health.ok and backend._tables == {}
+
+
+def test_pg_hands_each_test_its_own_health_record(pg, pg_schema):
+    """The session backend is shared, its health record is not: a dropped
+    write some earlier test caused (or one counted on the session record
+    outside ``pg``) is not visible here, and nothing this test counts
+    reaches the next one. Without it, one outage on CI failed thirteen
+    tests (run 37344318326)."""
+    from popoto.backends.postgres import Health
+
+    assert pg is pg_schema.backend()
+    assert pg.health == Health()
+    pg.health.ok = False
+    pg.health.dropped_writes += 1  # discarded with this test's record

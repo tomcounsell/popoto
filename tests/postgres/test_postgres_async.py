@@ -941,6 +941,179 @@ def test_a_partitioned_async_pool_is_an_outage_not_busy(monkeypatch):
         hole.close()
 
 
+class _SlowHandshakeProxy:
+    """A TCP proxy to a real server that holds every new connection for
+    ``delay`` seconds before dialling the server: a reachable server whose
+    connects are slow (a loaded CI runner), which
+    is what turned main red after #784 (run 37344318326)."""
+
+    def __init__(self, upstream: tuple[str, int], delay: float) -> None:
+        import socket
+
+        self.upstream = upstream
+        self.delay = delay
+        self.dialled = 0
+        self.lsock = socket.socket()
+        self.lsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.lsock.bind(("127.0.0.1", 0))
+        self.lsock.listen(64)
+        self.port = self.lsock.getsockname()[1]
+        self.socks: list = []
+        self.lock = threading.Lock()
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def _accept(self) -> None:
+        while True:
+            try:
+                client, _ = self.lsock.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._serve, args=(client,), daemon=True).start()
+
+    def _serve(self, client) -> None:
+        import socket
+
+        time.sleep(self.delay)
+        try:
+            server = socket.create_connection(self.upstream)
+        except OSError:
+            client.close()
+            return
+        with self.lock:
+            self.dialled += 1
+            self.socks += [client, server]
+        for a, b in ((client, server), (server, client)):
+            threading.Thread(target=self._pump, args=(a, b), daemon=True).start()
+
+    @staticmethod
+    def _pump(a, b) -> None:
+        try:
+            while True:
+                data = a.recv(65536)
+                if not data:
+                    break
+                b.sendall(data)
+        except OSError:
+            pass
+        finally:
+            for s in (a, b):
+                try:
+                    s.shutdown(2)
+                except OSError:
+                    pass
+
+    def close(self) -> None:
+        self.lsock.close()
+        with self.lock:
+            socks, self.socks = self.socks, []
+        for s in socks:
+            try:
+                s.close()
+            except OSError:
+                pass
+
+
+def test_slow_connects_to_a_reachable_server_are_contention_not_an_outage(
+    pg, monkeypatch
+):
+    """The CI condition behind run 37344318326: a reachable server whose
+    connects take longer than a waiter's checkout timeout. The first callers
+    hold the pool's slots while *connecting*, so no slot is checked out when
+    the queued callers time out -- and the old rule (busy only when every
+    slot is checked out) counted those waits as an outage, with dropped
+    writes. A connect in progress to a server that then answers is
+    contention: every queued caller gets BackendBusyError (retryable), and
+    the health record is untouched. Contrast
+    ``test_a_partitioned_async_pool_is_an_outage_not_busy``, where the
+    connects in progress *fail*."""
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    from popoto.backends import reset_bindings
+    from popoto.backends.postgres import PostgresBackend, close_pools
+
+    AioNote.create(key="seed")  # the table, through pg
+    params = conninfo_to_dict(pg.dsn)
+    host = params.get("host") or "localhost"
+    if host.startswith("/"):
+        pytest.skip("the server is on a unix socket; the proxy speaks TCP")
+    upstream = (host, int(params.get("port") or 5432))
+    proxy = _SlowHandshakeProxy(upstream, delay=1.5)
+    monkeypatch.setattr(Defaults, "PG_POOL_MAX_SIZE", 2)
+    monkeypatch.setattr(Defaults, "PG_CONNECT_TIMEOUT_SECONDS", 1.0)
+    backend = PostgresBackend(
+        make_conninfo(
+            pg.dsn,
+            host="127.0.0.1",
+            hostaddr="127.0.0.1",
+            port=str(proxy.port),
+            application_name="popoto_test_slow_connect",
+        ),
+        schema=pg.schema,
+    )
+    previous = set_backend(backend)
+    previous_instance = _swap_instance("postgres", backend)
+    reset_bindings()
+    try:
+
+        async def one(i):
+            try:
+                await AioNote(key=f"s{i}").async_save()
+            except BackendBusyError:
+                return "busy"
+            except BackendUnavailableError as exc:
+                return f"outage: {exc}"
+            return "ok"
+
+        async def main():
+            return await asyncio.gather(*(one(i) for i in range(6)))
+
+        results = asyncio.run(main())
+        assert set(results) <= {"ok", "busy"}, results
+        assert "busy" in results, results  # the queued callers did time out
+        assert "ok" in results, results  # the connecting callers committed
+        assert proxy.dialled >= 1, "the slow handshake was exercised"
+        assert backend.health.ok and backend.health.consecutive_failures == 0
+        assert backend.health.dropped_writes == 0
+    finally:
+        _swap_instance("postgres", previous_instance)
+        set_backend(previous)
+        reset_bindings()
+        close_pools()
+        proxy.close()
+
+
+def test_a_wait_behind_a_slow_checkout_check_is_contention_not_an_outage(
+    pg, monkeypatch
+):
+    """The window that actually fired on CI (run 37344318326): a caller
+    that took a slot is still validating an idle connection (the checkout
+    check's empty-query round trip) when a queued caller's wait runs out, so
+    fewer than every slot is checked out. Reproduced locally by slowing that
+    round trip; the CI test then failed 2 of 2 runs before the fix. The
+    check answers, so the queued caller is busy, and health is untouched."""
+    monkeypatch.setattr(Defaults, "PG_POOL_MAX_SIZE", 1)
+    monkeypatch.setattr(Defaults, "PG_CONNECT_TIMEOUT_SECONDS", 0.3)
+    real_usable = aio._LoopPool._usable
+
+    async def slow_usable(conn):
+        await asyncio.sleep(0.6)  # outlasts the queued caller's 0.3 s wait
+        return await real_usable(conn)
+
+    async def main():
+        await AioNote.async_create(key="x")  # one idle connection, warm
+        monkeypatch.setattr(aio._LoopPool, "_usable", staticmethod(slow_usable))
+        checking = asyncio.create_task(AioNote(key="a").async_save())
+        await asyncio.sleep(0.05)  # it holds the only slot, in the check
+        with pytest.raises(BackendBusyError):
+            await AioNote(key="b").async_save()
+        await checking
+        assert await AioNote.query.async_count() == 2
+
+    asyncio.run(main())
+    assert pg.health.ok and pg.health.consecutive_failures == 0
+    assert pg.health.dropped_writes == 0
+
+
 def test_a_busy_sync_pool_is_not_an_outage(pg, monkeypatch):
     from psycopg.conninfo import make_conninfo
 
