@@ -22,11 +22,15 @@ that first save or query, so an outage there is charged to it), and
 ``Meta.backend = "postgres"`` model need neither the driver nor the server.
 
 Topology (plan §3): one ``psycopg_pool.ConnectionPool`` per (DSN, pid),
-``max_size`` ``Defaults.PG_POOL_MAX_SIZE``. No session state is ever set:
-every autocommit operation is one simple-query message
+``max_size`` ``Defaults.PG_POOL_MAX_SIZE``. No session state is ever set on
+a pooled connection: every autocommit operation is one simple-query message
 ``SET LOCAL statement_timeout = N; <statement>``, which Postgres runs as one
 implicit transaction -- atomic, one round trip, and safe behind PgBouncer in
-transaction mode. Advisory locks are ``pg_advisory_xact_lock`` only.
+transaction mode. Advisory locks are ``pg_advisory_xact_lock`` only. The one
+exception is ``rebuild_indexes()``'s ``REINDEX``/``DROP INDEX
+CONCURRENTLY``, which cannot run in any transaction block: it sets a session
+``lock_timeout``/``statement_timeout`` on a dedicated connection it opens and
+closes (:meth:`PostgresBackend._maintenance_connection`).
 
 Outage contract (``[PG-only]``): an unreachable server, a connect timeout or
 a statement timeout raises :class:`BackendUnavailableError`; the backend's
@@ -705,6 +709,67 @@ class PostgresBackend(
                         "unit of work or batch) to join it, or write the "
                         "record after the parent's transaction ends"
                     )
+
+    def _unit_open_here(self) -> bool:
+        """Whether a ``transaction()`` (or a ``popoto.batch()`` holding
+        Postgres writes) is open in this task or thread, or in an ancestor
+        task that awaits this one (#788 review): the sessions a statement
+        that waits for *every* transaction on a table -- ``REINDEX``/``DROP
+        INDEX CONCURRENTLY`` -- would wait on forever."""
+        if self._open_units():
+            return True
+        ancestors = _ancestor_scopes.get()
+        if not ancestors:
+            return False
+        scope = self._lock_scope()
+        with self._lock:
+            return any(
+                self._open.get(task)
+                for task in (ref() for ref in ancestors)
+                if task is not None and task is not scope
+            )
+
+    @contextlib.contextmanager
+    def _maintenance_connection(self, lock_timeout_ms: int) -> Iterator[Any]:
+        """A dedicated ``autocommit`` connection for ``REINDEX``/``DROP
+        INDEX CONCURRENTLY`` (#788 review), opened for the block and closed
+        after it: never a pooled one, so a long REINDEX holds no pool slot
+        and its session ``lock_timeout``/``statement_timeout`` (which
+        ``CONCURRENTLY`` needs: it cannot run in a transaction block, so
+        ``SET LOCAL`` cannot reach it) can never leak to another caller.
+        Inside the async bridge it is an ``AsyncConnection`` on the loop.
+
+        Failing to *open* it is an outage (``BackendUnavailableError``, no
+        dropped write: nothing was written); errors from the block's own
+        statements propagate raw, for the caller to classify."""
+        psycopg = _import_psycopg()
+        timeout = float(Defaults.PG_CONNECT_TIMEOUT_SECONDS)
+        kwargs = {
+            "autocommit": True,
+            "prepare_threshold": None,
+            "connect_timeout": max(1, int(round(timeout))),
+        }
+        bridge = _bridged()
+        try:
+            if bridge is not None:
+                conn = bridge.connect(self.dsn, **kwargs)
+            else:
+                conn = psycopg.connect(self.dsn, **kwargs)
+        except psycopg.OperationalError as exc:
+            raise self._fail(exc, write=False) from exc
+        try:
+            statement_ms = int(Defaults.PG_MAINTAIN_STATEMENT_TIMEOUT_MS)
+            conn.execute(f"SET lock_timeout = {max(0, int(lock_timeout_ms))}")
+            conn.execute(f"SET statement_timeout = {max(0, statement_ms)}")
+            yield conn
+        finally:
+            try:
+                conn.close()
+            except BaseException:  # noqa: BLE001 - cancelled mid-close
+                try:
+                    conn.pgconn.finish()
+                except Exception:  # noqa: BLE001 - already gone
+                    pass
 
     def _note_open_scope(self) -> None:
         """Record the running task in :data:`_ancestor_scopes` of its own

@@ -4123,17 +4123,18 @@ class Model(metaclass=ModelBase):
 
         return removed
 
-    # The three index-maintenance twins stay on a worker thread on every
-    # backend: their sync bodies scan Redis index keys whatever the model's
-    # backend (Postgres `maintain` is its own M5 item), so running them on the
-    # loop thread would block it on Redis I/O.
+    # The three index-maintenance twins go through `_off_loop` (#788 review):
+    # a Redis-bound model keeps the worker thread (`to_thread`, byte for byte),
+    # and a Postgres-bound one runs `maintain` on the async backend, so every
+    # statement -- the REINDEX CONCURRENTLY on its dedicated connection
+    # included -- is an AsyncConnection on the running loop.
 
     @classmethod
     async def async_check_indexes(cls, batch_size: int = 1000) -> dict:
         """Async version of check_indexes().
 
-        Runs the synchronous check_indexes() method in a thread pool
-        to avoid blocking the event loop.
+        Runs the synchronous check_indexes() method off the event loop: in a
+        worker thread on Redis, on the async backend on Postgres.
 
         Args:
             batch_size: Number of EXISTS commands per pipeline batch.
@@ -4146,14 +4147,14 @@ class Model(metaclass=ModelBase):
             if result['total'] > 0:
                 await User.async_rebuild_indexes()
         """
-        return await to_thread(cls.check_indexes, batch_size=batch_size)
+        return await _off_loop(cls, cls.check_indexes, batch_size=batch_size)
 
     @classmethod
     async def async_clean_indexes(cls, batch_size: int = 1000) -> int:
         """Async version of clean_indexes().
 
-        Runs the synchronous clean_indexes() method in a thread pool
-        to avoid blocking the event loop.
+        Runs the synchronous clean_indexes() method off the event loop: in a
+        worker thread on Redis, on the async backend on Postgres.
 
         Args:
             batch_size: Number of EXISTS/removal commands per pipeline
@@ -4167,14 +4168,14 @@ class Model(metaclass=ModelBase):
             if result['total'] > 0:
                 removed = await User.async_clean_indexes()
         """
-        return await to_thread(cls.clean_indexes, batch_size=batch_size)
+        return await _off_loop(cls, cls.clean_indexes, batch_size=batch_size)
 
     @classmethod
     async def async_rebuild_indexes(cls, batch_size: int = 1000) -> int:
         """Async version of rebuild_indexes().
 
-        Runs the synchronous rebuild_indexes() method in a thread pool
-        to avoid blocking the event loop.
+        Runs the synchronous rebuild_indexes() method off the event loop: in a
+        worker thread on Redis, on the async backend on Postgres.
 
         Args:
             batch_size: Number of instances to process per pipeline batch.
@@ -4182,7 +4183,7 @@ class Model(metaclass=ModelBase):
         Returns:
             Number of instances processed.
         """
-        return await to_thread(cls.rebuild_indexes, batch_size=batch_size)
+        return await _off_loop(cls, cls.rebuild_indexes, batch_size=batch_size)
 
     @classmethod
     def raw_update(

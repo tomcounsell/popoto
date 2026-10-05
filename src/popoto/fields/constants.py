@@ -798,6 +798,25 @@ class Defaults:
     # long too; a busy pool skips the run.
     PG_REAPER_LOCK_TIMEOUT_MS = 50
 
+    # -- Postgres index maintenance (#759 M5, #788 review) ---------------------
+    # rebuild_indexes() runs REINDEX TABLE CONCURRENTLY + ANALYZE on a
+    # dedicated autocommit connection of its own (never a pooled one, and
+    # never inside a caller's transaction). CONCURRENTLY waits for every
+    # transaction that holds a lock on the table to finish -- an
+    # idle-in-transaction session that wrote it would hold it forever -- so
+    # any single lock wait gives up after this long and the rebuild raises
+    # MaintenanceIncompleteError (not an outage: health is untouched).
+    PG_MAINTAIN_LOCK_TIMEOUT_MS = 10000
+    # ...and one REINDEX / ANALYZE / DROP INDEX statement is cancelled after
+    # this long. Generous on purpose: a REINDEX of a large table with an HNSW
+    # index legitimately takes minutes; this bounds a wait, not the work.
+    PG_MAINTAIN_STATEMENT_TIMEOUT_MS = 1800000
+    # The best-effort DROP INDEX CONCURRENTLY of the INVALID *_ccnew indexes
+    # a failed REINDEX leaves, attempted at once after the failure: the
+    # session that blocked the REINDEX usually blocks the drop too, so it
+    # waits only this long and the next rebuild/clean drops them instead.
+    PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS = 1000
+
     # -- Postgres graph (#759 M4) ----------------------------------------------
     # CoOccurrenceField.propagate() on Postgres answers with one WITH RECURSIVE
     # statement while it expands at most this many BFS layers (ceil(depth)),

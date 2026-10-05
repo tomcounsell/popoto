@@ -1212,12 +1212,18 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     companion tables itself, so they can drift. `check_indexes()` therefore
     adds `side_tables: {field: {orphans, missing, stale}}` for BM25
     postings and lengths, narrow vector rows, `ExistenceFilter` tokens and
-    validity open-claim pointers. Orphans need a foreign-key bypass (a
-    trigger-less load, the shape a #756 copy may take). Missing and stale rows
-    need direct SQL or a `raw_update()` of a source column. `partial_writes`
-    is a `NULL`/`''` auto-key column. Not drift: co-occurrence edges (no
-    foreign key, as on Redis), `FrequencySketch` counts, the prediction
-    ledger, and state held in the record row.
+    validity open-claim pointers, and (after review) co-occurrence edges.
+    Orphans of the foreign-keyed companions need a foreign-key bypass (a
+    trigger-less load, the shape a #756 copy may take). Edges have no foreign
+    key, so any SQL `DELETE` of a record orphans them; an edge counts when
+    an endpoint in the model's key space has no row (its `src` always, its
+    `dst` only in a symmetric field). Missing and stale rows need direct SQL
+    or a `raw_update()` of a source column. `partial_writes` is a
+    `NULL`/`''` auto-key column, and `invalid_indexes` counts the INVALID
+    `*_ccnew` indexes a failed `CONCURRENTLY` left. Not checked, as on Redis:
+    `FrequencySketch` counts, the shared engine tables with no foreign key
+    (tombstones, embedding cache, recall proposals, the prediction ledger and
+    error tables), and state held in the record row.
   - **`rebuild` is more than `REINDEX` + `ANALYZE`.** It first recomputes
     the drifted companion rows from the live records, a keyset page per
     transaction, behind the page's record-key locks (the one lock order).
@@ -1227,6 +1233,18 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     blocked, followed by `ANALYZE`. It never re-counts a `FrequencySketch` or
     calls the embedding provider, both of which a Redis rebuild's `on_save`
     replay does.
+  - **The `REINDEX` is bounded (#788 review).** As first shipped it ran on a
+    pooled connection with no timeout, so inside a `popoto.batch()` it waited
+    on the batch's own transaction forever, a cancel was counted as an
+    outage, and a failed `CONCURRENTLY` left INVALID `_ccnew` indexes that
+    nothing dropped. Now `rebuild` is refused inside an open
+    `transaction()`/batch (`BackendCapabilityError`). It runs on a dedicated
+    autocommit connection with `PG_MAINTAIN_LOCK_TIMEOUT_MS` /
+    `PG_MAINTAIN_STATEMENT_TIMEOUT_MS`. Stopping early raises
+    `MaintenanceIncompleteError` (a `BackendRetryableError` that reports the
+    completed steps; `health` is untouched). The leftovers are dropped at
+    once when possible, otherwise by the next `clean` or `rebuild`, and
+    `check` reports them.
   - **The protocol's `maintain` takes `model=`** (the `Model` class). The
     derivation needs the live fields, such as a fingerprint function or a
     `ContentField` store, which a `ModelSpec` does not carry. `raw_update` is
@@ -1243,8 +1261,16 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     re-exports identically, except for the confirmed access log, which
     Postgres does not keep. The cycles' declared-baseline slot is dropped on
     import on both backends (#698).
-  - **The async variants stay on the thread path.** #784 (the async backend)
-    had not merged when this PR was built.
+  - **The async variants run on the async backend.** Built before #784
+    merged, they first stayed on the thread path. After the merge,
+    `async_check/clean/rebuild_indexes` go through `_off_loop`. Redis
+    models keep `to_thread`, and Postgres models run `maintain` in the bridge,
+    including the `REINDEX` connection, which is an `AsyncConnection`.
+  - **The #756 gap list is in the feature doc** ("Cross-backend migration
+    notes"): `ContentField` crosses as a file reference (Redis) versus inline
+    text (Postgres). Per-record TTL is carried by neither backend (pinned).
+    `FrequencySketch` is rebuilt from the imported saves. The access log and
+    the cycles baseline slot are dropped.
   - **Wire trace:** `trace_redis_wire.py --with-maintain` covers every
     rerouted Redis path, and is byte-identical to `main` with all flags.
 

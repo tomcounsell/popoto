@@ -1,11 +1,12 @@
 """Index maintenance and transfer state on Postgres (#759 M5; plan §2 H).
 
 ``Model.check_indexes`` / ``clean_indexes`` / ``rebuild_indexes`` (and their
-``async_`` twins, which run them in a thread) reach :meth:`MaintainOpsMixin.
-maintain` on a Postgres-bound model; ``Model.raw_update`` and the carried
-state of ``ConfidenceField``, ``EmbeddingField`` and ``AccessTrackerMixin``
-(``export_state`` / ``import_state``, read by :mod:`popoto.transfer`) reach
-the ``field_call`` adapters below.
+``async_`` twins, which run them on the async backend through #784's
+bridge) reach :meth:`MaintainOpsMixin.maintain` on a Postgres-bound model;
+``Model.raw_update`` and the carried state of ``ConfidenceField``,
+``EmbeddingField`` and ``AccessTrackerMixin`` (``export_state`` /
+``import_state``, read by :mod:`popoto.transfer`) reach the ``field_call``
+adapters below.
 
 What "index drift" means here
 -----------------------------
@@ -28,7 +29,15 @@ popoto writes rather than the server (``.search``, ``.validity``):
   can never leave one; a bulk load or restore run with triggers disabled
   (``session_replication_role = replica``, ``pg_restore
   --disable-triggers`` -- the shape a #756 copy may take) can. Counted per
-  side row.
+  side row. ``CoOccurrenceField`` edges have no foreign key (Redis links any
+  two key strings), so for them *any* SQL ``DELETE`` of a record leaves
+  orphans, triggers on or off; an edge is an orphan when an endpoint in the
+  model's key space has no row -- its ``src`` in every field, its ``dst``
+  only in a symmetric one (:func:`_edge_orphan_sql`).
+* **invalid indexes** -- the INVALID ``*_ccnew`` / ``*_ccold`` indexes a
+  failed ``REINDEX ... CONCURRENTLY`` leaves (a lock timeout, a cancel).
+  ``check`` counts them (``invalid_indexes``); ``clean`` and ``rebuild``
+  drop them.
 * **missing** -- a live record whose derived side rows are absent: a BM25
   field with tokens but no postings or document length, an embedding with a
   vector but no narrow vector row, an ``ExistenceFilter`` without its
@@ -43,12 +52,21 @@ popoto writes rather than the server (``.search``, ``.validity``):
 model: a live row whose auto-key column is ``NULL`` or ``''`` (only direct
 SQL can write one; ``clean`` deletes it, as Redis ``DEL``\\ s the hash).
 
-Not drift, and not checked: ``CoOccurrenceField`` edges (no foreign key --
-Redis links any two key strings, records or not, so an edge to a missing
-record is data), ``FrequencySketch`` counts (never decremented, as the sketch
-never is), the prediction ledger (it outlives the record on Redis too), the
-cycles / confidence / access / validity *columns* (they are the row), and
-the open-claim pointers' content (carried state; only their orphans count).
+Not drift, and not checked: an edge to a key outside the model's key space,
+or (asymmetric field) to a deleted record -- data on Redis too;
+``FrequencySketch`` counts (never decremented, as the sketch never is); the
+engine tables keyed by ``(model, member)`` with no foreign key --
+``popoto_tombstone``, ``popoto_embedding_cache``, ``popoto_recall_proposal``
+and the prediction ledger / error tables -- which outlive the record on
+Redis too and are not checked there either; the cycles / confidence / access
+/ validity *columns* (they are the row); and the open-claim pointers'
+content (carried state; only their orphans count).
+
+``rebuild`` refuses to run while a ``transaction()`` or ``popoto.batch()``
+is open in the calling task or thread, and runs ``REINDEX`` on a dedicated
+connection with a bounded ``lock_timeout``/``statement_timeout``; a REINDEX
+that stops early raises :class:`~popoto.backends.MaintenanceIncompleteError`
+(not an outage) -- see :meth:`MaintainOpsMixin._reindex_analyze`.
 
 Every pass reads live rows only: an expired row (M5 TTL) is neither checked
 nor rebuilt, and its side rows are the reaper's, never counted as orphans.
@@ -70,7 +88,15 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Mapping, Optional, Sequence
 
-from ..types import BackendCapabilityError, ModelSpec, RecordId, UnitOfWork
+from ...fields.constants import Defaults
+from ..types import (
+    BackendCapabilityError,
+    MaintenanceIncompleteError,
+    ModelSpec,
+    RecordId,
+    UnitOfWork,
+)
+from .graph import edge_table, graph_fields
 from .memory import (
     ACCESS_FIELD,
     ACCESS_MIXIN,
@@ -163,9 +189,79 @@ def _fk_side_tables(ts: TableSpec, spec: ModelSpec) -> list[tuple[str, str, str]
     return out
 
 
+def _edge_tables(ts: TableSpec, spec: ModelSpec) -> list[tuple[str, str, bool]]:
+    """``(field, qualified edge table, symmetric)`` per ``CoOccurrenceField``.
+    Edge rows have no foreign key (Redis links any two key strings), so
+    their orphans are found by :func:`_edge_orphan_sql`, not an FK join."""
+    return [
+        (
+            name,
+            edge_table(ts, name),
+            bool(spec.fields[name].options.get("symmetric", True)),
+        )
+        for name in graph_fields(spec)
+    ]
+
+
+def _edge_orphan_sql(ts: TableSpec, symmetric: bool) -> tuple[str, int]:
+    """The ``WHERE`` condition (on alias ``e``) for an orphan edge row, and
+    how many ``%s`` (the model's key prefix) it takes.
+
+    An endpoint is *gone* when it is in this model's key space
+    (``<Model>:``) and no row of the table has it as ``_pk``. A ``src`` that
+    is gone is an orphan in every field: a popoto delete removes the record's
+    own edge set. A ``dst`` that is gone is an orphan only in a symmetric
+    field, whose delete also removes the reverse edges; an asymmetric delete
+    leaves edges *to* the record in other sets, on Redis
+    (``CoOccurrenceField.on_delete``) and here alike, so those are data. An
+    endpoint outside the model's key space (``link`` takes any string) is
+    data too, and never counted."""
+
+    def gone(col: str) -> str:
+        return (
+            f'(starts_with(e."{col}", %s) AND NOT EXISTS '
+            f'(SELECT 1 FROM {ts.qualified} t WHERE t."_pk" = e."{col}"))'
+        )
+
+    if symmetric:
+        return f"({gone('src')} OR {gone('dst')})", 2
+    return gone("src"), 1
+
+
 def _side_fields(ts: TableSpec, spec: ModelSpec) -> list[str]:
     """Every field with side tables that can drift, sorted."""
-    return sorted({f for f, _t, _c in _fk_side_tables(ts, spec)})
+    return sorted(
+        {f for f, _t, _c in _fk_side_tables(ts, spec)}
+        | {f for f, _t, _s in _edge_tables(ts, spec)}
+    )
+
+
+def _key_prefix(model: Any) -> str:
+    """The model's record-key prefix, ``<Model>:`` (every ``_pk`` has it)."""
+    return str(model._meta.db_class_key.redis_key) + ":"
+
+
+#: Postgres names the transient index of a ``REINDEX ... CONCURRENTLY``
+#: ``<index>_ccnew`` (``_ccnew1``... on a clash) and the swapped-out one
+#: ``<index>_ccold``; a failed run leaves either behind, INVALID.
+_CONCURRENT_LEFTOVER = "_cc(new|old)[0-9]*$"
+
+#: SQLSTATEs of a failed maintenance statement that mean the server or the
+#: link is gone (an outage), not that the statement stopped early.
+_OUTAGE_SQLSTATE_PREFIXES = ("08", "57P01", "57P02", "57P03")
+
+
+def _is_outage(exc: BaseException) -> bool:
+    """A connection-level failure: no server error at all (the reply was
+    lost), a connection exception (class 08), or an admin/crash shutdown.
+    Everything else -- a lock timeout (55P03), a statement timeout or cancel
+    (57014), a deadlock, any SQL error -- is the statement stopping early."""
+    import psycopg
+
+    if not isinstance(exc, psycopg.OperationalError):
+        return False
+    sqlstate = getattr(exc, "sqlstate", None)
+    return sqlstate is None or sqlstate.startswith(_OUTAGE_SQLSTATE_PREFIXES)
 
 
 def _all_side_tables(ts: TableSpec, spec: ModelSpec) -> list[str]:
@@ -226,6 +322,9 @@ class MaintainOpsMixin:
     _row_values: Callable[..., dict[str, Any]]
     _after_write: Callable[..., None]
     _connection: Callable[..., Any]
+    _maintenance_connection: Callable[..., Any]
+    _unit_open_here: Callable[[], bool]
+    _fail: Callable[..., Exception]
     transaction: Callable[..., Any]
     delete: Callable[..., int]
 
@@ -420,6 +519,13 @@ class MaintainOpsMixin:
         drift = {name: SideDrift() for name in _side_fields(ts, spec)}
         for name, table, col in _fk_side_tables(ts, spec):
             drift[name].orphans += self._orphan_count(ts, table, col)
+        prefix = _key_prefix(model)
+        for name, table, symmetric in _edge_tables(ts, spec):
+            cond, uses = _edge_orphan_sql(ts, symmetric)
+            rows, _ = self._run(
+                f"SELECT count(*) FROM {table} e WHERE {cond}", [prefix] * uses
+            )
+            drift[name].orphans += int(rows[0][0])
         if ts.search is None:
             return ts, drift
         for keys in self._live_pages(ts, batch_size):
@@ -453,9 +559,12 @@ class MaintainOpsMixin:
                 meta.get_index_key(tuple(names)): 0 for names, _u in meta.indexes
             },
             "side_tables": {name: d.counts() for name, d in drift.items()},
+            "invalid_indexes": len(self._invalid_indexes(ts, spec)),
         }
-        result["total"] = result["partial_writes"] + sum(
-            sum(counts.values()) for counts in result["side_tables"].values()
+        result["total"] = (
+            result["partial_writes"]
+            + result["invalid_indexes"]
+            + sum(sum(counts.values()) for counts in result["side_tables"].values())
         )
         return result
 
@@ -490,6 +599,13 @@ class MaintainOpsMixin:
         removed = 0
         for _name, table, col in _fk_side_tables(ts, spec):
             removed += self._delete_orphans(ts, table, col, batch_size)
+        removed += self._delete_edge_orphans(ts, spec, model, batch_size)
+        if not self._unit_open_here():
+            # A DROP INDEX CONCURRENTLY would wait on the caller's own open
+            # transaction; inside one, the leftovers wait for the next clean.
+            found = self._invalid_indexes(ts, spec)
+            if found:
+                removed += len(found) - len(self._drop_invalid(ts, spec))
         auto = self._auto_key_column(ts, model)
         if auto is not None:
             c = quote_ident(auto)
@@ -538,6 +654,110 @@ class MaintainOpsMixin:
             if not n:
                 return removed
 
+    def _delete_edge_orphans(
+        self, ts: TableSpec, spec: ModelSpec, model: Any, batch_size: int
+    ) -> int:
+        """Delete orphan edge rows (:func:`_edge_orphan_sql`) a page at a
+        time, behind the record-key locks of both endpoints of the page's
+        rows (the locks ``graph_update`` takes for a symmetric field), and
+        re-checked in the statement: an endpoint saved meanwhile keeps its
+        edges."""
+        prefix = _key_prefix(model)
+        removed = 0
+        for _name, table, symmetric in _edge_tables(ts, spec):
+            cond, uses = _edge_orphan_sql(ts, symmetric)
+            while True:
+                rows, _ = self._run(
+                    f'SELECT e."src", e."dst" FROM {table} e WHERE {cond} '
+                    'ORDER BY e."src" COLLATE "C", e."dst" COLLATE "C" LIMIT %s',
+                    [prefix] * uses + [batch_size],
+                )
+                if not rows:
+                    break
+                srcs = [r[0] for r in rows]
+                dsts = [r[1] for r in rows]
+                keys = sorted(set(srcs) | set(dsts), key=lambda k: k.encode("utf-8"))
+                sql, params = self._record_locked(
+                    ts,
+                    keys,
+                    f'DELETE FROM {table} e WHERE (e."src", e."dst") IN '
+                    "(SELECT * FROM unnest(%s::text[], %s::text[])) "
+                    f"AND {cond}",
+                    [srcs, dsts] + [prefix] * uses,
+                )
+                _, n = self._run(sql, params, write=True)
+                removed += int(n or 0)
+                if not n:
+                    break
+        return removed
+
+    # -- leftovers of a failed CONCURRENTLY -----------------------------------
+
+    def _invalid_indexes(self, ts: TableSpec, spec: ModelSpec) -> list[str]:
+        """The INVALID ``*_ccnew`` / ``*_ccold`` indexes a failed ``REINDEX
+        ... CONCURRENTLY`` left on the model's tables (their TOAST tables
+        included), as qualified names. Each one is still maintained by every
+        write -- an HNSW one at real cost -- and never used by a read, and a
+        later ``REINDEX`` does not remove it (#788 review).
+
+        None is reported while any of those tables has an index build in
+        progress (``pg_stat_progress_create_index``): a concurrent rebuild's
+        transient index is INVALID until it finishes, and dropping it would
+        fail that rebuild. (That view hides another role's builds unless the
+        caller has ``pg_read_all_stats``; run maintenance as the owning
+        role.)"""
+        tables = [ts.qualified] + _all_side_tables(ts, spec)
+        rows, _ = self._run(
+            "WITH m AS (SELECT to_regclass(x) AS oid FROM unnest(%s::text[]) AS x), "
+            "rel AS (SELECT oid FROM m WHERE oid IS NOT NULL UNION "
+            "SELECT c.reltoastrelid FROM pg_class c JOIN m ON c.oid = m.oid "
+            "WHERE c.reltoastrelid <> 0) "
+            "SELECT quote_ident(n.nspname) || '.' || quote_ident(ic.relname) "
+            "FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid "
+            "JOIN pg_namespace n ON n.oid = ic.relnamespace "
+            "WHERE NOT i.indisvalid AND i.indrelid IN (SELECT oid FROM rel) "
+            "AND ic.relname ~ %s AND NOT EXISTS (SELECT 1 FROM "
+            "pg_stat_progress_create_index p WHERE p.relid IN (SELECT oid FROM rel))",
+            [tables, _CONCURRENT_LEFTOVER],
+        )
+        return sorted((str(r[0]) for r in rows), key=lambda n: n.encode("utf-8"))
+
+    def _drop_invalid(
+        self, ts: TableSpec, spec: ModelSpec, lock_timeout_ms: Optional[int] = None
+    ) -> list[str]:
+        """Best effort: ``DROP INDEX CONCURRENTLY`` each of
+        :meth:`_invalid_indexes` on a dedicated connection, waiting at most
+        ``lock_timeout_ms`` (default ``PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS``)
+        for any lock. Returns the ones still there. A statement that stops
+        early is logged, not raised: the leftovers are reported by
+        ``check_indexes()`` and dropped by the next rebuild or clean. An
+        outage still raises (``BackendUnavailableError``)."""
+        found = self._invalid_indexes(ts, spec)
+        if not found:
+            return []
+        if lock_timeout_ms is None:
+            lock_timeout_ms = int(Defaults.PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS)
+        left = list(found)
+        try:
+            with self._maintenance_connection(lock_timeout_ms) as conn:
+                for name in found:
+                    conn.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {name}")
+                    left.remove(name)
+        except Exception as exc:
+            if _is_outage(exc):
+                raise self._fail(exc, write=False) from exc
+            logger.warning(
+                "%s: could not drop %d INVALID index(es) left by a failed "
+                "REINDEX CONCURRENTLY (%s: %s); the next rebuild_indexes() or "
+                "clean_indexes() drops them: %s",
+                spec.name,
+                len(left),
+                type(exc).__name__,
+                exc,
+                ", ".join(left),
+            )
+        return left
+
     # -- rebuild --------------------------------------------------------------
 
     def _maintain_rebuild(
@@ -549,16 +769,32 @@ class MaintainOpsMixin:
         row whose key columns no longer produce its stored ``_pk`` (direct
         SQL on a key column) is skipped and reported, as Redis skips a hash
         whose derived key differs from the one it is stored under."""
+        if self._unit_open_here():
+            raise BackendCapabilityError(
+                f"{spec.name}.rebuild_indexes() cannot run while a Postgres "
+                "transaction() or popoto.batch() is open in this task or thread "
+                "(or in a parent task awaiting it): its REINDEX TABLE "
+                "CONCURRENTLY waits for every open transaction on the table to "
+                "end, including that one, which cannot end while this call "
+                "waits. Run it after the batch is executed or the transaction "
+                "has committed"
+            )
         ts = self._table(spec, write=True)
+        # A previous failed CONCURRENTLY's leftovers first: REINDEX never
+        # removes them, and every write meanwhile maintains them.
+        self._drop_invalid(ts, spec)
         count = 0
         diverged: list[str] = []
         for keys in self._live_pages(ts, batch_size):
             n, skipped = self._rebuild_page(ts, model, keys)
             count += n
             diverged.extend(skipped)
+        done = ["side_rows"]
         for _name, table, col in _fk_side_tables(ts, spec):
             self._delete_orphans(ts, table, col, batch_size)
-        self._reindex_analyze(ts, spec)
+        self._delete_edge_orphans(ts, spec, model, batch_size)
+        done.append("orphans")
+        self._reindex_analyze(ts, spec, done, count, diverged)
         if diverged:
             logger.warning(
                 "%s.rebuild_indexes() skipped %d Postgres row(s) whose key "
@@ -687,16 +923,76 @@ class MaintainOpsMixin:
                 uow=uow,
             )
 
-    def _reindex_analyze(self, ts: TableSpec, spec: ModelSpec) -> None:
+    def _reindex_analyze(
+        self,
+        ts: TableSpec,
+        spec: ModelSpec,
+        done: list[str],
+        indexed: int,
+        diverged: Sequence[str],
+    ) -> None:
         """``REINDEX TABLE CONCURRENTLY`` (a B-tree's only drift is
         corruption; ``CONCURRENTLY`` keeps writes flowing) and ``ANALYZE``,
-        on the record table and every companion. Autocommit statements of
-        their own: ``CONCURRENTLY`` cannot run in a transaction block."""
+        on the record table and every companion, on a dedicated autocommit
+        connection (``CONCURRENTLY`` cannot run in a transaction block) with
+        a bounded ``lock_timeout`` and ``statement_timeout``
+        (``Defaults.PG_MAINTAIN_*``).
+
+        A statement that stops early -- a lock wait past the timeout (an
+        idle-in-transaction session holding the table), a statement timeout,
+        a cancel, a deadlock, any SQL error -- raises
+        :class:`~popoto.backends.MaintenanceIncompleteError` naming what
+        completed, after a best-effort drop of the INVALID indexes it left.
+        It is not an outage: ``health`` is untouched and no write is counted
+        as dropped (every side-row repair has committed). A lost connection
+        or a server shutdown is still an outage."""
         tables = [ts.qualified] + _all_side_tables(ts, spec)
-        with self._connection(write=True) as conn:
-            for table in tables:
-                conn.execute(f"REINDEX TABLE CONCURRENTLY {table}")
-            conn.execute(f"ANALYZE {', '.join(tables)}")
+        step = "connect"
+        try:
+            with self._maintenance_connection(
+                int(Defaults.PG_MAINTAIN_LOCK_TIMEOUT_MS)
+            ) as conn:
+                # Notice a client that went away (a cancelled task, a killed
+                # process) between REINDEX's phases instead of finishing it.
+                conn.execute("SET client_connection_check_interval = 1000")
+                for table in tables:
+                    step = f"reindex {table}"
+                    conn.execute(f"REINDEX TABLE CONCURRENTLY {table}")
+                    done.append(step)
+                step = "analyze"
+                conn.execute(f"ANALYZE {', '.join(tables)}")
+                done.append(step)
+        except Exception as exc:
+            import psycopg
+
+            if not isinstance(exc, psycopg.Error):
+                raise
+            if _is_outage(exc):
+                raise self._fail(exc, write=False) from exc
+            try:
+                left = self._drop_invalid(ts, spec)
+            except Exception:  # noqa: BLE001 - report the original failure
+                left = []
+            sqlstate = getattr(exc, "sqlstate", None) or "?"
+            raise MaintenanceIncompleteError(
+                f"{spec.name}.rebuild_indexes() stopped at {step!r} "
+                f"(SQLSTATE {sqlstate}: {type(exc).__name__}: {exc}) -- not an "
+                f"outage. Completed: {', '.join(done)}; {indexed} record(s) "
+                "checked and every side-row repair committed. "
+                + (
+                    f"{len(left)} INVALID index(es) left by the failed REINDEX "
+                    f"could not be dropped yet: {', '.join(left)}. "
+                    if left
+                    else ""
+                )
+                + "Rerun rebuild_indexes() once the blocking session has ended "
+                "(see pg_stat_activity, state 'idle in transaction')",
+                indexed=indexed,
+                diverged_keys=diverged,
+                completed=done,
+                failed_step=step,
+                invalid_indexes=left,
+            ) from exc
 
     # -- field_call adapters ---------------------------------------------------
 

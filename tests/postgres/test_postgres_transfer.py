@@ -367,3 +367,54 @@ def test_a_redis_export_imports_into_postgres_and_reads_identically(pg, seed, mo
         assert sorted(o.access_count for o in TxMemory.query.all()) == [0, 3]
         hits = BM25Field.search(TxMemory, "lexical", "maintenance")
         assert len(hits) == 1
+
+
+# -- what the format does not carry (#756 gap list) ---------------------------------
+
+
+class TxTtl(popoto.Model):
+    name = popoto.UniqueKeyField()
+
+    class Meta:
+        ttl = 60
+
+
+def test_a_per_record_ttl_is_not_carried_on_either_backend(pg, pg_schema):
+    """The record format has no TTL: an imported record expires ``Meta.ttl``
+    after its import, whatever was left of a per-instance ``_ttl``, on Redis
+    and on Postgres alike (docs: "Cross-backend migration notes"). An expired
+    record is not exported at all."""
+    from popoto.backends import RecordId
+    from popoto.backends.postgres.ttl import frozen_clock
+
+    t0 = 1_900_000_000.0
+    spec = TxTtl._meta.spec
+    rid = [RecordId.from_key("TxTtl", "TxTtl:long")]
+    with frozen_clock(t0):
+        record = TxTtl(name="long")
+        record._ttl = 3600
+        record.save()
+        TxTtl.create(name="short")
+    with frozen_clock(t0 + 61):
+        assert pg.ttl_remaining(spec, rid) == [3539]  # non-vacuity
+        data = export_records(TxTtl).data
+    assert [r["key"] for r in _records(data)] == ["TxTtl:long"]  # short expired
+    _fresh(pg, pg_schema)
+    with frozen_clock(t0 + 61):
+        _import(TxTtl, data)
+        assert pg.ttl_remaining(spec, rid) == [60]
+
+    previous = set_backend("redis")
+    try:
+        TxTtl.delete_all()
+        record = TxTtl(name="long")
+        record._ttl = 3600
+        record.save()
+        assert popoto.get_redis().ttl("TxTtl:long") > 3500
+        data = export_records(TxTtl).data
+        TxTtl.delete_all()
+        _import(TxTtl, data)
+        assert 0 < popoto.get_redis().ttl("TxTtl:long") <= 60
+    finally:
+        TxTtl.delete_all()
+        set_backend(previous)

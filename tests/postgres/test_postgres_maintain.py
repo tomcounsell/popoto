@@ -27,6 +27,7 @@ from popoto.backends import BackendCapabilityError  # noqa: E402
 from popoto.backends.postgres.ttl import frozen_clock  # noqa: E402
 from popoto.embeddings import AbstractEmbeddingProvider  # noqa: E402
 from popoto.fields.bm25_field import BM25Field  # noqa: E402
+from popoto.fields.co_occurrence_field import CoOccurrenceField  # noqa: E402
 from popoto.fields.embedding_field import EmbeddingField  # noqa: E402
 from popoto.fields.existence_filter import ExistenceFilter  # noqa: E402
 from popoto.fields.supersession import SupersessionProtocol  # noqa: E402
@@ -440,3 +441,314 @@ def test_rebuild_beside_concurrent_saves_ends_consistent(pg):
     thread.join()
     assert errors == []
     assert MaintDoc.check_indexes()["total"] == 0
+
+
+# -- REINDEX failure modes (#788 review) ----------------------------------------
+
+
+def _invalid_indexes(admin, pg_schema):
+    """Every INVALID index on the test schema's tables (their TOAST tables
+    included), by name."""
+    return sorted(
+        r[0]
+        for r in admin.execute(
+            "SELECT ic.relname FROM pg_index i "
+            "JOIN pg_class ic ON ic.oid = i.indexrelid "
+            "JOIN pg_class t ON t.oid = i.indrelid "
+            "LEFT JOIN pg_class owner ON owner.reltoastrelid = t.oid "
+            "JOIN pg_namespace n ON n.oid = coalesce(owner.relnamespace, "
+            "t.relnamespace) WHERE NOT i.indisvalid AND n.nspname = %s",
+            (pg_schema.name,),
+        ).fetchall()
+    )
+
+
+def _blocker(pg_schema):
+    """An idle-in-transaction session that wrote ``maint_doc``: what another
+    agent's open transaction on the shared server looks like. ``REINDEX``
+    and ``DROP INDEX CONCURRENTLY`` wait for it to end."""
+    conn = pg_schema.connect()
+    conn.execute("BEGIN")
+    conn.execute(
+        f"UPDATE {_q(pg_schema, 'maint_doc')} SET project = project WHERE _pk = %s",
+        ("MaintDoc:b",),
+    )
+    return conn
+
+
+@pytest.fixture
+def short_maintain_timeouts(monkeypatch):
+    from popoto.fields.constants import Defaults
+
+    monkeypatch.setattr(Defaults, "PG_MAINTAIN_LOCK_TIMEOUT_MS", 300)
+    monkeypatch.setattr(Defaults, "PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS", 100)
+
+
+def _health(pg):
+    h = pg.health
+    return (h.ok, h.consecutive_failures, h.dropped_writes)
+
+
+def test_rebuild_inside_a_batch_is_refused_at_once(pg):
+    """Reproduced in review: inside ``popoto.batch()`` the REINDEX waited on
+    ``Lock/virtualxid`` -- the batch's own open transaction -- forever."""
+    import time
+
+    _docs()
+    started = time.monotonic()
+    with pytest.raises(BackendCapabilityError, match="rebuild_indexes"):
+        with popoto.batch() as b:
+            MaintDoc(name="z", text="inside a batch").save(pipeline=b)
+            MaintDoc.rebuild_indexes()
+    with pytest.raises(BackendCapabilityError, match="rebuild_indexes"):
+        with pg.transaction() as uow:
+            MaintDoc(name="y", text="inside a unit").save(pipeline=uow)
+            MaintDoc.rebuild_indexes()
+    assert time.monotonic() - started < 5
+    assert MaintDoc.query.count() == 3  # both units rolled back
+    assert MaintDoc.rebuild_indexes() == 3  # outside a unit it runs
+
+
+def test_a_blocked_reindex_is_maintenance_not_an_outage(
+    pg, pg_schema, admin, short_maintain_timeouts
+):
+    from popoto.backends import (
+        BackendRetryableError,
+        BackendUnavailableError,
+        MaintenanceIncompleteError,
+    )
+
+    _docs()
+    admin.execute(f"DELETE FROM {_q(pg_schema, 'maint_doc__content__dl')}")
+    assert MaintDoc.check_indexes()["total"] == 2  # a and b lost their length
+    before = _health(pg)
+    blocker = _blocker(pg_schema)
+    try:
+        with pytest.raises(MaintenanceIncompleteError) as info:
+            MaintDoc.rebuild_indexes()
+        err = info.value
+        assert isinstance(err, BackendRetryableError)
+        assert not isinstance(err, BackendUnavailableError)
+        assert "55P03" in str(err)  # lock_timeout, not a hang
+        # What completed is reported, and it really committed.
+        assert err.completed[:2] == ("side_rows", "orphans")
+        assert err.failed_step.startswith("reindex ")
+        assert err.indexed == 3
+        assert _health(pg) == before  # not an outage, no dropped write
+        check = MaintDoc.check_indexes()
+        assert all(not any(c.values()) for c in check["side_tables"].values())
+        assert _hits("redis") == ["MaintDoc:b"]
+        # The failed CONCURRENTLY left INVALID transient indexes, and the
+        # blocker keeps the immediate drop from removing them.
+        left = _invalid_indexes(admin, pg_schema)
+        assert left and all("_ccnew" in name for name in left)
+        assert len(err.invalid_indexes) == len(left)
+        assert check["invalid_indexes"] == len(left)
+        assert check["total"] == len(left)
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+    # Once the session ends, the next rebuild drops them first and succeeds.
+    assert MaintDoc.rebuild_indexes() == 3
+    assert _invalid_indexes(admin, pg_schema) == []
+    assert MaintDoc.check_indexes()["total"] == 0
+    assert _health(pg) == before
+
+
+def test_clean_drops_the_invalid_indexes_a_failed_rebuild_left(
+    pg, pg_schema, admin, short_maintain_timeouts
+):
+    from popoto.backends import MaintenanceIncompleteError
+
+    _docs()
+    blocker = _blocker(pg_schema)
+    try:
+        with pytest.raises(MaintenanceIncompleteError):
+            MaintDoc.rebuild_indexes()
+        # Inside a unit of work clean leaves them (the drop would wait on
+        # that unit); the orphan work still runs.
+        with pg.transaction():
+            assert MaintDoc.clean_indexes() == 0
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+    left = _invalid_indexes(admin, pg_schema)
+    assert left
+    assert MaintDoc.check_indexes()["invalid_indexes"] == len(left)
+    assert MaintDoc.clean_indexes() == len(left)
+    assert _invalid_indexes(admin, pg_schema) == []
+    assert MaintDoc.check_indexes()["total"] == 0
+
+
+def test_a_cancelled_reindex_is_maintenance_and_cleans_up_after_itself(
+    pg, pg_schema, admin
+):
+    """A cancel with nothing else blocking: the immediate best-effort drop
+    succeeds, so no INVALID index survives the failed call."""
+    from popoto.backends import MaintenanceIncompleteError
+
+    _docs()
+    before = _health(pg)
+    stop = threading.Event()
+
+    def canceller():
+        watcher = pg_schema.connect()
+        try:
+            while not stop.is_set():
+                watcher.execute(
+                    "SELECT pg_cancel_backend(pid) FROM pg_stat_activity "
+                    "WHERE query LIKE 'REINDEX TABLE CONCURRENTLY%' "
+                    "AND pid <> pg_backend_pid()"
+                )
+        finally:
+            watcher.close()
+
+    thread = threading.Thread(target=canceller)
+    thread.start()
+    try:
+        with pytest.raises(MaintenanceIncompleteError) as info:
+            for _ in range(50):  # until a cancel lands mid-REINDEX
+                MaintDoc.rebuild_indexes()
+    finally:
+        stop.set()
+        thread.join()
+    assert "57014" in str(info.value)
+    assert info.value.invalid_indexes == []
+    assert _invalid_indexes(admin, pg_schema) == []
+    assert _health(pg) == before
+
+
+def test_async_maintenance_runs_on_the_async_backend(pg, pg_schema, admin):
+    """``async_*_indexes`` go through ``_off_loop`` (#784's bridge): every
+    statement -- the REINDEX on its dedicated connection included -- runs on
+    the loop thread over ``AsyncConnection``s, not in a worker thread."""
+    pytest.importorskip("greenlet")
+    import psycopg
+
+    from popoto.backends.postgres import aio
+
+    _docs()
+    admin.execute(f"DELETE FROM {_q(pg_schema, 'maint_doc__content__dl')}")
+    main = threading.current_thread()
+    seen = []
+    real_connect = aio._Bridge.connect
+
+    def connect(dsn, **kwargs):
+        conn = real_connect(dsn, **kwargs)
+        seen.append((threading.current_thread(), type(conn.async_connection)))
+        return conn
+
+    real_run = pg._run
+    threads = set()
+
+    def run(*args, **kwargs):
+        threads.add(threading.current_thread())
+        return real_run(*args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(aio._Bridge, "connect", staticmethod(connect))
+        mp.setattr(pg, "_run", run)
+        assert asyncio.run(MaintDoc.async_check_indexes())["total"] == 2
+        assert asyncio.run(MaintDoc.async_rebuild_indexes()) == 3
+        assert asyncio.run(MaintDoc.async_clean_indexes()) == 0
+    assert threads == {main}
+    assert seen and all(
+        t is main and issubclass(cls, psycopg.AsyncConnection) for t, cls in seen
+    )
+    assert MaintDoc.check_indexes()["total"] == 0
+
+
+def test_async_rebuild_inside_an_async_transaction_is_refused(pg):
+    pytest.importorskip("greenlet")
+    from popoto.backends.postgres.aio import get_async_backend
+
+    _docs()
+
+    async def main():
+        async with get_async_backend(MaintDoc).transaction() as uow:
+            await MaintDoc(name="z", text="in a unit").async_save(pipeline=uow)
+            await MaintDoc.async_rebuild_indexes()
+
+    with pytest.raises(BackendCapabilityError, match="rebuild_indexes"):
+        asyncio.run(main())
+    assert MaintDoc.query.count() == 3
+
+
+def test_async_blocked_reindex_is_maintenance_not_an_outage(
+    pg, pg_schema, admin, short_maintain_timeouts
+):
+    pytest.importorskip("greenlet")
+    from popoto.backends import MaintenanceIncompleteError
+
+    _docs()
+    before = _health(pg)
+    blocker = _blocker(pg_schema)
+    try:
+        with pytest.raises(MaintenanceIncompleteError):
+            asyncio.run(MaintDoc.async_rebuild_indexes())
+        assert _health(pg) == before
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+    assert asyncio.run(MaintDoc.async_rebuild_indexes()) == 3
+    assert _invalid_indexes(admin, pg_schema) == []
+
+
+# -- co-occurrence edges ----------------------------------------------------------
+
+
+class MaintGraph(popoto.Model):
+    name = popoto.UniqueKeyField()
+    near = CoOccurrenceField()  # symmetric
+    follows = CoOccurrenceField(symmetric=False)
+
+
+def _linked(field, key):
+    return sorted(k for k, _w in field.get_linked(MaintGraph, key))
+
+
+def test_orphan_edges_are_found_and_cleaned(pg, pg_schema, admin):
+    """A ``CoOccurrenceField`` edge has no foreign key, so a plain SQL
+    ``DELETE`` of a record -- triggers on -- leaves its edges (#788 review:
+    ``get_linked`` kept returning the deleted record)."""
+    a, b, c, d = (MaintGraph.create(name=n) for n in "abcd")
+    ka, kb, kc, kd = (o.db_key.redis_key for o in (a, b, c, d))
+    near = MaintGraph._meta.fields["near"]
+    follows = MaintGraph._meta.fields["follows"]
+    near.link(MaintGraph, ka, kb, 0.5)  # a<->b
+    near.link(MaintGraph, ka, "Elsewhere:x", 0.5)  # outside the key space
+    follows.link(MaintGraph, kc, kd, 0.5)  # c->d
+    follows.link(MaintGraph, kd, ka, 0.5)  # d->a
+    assert MaintGraph.check_indexes()["total"] == 0
+    for victim in (kb, kd):
+        admin.execute(
+            f"DELETE FROM {_q(pg_schema, 'maint_graph')} WHERE _pk = %s", (victim,)
+        )
+    check = MaintGraph.check_indexes()
+    # near: both directions of a<->b (symmetric). follows: d->a (its source
+    # is gone); c->d stays -- an asymmetric delete leaves edges *to* the
+    # record on Redis too, so that one is data.
+    assert check["side_tables"]["near"]["orphans"] == 2
+    assert check["side_tables"]["follows"]["orphans"] == 1
+    assert check["total"] == 3
+    assert _linked(near, ka) == sorted([kb, "Elsewhere:x"])
+
+    assert MaintGraph.clean_indexes(batch_size=1) == 3
+    assert MaintGraph.check_indexes()["total"] == 0
+    assert _linked(near, ka) == ["Elsewhere:x"]
+    assert _linked(follows, kc) == [kd]
+    assert _linked(follows, kd) == []
+
+
+def test_rebuild_removes_orphan_edges_too(pg, pg_schema, admin):
+    a, b = (MaintGraph.create(name=n) for n in "ab")
+    near = MaintGraph._meta.fields["near"]
+    near.link(MaintGraph, a.db_key.redis_key, b.db_key.redis_key, 0.5)
+    admin.execute(
+        f"DELETE FROM {_q(pg_schema, 'maint_graph')} WHERE _pk = %s",
+        (b.db_key.redis_key,),
+    )
+    assert MaintGraph.check_indexes()["total"] == 2
+    MaintGraph.rebuild_indexes()
+    assert MaintGraph.check_indexes()["total"] == 0
+    assert _linked(near, a.db_key.redis_key) == []
