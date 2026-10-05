@@ -800,7 +800,7 @@ def test_nested_batches_writing_one_record_are_refused_at_once(pg):
     try:
         TtlNote(name="same", hits=1).save(pipeline=outer)
         started = time.monotonic()
-        with pytest.raises(BackendCapabilityError, match="this thread holds"):
+        with pytest.raises(BackendCapabilityError, match="this task or thread holds"):
             TtlNote(name="same", hits=2).save(pipeline=inner)
         assert time.monotonic() - started < 1.0
         # The inner batch's transaction is unharmed (nothing was sent), and
@@ -832,7 +832,7 @@ def test_a_write_outside_the_batch_to_a_record_in_it_is_refused(pg):
     pipe = popoto.batch()
     try:
         TtlNote(name="held").save(pipeline=pipe)
-        with pytest.raises(BackendCapabilityError, match="this thread holds"):
+        with pytest.raises(BackendCapabilityError, match="this task or thread holds"):
             TtlNote(name="held", hits=5).save()
         TtlNote(name="free").save()  # another record is not held
     finally:

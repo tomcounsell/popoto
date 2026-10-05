@@ -36,18 +36,22 @@ the outage is logged at ERROR once per ``Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS``
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import contextvars
 import datetime
 import logging
 import os
 import random
 import threading
 import time
+import weakref
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Optional, Sequence, Union
 
 from ...fields.constants import Defaults
 from ..types import (
+    BackendBusyError,
     BackendCapabilityError,
     BackendRetryableError,
     BackendUnavailableError,
@@ -193,9 +197,55 @@ def _retryable(exc: BaseException, attempts: int = 1) -> BackendRetryableError:
     )
 
 
+# -- the async bridge (#759 M5) -----------------------------------------------
+
+_async_bridge: Any = None
+"""Installed by :mod:`.aio` on import. While sync backend code runs inside
+one of its bridge greenlets (an ``async_*`` call on a Postgres model), the
+helpers below route that code's I/O onto the event loop: the pool is the
+loop's pool of ``AsyncConnection`` objects, a retry back-off is
+``asyncio.sleep``, and a blocking provider call goes to a worker thread.
+Everywhere else they are exactly what they were."""
+
+
+def _set_async_bridge(bridge: Any) -> None:
+    global _async_bridge
+    _async_bridge = bridge
+
+
+def _bridged() -> Any:
+    bridge = _async_bridge
+    if bridge is not None and bridge.active():
+        return bridge
+    return None
+
+
+def _sleep(seconds: float) -> None:
+    """A retry back-off: ``time.sleep``, or ``asyncio.sleep`` in the bridge."""
+    bridge = _bridged()
+    if bridge is not None:
+        bridge.sleep(seconds)
+    else:
+        time.sleep(seconds)
+
+
+def _blocking(fn: Any, /, *args: Any, **kwargs: Any) -> Any:
+    """Call a blocking non-Postgres function (an embedding provider): in
+    place, or in a worker thread when inside the bridge, so it never blocks
+    the event loop."""
+    bridge = _bridged()
+    if bridge is not None:
+        return bridge.blocking(fn, *args, **kwargs)
+    return fn(*args, **kwargs)
+
+
 def _pool_for(dsn: str) -> Any:
     """The process's pool for ``dsn``, created lazily (and again after a
-    fork: a child never reuses the parent's sockets)."""
+    fork: a child never reuses the parent's sockets). Inside the async
+    bridge, the running loop's pool instead (:mod:`.aio`)."""
+    bridge = _bridged()
+    if bridge is not None:
+        return bridge.pool(dsn)
     key = (dsn, os.getpid())
     pool = _pools.get(key)
     if pool is not None:
@@ -234,8 +284,85 @@ def _pool_for(dsn: str) -> Any:
     return pool
 
 
+# The asyncio tasks that held an open ``transaction()`` (or batch) of some
+# Postgres backend when the current task was created, outermost first, as
+# weak references (#784 review). Set in a task's *own* context -- by
+# ``AsyncPostgresBackend.run`` after a call leaves the task with an open
+# unit, never inside the bridge, whose greenlet runs in a per-call copy -- so
+# a child task made afterwards (``gather``, ``create_task``) inherits it in
+# its context copy and can see its ancestors' lock scopes, while sibling
+# tasks, each in its own copy, never see each other's.
+_ancestor_scopes: contextvars.ContextVar[tuple[weakref.ref[Any], ...]] = (
+    contextvars.ContextVar("popoto_pg_ancestor_scopes", default=())
+)
+
+
+# Connections each sync pool has checked out to a caller right now, by
+# ``id(pool)``: what tells a checkout timeout under contention (every
+# connection is out) from one under an outage (#784 review).
+_checked_out: dict[int, int] = {}
+_checked_out_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def _checkout(pool: Any, timeout: Optional[float] = None) -> Iterator[Any]:
+    """``pool.connection(timeout=...)``, marking a checkout timeout that is
+    contention rather than an outage (``exc.popoto_busy = True``, then
+    :func:`_busy` maps it to :class:`BackendBusyError`).
+
+    The async bridge's pool marks its own timeouts: it opens connections
+    inline, so its only timeout is the wait for a free slot. The sync
+    ``psycopg_pool`` raises the same ``PoolTimeout`` for "every connection is
+    in use" and for "the server is down and no connection could be made",
+    so here a timeout is busy only when every connection the pool may hold
+    is checked out to a caller at that moment; otherwise it stays an
+    outage."""
+    if _bridged() is not None:
+        with pool.connection(timeout=timeout) as conn:
+            yield conn
+        return
+    key = id(pool)
+    with contextlib.ExitStack() as stack:
+        try:
+            conn = stack.enter_context(pool.connection(timeout=timeout))
+        except Exception as exc:
+            if type(exc).__name__ == "PoolTimeout":
+                with _checked_out_lock:
+                    out = _checked_out.get(key, 0)
+                if out >= int(getattr(pool, "max_size", out + 1)):
+                    exc.popoto_busy = True  # type: ignore[attr-defined]
+            raise
+        with _checked_out_lock:
+            _checked_out[key] = _checked_out.get(key, 0) + 1
+        try:
+            yield conn
+        finally:
+            with _checked_out_lock:
+                left = _checked_out.get(key, 1) - 1
+                if left > 0:
+                    _checked_out[key] = left
+                else:
+                    _checked_out.pop(key, None)
+
+
+def _busy(exc: BaseException) -> Optional[BackendBusyError]:
+    """The :class:`BackendBusyError` for a checkout timeout that found every
+    connection in use, else ``None``."""
+    if not getattr(exc, "popoto_busy", False):
+        return None
+    return BackendBusyError(
+        f"no pooled Postgres connection became free in time ({exc}): every "
+        f"connection (Defaults.PG_POOL_MAX_SIZE = {int(Defaults.PG_POOL_MAX_SIZE)}) "
+        "is checked out to a caller -- contention, not an outage -- and "
+        "nothing was sent, so retry it"
+    )
+
+
 def close_pools() -> None:
-    """Close every pool this process opened (tests, interpreter shutdown)."""
+    """Close every pool this process opened (tests, interpreter shutdown),
+    the async bridge's per-loop pools included."""
+    if _async_bridge is not None:
+        _async_bridge.close_all()
     with _pools_lock:
         for (dsn, pid), pool in list(_pools.items()):
             if pid == os.getpid():
@@ -394,7 +521,11 @@ class PostgresBackend(
         self._lock = threading.RLock()
         self._intent = threading.local()
         self._reaper = Reaper()
-        self._open = threading.local()
+        # The held-record-lock registry (#783), keyed by the asyncio task
+        # when there is one, else the thread (see _lock_scope).
+        self._open: weakref.WeakKeyDictionary[Any, list[PostgresUnitOfWork]] = (
+            weakref.WeakKeyDictionary()
+        )
 
     def __repr__(self) -> str:
         return f"<PostgresBackend schema={self.schema!r}>"
@@ -451,7 +582,7 @@ class PostgresBackend(
         psycopg = _import_psycopg()
         try:
             pool = _pool_for(self.dsn)
-            with pool.connection() as conn:
+            with _checkout(pool) as conn:
                 yield conn
         except _rollback_errors(psycopg) as exc:
             # Raised by the block (a caller-owned ``transaction()``, including
@@ -459,6 +590,9 @@ class PostgresBackend(
             # outage. Not retried here -- the caller owns the transaction.
             raise _retryable(exc) from exc
         except psycopg.OperationalError as exc:
+            busy = _busy(exc)
+            if busy is not None:  # contention: health untouched (#784 review)
+                raise busy from exc
             raise self._fail(exc, write=write) from exc
 
     def _record_locked(
@@ -478,38 +612,120 @@ class PostgresBackend(
         lock_sql, lock_params = record_lock_sql(ts, pks)
         return lock_sql + sql, list(lock_params) + list(params)
 
+    @staticmethod
+    def _lock_scope() -> Any:
+        """Who waits when a statement waits: the running asyncio task, else
+        the thread (#784 review of #783).
+
+        Under the async backend every task's sync code runs in a bridge
+        greenlet on the event-loop thread, so a per-thread registry put every
+        task's ``transaction()`` in one list and refused task B's wait on a
+        lock task A holds -- a wait A releases as soon as B yields to the
+        loop. A bridge greenlet runs inside its driving task's step, so
+        ``asyncio.current_task()`` is that task for ``transaction()``'s
+        enter, every ``async_*`` call in it, and its exit alike. (Not a
+        ``ContextVar``: the bridge runs each call in a fresh copy of the
+        context, so a value ``__enter__`` set would be gone by the next
+        call.) Off the loop -- a sync caller, a worker thread -- there is no
+        running task and the scope is the thread, as before."""
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:  # no running event loop on this thread
+            task = None
+        return task if task is not None else threading.current_thread()
+
     def _open_units(self) -> list[PostgresUnitOfWork]:
-        """The ``transaction()`` units open on this thread, outermost first."""
-        units = getattr(self._open, "units", None)
-        if units is None:
-            units = self._open.units = []
-        return units
+        """The ``transaction()`` units open in this task (or, off the event
+        loop, on this thread), outermost first."""
+        scope = self._lock_scope()
+        with self._lock:
+            units = self._open.get(scope)
+            if units is None:
+                units = self._open[scope] = []
+            return units
 
     def _refuse_self_wait(
         self, pg: Optional[PostgresUnitOfWork], keys: Sequence[str]
     ) -> None:
         """Refuse, before it is sent, a statement that would wait on a
-        record-key lock another open unit of work *on this thread* holds
-        (#783 review). That lock is released only when the other unit
-        commits or rolls back, which this thread cannot do while it waits:
-        the statement would hang to ``PG_STATEMENT_TIMEOUT_MS`` and then be
-        misreported as an outage. Two nested ``popoto.batch()``es or
+        record-key lock another open unit of work *in this task or thread*
+        holds (#783 review). That lock is released only when the other unit
+        commits or rolls back, which this task or thread cannot do while it
+        waits: the statement would hang to ``PG_STATEMENT_TIMEOUT_MS`` and
+        then be misreported as an outage. Two nested ``popoto.batch()``es or
         ``transaction()``s that write one record, or a write outside a batch
         to a record saved in it, are the shapes. On Redis each is fine (a
         queued command holds no lock); here it is
-        :class:`~popoto.backends.BackendCapabilityError`, at once."""
+        :class:`~popoto.backends.BackendCapabilityError`, at once.
+
+        Only record-key locks (``_record_locked``) are tracked: a wait on
+        another lock a unit holds -- a ``(model, field)`` validity lock, an
+        uncommitted ``UNIQUE`` entry -- is not detected here and still runs
+        to ``PG_STATEMENT_TIMEOUT_MS``.
+
+        A unit of an *ancestor* task -- one that had a unit open when it
+        created this task, directly or through intermediate tasks
+        (:data:`_ancestor_scopes`) -- is refused too, with its own message
+        (#784 review): the shape is ``async with transaction()`` around an
+        ``await gather(child)`` or an awaited ``create_task``, where the
+        parent cannot commit until the child finishes. A unit of any other
+        task or thread -- a sibling, an unrelated task, another thread -- is
+        never a reason to refuse: that one can commit while this one waits."""
         wanted = set(keys)
         for unit in self._open_units():
             if unit is not pg and not unit.locked.isdisjoint(wanted):
                 held = sorted(unit.locked & wanted)[0]
                 raise BackendCapabilityError(
                     f"this write would wait on the record lock {held!r}, which "
-                    "another open Postgres transaction on this thread holds (a "
-                    "nested popoto.batch() or transaction() that wrote the same "
-                    "record, or a write outside the batch it was saved in): it "
-                    "could never be granted. Write through the batch that holds "
-                    "the record, or execute() it first"
+                    "another open Postgres transaction of this task or thread "
+                    "holds (a nested popoto.batch() or transaction() that wrote "
+                    "the same record, or a write outside the batch it was saved "
+                    "in): it could never be granted. Write through the batch "
+                    "that holds the record, or execute() it first"
                 )
+        ancestors = _ancestor_scopes.get()
+        if not ancestors:
+            return
+        scope = self._lock_scope()
+        with self._lock:
+            held_by = [
+                list(self._open.get(task) or ())
+                for task in (ref() for ref in ancestors)
+                if task is not None and task is not scope
+            ]
+        for units in held_by:
+            for unit in units:
+                if unit is not pg and not unit.locked.isdisjoint(wanted):
+                    held = sorted(unit.locked & wanted)[0]
+                    raise BackendCapabilityError(
+                        f"this record ({held!r}) is locked by an enclosing "
+                        "Postgres transaction in a parent task, which cannot "
+                        "commit while it awaits this task: the write could "
+                        "never be granted. Pass pipeline=uow (the parent's "
+                        "unit of work or batch) to join it, or write the "
+                        "record after the parent's transaction ends"
+                    )
+
+    def _note_open_scope(self) -> None:
+        """Record the running task in :data:`_ancestor_scopes` of its own
+        context when it has a unit of work open here, so the tasks it
+        creates from now on can tell its record locks from a sibling's.
+        Called by ``AsyncPostgresBackend.run`` in the task's context, after
+        each bridged call (the call that opened the unit cannot set it: the
+        bridge runs it in a copy of the context)."""
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:
+            return
+        if task is None:
+            return
+        with self._lock:
+            if not self._open.get(task):
+                return
+        ancestors = _ancestor_scopes.get()
+        if ancestors and ancestors[-1]() is task:
+            return
+        _ancestor_scopes.set(ancestors + (weakref.ref(task),))
 
     def _statement_prefix(self) -> str:
         ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
@@ -561,7 +777,7 @@ class PostgresBackend(
             conn: Any = None
             try:
                 pool = _pool_for(self.dsn)
-                with pool.connection() as conn:
+                with _checkout(pool) as conn:
                     cur = conn.execute(prefix + sql, params)
                     while cur.nextset():
                         pass
@@ -573,8 +789,11 @@ class PostgresBackend(
                 attempt += 1
                 if attempt >= attempts:
                     raise _retryable(exc, attempt) from exc
-                time.sleep(random.uniform(0.005, 0.05) * attempt)
+                _sleep(random.uniform(0.005, 0.05) * attempt)
             except psycopg.OperationalError as exc:
+                busy = _busy(exc)
+                if busy is not None:  # contention, not an outage
+                    raise busy from exc
                 if not reconnected and self._may_retry_broken(conn, exc, write):
                     reconnected = True
                     logger.warning(
@@ -643,6 +862,11 @@ class PostgresBackend(
             return self._check_table(spec)
 
     def _check_table(self, spec: ModelSpec) -> TableSpec:
+        # The RLock separates threads, not async tasks: every bridge greenlet
+        # runs on the loop thread, so for them it is re-entrant and concurrent
+        # first uses all pass it (M5). What serialises first use is the
+        # server-side DDL lock `ensure_table` takes (pg_advisory_xact_lock on
+        # "popoto:ddl:<schema>"); a second caller then finds the table made.
         with self._lock:
             cached = self._tables.get(spec.name)
             if cached is not None and cached[0] is spec:

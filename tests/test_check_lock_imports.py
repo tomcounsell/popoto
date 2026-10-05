@@ -58,7 +58,7 @@ def test_package_list_covers_the_postgres_extra():
     including the pool, which is a separate distribution (``psycopg-pool``)."""
     module = _load_module()
     postgres = {name for name, extra in module.PACKAGES if extra == "postgres"}
-    assert postgres == {"psycopg", "psycopg_pool", "pgvector"}
+    assert postgres == {"psycopg", "psycopg_pool", "pgvector", "greenlet"}
 
 
 def test_postgres_extra_declares_what_the_check_imports():
@@ -69,5 +69,5 @@ def test_postgres_extra_declares_what_the_check_imports():
     pyproject = _SCRIPT.parents[1] / "pyproject.toml"
     extras = tomllib.loads(pyproject.read_text())["project"]["optional-dependencies"]
     declared = " ".join(extras["postgres"])
-    for dist in ("psycopg", "pool", "pgvector"):
+    for dist in ("psycopg", "pool", "pgvector", "greenlet"):
         assert dist in declared, (dist, extras["postgres"])

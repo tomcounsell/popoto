@@ -61,6 +61,8 @@ PACKAGES: list[tuple[str, str]] = [
     ("psycopg", "postgres"),
     ("psycopg_pool", "postgres"),
     ("pgvector", "postgres"),
+    # M5: the async Postgres backend's bridge (a C extension).
+    ("greenlet", "postgres"),
 ]
 
 

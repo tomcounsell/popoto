@@ -159,6 +159,9 @@ class TestConnectionPoolBackPressure:
 
         assert redis_db_module.POPOTO_REDIS_DB.connection_pool is custom
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(reason="tests the redis.asyncio client's own pool settings")
     @pytest.mark.asyncio
     async def test_set_async_redis_db_settings_keeps_blocking_pool(self):
         """#504: the async setter has the same contract as the sync one."""
@@ -205,12 +208,22 @@ def reset_async_connection():
 class TestAsyncCheckConnection:
     """Gap 9: Tests for async_check_connection() health check."""
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(
+        reason="tests redis_db.async_check_connection(), a Redis PING"
+    )
     @pytest.mark.asyncio
     async def test_async_check_connection_success(self):
         """Gap 9: async_check_connection returns True when Redis is available."""
         result = await async_check_connection()
         assert result is True
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(
+        reason="tests redis_db.async_check_connection(), a Redis PING"
+    )
     @pytest.mark.asyncio
     async def test_async_check_connection_failure(self):
         """Gap 9: async_check_connection returns False on ConnectionError."""
@@ -223,6 +236,11 @@ class TestAsyncCheckConnection:
             result = await async_check_connection()
             assert result is False
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(
+        reason="tests redis_db.async_check_connection(), a Redis PING"
+    )
     @pytest.mark.asyncio
     async def test_async_check_connection_timeout(self):
         """Gap 9: async_check_connection returns False on TimeoutError."""
@@ -239,6 +257,9 @@ class TestAsyncCheckConnection:
 class TestAsyncConnectionReconfiguration:
     """Gap 10: Tests for set_async_redis_db_settings() reconfiguration."""
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(reason="tests reconfiguring the redis.asyncio client")
     @pytest.mark.asyncio
     async def test_set_async_redis_db_settings_reconnects(self):
         """Gap 10: set_async_redis_db_settings resets and reconnects."""

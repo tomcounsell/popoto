@@ -301,7 +301,7 @@ def reap(backend: Any, ts: TableSpec, *, force: bool = False) -> list[str]:
     batch = int(Defaults.PG_REAPER_BATCH)
     if batch <= 0:
         return []
-    from . import _import_psycopg, _pool_for
+    from . import _checkout, _import_psycopg, _pool_for
 
     psycopg = _import_psycopg()
     wait_ms = max(1, int(Defaults.PG_REAPER_LOCK_TIMEOUT_MS))
@@ -309,7 +309,7 @@ def reap(backend: Any, ts: TableSpec, *, force: bool = False) -> list[str]:
     prefix = backend._statement_prefix() + f"SET LOCAL lock_timeout = {wait_ms}; "
     try:
         pool = _pool_for(backend.dsn)
-        with pool.connection(timeout=wait_ms / 1000.0) as conn:
+        with _checkout(pool, timeout=wait_ms / 1000.0) as conn:
             cur = conn.execute(prefix + sql, params)
             while cur.nextset():
                 pass
