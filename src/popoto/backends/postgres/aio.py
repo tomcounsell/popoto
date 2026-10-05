@@ -333,9 +333,8 @@ class _LoopPool:
     ``Defaults.PG_POOL_MAX_SIZE`` connections, a wait for a free one bounded
     by ``Defaults.PG_CONNECT_TIMEOUT_SECONDS`` (then ``PoolTimeout``, marked
     busy -- the backend raises ``BackendBusyError``, contention, not an
-    outage -- only when every slot is held by a checked-out connection;
-    a wait behind callers stuck connecting to an unresponsive server is an
-    outage), each validated on checkout
+    outage -- unless the server failed to answer: see :meth:`_contended`),
+    each validated on checkout
     with one empty-query round trip, opened ``autocommit`` with no
     server-side prepared statements (PgBouncer transaction mode) and a
     client-side cursor, so one message carries ``SET LOCAL …; <statement>``.
@@ -362,6 +361,8 @@ class _LoopPool:
         "keeper",
         "opened",
         "closed",
+        "attempts",
+        "down",
     )
 
     def __init__(self, key: tuple[str, int, int], loop: Any) -> None:
@@ -377,6 +378,13 @@ class _LoopPool:
         self.keeper: Any = None
         self.opened = False
         self.closed = False
+        # The outcome of every round trip to the server in progress -- a
+        # connect, or the checkout check on an idle connection -- as a future
+        # resolving True (the server answered), False (a connect failed) or
+        # None (no evidence either way). What a timed-out waiter consults to
+        # tell contention from an outage (:meth:`_contended`).
+        self.attempts: set[asyncio.Future[Optional[bool]]] = set()
+        self.down = False  # the last connect attempt to finish failed
 
     def loop_gone(self) -> bool:
         loop = self.loop_ref()
@@ -406,46 +414,113 @@ class _LoopPool:
         try:
             await asyncio.wait_for(self.slots.acquire(), wait)
         except asyncio.TimeoutError:
-            # Busy (BackendBusyError, health untouched) only when every slot
-            # is held by a checked-out connection -- the sync pool's rule. A
-            # slot can also be held by a caller still inside connect() to an
-            # unresponsive server (a partition, a black-holed port): then the
-            # wait is the outage's, not contention, and it stays a plain
-            # PoolTimeout the backend counts in health (#784 review).
             timed_out = PoolTimeout(f"couldn't get a connection after {wait:.2f} sec")
-            if len(self.out) >= self.max_size:
+            if await self._contended():
                 # PoolTimeout may resolve to Any
                 setattr(timed_out, "popoto_busy", True)
             raise timed_out from None
         try:
             while self.idle:
                 conn = self.idle.pop()  # most recently used first
+                probe = self._attempt()
                 try:
                     usable = await self._usable(conn)
                 except BaseException:
                     # Cancelled mid-check (the empty query is in flight):
                     # the connection is in no state to reuse, and nobody
                     # owns it once this raises. Close it here.
+                    self._settle(probe, None)
                     self._finish(conn)
                     raise
+                # An answer proves the server reachable; a dead socket proves
+                # nothing (an idle reaper, a restart the next connect rides).
+                self._settle(probe, True if usable else None)
                 if usable:
                     self.out.add(conn)
                     return conn
                 await self._discard(conn)
-            conn = await psycopg.AsyncConnection.connect(
-                self.dsn,
-                autocommit=True,
-                prepare_threshold=None,
-                cursor_factory=psycopg.AsyncClientCursor,
-                connect_timeout=max(1, int(round(self.timeout))),
-            )
+            probe = self._attempt()
+            try:
+                conn = await psycopg.AsyncConnection.connect(
+                    self.dsn,
+                    autocommit=True,
+                    prepare_threshold=None,
+                    cursor_factory=psycopg.AsyncClientCursor,
+                    connect_timeout=self._connect_timeout(),
+                )
+            except Exception:
+                self.down = True
+                self._settle(probe, False)
+                raise
+            except BaseException:  # cancelled mid-connect: no evidence
+                self._settle(probe, None)
+                raise
             # No await from here to the return: tracked and owned at once.
+            self.down = False
+            self._settle(probe, True)
             self.conns.add(conn)
             self.out.add(conn)
             return conn
         except BaseException:
             self.slots.release()
             raise
+
+    # -- busy or outage --------------------------------------------------------
+
+    def _connect_timeout(self) -> int:
+        return max(1, int(round(self.timeout)))
+
+    def _attempt(self) -> "asyncio.Future[Optional[bool]]":
+        fut: asyncio.Future[Optional[bool]] = asyncio.get_running_loop().create_future()
+        self.attempts.add(fut)
+        return fut
+
+    def _settle(
+        self, fut: "asyncio.Future[Optional[bool]]", reached: Optional[bool]
+    ) -> None:
+        """Record an attempt's outcome. No await: safe on any exit path."""
+        self.attempts.discard(fut)
+        if not fut.done():
+            fut.set_result(reached)
+
+    async def _contended(self) -> bool:
+        """Whether a wait for a slot that timed out is contention (busy:
+        ``BackendBusyError``, health untouched) rather than an outage.
+
+        Decided by what the server did, not by what the slots were doing when
+        the wait ran out. Every slot checked out is contention outright. A
+        slot can also be held by a caller still opening a connection, or
+        checking an idle one -- which on a loaded runner (a shared CI host, say)
+        can outlast a waiter's timeout against a perfectly healthy
+        server: classified by slot state, that wait was an outage with a
+        dropped write, which is what turned main red after #784 (run
+        37344318326). So the waiter waits for the evidence those round trips
+        produce: one that reaches the server makes it contention; a connect
+        that *fails* (refused, timed out at the socket, a partition) makes it
+        an outage; none answering within the connect timeout is an outage
+        too (the server is not answering), so a black-holed port still counts
+        every write dropped (#784 review). With nothing in progress, the
+        outcome of the last connect to finish decides. The extra wait is at
+        most the connect timeout, and only after a timeout."""
+        if len(self.out) >= self.max_size:
+            return True
+        loop = asyncio.get_running_loop()
+        # psycopg, like libpq, enforces at least 2 s per connect attempt.
+        deadline = loop.time() + max(2, self._connect_timeout()) + 0.5
+        while True:
+            pending = [f for f in self.attempts if not f.done()]
+            if not pending:
+                return not self.down
+            left = deadline - loop.time()
+            if left <= 0:
+                return False  # nothing answered within a connect timeout
+            done, _ = await asyncio.wait(
+                pending, timeout=left, return_when=asyncio.FIRST_COMPLETED
+            )
+            for fut in done:
+                reached = fut.result()
+                if reached is not None:
+                    return reached
 
     async def putconn(self, conn: Any) -> None:
         from psycopg.pq import TransactionStatus
