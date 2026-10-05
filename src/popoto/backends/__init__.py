@@ -64,8 +64,11 @@ from typing import (
 )
 
 from .types import (
+    ASYNC_PROTOCOL_METHODS,
+    AsyncBackend,
     RANDOM,
     And,
+    BackendBusyError,
     BackendCapabilityError,
     BackendError,
     BackendRetryableError,
@@ -94,12 +97,15 @@ from .types import (
 )
 
 __all__ = [
+    "ASYNC_PROTOCOL_METHODS",
+    "AsyncBackend",
     "BACKEND_NAMES",
     "DEFAULT_BACKEND",
     "PROTOCOL_METHODS",
     "RANDOM",
     "And",
     "Backend",
+    "BackendBusyError",
     "BackendCapabilityError",
     "BackendError",
     "BackendRetryableError",

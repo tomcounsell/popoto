@@ -403,6 +403,8 @@ def test_concurrent_sync_filters_do_not_clobber_each_other():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 @pytest.mark.asyncio
 async def test_async_count_reports_filtered_not_total():
     """Before the fix this crossed a thread boundary and returned the total.
@@ -686,6 +688,11 @@ def test_deterministic_geo_distance_isolation():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
+@pytest.mark.redis_only(
+    reason="GeoField (GEOSEARCH WITHDIST) has no Postgres mapping until the M5 GeoField/PostGIS item; validate_spec refuses the model there"
+)
 @pytest.mark.asyncio
 async def test_async_geo_filter_attaches_distances():
     lat = 25.0
@@ -722,6 +729,11 @@ async def test_async_geo_filter_attaches_distances():
         ), f"{row.place_id}: distance={row._geo_distance}, expected {expected}"
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
+@pytest.mark.redis_only(
+    reason="GeoField (GEOSEARCH WITHDIST) has no Postgres mapping until the M5 GeoField/PostGIS item; validate_spec refuses the model there"
+)
 @pytest.mark.asyncio
 async def test_async_geo_filter_concurrent_gather_do_not_clobber_each_other():
     """``asyncio.gather`` over distinct centers, each on its own unit.

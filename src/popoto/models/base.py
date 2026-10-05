@@ -94,6 +94,24 @@ def _require_redis(model_class: Any, api: str, why: str) -> None:
         )
 
 
+async def _off_loop(model_class: Any, fn: Any, /, *args: Any, **kwargs: Any) -> Any:
+    """How an ``async_*`` model method runs its sync twin ``fn``.
+
+    A Redis-bound model keeps today's worker thread (``to_thread``), byte for
+    byte. A model bound to another backend runs ``fn`` on that backend's
+    async twin (#759 M5): on Postgres, ``AsyncPostgresBackend``, whose I/O is
+    ``psycopg.AsyncConnection`` on the running loop (no thread).
+    """
+    from ..backends.routing import non_redis_backend
+
+    backend = non_redis_backend(model_class)
+    if backend is None:
+        return await to_thread(fn, *args, **kwargs)
+    from ..backends.postgres.aio import run_async
+
+    return await run_async(backend, fn, *args, **kwargs)
+
+
 def _as_uow(pipeline: Any, backend: Any = None) -> "Optional[UnitOfWork]":
     """What a ``pipeline=`` kwarg becomes at the backend seam: a unit of work
     passes through as it is (a Postgres ``transaction()``, #759 M1b), a Redis
@@ -2735,6 +2753,10 @@ class Model(metaclass=ModelBase):
     # Note: async_save and async_delete use to_thread() because they involve
     # complex field hook operations (on_save, on_delete) that would require
     # updating all field classes. async_load uses native async for simple GET.
+    #
+    # On a Postgres-bound model every one of them goes through _off_loop to
+    # the async backend instead (#759 M5): the sync twin runs with its
+    # Postgres I/O on psycopg.AsyncConnection, on the running loop, no thread.
 
     async def async_save(
         self,
@@ -2769,7 +2791,8 @@ class Model(metaclass=ModelBase):
         Returns:
             Pipeline or db_response depending on whether pipeline was provided
         """
-        return await to_thread(
+        return await _off_loop(
+            type(self),
             self.save,
             pipeline=pipeline,
             ignore_errors=ignore_errors,
@@ -2799,7 +2822,9 @@ class Model(metaclass=ModelBase):
         Returns:
             Pipeline or boolean(object existed AND was deleted)
         """
-        return await to_thread(self.delete, pipeline=pipeline, *args, **kwargs)
+        return await _off_loop(
+            type(self), self.delete, *args, pipeline=pipeline, **kwargs
+        )
 
     @classmethod
     async def async_create(cls, pipeline: redis.client.Pipeline = None, **kwargs):
@@ -2818,7 +2843,7 @@ class Model(metaclass=ModelBase):
         Returns:
             Pipeline or Model instance depending on whether pipeline was provided
         """
-        return await to_thread(cls.create, pipeline=pipeline, **kwargs)
+        return await _off_loop(cls, cls.create, pipeline=pipeline, **kwargs)
 
     @classmethod
     async def async_load(cls, db_key: str = None, **kwargs):
@@ -2849,7 +2874,7 @@ class Model(metaclass=ModelBase):
         Returns:
             (instance, created) tuple where created is True if object was created
         """
-        return await to_thread(cls.get_or_create, defaults=defaults, **lookup)
+        return await _off_loop(cls, cls.get_or_create, defaults=defaults, **lookup)
 
     @classmethod
     async def async_update_or_create(
@@ -2864,7 +2889,7 @@ class Model(metaclass=ModelBase):
         Returns:
             (instance, created) tuple where created is True if object was created
         """
-        return await to_thread(cls.update_or_create, defaults=defaults, **lookup)
+        return await _off_loop(cls, cls.update_or_create, defaults=defaults, **lookup)
 
     # Bulk operations
 
@@ -3205,7 +3230,7 @@ class Model(metaclass=ModelBase):
         Returns:
             Number of instances deleted.
         """
-        return await to_thread(cls.delete_all, batch_size=batch_size)
+        return await _off_loop(cls, cls.delete_all, batch_size=batch_size)
 
     @classmethod
     async def async_bulk_create(cls, instances, batch_size: int = 1000):
@@ -3221,7 +3246,7 @@ class Model(metaclass=ModelBase):
         Returns:
             List of created instances
         """
-        return await to_thread(cls.bulk_create, instances, batch_size=batch_size)
+        return await _off_loop(cls, cls.bulk_create, instances, batch_size=batch_size)
 
     @classmethod
     async def async_bulk_update(
@@ -3240,8 +3265,12 @@ class Model(metaclass=ModelBase):
         Returns:
             Number of updated instances
         """
-        return await to_thread(
-            cls.bulk_update, queryset_or_instances, batch_size=batch_size, **updates
+        return await _off_loop(
+            cls,
+            cls.bulk_update,
+            queryset_or_instances,
+            batch_size=batch_size,
+            **updates,
         )
 
     @classmethod
@@ -3258,8 +3287,8 @@ class Model(metaclass=ModelBase):
         Returns:
             Number of deleted instances
         """
-        return await to_thread(
-            cls.bulk_delete, queryset_or_instances, batch_size=batch_size
+        return await _off_loop(
+            cls, cls.bulk_delete, queryset_or_instances, batch_size=batch_size
         )
 
     # datetime KeyField identity: audit and migration (#537, #538)
@@ -4079,6 +4108,11 @@ class Model(metaclass=ModelBase):
                     removed += len(orphan_set)
 
         return removed
+
+    # The three index-maintenance twins stay on a worker thread on every
+    # backend: their sync bodies scan Redis index keys whatever the model's
+    # backend (Postgres `maintain` is its own M5 item), so running them on the
+    # loop thread would block it on Redis I/O.
 
     @classmethod
     async def async_check_indexes(cls, batch_size: int = 1000) -> dict:

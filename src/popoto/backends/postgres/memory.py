@@ -76,6 +76,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 from ...fields.constants import Defaults
 from ..types import (
     And,
+    BackendBusyError,
     BackendCapabilityError,
     BackendRetryableError,
     Cond,
@@ -1174,7 +1175,7 @@ class PostgresMemoryOps(PostgresValidityOps):
         catches rolls back exactly this work's writes and leaves the caller's
         transaction usable -- a caller that catches it and commits never
         commits half of it."""
-        from . import _import_psycopg, _pg_uow, _retryable, _rollback_errors
+        from . import _import_psycopg, _pg_uow, _retryable, _rollback_errors, _sleep
 
         psycopg = _import_psycopg()
         if _pg_uow(uow) is not None:
@@ -1189,6 +1190,8 @@ class PostgresMemoryOps(PostgresValidityOps):
             try:
                 with self.transaction() as tx:
                     return work(tx)
+            except BackendBusyError:
+                raise  # no connection was free: nothing ran, nothing to retry here
             except BackendRetryableError as exc:
                 # ``transaction()`` turns a rollback anywhere in its block --
                 # ``_run``, a raw one from ``work`` itself, or the COMMIT --
@@ -1197,7 +1200,7 @@ class PostgresMemoryOps(PostgresValidityOps):
                 attempt += 1
                 if attempt > retries:
                     raise _retryable(cause, attempt) from cause
-                time.sleep(random.uniform(0.005, 0.05) * attempt)
+                _sleep(random.uniform(0.005, 0.05) * attempt)
 
     # ContextAssembler (#759 M2c) ---------------------------------------------
 

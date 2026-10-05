@@ -78,6 +78,8 @@ class TestSkipAutoNow:
 
         assert instance.updated_at == original_updated
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
     @pytest.mark.asyncio
     async def test_skip_auto_now_async(self):
         """async_save should pass through skip_auto_now."""
@@ -201,6 +203,8 @@ class TestUpdateFields:
         assert reloaded.name == "pipelined"
         assert reloaded.score == 1.0
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
     @pytest.mark.asyncio
     async def test_update_fields_async(self):
         """async_save should pass through update_fields."""
@@ -313,6 +317,11 @@ class TestRebuildIndexes:
         count = MigrationModel.rebuild_indexes()
         assert count == 0
 
+    @pytest.mark.conformance
+    @pytest.mark.usefixtures("backend")
+    @pytest.mark.redis_only(
+        reason="deletes a Redis sorted-set index and rebuilds it; rebuild_indexes scans Redis index keys on every backend (Postgres maintain is its own M5 item)"
+    )
     @pytest.mark.asyncio
     async def test_async_rebuild_indexes(self):
         """async_rebuild_indexes() should work via to_thread."""
