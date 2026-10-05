@@ -1203,6 +1203,51 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     `strtod`'s rounding boundaries (`±inf` / `±0`, exact), where the cast
     raised "out of range"; `Decimal('-0')` is a documented divergence. The
     long-tail writers join a `popoto.batch()`.
+- **M5 geo as shipped: departures from this plan, recorded.** The
+  `GeoField` PR (`backends/postgres/geo.py`).
+  - **No PostGIS** (coordinator decision, superseding §3's
+    `geography(Point,4326)` row and §1's PostGIS mapping): `<f>` stays the
+    `jsonb` coordinates as given, plus `<f>__geohash bigint` (the score
+    `GEOADD` stores, through the zset's `double`) and `<f>__geolon` /
+    `<f>__geolat` (the position decoded from it, `GEOPOS`), with a partial
+    B-tree on the score. Redis's nine search boxes are score ranges, so the
+    bounding-box prefilter is that B-tree. PostGIS stays a possible later
+    optimisation, not a dependency.
+  - **The exact distance test is Python, not SQL.** The Redis measured
+    (Homebrew 8.10.2, clang, arm64) contracts the decode's and the
+    haversine's `a*b + c` into fused multiply-adds; SQL rounds each `float8`
+    operator, which leaves 1028/3000 decoded positions and 14/150 distances
+    an ulp off. So the backend fetches the boxes' rows in one statement,
+    computes `geohashGetDistance` with an exact FMA in Python, and scopes the
+    query's own statement by the matched keys (`_pk = ANY`), its top-level
+    siblings narrowing the candidates. `QueryPlan.compute` carries
+    `ComputedCol("_geo_distance", GeoQuery)`; the distances (four decimals,
+    as `WITHDIST` replies) ride on `Row` and order the `SELECT` after
+    `order_by`'s term.
+  - **The planner groups a field's geo parameters into one
+    `Cond(field, Op.WITHIN, GeoQuery)`**, parsed by
+    `GeoField.parse_query`, which `filter_query` now uses too (same
+    `QueryException` texts, Redis wire unchanged). A geo leaf scopes
+    `select`/`count` only; under a ranking or search `where=` it raises
+    `BackendCapabilityError`.
+  - **Reproduced, not repaired:** a score past `2**52` (the latitude limit,
+    longitude 180) is outside every search box; a by-member search of an
+    empty geo set replies empty unchecked; redis-py's encoder refusal of a
+    `bool`/`Decimal` argument comes first. **Documented divergences:** a
+    point `GEOADD` refuses is refused before writing (`ValueError`, same
+    text; Redis has already written the hash); refused searches raise
+    `QueryException` where Redis raises `ResponseError` (same text); an
+    expired record is out of every search and `count()` at once.
+  - **The probe** (`scripts/probe_geo_parity.py`, seeds 1–6 × 500 shapes on
+    PostgreSQL 18.6 and Redis 8.10.2, macOS arm64): 0 undocumented
+    mismatches over 11,467 stored scores and positions (bit-identical to
+    `ZSCORE`/`GEOPOS`), 8,160 exact-distance checks, 13,824 searches and
+    13,824 counts. Two classes surfaced and were fixed before merge: the
+    score's `double` rounding past `2**53` (longitude 180), and the order of
+    redis-py's argument-type refusal.
+  - **Transfer:** `GeoField.roundtrip_policy` is `"rebuild"`: an import
+    re-saves the coordinates and the save rebuilds the geo columns, so
+    nothing geo-specific is carried in the transfer format (#788).
 
 ## 6. Carried forward from the POC
 

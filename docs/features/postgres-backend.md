@@ -101,6 +101,7 @@ first query does not.
 | `CoOccurrenceField(symmetric=…, max_edges=…)` (M4) | no column: the edge table `<table>__<f>__edge (src, dst, weight)` | `PRIMARY KEY (src, dst)` |
 | `CyclicDecayField(cycles=…, pressure_rate=…)` (M5) | `double precision`: the decay clock, as for `DecayingSortedField`; the cycles as four parallel `double precision[]` columns `<f>__cycle_period`, `<f>__cycle_amp`, `<f>__cycle_phase`, `<f>__cycle_base` (the #698 declared baseline, a `NULL` element = unknown); the pressure as `<f>__pressure_rate` and `<f>__pressure_at` (`last_resolved`). `NULL` = no companion-hash entry | B-tree `(partition cols…, f, _pk COLLATE "C")` |
 | `TDValueField` (M5) | `numeric`, as `DecimalField` | — |
+| `GeoField` (M5) | `jsonb` for the coordinates as given, plus `<f>__geohash bigint` (the score `GEOADD` stores; `NULL` = not in the geo index) and `<f>__geolon` / `<f>__geolat` (`double precision`, the position decoded from that score) | partial B-tree on `<f>__geohash` (no PostGIS, no GiST) |
 
 `PredictionLedgerMixin` (M5) adds no column: its ledger is two engine tables
 (see [Long-tail fields](#long-tail-fields-m5)). `DataFrameField` is refused
@@ -182,9 +183,10 @@ stores would make it disagree with itself after a rollback.
 `Meta.ttl` (M5) adds an engine column, `_expires_at`; see
 [Record expiry](#record-expiry-m5).
 
-Fields that arrive later: `GeoField` and the rest (M5); an `IndexedField` on
-a collection type is refused. A model
-that uses one of them raises
+`GeoField` (M5) is stored without PostGIS; see [Geo](#geo-m5).
+
+An `IndexedField` on a collection type is refused, as is a custom field that
+overrides a storage hook. A model that uses one of them raises
 `BackendCapabilityError` when you declare it with `Meta.backend =
 "postgres"`, or on first use when it takes the process default.
 
@@ -993,6 +995,102 @@ record to it. A `popoto.batch()` handed to `strengthen_cycle`,
 joins the batch's transaction, as a save does: nothing lands before
 `execute()`, a `reset()` writes nothing, and the record locks it takes are
 the batch's (`test_long_tail_writes_join_a_batch`).
+
+## Geo (M5)
+
+A `GeoField` needs no extension: plain columns reproduce what Redis does
+with a geo set, from its own C (`geohash.c`, `geohash_helper.c`, `geo.c` at
+8.10.2), in `popoto/backends/postgres/geo.py`. The radius filters
+(`<f>=(lat, lon)` or `<f>_latitude`/`<f>_longitude`, `<f>_member`,
+`<f>_radius`, `<f>_radius_unit`, `<f>_with_distances`) behave as on Redis,
+inside `Q` objects too, through `filter()`, `count()` and their `async_`
+twins.
+
+**What is stored.** Redis keeps a member's position as a 52-bit geohash, the
+zset score, and measures from the cell's center, never from the coordinates
+you saved. So beside the coordinates as given (`jsonb`, which is what a read
+returns on both backends), a save writes:
+
+- `<f>__geohash`: the score `GEOADD` stores. It is `geohashEncodeWGS84` at
+  step 26, converted to a `double` as the zset holds it. That conversion
+  matters at the edges. A point on the latitude limit (±85.05112878) sets bit
+  52, and one on longitude 180 sets bit 53, where the `double` rounds to a
+  neighbouring cell. Redis then stores that neighbour, and so does Postgres.
+- `<f>__geolon` / `<f>__geolat`: the position decoded from the score, i.e.
+  what `GEOPOS` returns.
+
+A value with a falsy latitude or longitude (`None`, `0`) is not indexed
+(`NULL` score), as `GeoField.on_save` `ZREM`s it. A delete removes the row,
+and with it the point. A partial save writes these columns only when it
+writes the field.
+
+**How a search runs.** The nine geohash boxes Redis scans are computed in
+Python: its step estimate, its "decrease the step" check, and its pruning of
+useless neighbours. One statement fetches the rows whose score falls in those
+`[min, max)` ranges. That is the bounding-box prefilter, served by the
+partial B-tree; on a `Meta.ttl` model it fetches live rows only, and it is
+narrowed by the query's other top-level filters. Each candidate's distance
+is then `geohashGetDistance`, Redis's haversine on its 6372797.560856 m
+earth radius with its equal-longitude shortcut. A point is in when
+`distance <= radius * conversion`. The matched keys scope the query's own
+statement (`_pk = ANY(…)`), so `limit`, `order_by`, `values=` and the
+other filters apply in SQL. With `with_distances`, each row carries
+`_geo_distance` as `WITHDIST` replies it (the meters divided by the unit's
+factor, printed with four decimals, ties to even), plus
+`_geo_distance_unit`. Rows sort by that distance after any `order_by` term
+and before the key tie-break, which is how the Redis path re-sorts its
+hydrated objects. This is `QueryPlan.compute` (`ComputedCol("_geo_distance",
+…)`).
+
+**Why the distance is not computed in SQL.** The Redis build measured here
+(Homebrew 8.10.2, clang, arm64) fuses two expressions into a fused
+multiply-add: the decode's `min + (i / 2**step) * scale` and the haversine's
+`u*u + cos(lat1)*cos(lat2)*v*v`. Without the fusion, 1028 of 3000 decoded
+positions and 14 of 150 bisected distances are an ulp off. With it, all of
+them match. SQL has no fused multiply-add and rounds each `float8` operator
+separately, so the box prefilter is SQL and the exact test is Python: the fused
+multiply-add is exact there (`math.fma` on 3.13+, else an exact rational
+product rounded once), and `sin`/`cos`/`asin`/`sqrt` are the platform
+`libm`, as they are for Redis. A Redis built without contraction (x86-64
+without FMA) differs from this, and from the arm64 build, by an ulp in the
+same places (`popoto.backends.postgres.geo.FUSED_MULTIPLY_ADD`).
+
+**Quirks reproduced, not repaired.** A point whose score is 2^52 or more
+(the latitude limit, longitude 180) lies past every search box, so no radius
+search finds it; it is stored all the same. A search by member of a field
+with nothing indexed replies empty without looking at the member or the
+radius, as `GEORADIUSBYMEMBER` on a missing key does. An `inf` radius is
+accepted and covers the whole indexed set. redis-py refuses a `bool` or a
+`Decimal` center or radius before anything is sent, so its message comes
+before any server-side check.
+
+**PostGIS** (a `geography` column and a GiST index) could replace the box
+scan later as an optimisation. It would not change the arithmetic above, and
+it is not a dependency.
+
+The seeded probe compares both legs, including the stored score and decoded
+position against `ZSCORE`/`GEOPOS`, and Redis's exact distance read off its
+own radius test (in at `d`, out one ulp below):
+
+```bash
+REDIS_URL=redis://localhost:6379/7 \
+POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
+    python scripts/probe_geo_parity.py --seeds 1 2 3 --shapes 500
+```
+
+**Divergences** (each counted apart by the probe):
+
+| | Redis | Postgres |
+|---|---|---|
+| Saving a point `GEOADD` refuses (`lat` past ±85.05112878, `lon` past ±180) | the hash is written, then `GEOADD` fails: the record exists, unindexed, and the save raises `ResponseError` | refused before writing: `ValueError` with the same text (`invalid longitude,latitude pair …`) |
+| A search the server refuses (bad center, bad or negative radius, a member that is not indexed) | `ResponseError` | `QueryException`, same text |
+| A record that has expired (`Meta.ttl`) | its geo-set member stays (no read purges it): `filter()` drops it at hydration, but `count()` keeps counting it, and a search by its member still runs around it | invisible to every search, `count()` and member lookup at once |
+| A geo leaf scoping a ranking or a search (`rank_decayed(where=…)`, `recall`) | the leaf's key set | `BackendCapabilityError`: a geo filter scopes `filter()` and `count()` only, for now |
+
+Two leaves asking for distances in one query (two geo fields, or a geo leaf
+in each branch of a `Q`) merge their distances in predicate order, and the
+last leaf's unit wins. On Redis the merge order follows its own evaluation
+order, which this does not promise to match.
 
 ## Topology and the outage contract
 

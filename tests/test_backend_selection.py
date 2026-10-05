@@ -275,11 +275,16 @@ def test_postgres_model_with_unsupported_field_is_refused_at_declaration(
         raise AssertionError("class creation must not touch Redis")
 
     monkeypatch.setattr(redis_db, "get_REDIS_DB", no_network)
-    with pytest.raises(BackendCapabilityError, match="place \\(GeoField\\)"):
 
-        class SelPgGeo(popoto.Model):
+    class HookingField(popoto.Field):
+        def on_save(self, *args, **kwargs):  # pragma: no cover - never called
+            return super().on_save(*args, **kwargs)
+
+    with pytest.raises(BackendCapabilityError, match="hooked .*overrides on_save"):
+
+        class SelPgHooked(popoto.Model):
             name = popoto.KeyField()
-            place = popoto.GeoField()
+            hooked = HookingField(type=str, null=True)
 
             class Meta:
                 backend = "postgres"

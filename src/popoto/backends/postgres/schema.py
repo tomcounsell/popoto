@@ -249,6 +249,10 @@ def _field_type(spec: ModelSpec, name: str) -> type:
     if fs.kind in RELATIONSHIP_KINDS:
         # The column holds the related record's _pk: a key string.
         return str
+    if fs.kind == "GeoField":
+        # The coordinates as given, as a jsonb pair (M5, .geo), whatever
+        # type= the field declares (GeoField.Coordinates is a tuple).
+        return tuple
     py_type = fs.py_type or str
     if py_type not in SQL_TYPES:
         raise BackendCapabilityError(
@@ -368,6 +372,11 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
 
     columns.extend(ttl_columns(spec))
     indexes.extend(ttl_indexes(spec, index_name))
+    # M5: a GeoField's geohash score and decoded position (.geo).
+    from .geo import geo_columns, geo_indexes
+
+    columns.extend(geo_columns(spec))
+    indexes.extend(geo_indexes(spec, index_name))
     return TableSpec(
         model=spec.name,
         schema=schema,

@@ -508,6 +508,9 @@ STATIC_FIELD_KINDS["postgres"] = (
     # decay field's cycles and pressure are columns beside its clock; a
     # TDValueField is a numeric column with a one-statement TD update.
     | frozenset({"CyclicDecayField", "TDValueField"})
+    # M5: GeoField on plain columns -- the geohash score Redis stores and the
+    # position it decodes to -- with no PostGIS (popoto.backends.postgres.geo).
+    | frozenset({"GeoField"})
 )
 #: Popoto mixins a Postgres model may not declare yet, with the milestone that
 #: brings each. Empty since M5: ``PredictionLedgerMixin``, refused from M2a
