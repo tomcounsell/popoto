@@ -101,14 +101,17 @@ def _name(field: Any) -> str:
     return str(field.name)
 
 
-def _uow(pipeline: Any) -> Any:
-    """A Postgres unit of work passed as ``pipeline=`` carries the write; a
-    Redis pipeline cannot, so the write runs at once (the M1 rule)."""
+def _uow(pipeline: Any, backend: Any) -> Any:
+    """A Postgres unit of work passed as ``pipeline=`` carries the write, and
+    so does a ``popoto.batch()`` -- the write joins the batch's transaction
+    (#759 M5), which already holds the record locks of what the batch saved.
+    A plain Redis pipeline cannot, so the write runs at once (the M1 rule)."""
     from ..backends.types import UnitOfWork
+    from ..batch import unit_of
 
-    if isinstance(pipeline, UnitOfWork) and not pipeline.is_redis_pipeline:
-        return pipeline
-    return None
+    if isinstance(pipeline, UnitOfWork) and pipeline.is_redis_pipeline:
+        return None
+    return unit_of(pipeline, backend)
 
 
 _UNSET = object()  # Sentinel for method params where None has meaning
@@ -603,7 +606,7 @@ class CoOccurrenceField(Field):
                     _rid(model_class, source_pk),
                     _rid(model_class, target_pk),
                     initial_weight,
-                    uow=_uow(pipeline),
+                    uow=_uow(pipeline, backend),
                 )
             )
 
@@ -672,7 +675,7 @@ class CoOccurrenceField(Field):
         cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
         backend = _graph_backend(model_class)
         if backend is not None:
-            uow = _uow(pipeline)
+            uow = _uow(pipeline, backend)
             weight = backend.graph_update(
                 _spec(model_class),
                 _name(self),
@@ -768,7 +771,7 @@ class CoOccurrenceField(Field):
                 _rid(model_class, source_pk),
                 _rid(model_class, target_pk),
                 None,
-                uow=_uow(pipeline),
+                uow=_uow(pipeline, backend),
             )
             return None
 
@@ -816,7 +819,7 @@ class CoOccurrenceField(Field):
                     _rid(model_class, pk),
                     None,
                     factor,
-                    uow=_uow(pipeline),
+                    uow=_uow(pipeline, backend),
                 )
             )
         edge_key = self.get_edge_key(model_class, pk)

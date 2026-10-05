@@ -731,3 +731,65 @@ def test_post_save_redis_side_effects_wait_for_commit(pg, monkeypatch):
     assert tagged == ["kept", "plain"]
     assert RecSideEffects.stream_len() == 2
     assert sent == []
+
+
+# -- popoto.batch() and Meta.ttl (#759 M5, #783 review) -------------------------------
+
+
+class RecIdleTtl(popoto.Model):
+    name = popoto.KeyField()
+
+    class Meta:
+        ttl = 3600
+
+
+class RecLedgerTtl(AppendOnlyMixin, popoto.Model):
+    entry = popoto.KeyField()
+    amount = popoto.FloatField(default=0.0)
+
+    class Meta:
+        ttl = 3600
+
+
+def test_idle_seconds_of_an_expired_record_is_none(pg):
+    """``OBJECT IDLETIME`` of a key Redis expired is nil."""
+    r = RecIdleTtl(name="a")
+    r._ttl = 1
+    r.save()
+    assert RecIdleTtl.idle_seconds(name="a") == 0.0
+    time.sleep(1.6)
+    assert RecIdleTtl.idle_seconds(name="a") is None
+
+
+def test_append_only_sees_its_own_batch(pg):
+    """The guard reads inside the batch's transaction, as inside a
+    ``transaction()``: the second save of one key is refused, and the
+    violation leaving the ``with`` block rolls the batch back."""
+    with pytest.raises(AppendOnlyViolation):
+        with popoto.batch() as pipe:
+            RecLedger(entry="bx", amount=1.0).save(pipeline=pipe)
+            RecLedger(entry="bx", amount=2.0).save(pipeline=pipe)
+    assert RecLedger.query.get(entry="bx") is None
+
+
+def test_a_caught_violation_in_a_batch_keeps_the_first_write(pg):
+    """Refused before it sends anything, so the batch stays healthy: what
+    commits is the first write, never the second."""
+    pipe = popoto.batch()
+    RecLedger(entry="by", amount=1.0).save(pipeline=pipe)
+    with pytest.raises(AppendOnlyViolation):
+        RecLedger(entry="by", amount=2.0).save(pipeline=pipe)
+    pipe.execute()
+    assert RecLedger.query.get(entry="by").amount == 1.0
+
+
+def test_append_only_treats_an_expired_record_as_gone(pg):
+    """As on Redis, where the expired key no longer EXISTS."""
+    first = RecLedgerTtl(entry="e", amount=1.0)
+    first._ttl = 1
+    first.save()
+    time.sleep(1.6)
+    with popoto.batch() as pipe:
+        RecLedgerTtl(entry="e", amount=2.0).save(pipeline=pipe)
+        pipe.execute()
+    assert RecLedgerTtl.query.get(entry="e").amount == 2.0

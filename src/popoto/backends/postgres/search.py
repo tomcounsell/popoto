@@ -65,6 +65,7 @@ from ..types import (
     UnitOfWork,
 )
 from .schema import RELATIONSHIP_KINDS, Column, TableSpec, _bounded, quote_ident
+from .ttl import expired_pks_sql, live_sql
 
 __all__ = [
     "SCOPE_SEPARATOR",
@@ -76,6 +77,7 @@ __all__ = [
     "SavePlan",
     "compile_search",
     "prepare_save",
+    "record_lock_keys",
     "record_lock_sql",
     "require_extensions",
     "scope_text",
@@ -497,12 +499,40 @@ def record_lock_sql(ts: TableSpec, pks: Sequence[str]) -> tuple[str, list[Any]]:
     ordered = sorted(set(pks), key=lambda k: k.encode("utf-8", "surrogateescape"))
     keys = [f"popoto:rec:{ts.qualified}:{pk}" for pk in ordered]
     if len(keys) == 1:
-        return "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0)); ", keys
-    return (
-        "SELECT count(pg_advisory_xact_lock(hashtextextended(u.k, 0))) "
-        "FROM unnest(%s::text[]) WITH ORDINALITY AS u(k, i); ",
-        [keys],
-    )
+        return _LOCK_ONE, keys
+    return _LOCK_MANY, [keys]
+
+
+_LOCK_ONE = "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0)); "
+_LOCK_MANY = (
+    "SELECT count(pg_advisory_xact_lock(hashtextextended(u.k, 0))) "
+    "FROM unnest(%s::text[]) WITH ORDINALITY AS u(k, i); "
+)
+
+
+def record_lock_keys(sql: str, params: Sequence[Any]) -> list[str]:
+    """The record-key lock names a statement built on :func:`record_lock_sql`
+    takes first, or ``[]``. Read back from the statement rather than passed
+    alongside it, so every writer -- whatever builds its statement -- is seen
+    by the one check in ``PostgresBackend._run`` (#783: a lock this thread
+    already holds in another open transaction)."""
+    if sql.startswith(_LOCK_ONE):
+        return [params[0]]
+    if sql.startswith(_LOCK_MANY):
+        return list(params[0])
+    if sql.startswith(PREFIXED_LOCK_MANY):
+        # graph_delete_lock_sql: the key prefix, then the deleted keys (the
+        # partners it also locks are found by the statement, not named).
+        return [params[0] + k for k in params[1]]
+    return []
+
+
+#: A ``count(pg_advisory_xact_lock(...))`` over ``prefix || key`` -- the head of
+#: :func:`.graph.graph_delete_lock_sql`, shared so :func:`record_lock_keys`
+#: recognises it.
+PREFIXED_LOCK_MANY = (
+    "SELECT count(pg_advisory_xact_lock(hashtextextended(%s || u.k, 0))) "
+)
 
 
 #: Column types whose SQL text is exactly ``str()`` of the decoded value, so a
@@ -970,7 +1000,9 @@ def _scope_key_of(ts: TableSpec, where: Optional[Predicate]) -> Optional[str]:
     columns qualify: ``scope_text`` is ``str(value)``, and a value of
     another type need not spell the stored row's scope (``1`` vs ``1.0``)."""
     layout: Optional[SearchLayout] = ts.search
-    if where is None or layout is None or not layout.scope_columns:
+    if where is None or layout is None or not layout.scope_columns or ts.ttl:
+        # A Meta.ttl model's read filter is on the record table (M5), which
+        # the narrow-table shortcut would bypass.
         return None
     items = where.items if isinstance(where, And) else (where,)
     values: dict[str, str] = {}
@@ -1034,6 +1066,7 @@ def bm25_ctes(
     k1: float,
     b: float,
     prefix: str = "b",
+    expired: str = "",
 ) -> tuple[list[str], list[Any], str]:
     """CTEs scoring every record that holds a query term; the last one,
     ``"<prefix>sc"(_pk, score)``, is the result. The query terms are the
@@ -1050,25 +1083,39 @@ def bm25_ctes(
     ``stats_scope`` ``None`` = corpus-wide ``N``/``avgdl``/``df`` (Redis's,
     and ``BM25Field.search``'s); a scope text = that scope's. A
     ``candidate_scope`` restricts which records are scored.
+
+    ``expired`` (M5, :func:`.ttl.expired_pks_sql`): on a ``Meta.ttl`` model,
+    the expired records' keys, left out of the statistics and the candidates
+    alike -- an expired record is no document, reaped or not.
     """
     q, st, df, sc = (f'"{prefix}{x}"' for x in ("q", "st", "df", "sc"))
     params: list[Any] = []
     ctes = [f'{q}("term", "ord") AS (SELECT * FROM unnest(%s::text[]) WITH ORDINALITY)']
-    stats_where = ' WHERE "scope" = %s' if stats_scope is not None else ""
+    gone = f'"_pk" NOT IN {expired}' if expired else ""
+    stats_parts = (['"scope" = %s'] if stats_scope is not None else []) + (
+        [gone] if gone else []
+    )
+    stats_where = f" WHERE {' AND '.join(stats_parts)}" if stats_parts else ""
     ctes.append(
         f'{st} AS (SELECT count(*)::float8 AS "n", '
         f'coalesce(avg("len"), 0)::float8 AS "avgdl" FROM {bm.dl}{stats_where})'
     )
     if stats_scope is not None:
         params.append(stats_scope)
-    df_where = ' WHERE p."scope" = %s' if stats_scope is not None else ""
+    df_parts = (['p."scope" = %s'] if stats_scope is not None else []) + (
+        ["p." + gone] if gone else []
+    )
+    df_where = f" WHERE {' AND '.join(df_parts)}" if df_parts else ""
     ctes.append(
         f'{df} AS (SELECT p."term", count(*)::float8 AS "df" FROM {bm.post} p '
         f'JOIN {q} ON {q}."term" = p."term"{df_where} GROUP BY p."term")'
     )
     if stats_scope is not None:
         params.append(stats_scope)
-    cand_where = ' WHERE p."scope" = %s' if candidate_scope is not None else ""
+    cand_parts = (['p."scope" = %s'] if candidate_scope is not None else []) + (
+        ["p." + gone] if gone else []
+    )
+    cand_where = f" WHERE {' AND '.join(cand_parts)}" if cand_parts else ""
     ctes.append(
         f'{sc} AS (SELECT p."_pk", sum('
         f'ln(({st}."n" - {df}."df" + 0.5) / ({df}."df" + 0.5) + 1) * '
@@ -1180,7 +1227,12 @@ class SearchMixin:
         k1, b = self._bm25_params(bm)
         stats_scope = scope if stats == "scope" else None
         ctes, params, sc = bm25_ctes(
-            bm, stats_scope=stats_scope, candidate_scope=scope, k1=k1, b=b
+            bm,
+            stats_scope=stats_scope,
+            candidate_scope=scope,
+            k1=k1,
+            b=b,
+            expired=expired_pks_sql(ts),
         )
         params = [terms] + params
         filt = ""
@@ -1240,8 +1292,10 @@ class SearchMixin:
         """``(N, avgdl)`` corpus-wide: records with at least one token, and
         their mean length (``(0, 0.0)`` for none)."""
         ts, bm = self._bm25(spec, field)
+        expired = expired_pks_sql(ts)
         rows, _ = self._run(
             f'SELECT count(*), coalesce(avg("len"), 0)::float8 FROM {bm.dl}'
+            + (f' WHERE "_pk" NOT IN {expired}' if expired else "")
         )
         return int(rows[0][0]), float(rows[0][1])
 
@@ -1253,9 +1307,12 @@ class SearchMixin:
         ts, bm = self._bm25(spec, field)
         if not tokens:
             return {}
+        expired = expired_pks_sql(ts)
+        n_where = f' WHERE "_pk" NOT IN {expired}' if expired else ""
+        df_and = f' AND p."_pk" NOT IN {expired}' if expired else ""
         rows, _ = self._run(
-            f"SELECT (SELECT count(*) FROM {bm.dl}), u.t, "
-            f'(SELECT count(*) FROM {bm.post} p WHERE p."term" = u.t) '
+            f"SELECT (SELECT count(*) FROM {bm.dl}{n_where}), u.t, "
+            f'(SELECT count(*) FROM {bm.post} p WHERE p."term" = u.t{df_and}) '
             "FROM unnest(%s::text[]) WITH ORDINALITY AS u(t, i) ORDER BY u.i",
             [list(tokens)],
         )
@@ -1393,9 +1450,11 @@ class SearchMixin:
         bytewise order (``EmbeddingField.load_embeddings`` on Postgres)."""
         ts, emb = self._embedding(spec, field)
         vec = quote_ident(emb.vec)
+        live = live_sql(ts)
         rows, _ = self._run(
             f'SELECT "_pk", {vec}::text FROM {ts.qualified} WHERE {vec} IS NOT NULL '
-            'ORDER BY "_pk" COLLATE "C"'
+            + (f"AND {live} " if live else "")
+            + 'ORDER BY "_pk" COLLATE "C"'
         )
         return [r[0] for r in rows], [_parse_vector(r[1]) for r in rows]
 
@@ -1457,12 +1516,16 @@ class SearchMixin:
         tokens = list(tokens)
         if not tokens:
             return False if mode == "any" else []
+        # M5: an expired record's tokens are not seen (its rows go with it
+        # when the reaper deletes it, as a delete's do).
+        expired = expired_pks_sql(ts) if mb.kind == "ExistenceFilter" else ""
+        gone = f' AND m."_pk" NOT IN {expired}' if expired else ""
         if mode == "any":
             if mb.kind != "ExistenceFilter":
                 raise BackendCapabilityError("mode='any' is for an ExistenceFilter")
             rows, _ = self._run(
-                f'SELECT EXISTS (SELECT 1 FROM {mb.table} WHERE "token" = '
-                "ANY(%s::text[]))",
+                f'SELECT EXISTS (SELECT 1 FROM {mb.table} m WHERE m."token" = '
+                f"ANY(%s::text[]){gone})",
                 [tokens],
             )
             return bool(rows[0][0])
@@ -1471,7 +1534,7 @@ class SearchMixin:
                 raise BackendCapabilityError("mode='each' is for an ExistenceFilter")
             rows, _ = self._run(
                 f'SELECT EXISTS (SELECT 1 FROM {mb.table} m WHERE m."token" = '
-                "u.t) FROM unnest(%s::text[]) WITH ORDINALITY AS u(t, i) "
+                f"u.t{gone}) FROM unnest(%s::text[]) WITH ORDINALITY AS u(t, i) "
                 "ORDER BY u.i",
                 [tokens],
             )
@@ -1480,8 +1543,8 @@ class SearchMixin:
             if mb.kind == "ExistenceFilter":
                 rows, _ = self._run(
                     f'SELECT (SELECT count(*) FROM {mb.table} m WHERE m."token" '
-                    "= u.t) FROM unnest(%s::text[]) WITH ORDINALITY AS u(t, i) "
-                    "ORDER BY u.i",
+                    f"= u.t{gone}) FROM unnest(%s::text[]) WITH ORDINALITY AS "
+                    "u(t, i) ORDER BY u.i",
                     [tokens],
                 )
             else:
@@ -1497,7 +1560,11 @@ class SearchMixin:
     def membership_size(self, spec: ModelSpec, field: str) -> int:
         """Distinct tokens recorded (``ExistenceFilter.fill_ratio``)."""
         ts, mb = self._membership(spec, field)
-        rows, _ = self._run(f'SELECT count(DISTINCT "token") FROM {mb.table}')
+        expired = expired_pks_sql(ts) if mb.kind == "ExistenceFilter" else ""
+        rows, _ = self._run(
+            f'SELECT count(DISTINCT "token") FROM {mb.table}'
+            + (f' WHERE "_pk" NOT IN {expired}' if expired else "")
+        )
         return int(rows[0][0])
 
     # -- [PG-only] recall -----------------------------------------------------
@@ -1569,8 +1636,11 @@ class SearchMixin:
         )
         scope_key = scope_text(scope_values) if scope_values is not None else None
         # The narrow vector table filters on its own scope column only when
-        # the scope is the whole predicate.
-        scope_only = scope_key if (not filters and tags is None) else None
+        # the scope is the whole predicate -- and never on a Meta.ttl model,
+        # whose read filter lives on the record table (M5).
+        scope_only = (
+            scope_key if (not filters and tags is None and not ts.ttl) else None
+        )
 
         ctes: list[str] = []
         params: list[Any] = []
@@ -1603,6 +1673,7 @@ class SearchMixin:
                     candidate_scope=scope_key,
                     k1=k1,
                     b=b,
+                    expired=expired_pks_sql(ts),
                 )
                 ctes += bctes
                 params += [tokens] + bparams

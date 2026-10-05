@@ -345,3 +345,40 @@ def test_membership_rows_hold_no_claim_content(pg):
             for word in ("Berlin", "mornings", "preference"):
                 assert word not in text
     _ = get_backend(JournalEntry)
+
+
+def test_a_batch_carries_the_annotation(pg):
+    """``popoto.batch()`` on a Postgres journal (#783 review): the append
+    joins the batch's transaction, is invisible until ``execute()``, and a
+    ``reset()`` drops it."""
+    before = JournalEntry.query.count()
+    pipe = popoto.batch()
+    result = ProvenanceJournal.append(
+        agent_id=AGENT, statement="batched", pipeline=pipe
+    )
+    assert result.pipeline is pipe
+    assert JournalEntry.query.count() == before
+    pipe.execute()
+    assert JournalEntry.query.count() == before + 1
+    pipe = popoto.batch()
+    ProvenanceJournal.append(agent_id=AGENT, statement="dropped", pipeline=pipe)
+    pipe.reset()
+    assert JournalEntry.query.count() == before + 1
+
+
+def test_a_batch_carries_the_annotation_and_the_close(pg):
+    t0 = 1_700_000_000.0
+    target = _append(at=t0)
+    key = target.db_key.redis_key
+    pipe = popoto.batch()
+    try:
+        result = ProvenanceJournal.supersede(
+            target, agent_id=AGENT, statement="fix", at=t0 + 50.0, pipeline=pipe
+        )
+        assert result.target_closed is True
+        assert _row(pg, JournalEntry, key)[1] == float("inf"), "not before execute"
+        pipe.execute()
+    finally:
+        pipe.reset()
+    assert _row(pg, JournalEntry, key)[1] == t0 + 50.0
+    assert len(ProvenanceJournal.annotations_for(target)) == 1

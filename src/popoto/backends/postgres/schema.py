@@ -181,6 +181,9 @@ class TableSpec:
     search: Any = None
     """The compiled search layout (:class:`.search.SearchLayout`) for a model
     with BM25 / embedding / membership fields, else ``None``."""
+    ttl: bool = False
+    """``Meta.ttl`` (M5): the table has ``_expires_at`` and every read of it
+    filters expired rows out (:mod:`.ttl`)."""
 
     def kind(self, name: str) -> str:
         return self.field_kinds.get(name, "Field")
@@ -358,6 +361,13 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
     companions = (search.companions if search is not None else ()) + compile_graph(
         spec, schema, table
     )
+
+    # M5: Meta.ttl adds _expires_at and its partial index (.ttl); a model
+    # without it compiles exactly as before.
+    from .ttl import ttl_columns, ttl_indexes
+
+    columns.extend(ttl_columns(spec))
+    indexes.extend(ttl_indexes(spec, index_name))
     return TableSpec(
         model=spec.name,
         schema=schema,
@@ -374,6 +384,7 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
         meta_indexes=meta_indexes,
         companions=companions,
         search=search,
+        ttl=spec.ttl is not None,
     )
 
 
