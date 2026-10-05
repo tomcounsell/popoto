@@ -21781,6 +21781,7 @@ first query does not.
 | `CoOccurrenceField(symmetric=…, max_edges=…)` (M4) | no column: the edge table `<table>__<f>__edge (src, dst, weight)` | `PRIMARY KEY (src, dst)` |
 | `CyclicDecayField(cycles=…, pressure_rate=…)` (M5) | `double precision`: the decay clock, as for `DecayingSortedField`; the cycles as four parallel `double precision[]` columns `<f>__cycle_period`, `<f>__cycle_amp`, `<f>__cycle_phase`, `<f>__cycle_base` (the #698 declared baseline, a `NULL` element = unknown); the pressure as `<f>__pressure_rate` and `<f>__pressure_at` (`last_resolved`). `NULL` = no companion-hash entry | B-tree `(partition cols…, f, _pk COLLATE "C")` |
 | `TDValueField` (M5) | `numeric`, as `DecimalField` | — |
+| `GeoField` (M5) | `jsonb` for the coordinates as given, plus `<f>__geohash bigint` (the score `GEOADD` stores; `NULL` = not in the geo index) and `<f>__geolon` / `<f>__geolat` (`double precision`, the position decoded from that score) | partial B-tree on `<f>__geohash` (no PostGIS, no GiST) |
 
 `PredictionLedgerMixin` (M5) adds no column: its ledger is two engine tables
 (see [Long-tail fields](#long-tail-fields-m5)). `DataFrameField` is refused
@@ -21862,9 +21863,10 @@ stores would make it disagree with itself after a rollback.
 `Meta.ttl` (M5) adds an engine column, `_expires_at`; see
 [Record expiry](#record-expiry-m5).
 
-Fields that arrive later: `GeoField` and the rest (M5); an `IndexedField` on
-a collection type is refused. A model
-that uses one of them raises
+`GeoField` (M5) is stored without PostGIS; see [Geo](#geo-m5).
+
+An `IndexedField` on a collection type is refused, as is a custom field that
+overrides a storage hook. A model that uses one of them raises
 `BackendCapabilityError` when you declare it with `Meta.backend =
 "postgres"`, or on first use when it takes the process default.
 
@@ -22673,6 +22675,136 @@ record to it. A `popoto.batch()` handed to `strengthen_cycle`,
 joins the batch's transaction, as a save does: nothing lands before
 `execute()`, a `reset()` writes nothing, and the record locks it takes are
 the batch's (`test_long_tail_writes_join_a_batch`).
+
+## Geo (M5)
+
+A `GeoField` needs no extension: plain columns reproduce what Redis does
+with a geo set, from its own C (`geohash.c`, `geohash_helper.c`, `geo.c` at
+8.10.2), in `popoto/backends/postgres/geo.py`. The radius filters
+(`<f>=(lat, lon)` or `<f>_latitude`/`<f>_longitude`, `<f>_member`,
+`<f>_radius`, `<f>_radius_unit`, `<f>_with_distances`) behave as on Redis,
+inside `Q` objects too, through `filter()`, `count()` and their `async_`
+twins.
+
+**What is stored.** Redis keeps a member's position as a 52-bit geohash, the
+zset score, and measures from the cell's center, never from the coordinates
+you saved. So beside the coordinates as given (`jsonb`, which is what a read
+returns on both backends), a save writes:
+
+- `<f>__geohash`: the score `GEOADD` stores. It is `geohashEncodeWGS84` at
+  step 26, converted to a `double` as the zset holds it. That conversion
+  matters at the edges. A point on the latitude limit (±85.05112878) sets bit
+  52, and one on longitude 180 sets bit 53, where the `double` rounds to a
+  neighbouring cell. Redis then stores that neighbour, and so does Postgres.
+- `<f>__geolon` / `<f>__geolat`: the position decoded from the score, i.e.
+  what `GEOPOS` returns.
+
+A value with a falsy latitude or longitude (`None`, `0`) is not indexed
+(`NULL` score), as `GeoField.on_save` `ZREM`s it. A delete removes the row,
+and with it the point. A partial save writes these columns only when it
+writes the field.
+
+**How a search runs.** The nine geohash boxes Redis scans are computed in
+Python: its step estimate, its "decrease the step" check, and its pruning of
+useless neighbours. One statement fetches the rows whose score falls in those
+`[min, max)` ranges. That is the bounding-box prefilter, served by the
+partial B-tree; on a `Meta.ttl` model it fetches live rows only, and it is
+narrowed by the query's other top-level filters. Each candidate's distance
+is then `geohashGetDistance`, Redis's haversine on its 6372797.560856 m
+earth radius with its equal-longitude shortcut. A point is in when
+`distance <= radius * conversion`. The matched keys scope the query's own
+statement (`_pk = ANY(…)`), so `limit`, `order_by`, `values=` and the
+other filters apply in SQL. With `with_distances`, each row carries
+`_geo_distance` as `WITHDIST` replies it (the meters divided by the unit's
+factor, printed with four decimals, ties to even), plus
+`_geo_distance_unit`. Rows sort by that distance after any `order_by` term
+and before the key tie-break, which is how the Redis path re-sorts its
+hydrated objects. This is `QueryPlan.compute` (`ComputedCol("_geo_distance",
+…)`).
+
+**Arithmetic: plain IEEE doubles, never fused.** A Postgres deployment has
+no Redis to mirror, so the port never depends on how a compiler built
+Redis: each `a*b + c` in Redis's C is evaluated as two roundings, as CPython
+evaluates it. The geohash encode and decode use no libm, so the stored
+score and decoded position are the same on every platform and equal to an
+x86-64 Redis's (`GEOPOS`) to the bit. A Redis built by clang on arm64 (Homebrew 8.10.2, for
+one) contracts two expressions into fused multiply-adds: the decode's
+`min + (i / 2**step) * scale` and the haversine's
+`u*u + cos(lat1)*cos(lat2)*v*v`. Against that build, a decoded position
+(`GEOPOS`) or a distance is one fused rounding away from this one in places.
+For a position that is at most an ulp of the decode's product (about
+1.4e-14 degrees), which is thousands of ulps of a latitude near zero, where
+the decode's subtraction cancels. For a distance it is usually an ulp or
+two, but near the antipode `asin`'s slope amplifies one rounding of the
+haversine's `a`: the seeded probe saw up to about 0.19 m on a
+2×10^7 m distance. The consequence that reaches a query is at the radius:
+a member whose distance is that close to the radius can be in on one build
+and out on the other, and a `WITHDIST` value can differ in its fourth
+decimal when the gap straddles a rounding boundary.
+
+The distance also calls `sin`, `cos` and `asin`, from the host Python's
+`libm`, as Redis calls its own. Mainstream libms (glibc, musl, Apple's) are
+accurate to under an ulp but do not agree on the last bit, so a distance
+can differ by those ulps (propagated through the formula; again up to tens
+of centimetres near the antipode) between the port and a Redis linked
+against another libm, and between ports on different hosts. CI shows it:
+`redis:7-alpine` links musl and the runner's Python glibc, and with
+positions identical, a handful of radius tests in the seeded probe come out
+on opposite sides of a radius that close. `sqrt` is IEEE, correctly
+rounded everywhere.
+The exact test runs in Python rather than SQL so the save's decode and the
+search's test share one implementation.
+
+**Quirks reproduced, not repaired.** A point whose score is 2^52 or more
+(the latitude limit, longitude 180) lies past every search box, so no radius
+search finds it; it is stored all the same. A search by member of a field
+with nothing indexed replies empty without looking at the member or the
+radius, as `GEORADIUSBYMEMBER` on a missing key does. An `inf` radius is
+accepted and covers the whole indexed set. redis-py refuses a `bool` or a
+`Decimal` center or radius before anything is sent, so its message comes
+before any server-side check.
+
+**PostGIS** (a `geography` column and a GiST index) could replace the box
+scan later as an optimisation. It would not change the arithmetic above, and
+it is not a dependency.
+
+The seeded probe compares both legs against the *running* Redis, including
+the stored score and decoded position against `ZSCORE`/`GEOPOS`, and each
+leg's exact distance read off its own radius test (in at `d`, out one ulp
+below). Every comparison is exact, except four classes that count apart.
+`fma_position_ulp` (a position or distance one fused rounding away) and
+`fma_boundary` (a search or count differing only by members the contraction
+moves across the radius) exist only against a contracting build, and are
+not a tolerance: a mismatch joins one only when a model of the same C with
+the two contractions reproduces the running Redis to the bit. `libm_ulp`
+and `libm_boundary` exist only against a Redis on another libm: a distance
+(never a position) within the envelope the formula gives when each of its
+five libm results is off by at most one ulp, or a search differing only by
+members whose envelope straddles the radius. Against a contracting Redis
+sharing the probe's libm (arm64 macOS) the `libm_*` classes are 0; against
+x86-64 Redis the `fma_*` classes are 0.
+
+```bash
+REDIS_URL=redis://localhost:6379/7 \
+POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
+    python scripts/probe_geo_parity.py --seeds 1 2 3 --shapes 500
+```
+
+**Divergences** (each counted apart by the probe):
+
+| | Redis | Postgres |
+|---|---|---|
+| Saving a point `GEOADD` refuses (`lat` past ±85.05112878, `lon` past ±180) | the hash is written, then `GEOADD` fails: the record exists, unindexed, and the save raises `ResponseError` | refused before writing: `ValueError` with the same text (`invalid longitude,latitude pair …`) |
+| A search the server refuses (bad center, bad or negative radius, a member that is not indexed) | `ResponseError` | `QueryException`, same text |
+| A record that has expired (`Meta.ttl`) | its geo-set member stays (no read purges it): `filter()` drops it at hydration, but `count()` keeps counting it, and a search by its member still runs around it | invisible to every search, `count()` and member lookup at once |
+| A geo leaf scoping a ranking or a search (`rank_decayed(where=…)`, `recall`) | the leaf's key set | `BackendCapabilityError`: a geo filter scopes `filter()` and `count()` only, for now |
+| A Redis built with floating-point contraction (clang, arm64) | the decode and the haversine round `a*b + c` once: positions and distances one fused rounding away (up to ~0.19 m near the antipode), so a member that close to the radius can flip | plain IEEE arithmetic: positions equal to x86-64 Redis's to the bit, on every platform |
+| A Redis linked against another libm (musl in `redis:7-alpine`, against glibc or Apple's) | `sin`/`cos`/`asin` from its libm | from the host Python's: a distance can differ in its last bits, so a member that close to the radius can flip |
+
+Two leaves asking for distances in one query (two geo fields, or a geo leaf
+in each branch of a `Q`) merge their distances in predicate order, and the
+last leaf's unit wins. On Redis the merge order follows its own evaluation
+order, which this does not promise to match.
 
 ## Topology and the outage contract
 
