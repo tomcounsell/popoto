@@ -107,6 +107,45 @@ def _as_str(value: Any) -> str:
     return value.decode() if isinstance(value, bytes) else str(value)
 
 
+def _record_exists(model_class: Any, redis_key: str, pipeline: Any) -> bool:
+    """Whether a record is stored at ``redis_key``: ``EXISTS`` on Redis.
+
+    On a non-Redis backend (#759 M4) it is that backend's ``exists`` -- run
+    inside the caller's unit of work when one is passed, so two saves of one
+    key in one Postgres ``transaction()`` see each other and the second is
+    refused (the intra-pipeline shape below stays open on Redis only)."""
+    from ..backends.routing import non_redis_backend
+    from ..backends.types import RecordId, UnitOfWork
+    from ..batch import unit_of
+
+    backend = non_redis_backend(model_class)
+    if backend is None:
+        return bool(get_REDIS_DB().exists(redis_key))
+    rid = RecordId.from_key(model_class._meta.model_name, redis_key)
+    # The caller's transaction() -- or a popoto.batch()'s, which the save
+    # will join (#759 M5, #783 review) -- so a second save of the key in the
+    # same batch sees the first.
+    uow = (
+        None
+        if isinstance(pipeline, UnitOfWork) and pipeline.is_redis_pipeline
+        else unit_of(pipeline, backend)
+    )
+    if uow is not None:
+        from ..backends.postgres.ttl import live_sql
+
+        ts = backend._table(model_class._meta.spec)
+        live = live_sql(ts)  # M5: an expired record is no record
+        rows, _ = backend._run(
+            f'SELECT 1 FROM {ts.qualified} WHERE "_pk" = %s'
+            + (f" AND {live}" if live else ""),
+            [rid.canonical],
+            uow=uow,
+        )
+        return bool(rows)
+    (found,) = backend.exists(model_class._meta.spec, [rid])
+    return bool(found)
+
+
 class AppendOnlyMixin:
     """Model mixin enforcing write-once records and refusing deletes.
 
@@ -199,7 +238,7 @@ class AppendOnlyMixin:
         # Read POPOTO_REDIS_DB directly, never `pipeline`: an EXISTS queued on
         # a pipeline returns the Pipeline object, which is always truthy, and
         # would refuse every save including the first.
-        if get_REDIS_DB().exists(redis_key):
+        if _record_exists(type(self), redis_key, pipeline):
             raise AppendOnlyViolation(
                 f"{model_name} is append-only: a record already exists at "
                 f"{redis_key}. Append a new record instead of overwriting; "
@@ -319,6 +358,17 @@ class AppendOnlyMixin:
             for field_name, field in instance._meta.fields.items()
             if isinstance(field, ValidityField)
         ]
+        from ..backends.routing import non_redis_backend
+
+        backend = non_redis_backend(instance)
+        if backend is not None:
+            # #759 M4: on a non-Redis backend the record's interval, chain
+            # links and open-claim pointer are its own row (and the pointer
+            # table cascades with it), so step 1 already removed them; what
+            # step 3 sweeps -- a neighbour's link naming the erased record --
+            # is the neighbours' chain columns.
+            _clear_links_to(backend, type(instance), validity_field_names, member)
+            return existed
         for field_name in validity_field_names:
             keys = ValidityField.get_all_keys(instance, field_name)
             get_REDIS_DB().zrem(keys["valid_from"], member)
@@ -345,3 +395,31 @@ class AppendOnlyMixin:
                     get_REDIS_DB().delete(pointer_key)
 
         return existed
+
+
+def _clear_links_to(
+    backend: Any, model_class: Any, field_names: list[str], member: str
+) -> None:
+    """Null every ``<f>__supersedes`` / ``<f>__superseded_by`` column that
+    names ``member``: the value side of the chain hashes on Redis. Each row
+    it rewrites is a record write, so its record-key lock comes first."""
+    if not field_names:
+        return
+    ts = backend._table(model_class._meta.spec)
+    for field_name in field_names:
+        for suffix in ("__supersedes", "__superseded_by"):
+            col = f'"{field_name}{suffix}"'
+            rows, _ = backend._run(
+                f'SELECT "_pk" FROM {ts.qualified} WHERE {col} = %s', [member]
+            )
+            keys = [row[0] for row in rows]
+            if not keys:
+                continue
+            sql, params = backend._record_locked(
+                ts,
+                keys,
+                f"UPDATE {ts.qualified} SET {col} = NULL "
+                f'WHERE "_pk" = ANY(%s::text[]) AND {col} = %s',
+                [keys, member],
+            )
+            backend._run(sql, params, write=True)

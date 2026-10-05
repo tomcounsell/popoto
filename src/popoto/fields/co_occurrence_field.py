@@ -34,11 +34,52 @@ import json
 import logging
 from typing import Any, Optional, cast
 
+from ..backends.routing import non_redis_backend
 from ..redis_db import get_REDIS_DB, run_lua
 from .constants import Defaults
 from .field import Field
 
 logger = logging.getLogger("POPOTO.CoOccurrenceField")
+
+
+def _graph_backend(model: Any) -> Any:
+    """The model's backend when it is not Redis (#759 M4), else ``None``:
+    the edges then live in its edge table, and every method below hands the
+    same arguments to ``graph_update`` / ``graph_expand`` instead of running
+    the Lua. ``model`` is the class (or an instance) the caller passed."""
+    return non_redis_backend(model)
+
+
+def _rid(model: Any, pk: str) -> Any:
+    from ..backends.types import RecordId
+
+    model_cls: Any = model if isinstance(model, type) else type(model)
+    return RecordId.from_key(model_cls._meta.model_name, pk)
+
+
+def _spec(model: Any) -> Any:
+    model_cls: Any = model if isinstance(model, type) else type(model)
+    return model_cls._meta.spec
+
+
+def _name(field: Any) -> str:
+    """The field's attribute name on its model (set when the model class is
+    built)."""
+    return str(field.name)
+
+
+def _uow(pipeline: Any, backend: Any) -> Any:
+    """A Postgres unit of work passed as ``pipeline=`` carries the write, and
+    so does a ``popoto.batch()`` -- the write joins the batch's transaction
+    (#759 M5), which already holds the record locks of what the batch saved.
+    A plain Redis pipeline cannot, so the write runs at once (the M1 rule)."""
+    from ..backends.types import UnitOfWork
+    from ..batch import unit_of
+
+    if isinstance(pipeline, UnitOfWork) and pipeline.is_redis_pipeline:
+        return None
+    return unit_of(pipeline, backend)
+
 
 _UNSET = object()  # Sentinel for method params where None has meaning
 
@@ -287,6 +328,25 @@ class CoOccurrenceField(Field):
         except Exception:
             return None
 
+        backend = _graph_backend(model_class)
+        if backend is not None:
+            rows = backend.graph_expand(
+                _spec(model_class),
+                field_name,
+                [_rid(model_class, pk)],
+                depth=1,
+                decay_per_hop=1.0,
+                threshold=None,
+                fanout=None,
+                mode="edges",
+            )
+            if not rows:
+                return None
+            return {
+                "edges": {rid.canonical: score for rid, score in rows},
+                "max_edges": int(field.max_edges),
+            }
+
         raw = cast(
             "list[tuple[Any, float]]",
             get_REDIS_DB().zrange(
@@ -375,6 +435,19 @@ class CoOccurrenceField(Field):
             key=lambda pair: pair[1],
             reverse=True,
         )[: max(1, int(field.max_edges))]
+
+        backend = _graph_backend(model_class)
+        if backend is not None:
+            backend.graph_update(
+                _spec(model_class),
+                field_name,
+                "replace",
+                _rid(model_class, pk),
+                None,
+                None,
+                edges=dict(ranked),
+            )
+            return None
 
         edge_key = field.get_edge_key(model_class, pk)
         get_REDIS_DB().delete(edge_key)
@@ -490,6 +563,20 @@ class CoOccurrenceField(Field):
                 f"propagate()."
             )
 
+        backend = _graph_backend(model_class)
+        if backend is not None:
+            return float(
+                backend.graph_update(
+                    _spec(model_class),
+                    _name(self),
+                    "link",
+                    _rid(model_class, source_pk),
+                    _rid(model_class, target_pk),
+                    initial_weight,
+                    uow=_uow(pipeline, backend),
+                )
+            )
+
         source_key = self.get_edge_key(model_class, source_pk)
         result = run_lua(
             get_REDIS_DB(),
@@ -553,6 +640,25 @@ class CoOccurrenceField(Field):
         target_pk = str(target_pk)
 
         cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
+        backend = _graph_backend(model_class)
+        if backend is not None:
+            # No EventStreamMixin entry: its stream is a Redis structure,
+            # and Postgres pub/sub arrives in M5.
+            uow = _uow(pipeline, backend)
+            weight = backend.graph_update(
+                _spec(model_class),
+                _name(self),
+                "strengthen",
+                _rid(model_class, source_pk),
+                _rid(model_class, target_pk),
+                delta,
+                uow=uow,
+                cap=cap,
+            )
+            if pipeline and uow is None:
+                return None  # a Redis pipeline: the queued call's reply
+            return float(weight)
+
         source_key = self.get_edge_key(model_class, source_pk)
         db = pipeline if pipeline else get_REDIS_DB()
         new_weight = run_lua(
@@ -630,6 +736,19 @@ class CoOccurrenceField(Field):
         source_pk = str(source_pk)
         target_pk = str(target_pk)
 
+        backend = _graph_backend(model_class)
+        if backend is not None:
+            backend.graph_update(
+                _spec(model_class),
+                _name(self),
+                "unlink",
+                _rid(model_class, source_pk),
+                _rid(model_class, target_pk),
+                None,
+                uow=_uow(pipeline, backend),
+            )
+            return None
+
         source_key = self.get_edge_key(model_class, source_pk)
         db = pipeline if pipeline else get_REDIS_DB()
         db.zrem(source_key, target_pk)
@@ -664,6 +783,19 @@ class CoOccurrenceField(Field):
             raise ValueError(f"factor must be between 0 and 1 inclusive (got {factor})")
 
         pk = str(pk)
+        backend = _graph_backend(model_class)
+        if backend is not None:
+            return int(
+                backend.graph_update(
+                    _spec(model_class),
+                    _name(self),
+                    "weaken",
+                    _rid(model_class, pk),
+                    None,
+                    factor,
+                    uow=_uow(pipeline, backend),
+                )
+            )
         edge_key = self.get_edge_key(model_class, pk)
 
         if factor == 0:
@@ -698,6 +830,23 @@ class CoOccurrenceField(Field):
                 sorted by weight descending.
         """
         pk = str(pk)
+        backend = _graph_backend(model_class)
+        if backend is not None:
+            # graph_expand at depth 1: the stored weights, unclamped, as the
+            # scores (plan §1).
+            return [
+                (rid.canonical, score)
+                for rid, score in backend.graph_expand(
+                    _spec(model_class),
+                    _name(self),
+                    [_rid(model_class, pk)],
+                    depth=1,
+                    decay_per_hop=1.0,
+                    threshold=min_weight,
+                    fanout=limit,
+                    mode="linked",
+                )
+            ]
         edge_key = self.get_edge_key(model_class, pk)
 
         # ZREVRANGEBYSCORE: highest to lowest, with score filter
@@ -775,6 +924,22 @@ class CoOccurrenceField(Field):
 
         if depth == 0:
             return {pk: 1.0 for pk in seed_pks}
+
+        backend = _graph_backend(model_class)
+        if backend is not None:
+            return {
+                rid.canonical: score
+                for rid, score in backend.graph_expand(
+                    _spec(model_class),
+                    _name(self),
+                    [_rid(model_class, pk) for pk in seed_pks],
+                    depth=depth,
+                    decay_per_hop=decay_per_hop,
+                    threshold=threshold,
+                    fanout=self.max_edges,
+                    cap=Defaults.CO_OCCURRENCE_WEIGHT_CAP,
+                )
+            }
 
         key_prefix = self.get_edge_key_prefix(model_class)
 

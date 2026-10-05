@@ -1006,16 +1006,21 @@ class QueryBuilder:
         aggregate over each arm's domain -- then ``post_filter`` on the
         temperature-scaled scores and one ``load``, as the Redis path does
         after its ``ZREVRANGE``."""
-        from ..backends import BackendCapabilityError
         from .encoding import hydrate_decoded_row
 
         from ..backends import RankTerm
 
         terms = self._composite_terms(model_class, indexes)
         if co_occurrence_boost:
-            raise BackendCapabilityError(
-                "composite_score(co_occurrence_boost=) is not available on "
-                "Postgres yet: CoOccurrenceField arrives in #759 M4"
+            # The temp ZSET of the Redis path, as a caller-supplied arm with
+            # weight 1.0, after the indexes and before similarity_boost --
+            # its position in the ZUNIONSTORE weights (#759 M4).
+            terms.append(
+                RankTerm(
+                    "co_occurrence",
+                    1.0,
+                    scores={str(k): float(v) for k, v in co_occurrence_boost.items()},
+                )
             )
         if similarity_boost:
             # The temp ZSET of the Redis path, as a caller-supplied arm with

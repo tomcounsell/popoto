@@ -226,7 +226,9 @@ class DefaultMemory(NeverRecordMixin, AccessTrackerMixin, Model):
             # for eviction (see EVICTION_COUNTER_PREFIX). Inside the
             # enclosing try, so a counter failure never fails a save.
             counters.increment(
-                f"{EVICTION_COUNTER_PREFIX}:{self.agent_id}:evicted", excess
+                f"{EVICTION_COUNTER_PREFIX}:{self.agent_id}:evicted",
+                excess,
+                model=type(self),
             )
             own_key = self.db_key.redis_key
             for victim in field.members(self, "relevance", 0, excess - 1):

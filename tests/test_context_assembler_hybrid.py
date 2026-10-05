@@ -302,14 +302,6 @@ class TestBackwardsCompatibility:
         result = assembler.assemble(query_cues={"topic": "test"})
         assert result.records == []
 
-    @pytest.mark.redis_only(
-        reason=(
-            "HybridMemory declares a CoOccurrenceField, which Postgres refuses at first "
-            "use until #759 M4: the call raises BackendCapabilityError, which the "
-            "assembler logs and swallows, so a pass would not exercise Postgres; the "
-            "two-leg version is in tests/test_backend_parity_assembler.py"
-        )
-    )
     def test_forced_composite_with_hybrid_fields(self):
         """Callers who pass retrieval_mode='composite' must always use the
         composite path even if BM25 and EmbeddingField are present."""
@@ -382,14 +374,6 @@ class TestPullPathDispatch:
             # Should fall back gracefully — either via composite or empty result
             assert isinstance(result.records, list)
 
-    @pytest.mark.redis_only(
-        reason=(
-            "HybridMemory declares a CoOccurrenceField, which Postgres refuses at first "
-            "use until #759 M4: the call raises BackendCapabilityError, which the "
-            "assembler logs and swallows, so a pass would not exercise Postgres; the "
-            "two-leg version is in tests/test_backend_parity_assembler.py"
-        )
-    )
     def test_hybrid_fallback_when_bm25_raises(self):
         """When BM25.search raises, hybrid continues with vector-only signal
         (or falls back to composite if vector is also empty)."""

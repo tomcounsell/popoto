@@ -67,6 +67,13 @@ from src.popoto.recipes.reconciliation import (
 from src.popoto.privacy.never_record import scan_never_record
 from src.popoto.redis_db import get_REDIS_DB, scan_keys
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 #: The module object the imported functions actually close over.
 #:
 #: Resolved through ``__module__`` rather than written as a second import,
@@ -576,6 +583,13 @@ def test_the_shortlist_falls_back_to_a_bounded_index_scan_without_a_provider():
     assert len(candidates) <= recon_module.M5_SHORTLIST_CAP
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "reads the reconciler's vector cache with a raw Redis HGET; on Postgres the "
+        "cache is a popoto_embedding_cache row "
+        "(tests/postgres/test_postgres_journal.py::test_the_reconciler_caches_vectors_in_the_backend)"
+    )
+)
 def test_the_shortlist_ranks_by_similarity_and_caches_the_vector():
     provider = FakeProvider()
     judge = ScriptedJudge(always("different"))
@@ -651,6 +665,12 @@ def test_an_empty_class_selects_nothing_rather_than_raising():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "compares the entry's raw Redis hash; the twin compares the stored row "
+        "(tests/postgres/test_postgres_journal.py::test_reconcile_never_mutates_an_entry_row)"
+    )
+)
 def test_append_only_reconcile_never_mutates_an_entry():
     """Compared as a raw hash, so this cannot pass by reading the code."""
     judge = ScriptedJudge(always("same"))
@@ -677,6 +697,12 @@ def test_class_membership_is_not_a_field_on_the_entry():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "sweeps the Redis keys of the membership models; the twin sweeps their "
+        "tables (tests/postgres/test_postgres_journal.py::test_membership_rows_hold_no_claim_content)"
+    )
+)
 def test_membership_row_holds_no_claim_content():
     judge = ScriptedJudge(always("same"))
     secret_ish = "dana prefers mornings in Berlin"
@@ -702,6 +728,12 @@ def test_membership_row_holds_no_claim_content():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "checks the cache leg with a raw Redis HGET; the twin checks every leg on "
+        "Postgres (tests/postgres/test_postgres_journal.py::test_erase_entry_cascades_through_every_leg)"
+    )
+)
 def test_hard_delete_cascades_through_every_leg():
     provider = FakeProvider()
     judge = ScriptedJudge(always("same"))
@@ -990,6 +1022,13 @@ def test_command_allowlist_no_hsetnx_or_set_nx_in_the_source():
     assert "setnx" not in source.lower()
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "spies the Redis client's command stream; a Postgres-bound reconcile sends "
+        "Redis only its EventStreamMixin XADDs (a Redis structure until #759 M5), "
+        "so the allowlist is not exercised there"
+    )
+)
 def test_command_allowlist_no_such_command_reaches_the_client():
     judge = ScriptedJudge(always("same"))
     first = capture("dana prefers mornings", claim_type="preference", at=100.0)

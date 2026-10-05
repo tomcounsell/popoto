@@ -28,11 +28,22 @@ Usage -- trace a base tree and the working tree, then compare::
         python scripts/trace_redis_wire.py > head.trace
     cmp base.trace head.trace
 
+``--with-recipes`` appends the recipe-layer scenarios (#759 M4):
+``idle_seconds``, a sorted field's partition reads, counters and
+``DefaultMemory``'s eviction, ``MemoryLifecycle``'s tombstones and the negative
+prior, ``NeverRecordMixin``, ``AppendOnlyMixin`` and the question queue.
+
+``--with-graph`` appends the ``CoOccurrenceField`` scenarios (#759 M4): every
+graph write and read, a record delete's edge cleanup, export/import, the
+``composite_score`` boost and ``graph_traversal.traverse``.
+
 ``--with-assembler`` appends the ``ContextAssembler`` scenarios (#759 M2c):
 ``assemble()`` in every mode with scopes, tags, budgets and the gate,
 ``assess()``, the score proxy and ``on_context_used()``. They are off by
 default, so the default trace (and the hash earlier milestones recorded) is
-unchanged.
+unchanged. ``--with-batch`` likewise appends the #759 M5 scenarios: TTL saves
+(``Meta.ttl``, ``_ttl``, ``_expire_at``) inside and outside ``popoto.batch()``,
+and batched deletes, increments, resets and ``transaction=False``.
 
 The script refuses to run unless ``REDIS_URL`` names a non-zero database
 (CLAUDE.md, #577), and it clears only the keys its own models own.
@@ -854,6 +865,73 @@ def m2b_embeddings():
     ]
 
 
+# -- TTL and popoto.batch() (#759 M5), behind --with-batch -----------------------
+#
+# M5 makes popoto.batch() a pipeline subclass a Postgres-bound model's writes
+# can join, and routes save/delete/atomic_increment/touch's pipeline through a
+# check for it. These scenarios pin that Redis-bound TTL saves and batched
+# saves, deletes, increments, resets and transaction=False batches send what
+# they sent. Results never print the batch object itself (its class name is
+# new); behind the flag, so the default trace and its hash are unchanged.
+
+WITH_BATCH = "--with-batch" in sys.argv
+
+if WITH_BATCH:
+
+    @scenario
+    def m5_batch_ttl_saves():
+        pipe = popoto.batch()
+        a = TrTtl(name="b1", email="b1@x").save(pipeline=pipe)
+        rec = TrTtl(name="b2", email="b2@x")
+        rec._ttl = 30
+        b = rec.save(pipeline=pipe)
+        rec3 = TrTtl(name="b3", email="b3@x")
+        rec3._ttl = None
+        rec3._expire_at = datetime(2100, 1, 1, 12, 0, 30, 500000)
+        c = rec3.save(pipeline=pipe)
+        out = pipe.execute()
+        return [a is pipe, b is pipe, c is pipe, out] + [
+            get_REDIS_DB().ttl(f"TrTtl:{n}") >= 0 for n in ("b1", "b2", "b3")
+        ]
+
+    @scenario
+    def m5_expire_at_internal():
+        rec = TrTtl(name="b4", email="b4@x")
+        rec._ttl = None
+        rec._expire_at = datetime(2100, 1, 2)
+        return [rec.save(), get_REDIS_DB().ttl("TrTtl:b4") >= 0]
+
+    @scenario
+    def m5_batch_delete_increment():
+        user = TrUser(name="inc", org="beta", rank=40, hits=1)
+        user.save()
+        TrUser(name="del", org="beta", rank=41).save()
+        pipe = popoto.batch()
+        r1 = user.atomic_increment("hits", 3, pipeline=pipe)
+        r2 = TrUser.query.get(name="del", org="beta").delete(pipeline=pipe)
+        out = pipe.execute()
+        return [r1 is pipe, r2 is pipe, out, TrUser.query.get(name="inc", org="beta")]
+
+    @scenario
+    def m5_batch_reset_and_reuse():
+        pipe = popoto.batch()
+        TrUser(name="rst", org="acme", rank=31).save(pipeline=pipe)
+        pipe.reset()
+        TrUser(name="rs2", org="acme", rank=32).save(pipeline=pipe)
+        out = pipe.execute()
+        return [
+            out,
+            TrUser.query.get(name="rst", org="acme"),
+            TrUser.query.get(name="rs2", org="acme") is not None,
+        ]
+
+    @scenario
+    def m5_batch_transaction_false():
+        pipe = popoto.batch(transaction=False)
+        TrUser(name="ntx", org="beta", rank=33).save(pipeline=pipe)
+        return [pipe.transaction, pipe.execute()]
+
+
 # -- ContextAssembler (#759 M2c), behind --with-assembler ------------------------
 #
 # M2c adds a backend check ahead of the assembler's own Redis code (the scope
@@ -1020,6 +1098,317 @@ if WITH_ASSEMBLER:
                 for n in ("m1", "m2", "m3", "m5")
             ],
         ]
+
+
+# -- CoOccurrenceField and the graph arm (#759 M4) ----------------------------
+# M4 routes CoOccurrenceField to a non-Redis backend from the field methods
+# and turns composite_score(co_occurrence_boost=) into a Postgres arm. These
+# scenarios pin that a Redis-bound model's graph wire is unchanged: every
+# write and read, a record delete's edge cleanup, export/import, the
+# composite boost and graph_traversal.traverse. Off by default, like the
+# assembler set.
+
+WITH_GRAPH = "--with-graph" in sys.argv
+
+if WITH_GRAPH:
+    from popoto import ConfidenceField as _GConfidence  # noqa: E402
+    from popoto.fields.co_occurrence_field import CoOccurrenceField  # noqa: E402
+    from popoto.recipes import graph_traversal  # noqa: E402
+
+    class TrNode(popoto.Model):
+        name = popoto.KeyField()
+        certainty = _GConfidence()
+        links = CoOccurrenceField(max_edges=3)
+
+    class TrArrow(popoto.Model):
+        name = popoto.KeyField()
+        links = CoOccurrenceField(symmetric=False, max_edges=50)
+
+    MODELS = MODELS + (TrNode, TrArrow)
+
+    def _links():
+        return TrNode._meta.fields["links"]
+
+    @scenario
+    def m4_link_prune_and_replies():
+        f = _links()
+        out = [
+            f.link(TrNode, "s", t, initial_weight=w)
+            for t, w in (
+                ("t", 0.7),
+                ("u", -2.5),
+                ("t", 0.1),
+                ("v", 0.9),
+                ("w", -1e300),
+                ("x", 0.95),
+            )
+        ]
+        try:
+            f.link(TrNode, "s", "y", initial_weight=float("nan"))
+        except Exception as exc:  # noqa: BLE001 - recorded
+            out.append(type(exc).__name__)
+        g = TrArrow._meta.fields["links"]
+        out.append(g.link(TrArrow, "a", "b", initial_weight=0.5))
+        return out
+
+    @scenario
+    def m4_strengthen_unlink_weaken():
+        f = _links()
+        out = [
+            f.strengthen(TrNode, "s", "t", delta=0.1234567890123456),
+            f.strengthen(TrNode, "p", "q", delta=2.0),
+        ]
+        pipe = get_REDIS_DB().pipeline()
+        out.append(f.strengthen(TrNode, "s", "v", delta=0.01, pipeline=pipe))
+        f.unlink(TrNode, "p", "q", pipeline=pipe)
+        out.append(pipe.execute())
+        f.unlink(TrNode, "s", "x")
+        out.append(f.weaken_all(TrNode, "s", factor=0.5))
+        out.append(f.weaken_all(TrNode, "t", factor=0))
+        out.append(f.weaken_all(TrNode, "zz"))
+        return out
+
+    @scenario
+    def m4_get_linked_and_propagate():
+        f = _links()
+        for a, b, w in (
+            ("a", "b", 1.0),
+            ("b", "c", 0.6),
+            ("c", "d", 0.8),
+            ("a", "c", 0.2),
+        ):
+            f.link(TrNode, a, b, initial_weight=w)
+        return [
+            f.get_linked(TrNode, "s"),
+            f.get_linked(TrNode, "a", min_weight="(0.2", limit=1),
+            f.get_linked(TrNode, "b", min_weight="-inf", limit=-1),
+            sorted(f.propagate(TrNode, ["a"], depth=3).items()),
+            sorted(
+                f.propagate(
+                    TrNode, ["a", "d"], depth=2, decay_per_hop=0.3, threshold=0.0
+                ).items()
+            ),
+            f.propagate(TrNode, ["a"], depth=0),
+        ]
+
+    @scenario
+    def m4_delete_export_import_and_composite():
+        f = _links()
+        n1 = TrNode.create(name="n1")
+        n2 = TrNode.create(name="n2")
+        k1, k2 = n1.db_key.redis_key, n2.db_key.redis_key
+        f.link(TrNode, k1, k2, initial_weight=0.5)
+        f.link(TrNode, "outside", k1, initial_weight=0.4)
+        exported = CoOccurrenceField.export_state(n2, "links")
+        CoOccurrenceField.import_state(
+            n2, "links", {"edges": {"e1": 0.3, "e2": 2.0}, "max_edges": 3}
+        )
+        boost = f.propagate(TrNode, [k2], depth=2)
+        ranked = TrNode.query.composite_score(
+            {"certainty": 1.0}, co_occurrence_boost={k1: 0.9, "nope": 5.0}, limit=3
+        )
+        n1.delete()
+        return [
+            exported,
+            boost,
+            [r.name for r in ranked],
+            f.get_linked(TrNode, "outside"),
+            f.get_linked(TrNode, k2),
+        ]
+
+    @scenario
+    def m4_graph_traversal():
+        return graph_traversal.traverse(
+            TrNode, ["a"], co_occurrence_field=_links(), depth=2, decay_per_hop=0.5
+        )
+
+
+# -- the recipes, mixins and the question queue (#759 M4) ----------------------
+# M4 routes idle_seconds, a sorted field's partition reads, counters, the
+# tombstone stores, NeverRecordMixin's audit log, AppendOnlyMixin's guard and
+# the question queue to a non-Redis backend. These scenarios pin that a
+# Redis-bound model's wire through each of them is unchanged. Off by default.
+
+WITH_RECIPES = "--with-recipes" in sys.argv
+
+if WITH_RECIPES:
+    from popoto import counters  # noqa: E402
+    from popoto.fields.append_only import AppendOnlyMixin  # noqa: E402
+    from popoto.fields.tombstone_prior import TombstonePriorStore  # noqa: E402
+    from popoto.privacy.never_record import NeverRecordMixin  # noqa: E402
+    from popoto.recipes import question_queue as _qq  # noqa: E402
+    from popoto.recipes.default_memory import DefaultMemory  # noqa: E402
+    from popoto.recipes.memory_lifecycle import MemoryLifecycle  # noqa: E402
+
+    class TrTiered(popoto.AccessTrackerMixin, popoto.Model):
+        key = popoto.AutoKeyField()
+        tier = popoto.KeyField(default="episodic")
+        relevance = popoto.DecayingSortedField(decay_rate=0.5)
+        confidence = popoto.ConfidenceField()
+
+    class TrPrivate(NeverRecordMixin, popoto.Model):
+        name = popoto.KeyField()
+        content = popoto.StringField(default="")
+
+    class TrLedger(AppendOnlyMixin, popoto.Model):
+        entry = popoto.KeyField()
+        amount = popoto.FloatField(default=0.0)
+
+    class TrQFact(popoto.Model):
+        name = popoto.UniqueKeyField()
+        certainty = popoto.ConfidenceField()
+
+    MODELS = MODELS + (
+        TrTiered,
+        TrPrivate,
+        TrLedger,
+        TrQFact,
+        DefaultMemory,
+        _qq.QuestionCandidate,
+    )
+
+    @scenario
+    def m4_idle_and_sorted_reads():
+        t = TrTiered()
+        t.save()
+        field = TrTiered._meta.fields["relevance"]
+        user = TrUser(name="ida", org="acme", rank=7, pscore=1.5)
+        user.save()
+        TrUser(name="ivy", org="acme", rank=8, pscore=1.5).save()
+        pfield = TrUser._meta.fields["pscore"]
+        return [
+            TrTiered.idle_seconds(redis_key=t.db_key.redis_key),
+            TrTiered.idle_seconds("TrTiered:nobody:episodic"),
+            field.count(t, "relevance"),
+            field.members(t, "relevance", 0, -1),
+            field.score(t, "relevance"),
+            pfield.count(user, "pscore"),
+            pfield.members(user, "pscore", -2, -1, reverse=True),
+            pfield.score(user, "pscore"),
+            pfield.score(user, "pscore", partitioned=False),
+        ]
+
+    @scenario
+    def m4_counters_and_eviction():
+        import os as _os
+
+        _os.environ["POPOTO_DEFAULT_MEMORY_MAX_RECORDS"] = "2"
+        try:
+            for i in range(4):
+                DefaultMemory(agent_id="TrQFact-ev", content=f"memory {i}").save()
+        finally:
+            del _os.environ["POPOTO_DEFAULT_MEMORY_MAX_RECORDS"]
+        return [
+            counters.increment("$trace:TrQFact:c", 2),
+            counters.read("$trace:TrQFact:c"),
+            DefaultMemory.query.filter(agent_id="TrQFact-ev").count(),
+        ]
+
+    @scenario
+    def m4_lifecycle_tombstones():
+        lifecycle = MemoryLifecycle(model_class=TrTiered, importance_field="relevance")
+        lifecycle.FORGET_IMPORTANCE_FLOOR = 2.0
+        lifecycle.FORGET_IDLE_SECONDS = -1.0
+        lifecycle.PROMOTION_ACCESS_COUNT = 10**6
+        records = []
+        for _ in range(2):
+            r = TrTiered()
+            r.save()
+            records.append(r)
+        summary = lifecycle.tick()
+        listed = lifecycle.list_tombstones()
+        restored = lifecycle.restore(listed[0]) if listed else None
+        prior = TombstonePriorStore(TrTiered)
+        prior.record_burial("some content", 5.0)
+        prior.note_penalty(1.0, 0.5)
+        return [
+            {k: v for k, v in summary.items() if k != "duration_ms"},
+            [t.redis_key for t in listed],
+            None if restored is None else restored.db_key.redis_key,
+            lifecycle.tombstone_count(),
+            prior.burial_count("some content"),
+            prior.stats(),
+            prior.count(),
+            lifecycle.purge_all_tombstones(),
+            prior.purge_all(),
+        ]
+
+    @scenario
+    def m4_never_record_and_append_only():
+        secret = "key sk-ant-api03-" + "Q" * 40
+        blocked = TrPrivate(name="p", content=secret).save()
+        clean = TrPrivate(name="q", content="fine").save()
+        e = TrLedger(entry="e1", amount=1.0)
+        e.save()
+        try:
+            TrLedger(entry="e1", amount=2.0).save()
+            refused = None
+        except Exception as exc:  # noqa: BLE001 - recorded
+            refused = type(exc).__name__
+        return [
+            blocked,
+            clean,
+            TrPrivate.never_record_counts(),
+            [sorted(entry) for entry in TrPrivate.never_record_log()],
+            refused,
+            TrLedger.hard_delete(e),
+        ]
+
+    @scenario
+    def m4_question_queue():
+        keys = [TrQFact.create(name=n).db_key.redis_key for n in ("x", "y")]
+        out = []
+        for i, k in enumerate(keys):
+            c = _qq.propose(
+                agent_id="TrQFact-tq",
+                question_text=f"Is fact {i} about deploys still true?",
+                kind="confirmation",
+                source_module="trace",
+                target_keys=[k],
+                options=[
+                    {"label": "yes", "acted": [k]},
+                    {"label": "no", "contradicted": [k]},
+                ],
+                ambiguity_signal="gate_refusal",
+                turn=0,
+            )
+            out.append(c.candidate_id)
+        out.append(_qq.note_use("TrQFact-tq", keys, 1))
+        q = _qq.next_question("TrQFact-tq", turn=1, query_cues="deploys")
+        out.append(None if q is None else q.candidate_id)
+        out.append(_qq.next_question("TrQFact-tq", turn=2))
+        if q is not None:
+            res = _qq.record_answer(q, "yes", turn=3)
+            out.append((res.applied, res.reason))
+        out.append(_qq.expire_stale("TrQFact-tq", 100))
+        out.append(_qq.prune("TrQFact-tq", 10_000))
+        return out
+
+    @scenario
+    def m4_provenance_journal():
+        from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+        from popoto.recipes.reconciliation import drop_cached_embedding
+
+        first = ProvenanceJournal.append(
+            agent_id="TrQFact-j", statement="the launch slipped", at=1_700_000_000.0
+        ).entry
+        second = ProvenanceJournal.supersede(
+            first, agent_id="TrQFact-j", statement="no, it did not", at=1_700_000_050.0
+        )
+        out = [second.target_closed, second.close_index]
+        pipe = get_REDIS_DB().pipeline()
+        third = ProvenanceJournal.confirm(
+            second.entry, agent_id="TrQFact-j", pipeline=pipe
+        )
+        out.append((third.target_closed, third.close_index))
+        out.append(len(pipe.execute()))
+        out.append([e.statement for e in ProvenanceJournal.annotations_for(first)])
+        out.append(JournalEntry.hard_delete(second.entry))
+        drop_cached_embedding(first.db_key.redis_key)
+        out.append(JournalEntry.hard_delete(first))
+        for entry in JournalEntry.query.filter(agent_id="TrQFact-j"):
+            JournalEntry.hard_delete(entry)
+        return out
 
 
 def main() -> None:

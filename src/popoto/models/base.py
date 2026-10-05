@@ -39,7 +39,7 @@ Example:
 
 import logging
 from asyncio import to_thread
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union, cast
 
 import redis
 
@@ -112,13 +112,33 @@ async def _off_loop(model_class: Any, fn: Any, /, *args: Any, **kwargs: Any) -> 
     return await run_async(backend, fn, *args, **kwargs)
 
 
-def _as_uow(pipeline: Any) -> "Optional[UnitOfWork]":
+def _as_uow(pipeline: Any, backend: Any = None) -> "Optional[UnitOfWork]":
     """What a ``pipeline=`` kwarg becomes at the backend seam: a unit of work
     passes through as it is (a Postgres ``transaction()``, #759 M1b), a Redis
-    pipeline is wrapped, and no pipeline is ``None``."""
+    pipeline is wrapped, and no pipeline is ``None``.
+
+    ``backend`` (#759 M5): a ``popoto.batch()`` handed to a non-Redis
+    backend's write becomes the batch's Postgres unit of work; handed to a
+    Redis write while it holds one, it is refused before anything queues
+    (:func:`popoto.batch.join_unit`). Redis writes are otherwise unchanged."""
     if isinstance(pipeline, UnitOfWork):
         return pipeline
+    if backend is not None:
+        from ..batch import join_unit
+
+        joined = join_unit(pipeline, backend)
+        if joined is not None:
+            return joined
     return UnitOfWork(pipeline) if pipeline else None
+
+
+def _joined_batch(pipeline: Any, uow: Any) -> bool:
+    """Whether ``uow`` is the Postgres unit a ``popoto.batch()`` ``pipeline``
+    joined (#759 M5): the write ran in the batch's transaction, and the
+    caller gets the batch back, as a queued Redis write returns it."""
+    from ..batch import Batch
+
+    return isinstance(pipeline, Batch) and uow is not None and uow.pipeline is None
 
 
 #: Remove one orphan's index memberships, only if its hash is still gone.
@@ -1650,10 +1670,15 @@ class Model(metaclass=ModelBase):
         # above the seam: the gates before it, and the write-filter tag and
         # event-stream XADD after it, which the moved body used to issue last
         # on each path -- so they still run at exactly that point.
-        queued = isinstance(pipeline, redis.client.Pipeline)
-        uow = _as_uow(pipeline)
+        backend = get_backend(type(self))
+        uow = _as_uow(pipeline, backend)
+        # A popoto.batch() a Postgres model joined is that backend's unit of
+        # work (#759 M5), not a queue: the post-save effects below run as
+        # they do for a transaction(), and the batch is what save returns.
+        joined = _joined_batch(pipeline, uow)
+        queued = isinstance(pipeline, redis.client.Pipeline) and not joined
         previous_key = self._redis_key
-        outcome = get_backend(type(self)).save(
+        outcome = backend.save(
             self,
             fields=update_fields,
             previous_id=(
@@ -1665,14 +1690,23 @@ class Model(metaclass=ModelBase):
             ignore_errors=ignore_errors,
             **kwargs,
         )
-        result = outcome.result
+        result = pipeline if joined else outcome.result
         mutation_kwargs = (
             {"update_fields": update_fields} if update_fields is not None else {}
         )
+        # Every Redis side effect of the save below runs at the same point
+        # on each path: queued on a Redis pipeline (one MULTI/EXEC with the
+        # write); registered on a Postgres unit of work's after_commit hook,
+        # so it runs once that transaction commits and never for a rolled
+        # back write (#759 M4b B2); otherwise immediately, which is after the
+        # save's own commit.
+        after_commit = getattr(uow, "after_commit", None)
         # WriteFilterMixin: tag priority after successful save
         if isinstance(self, WriteFilterMixin):
             if queued:
                 self._tag_priority(pipeline=result)
+            elif after_commit is not None:
+                after_commit(self._tag_priority)
             else:
                 self._tag_priority()
         # EventStreamMixin: log mutation after successful save
@@ -1680,6 +1714,8 @@ class Model(metaclass=ModelBase):
             _op = "create" if _is_create else "update"
             if queued:
                 self._xadd_mutation(_op, pipeline=result, **mutation_kwargs)
+            elif after_commit is not None:
+                self._defer_xadd_mutation(_op, after_commit, **mutation_kwargs)
             else:
                 self._xadd_mutation(_op, **mutation_kwargs)
         return result
@@ -1926,7 +1962,6 @@ class Model(metaclass=ModelBase):
                 exempt every record from any idleness-based policy, so the
                 caller decides how to handle it.
         """
-        _require_redis(cls, "idle_seconds", "OBJECT IDLETIME; Postgres: M4")
         key: Optional[str] = redis_key or None
         if key is None:
             if isinstance(db_key, str):
@@ -1934,6 +1969,19 @@ class Model(metaclass=ModelBase):
             else:
                 resolved: DB_key = db_key if db_key else cls(**kwargs).db_key
                 key = resolved.redis_key
+        backend = get_backend(cls)
+        if backend.name != "redis":
+            # #759 M4: whole seconds since the row's last write or confirmed
+            # read (docs/features/postgres-backend.md); None with no row.
+            return cast(
+                Optional[float],
+                backend.field_call(
+                    cls._meta.spec,
+                    "_idle",
+                    "seconds",
+                    RecordId.from_key(cls._meta.model_name, key),
+                ),
+            )
         # The subcommand string goes on the wire verbatim, so its case is
         # load-bearing, not cosmetic: the caller this method was extracted
         # from (recipes/memory_lifecycle.py) sends lowercase "idletime", and
@@ -2072,8 +2120,9 @@ class Model(metaclass=ModelBase):
 
         # Storage moved to RedisBackend.delete (#759 M1a): existence check,
         # on_delete hooks, DEL/SREM, index and mixin-key cleanup, one pipeline.
-        uow = _as_uow(pipeline)
-        existed = get_backend(type(self)).delete(
+        backend = get_backend(type(self))
+        uow = _as_uow(pipeline, backend)
+        existed = backend.delete(
             self._meta.spec,
             [RecordId.from_key(self._meta.model_name, delete_redis_key)],
             uow=uow,
@@ -2081,6 +2130,8 @@ class Model(metaclass=ModelBase):
             **kwargs,
         )
         if uow is not None:
+            if _joined_batch(pipeline, uow):
+                return pipeline  # a popoto.batch() a Postgres model joined
             # A Postgres unit of work has no pipeline: hand back the unit.
             return uow.pipeline if uow.pipeline is not None else uow
         return bool(existed)
@@ -2165,8 +2216,9 @@ class Model(metaclass=ModelBase):
 
         # Storage moved to RedisBackend.increment (#759 M1a): the inline Lua,
         # ZINCRBY for a sorted field, and this instance's in-memory value.
-        uow = _as_uow(pipeline) if pipeline is not None else None
-        return get_backend(type(self)).increment(
+        backend = get_backend(type(self))
+        uow = _as_uow(pipeline, backend) if pipeline is not None else None
+        return backend.increment(
             self._meta.spec,
             RecordId.from_key(self._meta.model_name, redis_key),
             field_name,
@@ -2227,7 +2279,7 @@ class Model(metaclass=ModelBase):
                 RecordId.from_key(self._meta.model_name, redis_key),
                 field_name,
                 at=now,
-                uow=_as_uow(pipeline),
+                uow=_as_uow(pipeline, backend),
             )
             setattr(self, field_name, now)
             if self._saved_field_values is not None:
@@ -3750,6 +3802,10 @@ class Model(metaclass=ModelBase):
             k.decode("utf-8") if isinstance(k, bytes) else str(k) for k in redis_keys
         ]
         if not keys:
+            return 0
+        if get_backend(cls).name != "redis":
+            # #759 M4: a non-Redis backend's indexes are transactional with
+            # the row, so a vanished record leaves no membership behind.
             return 0
         meta = cls._meta  # type: ignore[attr-defined]
         pipe = get_REDIS_DB().pipeline()

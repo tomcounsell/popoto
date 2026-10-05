@@ -205,8 +205,9 @@ class Backend(Protocol):
         **options: Any,
     ) -> SaveOutcome:
         """Persist ``obj``; ``fields`` is ``update_fields``. ``expiry=None``
-        means the instance's own TTL settings (``Meta.ttl``, ``save(ttl=)``).
-        Redis options: ``ignore_errors`` and the caller's hook ``**kwargs``."""
+        means the instance's own TTL settings (``Meta.ttl``, ``_ttl``,
+        ``_expire_at``). Redis options: ``ignore_errors`` and the caller's hook ``**kwargs``.
+        """
         ...
 
     def load(
@@ -497,8 +498,11 @@ SEARCH_FIELD_KINDS: frozenset[str] = frozenset(
     }
 )
 STATIC_FIELD_KINDS["postgres"] = (
-    STATIC_FIELD_KINDS["postgres"] or frozenset()
-) | SEARCH_FIELD_KINDS
+    (STATIC_FIELD_KINDS["postgres"] or frozenset())
+    | SEARCH_FIELD_KINDS
+    # M4: the edge table (popoto.backends.postgres.graph).
+    | frozenset({"CoOccurrenceField"})
+)
 #: Popoto mixins a Postgres model may not declare yet, with the milestone that
 #: brings each. ``PredictionLedgerMixin`` keeps its ledger in Redis structures
 #: (``RESOLVE_PREDICTION_LUA``); on a Postgres model ``record_prediction`` and
@@ -584,6 +588,10 @@ def _field_spec(name: str, field: Any) -> FieldSpec:
             options[attr] = value
     if getattr(field, "evidence_cap", None) is not None:
         options["evidence_cap"] = field.evidence_cap
+    if base.__name__ == "CoOccurrenceField":
+        # M4: what the edge writes and the delete cleanup need (.postgres.graph).
+        options["symmetric"] = bool(getattr(field, "symmetric", True))
+        options["max_edges"] = int(getattr(field, "max_edges", 500))
     if getattr(field, "_capped", False):
         # ListField(max_length=N): Redis keeps it in its own list key; on
         # Postgres it is a jsonb column with type-tagged elements.
@@ -678,8 +686,8 @@ def validate_spec(spec: ModelSpec, backend_name: str) -> None:
                 f"{mixin} is not supported yet (it arrives in "
                 f"{_POSTGRES_REFUSED_MIXINS[mixin]})"
             )
-    if spec.ttl is not None:
-        problems.append("Meta.ttl (record expiry arrives in M5)")
+    # Meta.ttl is supported since M5: an ``_expires_at`` column, a read
+    # filter and an automatic reaper (popoto.backends.postgres.ttl).
     if problems:
         raise BackendCapabilityError(
             f"{spec.name} cannot use the {backend_name!r} backend: "

@@ -95,6 +95,15 @@ from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
 from ..types import BackendCapabilityError, ModelSpec, RecordId, UnitOfWork
 from .schema import Column, TableSpec, quote_ident
+from .ttl import expired_pks_sql, live_sql
+
+
+def _and_live(ts: TableSpec, alias: str = "") -> str:
+    """`` AND <the TTL read filter>`` on a ``Meta.ttl`` model (M5), else
+    ``""``: an expired record is absent from every validity read."""
+    live = live_sql(ts, alias)
+    return f" AND {live}" if live else ""
+
 
 __all__ = [
     "NOT_HANDLED",
@@ -229,7 +238,7 @@ def ensure_validity_tables(conn: Any, ts: TableSpec, spec: ModelSpec) -> None:
     holds the model table's locks. ``CREATE … IF NOT EXISTS`` is idempotent,
     so a process that finds the table does nothing."""
     from . import _schema_auto
-    from .schema import _bounded
+    from .schema import _bounded, table_lock_key
 
     for field in validity_field_names(spec):
         qualified = pointer_table(ts, field)
@@ -249,7 +258,7 @@ def ensure_validity_tables(conn: Any, ts: TableSpec, spec: ModelSpec) -> None:
                 )
             cur.execute(
                 "SELECT pg_advisory_xact_lock(hashtext(%s))",
-                (f"popoto:ddl:{ts.schema}.{ts.table}",),
+                (table_lock_key(ts.schema, ts.table),),
             )
             cur.execute(
                 f"CREATE TABLE IF NOT EXISTS {qualified} ("
@@ -345,7 +354,13 @@ def save_parts(
     if not fields:
         return cols, overrides, guards
     now = time.time()
+    from ...fields.validity_field import ValidityField
+
     for name in fields:
+        # Plan D9, as ValidityField.on_save warns on Redis: since M5 a
+        # Meta.ttl model stores here too, and an expired record drops out of
+        # the chain walk while its neighbours' links still name it.
+        ValidityField.warn_if_ttl(obj, name)
         declared = getattr(obj, name, None)
         valid_from = now
         asserted = False
@@ -547,7 +562,8 @@ class PostgresValidityOps:
                     ts,
                     keys,
                     f'SELECT "_pk", {vf}, {ia}, {ig}, {sup}, {supby} '
-                    f'FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[]) '
+                    f'FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])'
+                    f"{_and_live(ts)} "
                     'ORDER BY "_pk" COLLATE "C" FOR UPDATE',
                     [keys],
                 )
@@ -714,29 +730,32 @@ class PostgresValidityOps:
         supby = _col(field, SUPERSEDED_BY, "s")
         anchor_vf = _col(field, VALID_FROM)
         t = ts.qualified
+        # M5: an expired record is not on the chain -- the walk stops at it
+        # as at a hard delete.
+        live_n = _and_live(ts, "n")
         sql = (
             "WITH RECURSIVE "
             f'anchor AS (SELECT "_pk" AS pk FROM {t} WHERE "_pk" = %s '
-            f"AND {anchor_vf} IS NOT NULL), "
+            f"AND {anchor_vf} IS NOT NULL{_and_live(ts)}), "
             "older(pk, depth, path) AS ("
             f'SELECT n."_pk", 1, ARRAY[a.pk, n."_pk"] FROM anchor a '
             f'JOIN {t} s ON s."_pk" = a.pk JOIN {t} n ON n."_pk" = {sup} '
-            f'WHERE {vf} IS NOT NULL AND n."_pk" <> a.pk '
+            f'WHERE {vf} IS NOT NULL AND n."_pk" <> a.pk{live_n} '
             f'UNION ALL SELECT n."_pk", o.depth + 1, o.path || n."_pk" '
             f'FROM older o JOIN {t} s ON s."_pk" = o.pk '
             f'JOIN {t} n ON n."_pk" = {sup} '
-            f'WHERE {vf} IS NOT NULL AND n."_pk" <> ALL(o.path)), '
+            f'WHERE {vf} IS NOT NULL AND n."_pk" <> ALL(o.path){live_n}), '
             "seen AS (SELECT a.pk AS pk FROM anchor a UNION ALL "
             "SELECT pk FROM older), "
             "newer(pk, depth, path) AS ("
             f'SELECT n."_pk", 1, '
             '(SELECT array_agg(pk) FROM seen) || n."_pk" FROM anchor a '
             f'JOIN {t} s ON s."_pk" = a.pk JOIN {t} n ON n."_pk" = {supby} '
-            f'WHERE {vf} IS NOT NULL AND n."_pk" <> ALL(SELECT pk FROM seen) '
+            f'WHERE {vf} IS NOT NULL AND n."_pk" <> ALL(SELECT pk FROM seen){live_n} '
             f'UNION ALL SELECT n."_pk", w.depth + 1, w.path || n."_pk" '
             f'FROM newer w JOIN {t} s ON s."_pk" = w.pk '
             f'JOIN {t} n ON n."_pk" = {supby} '
-            f'WHERE {vf} IS NOT NULL AND n."_pk" <> ALL(w.path)) '
+            f'WHERE {vf} IS NOT NULL AND n."_pk" <> ALL(w.path){live_n}) '
             "SELECT pk, -depth FROM older UNION ALL SELECT pk, 0 FROM anchor "
             "UNION ALL SELECT pk, depth FROM newer ORDER BY 2"
         )
@@ -786,7 +805,7 @@ class PostgresValidityOps:
         ts = self._table(spec)
         cols = ", ".join(_col(field, s) for s, _t in VALIDITY_SUFFIXES)
         rows, _ = self._run(
-            f'SELECT {cols} FROM {ts.qualified} WHERE "_pk" = %s',
+            f'SELECT {cols} FROM {ts.qualified} WHERE "_pk" = %s{_and_live(ts)}',
             [id.canonical],
             uow=uow,
         )
@@ -856,7 +875,9 @@ class PostgresValidityOps:
         else:
             raise ValueError(f"select must be 'valid' or 'excluded', got {select!r}")
         rows, _ = self._run(
-            f'SELECT "_pk" FROM {ts.qualified} WHERE {clause}', [], uow=uow
+            f'SELECT "_pk" FROM {ts.qualified} WHERE {clause}{_and_live(ts)}',
+            [],
+            uow=uow,
         )
         return {row[0] for row in rows}
 
@@ -870,9 +891,11 @@ class PostgresValidityOps:
     ) -> list[str]:
         """The identity digests whose open-claim pointer names ``id``."""
         ts = self._table(spec)
+        expired = expired_pks_sql(ts)
         rows, _ = self._run(
             f"SELECT digest FROM {pointer_table(ts, field)} WHERE member = %s "
-            'ORDER BY digest COLLATE "C"',
+            + (f"AND member NOT IN {expired} " if expired else "")
+            + 'ORDER BY digest COLLATE "C"',
             [id.canonical],
             uow=uow,
         )
@@ -886,8 +909,19 @@ class PostgresValidityOps:
         *,
         uow: Optional[UnitOfWork] = None,
     ) -> Optional[str]:
-        """The record ``digest``'s open-claim pointer names, or ``None``."""
-        return self._pointer_get(self._table(spec), field, digest, uow=uow)
+        """The record ``digest``'s open-claim pointer names, or ``None`` --
+        also when it names a record that has expired (M5)."""
+        ts = self._table(spec)
+        member = self._pointer_get(ts, field, digest, uow=uow)
+        if member is not None and ts.ttl:
+            live, _ = self._run(
+                f'SELECT 1 FROM {ts.qualified} WHERE "_pk" = %s{_and_live(ts)}',
+                [member],
+                uow=uow,
+            )
+            if not live:
+                return None
+        return member
 
     def _export_state(
         self,

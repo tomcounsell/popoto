@@ -942,6 +942,65 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   `test_memory_lifecycle.py`, `test_provenance_journal.py`,
   `test_question_queue.py`, `test_memory_telemetry.py`, `test_view_resolver.py`,
   `test_reconciliation_m5.py`, `test_recipes_field_layer.py`.
+- **Split.** M4 ships as two PRs: **M4a** (group F -- the graph,
+  `CoOccurrenceField`, `graph_traversal`, the `co_occurrence_boost` arm) and
+  **M4b** (group H's adapters, the mixins and the remaining recipes). M4a
+  has no dependency on M3; several M4b recipes (`provenance_journal`,
+  `reconciliation`, `view_resolver`) declare a `ValidityField` and need M3.
+- **M4a as shipped: departures from this plan, recorded.**
+  - **The edge table is `<table>__<f>__edge (src, dst, weight)`**, `PRIMARY
+    KEY (src, dst)`, the M2b companion naming, with no `(dst)` index: the
+    only read by `dst` is a delete's reverse-edge cleanup, which joins on the
+    deleted rows' `(dst, src)` and so uses the primary key. No foreign key,
+    because Redis links any two key strings, records or not.
+  - **Edge writes take record-key locks, not a `(model, field)` lock.** A
+    write locks the edge sets it writes (`src`, and `dst` when symmetric),
+    sorted by `_pk`, with the same `popoto:rec:` key a record writer takes:
+    the edge set is that key's state, so it slots into the one lock order.
+    That lock is what makes `link`'s count-then-prune atomic (pinned with a
+    deterministic interleaving and its control).
+  - **`graph_expand` has two paths.** `WITH RECURSIVE` (one statement, a
+    layer per iteration, each node's heaviest arrival kept) is exact only
+    where the BFS step is monotone (a threshold of at least `1e-290`, a
+    finite non-negative decay); elsewhere the visited map's order decides the
+    Lua's answer, and the backend replays the Lua queue in Python over
+    neighbour lists fetched one layer per statement. The probe compares both
+    paths with Redis on every shape.
+  - **`graph_update` and `graph_expand` return the field methods' values**
+    (the Lua integer reply of `link`, the `%.14g` reply of `strengthen`, the
+    pruned count of `weaken_all`; `(RecordId, score)` pairs), and take a
+    `mode` (`bfs`, `linked`, `edges`) and `cap`, so `get_linked` and
+    `export_state` are `graph_expand` reads.
+- **M4b as shipped: departures from this plan, recorded.**
+  - **The recipe-layer state outside a model's hash is engine tables**, one
+    per schema, created on first use like `popoto_recall_proposal`:
+    `popoto_counter`, `popoto_tombstone`, `popoto_tombstone_prior` /
+    `_stats`, `popoto_never_record_count` / `_log`,
+    `popoto_question_bucket`, `popoto_lease` and `popoto_embedding_cache`.
+    Each is reached through a `field_call` adapter keyed by a pseudo-field
+    (`_counter`, `_tomb`, `_tombprior`, `_never_record`, `_qq`,
+    `_embed_cache`, `_idle`); a sorted field's `count`/`members`/`score` are
+    adapters on the field itself. `counters.increment`/`read` gain `model=`
+    to pick the backend.
+  - **The question queue's delivery waits only on the agent's bucket
+    advisory lock** and takes the candidate with `FOR UPDATE SKIP LOCKED`,
+    not behind its record-key lock: it never waits on a record, so it cannot
+    join a deadlock cycle, and a candidate a concurrent writer holds is
+    skipped (a documented divergence). The claim CAS is an ordinary record
+    writer (record-key lock, then the row).
+  - **`idle_seconds` is the row's write or confirmed-read clock**, not every
+    read's (no per-read write on Postgres): whole seconds since the later of
+    `_updated_at` and `_last_accessed`.
+  - **`MemoryLifecycle` cannot promote a `KeyField` tier on Postgres**: that
+    is a key migration, which v2 refuses (§1.1); the tier must be a non-key
+    field there. Documented, not worked around in the recipe.
+  - **`EventStreamMixin` is still Redis** (M5): a Postgres-bound
+    `JournalEntry` `XADD`s to Redis after its write.
+    `SubconsciousMemory(auditable_extraction=…)` is refused on a
+    Postgres-bound model, because the decision log is Redis-only (§1).
+  - **`AppendOnlyMixin`'s guard reads inside a Postgres unit of work**, so
+    two saves of one key in one transaction refuse the second -- the
+    intra-pipeline gap stays open on Redis only.
 
 ### M5: the remainder
 
@@ -963,6 +1022,46 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   `test_prediction_ledger.py`, `test_td_value_field.py`,
   `test_content_field.py`, `test_check_indexes.py`, `test_clean_indexes.py`,
   `test_transfer_roundtrip.py`, `test_transfer_key_regeneration.py`.
+- **M5 TTL and `batch()` as shipped: departures, recorded.** The first M5
+  PR is record expiry and `popoto.batch()`; the rest of M5 follows.
+  - **The surface is `Meta.ttl` and the instance's `_ttl`/`_expire_at`.**
+    `main` has no `save(ttl=)`, `save(expire_at=)` or `set_expiry`; the
+    protocol's `save(expiry=)` is implemented on Postgres (Redis still
+    refuses it: no new Redis feature). `_expires_at` is `double precision`
+    epoch seconds, M2a's clock decision, and *now* is the server's
+    `statement_timestamp()` (one clock for the central database).
+  - **Only a `Meta.ttl` model has the column**, so TTL-free models keep
+    TTL-free plans (§3). An instance TTL on a model without `Meta.ttl`
+    raises `BackendCapabilityError` before writing -- the one place Postgres
+    asks more of the model than Redis does.
+  - **The read filter is one predicate, applied where the record table is
+    scoped** (`render_where`, which every select, count, ranking, search and
+    `recall` statement already went through), plus `load`/`exists`, the
+    single-record state reads, an anti-join on the side tables (postings,
+    lengths, vectors, tokens) for statistics and membership, and the
+    validity reads. The narrow-vector-table scope shortcut is off on a TTL
+    model, since it would bypass the record table.
+  - **The reaper is throttled, not per write.** Running it after every
+    write cost ~0.3 ms p50 with nothing to reap (a pool checkout and a
+    statement); once per second per table and process, plus immediately
+    after a run that found a full batch, keeps an idle TTL model within
+    ~0.04 ms of a TTL-free one. Batch 20, not 100: a save that reaps 20 rows
+    costs ~1.1 ms p50, 100 rows 2.2-3.5 ms. It never waits: try-locks on the
+    record keys, `SKIP LOCKED` rows, and `lock_timeout` below
+    `deadlock_timeout`.
+  - **A save over an expired key deletes the row first** (same statement
+    list, after the record-key lock), so it writes a fresh record as `HSET`
+    on an expired key does, rather than reviving the expired row's side rows
+    and confidence state. `delete` reports an expired record as not
+    existing; `increment`, a capped push, `touch` and `update_confidence`
+    treat it as missing.
+  - **`batch()` is one object for both backends**: it still returns a
+    `redis.client.Pipeline` (a subclass assigned like `GuardedRedis`'s), and
+    a Postgres-bound model's write joins a `transaction()` it opens on first
+    use; `execute()` commits. Mixed batches are refused, not split: two
+    stores cannot commit atomically together.
+  - **Exit criterion:** `tests/postgres/test_postgres_ttl.py::
+    test_an_expired_row_is_invisible_before_the_reaper_and_gone_after_a_write`.
 - **M5 async as shipped: departures from this plan, recorded.**
   - **One implementation, two drivers, not an async copy.**
     `AsyncPostgresBackend` (`backends/postgres/aio.py`) runs the sync

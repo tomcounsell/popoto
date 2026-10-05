@@ -775,6 +775,41 @@ class Defaults:
     # cannot push save() past it.
     PG_BACKFILL_BUDGET_SECONDS = 1.0
 
+    # -- Postgres TTL (#759 M5) ------------------------------------------------
+    # The automatic reaper (#755 Q3: no cron, no manual job). After a record
+    # write on a Meta.ttl model commits, it deletes at most this many expired
+    # rows of that table (their side rows cascade) in a transaction of its
+    # own, in the caller's thread, like the embedding backfill. Measured (M1
+    # Max, PostgreSQL 18.6, localhost): a save that reaps 20 rows costs
+    # ~1.1 ms p50 against ~0.37 ms for one with nothing due; 100 rows cost
+    # ~2.2-3.5 ms. A save creates at most one expiring row, so 20 per write
+    # drains twenty times faster than expiries can accrue.
+    PG_REAPER_BATCH = 20
+    # ...at most once per this many seconds per table and process, unless the
+    # last run deleted a full batch (a backlog), when the next write reaps
+    # again. Reads never wait for it: an expired row is invisible to every
+    # read from the instant it expires, reaped or not.
+    PG_REAPER_INTERVAL_SECONDS = 1.0
+    # The reaper never waits behind a caller: record-key locks are try-locks
+    # (a contended record is skipped), rows are locked SKIP LOCKED, and any
+    # other lock it would wait on longer than this aborts its run -- shorter
+    # than deadlock_timeout (1 s), so the reaper, never a caller, is the one
+    # that gives up. A free pool connection is waited on for at most this
+    # long too; a busy pool skips the run.
+    PG_REAPER_LOCK_TIMEOUT_MS = 50
+
+    # -- Postgres graph (#759 M4) ----------------------------------------------
+    # CoOccurrenceField.propagate() on Postgres answers with one WITH RECURSIVE
+    # statement while it expands at most this many BFS layers (ceil(depth)),
+    # and otherwise one visited-pruned statement per layer. The recursive
+    # statement cannot see earlier layers, so it re-expands every reached node
+    # on every layer; up to two layers that is exactly the pruned work (layer
+    # one expands the seeds, layer two every first arrival), past it the work
+    # grows with depth x fan-out where PROPAGATE_BFS_LUA's visited map stops
+    # (#781 review: a 400-node clique at depth 50 took 24.9 s against Redis's
+    # 0.10 s). Lowering it to 0 sends every call down the pruned path.
+    PG_GRAPH_RECURSIVE_MAX_LAYERS = 2
+
 
 class TemporalPeriod:
     """Named constants for common temporal cycle periods in seconds.
