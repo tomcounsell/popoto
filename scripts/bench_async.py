@@ -143,6 +143,13 @@ async def _leg(name: str, model, ops: int, tasks: int, run: int):
 
 
 async def _run_all(ops: int, tasks: int, run: int):
+    # popoto's redis.asyncio client is cached per process and bound to the
+    # loop that made it (tests/test_async.py resets it per test); each run is
+    # a new loop, so reset it here. The Postgres pools are per loop already.
+    import popoto.redis_db as redis_db
+
+    redis_db._POPOTO_ASYNC_REDIS_DB = None
+    redis_db._async_redis_lock = asyncio.Lock()
     results = [await _leg("pg-native", BenchAioPg, ops, tasks, run)]
     with _ThreadShim():
         results.append(await _leg("pg-thread", BenchAioPg, ops, tasks, run))
