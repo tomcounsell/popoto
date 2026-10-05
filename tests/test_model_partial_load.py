@@ -136,17 +136,11 @@ def test_load_raw_hash_missing_key_returns_empty_dict():
     assert raw == {}
 
 
-@pytest.mark.redis_only(
-    reason="idle_seconds reads OBJECT IDLETIME; on Postgres it arrives in M4 and raises BackendCapabilityError"
-)
 def test_idle_seconds_live_key_returns_float(widget):
     result = Widget.idle_seconds(widget.db_key.redis_key)
     assert isinstance(result, float)
 
 
-@pytest.mark.redis_only(
-    reason="idle_seconds reads OBJECT IDLETIME; on Postgres it arrives in M4 and raises BackendCapabilityError"
-)
 def test_idle_seconds_missing_key_returns_none():
     result = Widget.idle_seconds("Widget:nobody:nothing")
     assert result is None
