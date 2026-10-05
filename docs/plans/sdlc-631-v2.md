@@ -1123,6 +1123,22 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     cannot drive: `Batch.async_execute()`/`async_reset()` commit and roll
     back through the bridge, and a sync `reset()` schedules the rollback on
     the loop.
+  - **Second review of #784: two corrections.** (1) The async pool marked
+    every slot-wait timeout busy. Under a partition, though, the slots are
+    held by callers stuck in `connect()`, so 8 of 10 dropped writes went
+    uncounted. It now applies the sync rule: busy only when every slot is
+    held by a checked-out connection (`len(out) >= max_size`). Otherwise the
+    timeout is an outage. (2) A child task that writes a record its parent's
+    open transaction holds hung until the statement timeout and was then
+    booked as an outage. Scopes stay per task, but a task now refuses at
+    once a wait on a lock held by an *ancestor's* open unit. A ContextVar
+    holds the ancestry: `AsyncPostgresBackend.run` sets it in the task's own
+    context once a call leaves the task with a unit open, and children
+    inherit it when they are created. Siblings never see each other's units,
+    so they still wait. One cost is recorded: a fire-and-forget child the
+    parent never awaits is refused too. A batch opened by a sync write now
+    refuses an `async_*` write (it would block the loop), as the converse
+    already did.
 - **M5 long tail as shipped: departures from this plan, recorded.** The
   `CyclicDecayField` / `PredictionLedgerMixin` / `TDValueField` PR
   (`backends/postgres/longtail.py`).

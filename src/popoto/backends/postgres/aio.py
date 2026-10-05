@@ -161,11 +161,20 @@ async def _spawn(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
 
 @contextlib.contextmanager
 def _sync_cm(acm: Any) -> Iterator[Any]:
-    """An async context manager driven from sync code inside the bridge."""
+    """An async context manager driven from sync code inside the bridge.
+
+    Exited outside the bridge -- a generator holding it closed by the garbage
+    collector after its loop is gone (a ``popoto.batch()`` that outlived
+    ``asyncio.run()``) -- nothing can drive the async exit, so it is skipped
+    rather than raising ``BridgeMisuseError`` into "Exception ignored" noise:
+    the loop's pool closes the connection at the socket, and the server rolls
+    back whatever it held."""
     value = _await(acm.__aenter__())
     try:
         yield value
     except BaseException:
+        if not _in_bridge():
+            raise
         if not _await(acm.__aexit__(*sys.exc_info())):
             raise
     else:
@@ -318,7 +327,9 @@ class _LoopPool:
     Mirrors the sync pool (``_pool_for``): at most
     ``Defaults.PG_POOL_MAX_SIZE`` connections, a wait for a free one bounded
     by ``Defaults.PG_CONNECT_TIMEOUT_SECONDS`` (then ``PoolTimeout``, marked
-    busy, which the backend raises as ``BackendBusyError``: contention, not an
+    busy -- the backend raises ``BackendBusyError``, contention, not an
+    outage -- only when every slot is held by a checked-out connection;
+    a wait behind callers stuck connecting to an unresponsive server is an
     outage), each validated on checkout
     with one empty-query round trip, opened ``autocommit`` with no
     server-side prepared statements (PgBouncer transaction mode) and a
@@ -368,13 +379,17 @@ class _LoopPool:
 
     # -- checkout ------------------------------------------------------------
 
-    @contextlib.asynccontextmanager
-    async def connection(self, timeout: Optional[float] = None) -> AsyncIterator[Any]:
-        conn = await self.getconn(timeout)
-        try:
-            yield conn
-        finally:
-            await self.putconn(conn)
+    def connection(self, timeout: Optional[float] = None) -> "_Checkout":
+        """``async with pool.connection() as conn``. A plain async context
+        manager, not an ``asynccontextmanager`` generator: the loop's
+        ``shutdown_asyncgens()`` closes every live async generator at once,
+        and a checkout held past its loop (a batch outliving
+        ``asyncio.run()``) would then close its connection while psycopg's
+        own ``transaction()`` generator is rolling back on it -- the
+        ``KeyError`` / ``OSError`` / "socket closed" tracebacks of #784's
+        review. Not a generator, it is left alone: the transaction rolls back
+        cleanly, and the connection closes with the pool."""
+        return _Checkout(self, timeout)
 
     async def getconn(self, timeout: Optional[float] = None) -> Any:
         import psycopg
@@ -386,12 +401,17 @@ class _LoopPool:
         try:
             await asyncio.wait_for(self.slots.acquire(), wait)
         except asyncio.TimeoutError:
-            # Every slot is checked out: contention, never an outage (this
-            # pool opens connections inline, so a down server fails the
-            # connect below instead). The backend raises BackendBusyError.
-            busy = PoolTimeout(f"couldn't get a connection after {wait:.2f} sec")
-            setattr(busy, "popoto_busy", True)  # PoolTimeout may resolve to Any
-            raise busy from None
+            # Busy (BackendBusyError, health untouched) only when every slot
+            # is held by a checked-out connection -- the sync pool's rule. A
+            # slot can also be held by a caller still inside connect() to an
+            # unresponsive server (a partition, a black-holed port): then the
+            # wait is the outage's, not contention, and it stays a plain
+            # PoolTimeout the backend counts in health (#784 review).
+            timed_out = PoolTimeout(f"couldn't get a connection after {wait:.2f} sec")
+            if len(self.out) >= self.max_size:
+                # PoolTimeout may resolve to Any
+                setattr(timed_out, "popoto_busy", True)
+            raise timed_out from None
         try:
             while self.idle:
                 conn = self.idle.pop()  # most recently used first
@@ -481,7 +501,14 @@ class _LoopPool:
         if self.closed:
             return
         self.closed = True
-        _forget(self)
+        if not self.out:
+            _forget(self)
+        # else: a checkout outlives the loop (a batch nobody executed). It
+        # cannot be closed here without racing the rollback psycopg's own
+        # transaction() generator is running on it in this same
+        # shutdown_asyncgens() pass, so the closed entry stays registered
+        # and the next lookup, or the loop's finalizer, closes it at the
+        # socket (_sweep_dead_loops).
         while self.idle:
             await self._discard(self.idle.pop())
         for conn in [c for c in self.conns if c not in self.out]:
@@ -503,6 +530,26 @@ class _LoopPool:
                     conn.pgconn.finish()
             except Exception:  # noqa: BLE001 - best effort at teardown
                 pass
+
+
+class _Checkout:
+    """:meth:`_LoopPool.connection`'s context manager."""
+
+    __slots__ = ("pool", "timeout", "conn")
+
+    def __init__(self, pool: _LoopPool, timeout: Optional[float]) -> None:
+        self.pool = pool
+        self.timeout = timeout
+        self.conn: Any = None
+
+    async def __aenter__(self) -> Any:
+        self.conn = await self.pool.getconn(self.timeout)
+        return self.conn
+
+    async def __aexit__(self, *exc: Any) -> None:
+        conn, self.conn = self.conn, None
+        if conn is not None:
+            await self.pool.putconn(conn)
 
 
 _apools: dict[tuple[str, int, int], _LoopPool] = {}
@@ -641,8 +688,16 @@ class AsyncPostgresBackend:
     async def run(self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
         """Run sync popoto code -- ``Model.save``, ``Query.get`` -- with its
         Postgres I/O on this loop's async pool. The routed ``async_*``
-        methods are this call around their sync twins."""
-        return await _spawn(fn, *args, **kwargs)
+        methods are this call around their sync twins.
+
+        Afterwards, in this task's own context, it records the task as an
+        enclosing lock scope when it now has a unit of work open, so a child
+        task it creates can be refused at once rather than wait on the
+        parent's record locks (``_refuse_self_wait``, #784 review)."""
+        try:
+            return await _spawn(fn, *args, **kwargs)
+        finally:
+            self.sync._note_open_scope()
 
     # -- A. lifecycle ----------------------------------------------------------
 

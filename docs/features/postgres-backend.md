@@ -1042,9 +1042,9 @@ concurrent `async with transaction()` blocks or `async_*` calls on one event
 loop than that, or more threads -- a caller waits up to
 `Defaults.PG_CONNECT_TIMEOUT_SECONDS` for one to come back, and then raises
 **`popoto.backends.BackendBusyError`**, a subclass of
-`BackendRetryableError`. The server is reachable, so the health record is
-not touched and no dropped write is counted; the call sent nothing, so
-running it again is safe:
+`BackendRetryableError`. Every connection is in use, so this is contention:
+the health record is not touched and no dropped write is counted; the call
+sent nothing, so running it again is safe:
 
 ```python
 from popoto.backends import BackendBusyError
@@ -1058,10 +1058,18 @@ except BackendBusyError:
 A connection that cannot be *opened* is still `BackendUnavailableError` and
 an outage. The sync `psycopg_pool` reports both cases as one `PoolTimeout`,
 so on the sync path popoto calls a timeout busy only when every connection
-of the pool is checked out to a caller at that moment; the async pool opens
-connections itself, so its only timeout is the wait for a free one. Pinned
-by `tests/postgres/test_postgres_async.py::test_a_busy_async_pool_is_not_an_outage`
-and `test_a_busy_sync_pool_is_not_an_outage`.
+of the pool is checked out to a caller at that moment. The async pool
+applies the same rule to its own slots: a wait is busy only when every slot
+is held by a checked-out connection. During a partition (an unresponsive
+server, not a refused port) callers sit inside the connect holding slots
+while others queue behind them, and those queued waits time out as outages:
+health flips and each write is counted dropped. The rule says nothing about
+the server's state, only the pool's -- with every connection checked out and
+the server then going down, a new caller is still told the pool is busy,
+and the holders report the outage when their statements fail. Pinned by
+`tests/postgres/test_postgres_async.py::test_a_busy_async_pool_is_not_an_outage`,
+`test_a_partitioned_async_pool_is_an_outage_not_busy` and
+`test_a_busy_sync_pool_is_not_an_outage`.
 
 ## Transactions
 
@@ -1177,11 +1185,34 @@ simply waits for the commit. Nested batches that write different records
 work as on Redis.
 
 Under asyncio the unit is the **task**, not the thread: every task's
-Postgres I/O runs on the event-loop thread ([Async](#async-m5)), but one
-task waiting on a record another task's `async with transaction()` holds is
-an ordinary wait -- the other task commits as soon as the waiter yields to
-the loop -- so it is never refused. A task that collides with a transaction
-*it* still has open is refused at once, as a thread is.
+Postgres I/O runs on the event-loop thread ([Async](#async-m5)). Three
+rules decide whether a task's write that would wait on another unit's
+record lock waits or is refused:
+
+- **Its own transaction or batch:** refused at once, as for a thread.
+- **An ancestor's:** refused at once. An ancestor is a task that had a
+  `transaction()` or batch open on this backend when it created this task
+  (`asyncio.gather`, `create_task`, `TaskGroup`), directly or through
+  intermediate tasks. The parent typically awaits the child inside its
+  block, so it cannot commit until the child finishes and the wait would
+  hang until `PG_STATEMENT_TIMEOUT_MS`. The error says so: pass
+  `pipeline=uow` (the parent's unit or batch) to the child to join the
+  parent's transaction, or write the record after it ends. This applies even
+  to a child the parent never awaits (fire-and-forget): popoto cannot tell
+  the two shapes apart, so the child is refused rather than allowed to wait.
+- **Anyone else's** -- a sibling task, a task created before the
+  transaction opened, an unrelated task, another thread: an ordinary wait.
+  That unit can commit while this one waits, so it is never refused. Two
+  children of one parent, each in its own `transaction()`, that write
+  overlapping records serialize on the locks; neither is refused.
+
+The ancestry is carried in a context variable that the parent's task sets
+when an `async_*` call leaves it with a unit open, and that a task inherits
+when it is created. So a child created *before* the parent opened its
+transaction does not count as a descendant. Neither does the reverse case:
+a child that opened a batch and returned, with the parent then writing
+the same record outside that batch. Both still wait until
+`PG_STATEMENT_TIMEOUT_MS`.
 
 The check covers **record-key locks only** (the locks `save`, `delete`,
 `increment` and the other record writes take first). A nested write that
@@ -1361,10 +1392,23 @@ await pipe.async_execute()     # COMMIT on the loop; then the XADDs, in order
 `pipe.execute()` on such a batch raises `BridgeMisuseError` naming
 `async_execute()`; `await pipe.async_reset()` rolls it back. A plain
 `reset()` or leaving a `with` block schedules the rollback on the running
-loop as a task. The Redis side effects wait for the commit exactly as in a
+loop as a task. If that rollback fails (its connection broke), the failure
+is logged once at WARNING; the server rolls back a transaction whose
+connection is gone. The Redis side effects wait for the commit exactly as in a
 sync batch. `async_execute()` on any other batch (Redis commands, or a
 transaction a sync call opened) runs `execute()` in a worker thread.
 Pinned by `test_postgres_async.py::test_an_async_save_joins_a_batch_on_the_loop`.
+
+**A batch is driven by the side that opened it.** If an `async_*` write
+opened the batch, a sync write to it raises `BridgeMisuseError`. If a sync
+write opened it, an `async_*` write raises `BridgeMisuseError` too: the
+batch's connection is a blocking one, and driving it from the loop would
+stall every other task for each statement. Both are refused before anything
+is sent, and the batch stays usable from the side that opened it. A batch
+that outlives its loop (`asyncio.run()` returned before `async_execute()`)
+is rolled back as the loop shuts down, and its connection is closed at the
+socket by the next pool lookup or `close_pools()`. A later `reset()` of it
+is a no-op.
 
 **Concurrent transactions are per task.** Two tasks' `async with
 transaction()` blocks that write the same records wait on each other's

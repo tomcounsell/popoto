@@ -131,13 +131,14 @@ class BackendBusyError(BackendRetryableError):
     Raised when a caller waited ``Defaults.PG_CONNECT_TIMEOUT_SECONDS`` for a
     connection and none was returned -- many concurrent ``async_*`` calls or
     ``transaction()`` blocks on one event loop, or more threads than
-    ``Defaults.PG_POOL_MAX_SIZE`` on the sync pool. The server is reachable,
-    so this is **not** an outage: :class:`BackendUnavailableError` is not
+    ``Defaults.PG_POOL_MAX_SIZE`` on the sync pool. Every connection is in
+    use, so this is contention, **not** an outage: :class:`BackendUnavailableError` is not
     raised, the backend's ``health`` record is not touched and no dropped
     write is counted. Nothing was sent, so running the call again is safe,
     which is why it is a :class:`BackendRetryableError`. A connection that
     cannot be *opened* (the server is down or unreachable) is still
-    :class:`BackendUnavailableError`."""
+    :class:`BackendUnavailableError`, and so is a wait for a slot held by a
+    caller stuck connecting to an unresponsive server."""
 
 
 # -- identity -----------------------------------------------------------------

@@ -721,11 +721,22 @@ async def test_unsorted_concurrent_async_transactions_fail_only_retryably(
 
 @pytest.mark.asyncio
 async def test_a_task_waits_for_another_tasks_transaction_then_succeeds(pg):
+    """The other task is not a child of the transaction's task (it was
+    created before the transaction opened), so it waits on the lock rather
+    than being refused; a child created inside the block would be refused
+    (``test_a_child_task_is_refused_at_once_on_its_parents_record_lock``)."""
     twin = aio.get_async_backend(AioNote)
     await AioNote.async_create(key="held")
+    go = asyncio.Event()
+
+    async def later():
+        await go.wait()
+        await AioNote(key="held", n=2).async_save()
+
+    other = asyncio.create_task(later())
     async with twin.transaction() as uow:
         await AioNote(key="held", n=1).async_save(pipeline=uow)
-        other = asyncio.create_task(AioNote(key="held", n=2).async_save())
+        go.set()
         await asyncio.sleep(0.3)
         assert not other.done(), "the other task waits on the lock"
     await asyncio.wait_for(other, 10)
@@ -755,6 +766,105 @@ async def test_a_task_colliding_with_its_own_open_transaction_is_refused_at_once
     assert pg.health.dropped_writes == 0
 
 
+# -- a child task and its ancestors' record locks (#784 review) ---------------------
+#
+# A parent that awaits a child (gather, an awaited create_task) inside its own
+# open transaction cannot commit until the child finishes, so a child that
+# waits on one of the parent's record locks would hang to
+# PG_STATEMENT_TIMEOUT_MS and then be booked as an outage. Each task remains
+# its own lock scope; a task refuses, at once, a wait on a lock held by an
+# *ancestor's* open unit. Siblings never see each other's units and still
+# just wait.
+
+
+@pytest.mark.asyncio
+async def test_a_child_task_is_refused_at_once_on_its_parents_record_lock(
+    pg, monkeypatch
+):
+    monkeypatch.setattr(Defaults, "PG_STATEMENT_TIMEOUT_MS", 5000)
+    twin = aio.get_async_backend(AioNote)
+    for k in ("k1", "k2", "k3"):
+        await AioNote.async_create(key=k)
+    dropped = pg.health.dropped_writes
+    started = time.monotonic()
+    async with twin.transaction() as uow:
+        await AioNote(key="k1", n=1).async_save(pipeline=uow)
+        with pytest.raises(BackendCapabilityError, match="enclosing") as gathered:
+            await asyncio.gather(AioNote(key="k1", n=2).async_save())
+        assert "pipeline=uow" in str(gathered.value)
+        with pytest.raises(BackendCapabilityError, match="parent task"):
+            await asyncio.create_task(AioNote(key="k1", n=3).async_save())
+
+        async def grandchild():
+            await asyncio.gather(AioNote(key="k1", n=4).async_save())
+
+        with pytest.raises(BackendCapabilityError, match="parent task"):
+            await asyncio.create_task(grandchild())
+        # A child joining the parent's unit, and a child writing a record the
+        # parent does not hold, both simply work.
+        await asyncio.gather(
+            AioNote(key="k1", n=5).async_save(pipeline=uow),
+            AioNote(key="k2", n=5).async_save(),
+        )
+    assert time.monotonic() - started < 2.0
+    assert (await AioNote.query.async_get(key="k1")).n == 5
+    assert (await AioNote.query.async_get(key="k2")).n == 5
+    assert pg.health.ok and pg.health.consecutive_failures == 0
+    assert pg.health.dropped_writes == dropped
+    assert _registry_empty(pg)
+    # After the parent's transaction ends, a child may write the record.
+    await asyncio.gather(AioNote(key="k1", n=6).async_save())
+    assert (await AioNote.query.async_get(key="k1")).n == 6
+
+
+@pytest.mark.asyncio
+async def test_a_child_task_is_refused_on_a_batch_its_parent_holds(pg, monkeypatch):
+    monkeypatch.setattr(Defaults, "PG_STATEMENT_TIMEOUT_MS", 5000)
+    await AioNote.async_create(key="b1")
+    pipe = popoto.batch()
+    try:
+        await AioNote(key="b1", n=1).async_save(pipeline=pipe)
+        started = time.monotonic()
+        with pytest.raises(BackendCapabilityError, match="parent task"):
+            await asyncio.gather(AioNote(key="b1", n=2).async_save())
+        assert time.monotonic() - started < 1.0
+        await asyncio.gather(AioNote(key="b1", n=3).async_save(pipeline=pipe))
+        await pipe.async_execute()
+    finally:
+        await pipe.async_reset()
+    assert (await AioNote.query.async_get(key="b1")).n == 3
+    assert pg.health.ok and pg.health.dropped_writes == 0
+
+
+@pytest.mark.asyncio
+async def test_sibling_transactions_on_overlapping_records_wait_not_refuse(pg):
+    """Two children of one parent -- itself inside a transaction on another
+    record -- each open their own transaction on overlapping records: they
+    serialize on the lock, neither is refused."""
+    twin = aio.get_async_backend(AioNote)
+    for k in ("p", "s1", "s2"):
+        await AioNote.async_create(key=k)
+    order = []
+
+    async def sibling(i):
+        async with twin.transaction() as uow:
+            for k in ("s1", "s2"):
+                await AioNote(key=k, n=i).async_save(pipeline=uow)
+                await asyncio.sleep(0.05)
+        order.append(i)
+
+    async with twin.transaction() as uow:
+        await AioNote(key="p", n=1).async_save(pipeline=uow)
+        results = await asyncio.gather(sibling(1), sibling(2), return_exceptions=True)
+    assert results == [None, None], results
+    assert sorted(order) == [1, 2]
+    last = order[-1]
+    assert (await AioNote.query.async_get(key="s1")).n == last
+    assert (await AioNote.query.async_get(key="s2")).n == last
+    assert _registry_empty(pg)
+    assert pg.health.ok and pg.health.dropped_writes == 0
+
+
 # -- a busy pool is not an outage (#784 review) ---------------------------------------
 
 
@@ -780,6 +890,55 @@ def test_a_busy_async_pool_is_not_an_outage(pg, monkeypatch):
         assert await AioNote.query.async_count() == 2
 
     asyncio.run(main())
+
+
+def test_a_partitioned_async_pool_is_an_outage_not_busy(monkeypatch):
+    """A listener that accepts the TCP handshake and never answers (a
+    partition, a black-holed port): the first callers sit inside connect()
+    holding the pool's slots, the rest time out waiting for one. Those
+    waits are the outage's, not contention -- every failure is
+    BackendUnavailableError and every write is counted dropped (#784
+    review: 8 of 10 were BackendBusyError, uncounted)."""
+    import socket
+
+    from popoto.backends import reset_bindings
+    from popoto.backends.postgres import PostgresBackend, close_pools
+
+    monkeypatch.setattr(Defaults, "PG_POOL_MAX_SIZE", 2)
+    monkeypatch.setattr(Defaults, "PG_CONNECT_TIMEOUT_SECONDS", 1.0)
+    hole = socket.socket()
+    hole.bind(("127.0.0.1", 0))
+    hole.listen(64)  # never accepted: the handshake completes, nothing answers
+    port = hole.getsockname()[1]
+    backend = PostgresBackend(
+        dsn=f"postgresql://127.0.0.1:{port}/postgres", schema="popoto_aio_probe"
+    )
+    previous = set_backend(backend)
+    previous_instance = _swap_instance("postgres", backend)
+    reset_bindings()
+    try:
+
+        async def one(i):
+            try:
+                await AioNote(key=f"w{i}").async_save()
+            except BackendBusyError:
+                return "busy"
+            except BackendUnavailableError:
+                return "outage"
+            return "ok"
+
+        async def main():
+            return await asyncio.gather(*(one(i) for i in range(10)))
+
+        results = asyncio.run(main())
+        assert results == ["outage"] * 10, results
+        assert not backend.health.ok
+        assert backend.health.dropped_writes == 10
+    finally:
+        _swap_instance("postgres", previous_instance)
+        set_backend(previous)
+        close_pools()
+        hole.close()
 
 
 def test_a_busy_sync_pool_is_not_an_outage(pg, monkeypatch):
@@ -878,3 +1037,112 @@ def test_an_async_save_joins_a_batch_on_the_loop(pg, monkeypatch):
         asyncio.run(main())
     finally:
         redis.delete(_AIO_STREAM)
+
+
+def test_an_async_write_to_a_sync_opened_batch_is_refused(pg):
+    """A batch a sync write opened holds a blocking connection: an async_*
+    write joining it would drive that connection from the loop, stalling
+    every task. It is refused before anything is sent, and the batch still
+    commits from the sync side."""
+    AioNote.create(key="seed")
+    pipe = popoto.batch()
+    AioNote(key="s1", n=1).save(pipeline=pipe)
+
+    async def main():
+        with pytest.raises(aio.BridgeMisuseError, match="sync call opened"):
+            await AioNote(key="s2", n=2).async_save(pipeline=pipe)
+
+    try:
+        asyncio.run(main())
+        assert pipe.execute() == []
+    finally:
+        pipe.reset()  # a regression must not leave the batch's lock held
+    assert AioNote.query.get(key="s1").n == 1
+    assert AioNote.query.get(key="s2") is None
+    assert _registry_empty(pg)
+
+
+def test_a_failed_scheduled_rollback_is_retrieved_and_logged(caplog):
+    """The rollback a sync reset() schedules for an async-opened batch is a
+    task nobody awaits: its exception is retrieved by the done callback and
+    logged once, never "Task exception was never retrieved"."""
+    import logging
+
+    import importlib
+
+    batch_mod = importlib.import_module("popoto.batch")
+
+    async def broken():
+        raise psycopg.OperationalError("the connection is lost")
+
+    async def main():
+        task = asyncio.get_running_loop().create_task(broken())
+        batch_mod._pending.add(task)
+        task.add_done_callback(batch_mod._rollback_done)
+        await asyncio.sleep(0.01)
+        return task
+
+    with caplog.at_level(logging.WARNING, logger="popoto.batch"):
+        task = asyncio.run(main())
+    assert task not in batch_mod._pending
+    assert task._log_traceback is False  # retrieved: no asyncio error at GC
+    assert "scheduled rollback" in caplog.text
+    assert caplog.text.count("the connection is lost") == 1
+
+
+_OUTLIVE = """
+import asyncio, gc, sys
+import popoto
+from popoto.backends import _swap_instance, set_backend
+from popoto.backends.postgres import PostgresBackend, close_pools
+
+backend = PostgresBackend(sys.argv[1], schema=sys.argv[2])
+set_backend(backend)
+_swap_instance("postgres", backend)
+
+
+class AioNote(popoto.Model):
+    key = popoto.KeyField()
+    n = popoto.IntField(default=0)
+
+
+pipe = popoto.batch()
+
+
+async def main():
+    await AioNote(key="outlived", n=1).async_save(pipeline=pipe)
+
+
+asyncio.run(main())
+if sys.argv[3] == "reset":
+    pipe.reset()
+del pipe
+gc.collect()
+print("ROWS", AioNote.query.count(), flush=True)
+close_pools()
+"""
+
+
+@pytest.mark.parametrize("then", ["reset", "drop"])
+def test_a_batch_outliving_its_loop_shuts_down_quietly(pg, then):
+    """``asyncio.run()`` returns with an async-opened batch neither executed
+    nor reset: the transaction rolls back as the loop shuts down, with no
+    tracebacks from the shutdown and no "Exception ignored" at GC, whether
+    the batch is then reset() or simply dropped (#784 review)."""
+    import subprocess
+    import sys
+
+    AioNote.create(key="seed")
+    db = get_REDIS_DB().connection_pool.connection_kwargs.get("db", 0)
+    env = dict(os.environ, REDIS_URL=f"redis://localhost:6379/{db}")
+    done = subprocess.run(
+        [sys.executable, "-X", "dev", "-c", _OUTLIVE, pg.dsn, pg.schema, then],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    assert "ROWS 1" in done.stdout  # the seed only: rolled back
+    for noise in ("Traceback", "Exception ignored", "never retrieved", "Error"):
+        assert noise not in done.stderr, done.stderr

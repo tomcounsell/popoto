@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import datetime
 import logging
 import os
@@ -282,6 +283,19 @@ def _pool_for(dsn: str) -> Any:
     return pool
 
 
+# The asyncio tasks that held an open ``transaction()`` (or batch) of some
+# Postgres backend when the current task was created, outermost first, as
+# weak references (#784 review). Set in a task's *own* context -- by
+# ``AsyncPostgresBackend.run`` after a call leaves the task with an open
+# unit, never inside the bridge, whose greenlet runs in a per-call copy -- so
+# a child task made afterwards (``gather``, ``create_task``) inherits it in
+# its context copy and can see its ancestors' lock scopes, while sibling
+# tasks, each in its own copy, never see each other's.
+_ancestor_scopes: contextvars.ContextVar[tuple[weakref.ref[Any], ...]] = (
+    contextvars.ContextVar("popoto_pg_ancestor_scopes", default=())
+)
+
+
 # Connections each sync pool has checked out to a caller right now, by
 # ``id(pool)``: what tells a checkout timeout under contention (every
 # connection is out) from one under an outage (#784 review).
@@ -338,8 +352,8 @@ def _busy(exc: BaseException) -> Optional[BackendBusyError]:
     return BackendBusyError(
         f"no pooled Postgres connection became free in time ({exc}): every "
         f"connection (Defaults.PG_POOL_MAX_SIZE = {int(Defaults.PG_POOL_MAX_SIZE)}) "
-        "is in use. The server is reachable -- this is contention, not an "
-        "outage -- and nothing was sent, so retry it"
+        "is checked out to a caller -- contention, not an outage -- and "
+        "nothing was sent, so retry it"
     )
 
 
@@ -639,7 +653,15 @@ class PostgresBackend(
         Only record-key locks (``_record_locked``) are tracked: a wait on
         another lock a unit holds -- a ``(model, field)`` validity lock, an
         uncommitted ``UNIQUE`` entry -- is not detected here and still runs
-        to ``PG_STATEMENT_TIMEOUT_MS``. A unit of another task or thread is
+        to ``PG_STATEMENT_TIMEOUT_MS``.
+
+        A unit of an *ancestor* task -- one that had a unit open when it
+        created this task, directly or through intermediate tasks
+        (:data:`_ancestor_scopes`) -- is refused too, with its own message
+        (#784 review): the shape is ``async with transaction()`` around an
+        ``await gather(child)`` or an awaited ``create_task``, where the
+        parent cannot commit until the child finishes. A unit of any other
+        task or thread -- a sibling, an unrelated task, another thread -- is
         never a reason to refuse: that one can commit while this one waits."""
         wanted = set(keys)
         for unit in self._open_units():
@@ -653,6 +675,49 @@ class PostgresBackend(
                     "in): it could never be granted. Write through the batch "
                     "that holds the record, or execute() it first"
                 )
+        ancestors = _ancestor_scopes.get()
+        if not ancestors:
+            return
+        scope = self._lock_scope()
+        with self._lock:
+            held_by = [
+                list(self._open.get(task) or ())
+                for task in (ref() for ref in ancestors)
+                if task is not None and task is not scope
+            ]
+        for units in held_by:
+            for unit in units:
+                if unit is not pg and not unit.locked.isdisjoint(wanted):
+                    held = sorted(unit.locked & wanted)[0]
+                    raise BackendCapabilityError(
+                        f"this record ({held!r}) is locked by an enclosing "
+                        "Postgres transaction in a parent task, which cannot "
+                        "commit while it awaits this task: the write could "
+                        "never be granted. Pass pipeline=uow (the parent's "
+                        "unit of work or batch) to join it, or write the "
+                        "record after the parent's transaction ends"
+                    )
+
+    def _note_open_scope(self) -> None:
+        """Record the running task in :data:`_ancestor_scopes` of its own
+        context when it has a unit of work open here, so the tasks it
+        creates from now on can tell its record locks from a sibling's.
+        Called by ``AsyncPostgresBackend.run`` in the task's context, after
+        each bridged call (the call that opened the unit cannot set it: the
+        bridge runs it in a copy of the context)."""
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:
+            return
+        if task is None:
+            return
+        with self._lock:
+            if not self._open.get(task):
+                return
+        ancestors = _ancestor_scopes.get()
+        if ancestors and ancestors[-1]() is task:
+            return
+        _ancestor_scopes.set(ancestors + (weakref.ref(task),))
 
     def _statement_prefix(self) -> str:
         ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)

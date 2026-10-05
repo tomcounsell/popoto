@@ -50,12 +50,17 @@ backend.
 ``async_*`` call, the batch's transaction lives on the event loop's async
 pool: commit it with ``await pipe.async_execute()`` (``execute()`` raises
 ``BridgeMisuseError``) and roll it back with ``await pipe.async_reset()``.
+A batch is driven by whichever side opened it: a sync write to an
+async-opened batch, and an ``async_*`` write to a batch a sync write opened
+(whose blocking connection would stall the loop), both raise
+``BridgeMisuseError`` before anything is sent, and leave the batch usable.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from typing import TYPE_CHECKING, Any, Optional
 
 from .redis_db import GuardedPipeline, get_REDIS_DB
@@ -75,6 +80,28 @@ _MIXED = (
 # Rollbacks of async-opened batches scheduled by a sync reset(): held so the
 # loop does not drop a running task.
 _pending: set[Any] = set()
+
+logger = logging.getLogger(__name__)
+
+
+def _rollback_done(task: Any) -> None:
+    """Done callback of a scheduled rollback: forget the task and retrieve
+    its exception, so a rollback that failed (a connection that broke under
+    it) is logged once here instead of as "Task exception was never
+    retrieved". The server rolls back a transaction whose connection is
+    gone, so there is nothing to retry."""
+    _pending.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning(
+            "popoto.batch(): the scheduled rollback of an async-opened "
+            "Postgres transaction failed (%s: %s); the server rolls back a "
+            "transaction whose connection is gone",
+            type(exc).__name__,
+            exc,
+        )
 
 
 def _in_bridge() -> bool:
@@ -106,6 +133,16 @@ class Batch(GuardedPipeline):
                 raise BackendCapabilityError(
                     "popoto.batch() holds a transaction on another Postgres "
                     "backend; one batch commits to one database"
+                )
+            if _in_bridge() and not hasattr(pg[2].conn, "async_connection"):
+                from .backends.postgres.aio import BridgeMisuseError
+
+                raise BridgeMisuseError(
+                    "this popoto.batch() holds a Postgres transaction a sync "
+                    "call opened, on a blocking connection: an async_* write "
+                    "joining it would block the event loop for every statement. "
+                    "Write to it with the sync methods (in a worker thread from "
+                    "async code), or open the batch with an async_* call"
                 )
             return pg[2]
         if self.command_stack:
@@ -176,7 +213,7 @@ class Batch(GuardedPipeline):
             twin.run(stack.__exit__, psycopg.Rollback, psycopg.Rollback(), None)
         )
         _pending.add(task)
-        task.add_done_callback(_pending.discard)
+        task.add_done_callback(_rollback_done)
 
     async def async_execute(self, raise_on_error: bool = True) -> Any:
         """``await pipe.async_execute()``: :meth:`execute` from a coroutine.
