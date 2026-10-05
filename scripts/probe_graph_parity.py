@@ -24,6 +24,13 @@ class                  what is compared
                        weights, exact
 ``propagate_exact``    the same with the Postgres SQL path forced off (the
                        Python replay of the Lua queue)
+``propagate_layered``  the same with every SQL-domain call forced onto the
+                       visited-pruned statement per layer
+``propagate_recursive``  the same forced onto the one ``WITH RECURSIVE``
+                       statement (depth <= 8 only: it cannot prune)
+``import_nan_state``   after an ``import_state`` both legs refuse for a NaN
+                       weight: Redis's set is empty (its ``DELETE`` ran),
+                       Postgres's is the set before the import
 ``export``             ``export_state`` for every key
 ``composite``          ``composite_score`` with ``co_occurrence_boost`` from
                        ``propagate``: order, exact
@@ -33,8 +40,15 @@ class                  what is compared
 
 Documented classes, counted but not failures (docs/features/postgres-backend.md):
 
-* ``nan_error_type`` -- a NaN weight or result raises ``ResponseError`` on
-  Redis and ``ValueError`` on Postgres.
+* ``nan_error_type`` -- a NaN weight or result (``link``, ``strengthen``,
+  ``weaken_all``, ``import_state``), or a NaN ``get_linked`` bound, raises
+  ``ResponseError`` on Redis and ``ValueError`` on Postgres, same text.
+* ``limit_none_error_type`` -- ``get_linked(limit=None)`` raises redis-py's
+  ``DataError`` on Redis and ``ValueError`` on Postgres, same text.
+* ``nan_import_keeps_set`` -- a refused NaN ``import_state`` has emptied the
+  set on Redis and left it unchanged on Postgres (checked exactly as
+  ``import_nan_state``); the probe then empties it on Postgres too, so the
+  legs carry on from the same state.
 * ``traverse_tie_order`` -- ``traverse()`` lists equal weights in the order
   ``propagate``'s dict holds them: Lua table order on Redis, score then key
   on Postgres.
@@ -82,6 +96,7 @@ from popoto import ConfidenceField  # noqa: E402
 from popoto.backends import set_backend  # noqa: E402
 from popoto.backends.postgres import graph as pg_graph  # noqa: E402
 from popoto.fields.co_occurrence_field import CoOccurrenceField  # noqa: E402
+from popoto.fields.constants import Defaults  # noqa: E402
 from popoto.recipes import graph_traversal  # noqa: E402
 
 
@@ -180,17 +195,23 @@ class Probe:
             same = r[0] == p[0]
             self.check("write_error", same, lambda: f"{tag} {what}: {r!r} vs {p!r}")
             if same and type(r[1]).__name__ != type(p[1]).__name__:
-                nan = "valid float" in str(r[1]) and "NaN" in str(p[1])
-                if nan:
-                    self.documented["nan_error_type"] += 1
-                else:
-                    self.miss(
-                        "write_error", f"{tag} {what}: {type(r[1])} vs {type(p[1])}"
-                    )
+                self.error_type(r[1], p[1], f"{tag} {what}")
             return
         self.check(
             cls, _same(r[1], p[1]), lambda: f"{tag} {what}: {r[1]!r} vs {p[1]!r}"
         )
+
+    def error_type(self, r: BaseException, p: BaseException, what: str) -> None:
+        """Both legs raised, with different classes: only the documented
+        pairs, with the same text, are not a mismatch."""
+        if "must both be specified" in str(r) and str(r) == str(p):
+            self.documented["limit_none_error_type"] += 1
+        elif ("valid float" in str(r) and "NaN" in str(p)) or (
+            "not a float" in str(r) and str(r) == str(p)
+        ):
+            self.documented["nan_error_type"] += 1
+        else:
+            self.miss("write_error", f"{what}: {type(r)} vs {type(p)}")
 
     # -- inputs -----------------------------------------------------------------
 
@@ -312,8 +333,9 @@ class Probe:
             edges = {
                 rng.choice(pool): self.weight(rng) for _ in range(rng.randint(1, 6))
             }
-            edges = {k: v for k, v in edges.items() if not math.isnan(v)}
             inst = model(name="probe-import")
+            self.leg("postgres")
+            before = self.edges_of(model, field, src)
 
             def imp(leg: str) -> Any:
                 with mock.patch.object(type(inst), "db_key", mock.PropertyMock()) as dk:
@@ -324,6 +346,21 @@ class Probe:
 
             got = self.both(imp)
             self.compare_write("import", got, tag, f"import({src!r}, {edges!r})")
+            if got["redis"][0] == got["postgres"][0] == "err" and any(
+                math.isnan(v) for v in edges.values()
+            ):
+                self.leg("redis")
+                after_r = self.edges_of(model, field, src)
+                self.leg("postgres")
+                after_p = self.edges_of(model, field, src)
+                self.check(
+                    "import_nan_state",
+                    after_r == [] and after_p == before,
+                    lambda: f"{tag} import({src!r}, {edges!r}): {after_r} / "
+                    f"{after_p} (before {before})",
+                )
+                self.documented["nan_import_keeps_set"] += 1
+                field.weaken_all(model, src, factor=0)  # resync (Postgres leg)
 
     def edges_of(self, model, field, key) -> list:
         return field.get_linked(model, key, min_weight="-inf", limit=-1)
@@ -361,10 +398,27 @@ class Probe:
             min_weight = f"({rng.choice([0.1, 0.5, 0.25, 0])}"
         else:
             min_weight = rng.choice(["-inf", 0, 0.01, "+inf", 1.0])
-        limit = rng.choice([1, 2, 3, 20, 0, -1])
+        if rng.random() < 0.1:
+            min_weight = float("nan")
+        limit = rng.choice(
+            [1, 2, 3, 20, 0, -1, None] if rng.random() < 0.2 else [1, 2, 3, 20, 0, -1]
+        )
         got = self.both(
             lambda leg: field.get_linked(model, key, min_weight=min_weight, limit=limit)
         )
+        r, p = got["redis"], got["postgres"]
+        if r[0] == "err" or p[0] == "err":
+            same = r[0] == p[0]
+            self.check(
+                "get_linked",
+                same,
+                lambda: f"{tag} get_linked({key!r}, {min_weight!r}, {limit}): {got}",
+            )
+            if same:
+                self.error_type(
+                    r[1], p[1], f"{tag} get_linked({min_weight!r}, {limit})"
+                )
+            return
         self.check(
             "get_linked",
             got["redis"] == got["postgres"],
@@ -375,10 +429,14 @@ class Probe:
         seeds = rng.sample(pool, rng.randint(1, min(3, len(pool))))
         if rng.random() < 0.15:
             seeds = seeds + seeds[:1]  # a repeated seed
-        depth = rng.choice([1, 2, 2, 3, 4, 6, 2.5, -1])
+        depth = rng.choice(
+            [1, 2, 2, 3, 4, 6, 2.5, -1]
+            + ([1e9, math.inf, 50] if rng.random() < 0.2 else [])
+        )
         decay = rng.choice(
             [0.5, 0.5, 0.3, 0.9, round(rng.uniform(0.05, 0.99), 3)]
             + ([0.0, -0.5, -0.9, 1e-300] if rng.random() < 0.2 else [])
+            + ([0.999999, 0.99] if rng.random() < 0.2 else [])
         )
         threshold = rng.choice(
             [0.01, 0.01, 0.001, 0.1, 1e-6]
@@ -408,13 +466,33 @@ class Probe:
                 exact == got["redis"],
                 lambda: f"{tag} propagate({seeds!r}, {args}) exact: {exact} vs {got}",
             )
+            # And on each of the two SQL statements, whichever the depth
+            # would pick: the visited-pruned layer statement, and the one
+            # WITH RECURSIVE (only at small depth -- it cannot prune).
+            forced = [("propagate_layered", 0)]
+            if depth <= 8:
+                forced.append(("propagate_recursive", 10**9))
+            for cls, layers in forced:
+                with mock.patch.object(
+                    Defaults, "PG_GRAPH_RECURSIVE_MAX_LAYERS", layers
+                ):
+                    try:
+                        other: Any = ("ok", field.propagate(model, seeds, **args))
+                    except Exception as exc:
+                        other = ("err", exc)
+                self.check(
+                    cls,
+                    other == got["redis"],
+                    lambda: f"{tag} propagate({seeds!r}, {args}) {cls}: "
+                    f"{other} vs {got}",
+                )
         if got["redis"][0] == "ok" and threshold > 0:
             trav = self.both(
                 lambda leg: graph_traversal.traverse(
                     model,
                     seeds,
                     co_occurrence_field=field,
-                    depth=int(depth) if depth > 0 else 1,
+                    depth=min(int(depth), 6) if 0 < depth < math.inf else 1,
                     decay_per_hop=0.5,
                     threshold=threshold,
                 )

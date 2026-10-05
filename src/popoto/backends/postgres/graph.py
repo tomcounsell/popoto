@@ -20,7 +20,10 @@ Writes (``graph_update``)
 Each op is one statement, behind the record-key advisory locks of the edge
 sets it writes (``src``, and ``dst`` when symmetric), sorted by ``_pk``: the
 backend's one lock order (plan §6). The lock is what makes a link's
-count-then-prune atomic, as the Lua is.
+count-then-prune atomic, as the Lua is. A record delete on a model with a
+symmetric field also writes its partners' sets (the reverse edges), so it
+takes the partners' record-key locks too, in the same sorted sequence
+(:func:`graph_delete_lock_sql`).
 
 * ``link`` -- ``LINK_WITH_PRUNE_LUA`` per direction: an existing edge keeps
   its weight and nothing is pruned; a new one is added, and when the set
@@ -34,7 +37,9 @@ count-then-prune atomic, as the Lua is.
 * ``unlink`` -- ``ZREM`` per direction.
 * ``weaken`` -- ``WEAKEN_ALL_LUA``: every edge of ``src`` times ``factor``,
   an edge below ``0.001`` afterwards removed; the reply is how many were.
-* ``replace`` -- ``import_state``: the edge set replaced wholesale.
+* ``replace`` -- ``import_state``: the edge set replaced wholesale. A NaN
+  weight is refused before any write (on Redis the ``DELETE`` has already
+  emptied the set when ``ZADD`` refuses it -- a documented divergence).
 
 The arithmetic is the Lua's, in ``double precision``. Postgres raises where C
 overflows or underflows, so the statements guard the one product that can
@@ -56,14 +61,24 @@ Reads (``graph_expand``)
   monotone in ``w``, so an entry the visited map skips is dominated by the
   earlier one (heavier, and no deeper, so with at least as many hops left):
   the result is the maximum over every walk of at most ``depth`` hops whose
-  weights stay ``>= threshold``. That is what one ``WITH RECURSIVE``
-  computes, a layer per iteration, keeping each node's heaviest arrival per
-  layer (:func:`bfs_sql`). Outside that box (``threshold <= 0`` or below
-  ``1e-290``, a negative or non-finite ``decay_per_hop``, a non-finite cap)
-  the step is not monotone and the visited map's order matters, so
-  :func:`simulate_bfs` replays the Lua's queue exactly in Python over the
-  same top-``max_edges`` neighbour lists, fetched one layer per statement.
-  Scores come back through ``%.14g``, as the Lua's ``tostring`` sends them.
+  weights stay ``>= threshold``. Up to
+  ``Defaults.PG_GRAPH_RECURSIVE_MAX_LAYERS`` (2) layers that is one
+  ``WITH RECURSIVE`` statement, a layer per iteration, keeping each node's
+  heaviest arrival per layer (:func:`bfs_sql`). The recursive statement sees
+  only the previous layer, so it cannot apply the visited map and re-expands
+  every reached node on every layer: past two layers its work grows with
+  depth x fan-out where the Lua's stops (#781 review: 24.9 s against 0.10 s
+  on a 400-node clique). Deeper calls run :meth:`GraphMixin._graph_bfs_layered`
+  instead -- one statement per layer (:func:`bfs_layer_sql`) and the visited
+  rule between layers, so they expand no more than the Lua does and stop
+  after the last layer that improved a node, whatever ``depth`` is. A
+  statement timeout is never what bounds a graph read. Outside that box
+  (``threshold <= 0`` or below ``1e-290``, a negative or non-finite
+  ``decay_per_hop``, a non-finite cap) the step is not monotone and the
+  visited map's order matters, so :func:`simulate_bfs` replays the Lua's
+  queue exactly in Python over the same top-``max_edges`` neighbour lists,
+  fetched one layer per statement. Scores come back through ``%.14g``, as
+  the Lua's ``tostring`` sends them.
 * ``mode="linked"`` -- ``get_linked``: ``ZREVRANGEBYSCORE +inf min LIMIT 0 n``,
   one indexed read of ``src``'s rows (``graph_expand`` at depth 1 with the
   stored weights as scores, unclamped).
@@ -74,9 +89,11 @@ Never imports ``redis``.
 
 from __future__ import annotations
 
+import contextlib
 import math
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Sequence
 
+from ...fields.constants import Defaults
 from ..types import ModelSpec, RecordId, Scored, UnitOfWork
 from .memory import _lit, lua_tostring, safe_mul
 from .schema import TableSpec, _bounded, quote_ident
@@ -85,9 +102,11 @@ __all__ = [
     "EDGE_SUFFIX",
     "GRAPH_KIND",
     "GraphMixin",
+    "bfs_layer_sql",
     "bfs_sql",
     "compile_graph",
     "edge_table",
+    "graph_delete_lock_sql",
     "graph_delete_sql",
     "lua_integer_reply",
     "simulate_bfs",
@@ -176,6 +195,45 @@ def graph_delete_sql(ts: TableSpec, spec: ModelSpec) -> tuple[str, int]:
     return "WITH " + ", ".join(ctes) + " ", uses
 
 
+def graph_delete_lock_sql(
+    ts: TableSpec, spec: ModelSpec, keys: Sequence[str]
+) -> tuple[str, list[Any]]:
+    """The record-key locks a record ``DELETE`` takes when the model has a
+    symmetric ``CoOccurrenceField``: the deleted keys *and* every partner
+    whose edge set the reverse-edge CTE of :func:`graph_delete_sql` writes,
+    in one ``_pk``-ordered sequence -- the backend's one lock order, so the
+    delete never row-locks a partner's edges without that partner's key
+    lock. Empty when there is no symmetric graph field (the deleted keys'
+    own locks then cover every row it writes).
+
+    The statement runs twice. The first takes the locks in order, with the
+    partners its snapshot saw; once it returns, the deleted keys are held,
+    and no new partner can appear (a ``link`` to a deleted key takes that
+    key's lock). The second sees, in a fresh snapshot, a partner linked
+    between the first's snapshot and its last lock -- normally none, and
+    re-taking a held advisory lock is a no-op -- so every edge set the
+    ``DELETE`` that follows writes is locked. Only such a racing partner is
+    locked out of order."""
+    symmetric = [
+        n for n in graph_fields(spec) if spec.fields[n].options.get("symmetric", True)
+    ]
+    if not symmetric:
+        return "", []
+    partners = " ".join(
+        f'UNION SELECT e."dst" FROM {edge_table(ts, n)} AS e '
+        'WHERE e."src" = ANY(%s::text[])'
+        for n in symmetric
+    )
+    one = (
+        "SELECT count(pg_advisory_xact_lock(hashtextextended(%s || u.k, 0))) "
+        "FROM unnest(ARRAY(SELECT a.k FROM (SELECT unnest(%s::text[]) AS k "
+        f'{partners}) AS a ORDER BY a.k COLLATE "C")) WITH ORDINALITY AS u(k, i); '
+    )
+    params: list[Any] = [f"popoto:rec:{ts.qualified}:", list(keys)]
+    params += [list(keys)] * len(symmetric)
+    return one + one, params + params
+
+
 def lua_integer_reply(value: float) -> float:
     """``float()`` of the integer Redis replies with for a Lua number: the
     script's ``return weight`` is converted with a C ``(long long)`` cast,
@@ -245,6 +303,28 @@ def bfs_sql(table: str, *, fanout: int) -> str:
     )
 
 
+def bfs_layer_sql(table: str, *, fanout: int) -> str:
+    """One BFS layer of :func:`bfs_sql`, from a frontier passed in: each
+    frontier node's top ``fanout`` edges by ``(weight, dst)`` descending, the
+    same product kept at ``>= threshold``, and each reached node's heaviest
+    arrival. Parameters, in order: the decay per hop, the cap, the frontier's
+    keys (``text[]``) and weights (``float8[]``), the threshold. Weights
+    cross the wire as ``float8`` text, which round-trips a double exactly."""
+    product = safe_mul('s."x"', 's."eff"')
+    return (
+        'SELECT h."pk", max(h."w") AS "w" FROM ('
+        f'SELECT s."dst" AS "pk", {product} AS "w" FROM ('
+        'SELECT n."dst", (f."w" * %s::float8) AS "x", '
+        'least(n."weight", %s::float8) AS "eff" '
+        'FROM unnest(%s::text[], %s::float8[]) AS f("pk", "w") CROSS JOIN LATERAL ('
+        f'SELECT e."dst", e."weight" FROM {table} AS e WHERE e."src" = f."pk" '
+        'ORDER BY e."weight" DESC, e."dst" COLLATE "C" DESC '
+        f"LIMIT {int(fanout)}) AS n) AS s) AS h "
+        'WHERE h."w" >= %s::float8 AND h."w" <> \'NaN\'::float8 '
+        'GROUP BY h."pk"'
+    )
+
+
 def simulate_bfs(
     neighbours: Callable[[Sequence[str]], Mapping[str, list[tuple[str, float]]]],
     seeds: Sequence[str],
@@ -311,6 +391,15 @@ def _bfs_in_sql_domain(threshold: float, decay: float, cap: float) -> bool:
     return math.isfinite(cap) and cap > 0
 
 
+def _recursive_fits(depth: float) -> bool:
+    """Whether :func:`bfs_sql` may answer: it expands ``ceil(depth)`` layers
+    and cannot prune across them, so only up to
+    ``Defaults.PG_GRAPH_RECURSIVE_MAX_LAYERS`` (read per call)."""
+    if not math.isfinite(depth):
+        return False
+    return math.ceil(depth) <= int(Defaults.PG_GRAPH_RECURSIVE_MAX_LAYERS)
+
+
 class GraphMixin:
     """``graph_update`` / ``graph_expand`` for
     :class:`~popoto.backends.postgres.PostgresBackend`."""
@@ -319,6 +408,7 @@ class GraphMixin:
     _table: Callable[..., TableSpec]
     _run: Callable[..., tuple[list[tuple[Any, ...]], int]]
     _record_locked: Callable[..., tuple[str, list[Any]]]
+    _connection: Callable[..., Any]
     transaction: Callable[..., Any]
 
     # -- writes ---------------------------------------------------------------
@@ -520,6 +610,14 @@ class GraphMixin:
         uow: Optional[UnitOfWork],
     ) -> None:
         dsts = list(edges)
+        weights = [float(edges[d]) for d in dsts]
+        if any(math.isnan(w) for w in weights):
+            # import_state's ZADD refuses a NaN score -- on Redis after its
+            # DELETE has already emptied the set. Refused here before any
+            # write, so the set is left as it was and no NaN edge is stored
+            # (Postgres would order it above every weight, and least(NaN,
+            # cap) is the cap: the heaviest edge of the graph).
+            raise _not_a_float()
         sql, params = self._record_locked(
             ts,
             [s],
@@ -528,7 +626,8 @@ class GraphMixin:
             f'DELETE FROM {table} WHERE "src" = %s; '
             f'INSERT INTO {table} ("src", "dst", "weight") '
             "SELECT %s, u.d, u.w FROM unnest(%s::text[], %s::float8[]) AS u(d, w)",
-            [s, s, dsts, [float(edges[d]) + 0.0 for d in dsts]],
+            # `+ 0.0`: a sorted set replies 0 for a -0 score.
+            [s, s, dsts, [w + 0.0 for w in weights]],
         )
         self._run(sql, params, uow=uow, write=True)
 
@@ -695,28 +794,101 @@ class GraphMixin:
             fanout = int(spec.fields[field].options.get("max_edges", 500))
         decay = float(decay_per_hop)
         thr = float(threshold)
-        if _bfs_in_sql_domain(thr, decay, float(cap)) and math.isfinite(float(depth)):
-            rows, _ = self._run(
-                bfs_sql(table, fanout=int(fanout)),
-                [names, decay, float(cap), float(depth), thr],
+        if _bfs_in_sql_domain(thr, decay, float(cap)):
+            if _recursive_fits(float(depth)):
+                rows, _ = self._run(
+                    bfs_sql(table, fanout=int(fanout)),
+                    [names, decay, float(cap), float(depth), thr],
+                )
+                return [
+                    (RecordId(spec.name, (), pk, native=pk), lua_tostring(float(w)))
+                    for pk, w in rows
+                ]
+            raw = self._graph_bfs_layered(
+                table,
+                names,
+                depth=float(depth),
+                decay=decay,
+                threshold=thr,
+                cap=float(cap),
+                fanout=int(fanout),
             )
-            return [
-                (RecordId(spec.name, (), pk, native=pk), lua_tostring(float(w)))
-                for pk, w in rows
-            ]
-        raw = simulate_bfs(
-            lambda nodes: self._graph_neighbours(table, nodes, int(fanout)),
-            names,
-            depth=float(depth),
-            decay=decay,
-            threshold=thr,
-            cap=float(cap),
-        )
+        else:
+            raw = simulate_bfs(
+                lambda nodes: self._graph_neighbours(table, nodes, int(fanout)),
+                names,
+                depth=float(depth),
+                decay=decay,
+                threshold=thr,
+                cap=float(cap),
+            )
         ordered = sorted(raw.items(), key=lambda kv: (-kv[1], _sort_key(kv[0])))
         return [
             (RecordId(spec.name, (), pk, native=pk), lua_tostring(w))
             for pk, w in ordered
         ]
+
+    def _graph_bfs_layered(
+        self,
+        table: str,
+        seeds: Sequence[str],
+        *,
+        depth: float,
+        decay: float,
+        threshold: float,
+        cap: float,
+        fanout: int,
+    ) -> dict[str, float]:
+        """``PROPAGATE_BFS_LUA`` in its monotone domain, one statement per
+        layer (:func:`bfs_layer_sql`) with the Lua's visited rule between
+        layers: a node goes on to the next layer only when it arrived
+        strictly heavier than at any earlier layer. A pruned arrival is
+        dominated by the earlier, no-deeper one (module docstring), so the
+        answer is the recursive statement's; the work is not, because every
+        expansion here is one the Lua's visited map also lets through.
+
+        Terminates without the depth bound: the contraction guard keeps
+        ``decay * cap < 1``, so a walk that repeats a node arrives lighter
+        than its cycle-free part did, and every improving arrival is a simple
+        path -- at most one layer per node reached. Returns the raw weights,
+        before ``tostring``."""
+        sql = bfs_layer_sql(table, fanout=fanout)
+        best: dict[str, float] = {s: 1.0 for s in seeds}
+        frontier = list(best.items())
+        layer = 0
+        with self._graph_read_session() as session:
+            while frontier and layer < depth:
+                rows, _ = self._run(
+                    sql,
+                    [decay, cap, [pk for pk, _ in frontier]]
+                    + [[w for _, w in frontier], threshold],
+                    uow=session,
+                )
+                frontier = []
+                for pk, w in rows:
+                    w = float(w)
+                    seen = best.get(pk)
+                    if seen is None or w > seen:
+                        best[pk] = w
+                        frontier.append((pk, w))
+                layer += 1
+        return {pk: w for pk, w in best.items() if pk not in seeds}
+
+    @contextlib.contextmanager
+    def _graph_read_session(self) -> Iterator[UnitOfWork]:
+        """One pooled connection, in one read transaction, for the layer
+        statements of a deep ``propagate``: each layer then costs one round
+        trip rather than a pool checkout plus a ``SET LOCAL`` message. The
+        statement timeout still applies to each statement, and a failure is
+        classified as a read (never a dropped write)."""
+        from . import PostgresUnitOfWork
+
+        with self._connection(write=False) as conn:
+            with conn.transaction():
+                ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
+                if ms > 0:
+                    conn.execute(f"SET LOCAL statement_timeout = {ms}")
+                yield PostgresUnitOfWork(conn)
 
     def _graph_neighbours(
         self, table: str, nodes: Sequence[str], fanout: int
@@ -746,14 +918,19 @@ class GraphMixin:
         min_weight: Any,
         limit: Optional[int],
     ) -> Scored:
-        """``ZREVRANGEBYSCORE key +inf <min> LIMIT 0 <limit> WITHSCORES``."""
+        """``ZREVRANGEBYSCORE key +inf <min> LIMIT 0 <limit> WITHSCORES``.
+
+        The two refusals keep Redis's text and order -- redis-py's own
+        ``DataError`` for ``limit=None`` is raised client-side before the
+        server's ``ResponseError`` for a NaN bound -- as ``ValueError`` (the
+        backend never imports redis; a documented divergence)."""
+        if limit is None:
+            raise ValueError("``start`` and ``num`` must both be specified")
         text = str(min_weight)
         exclusive = text.startswith("(")
         bound = float(text[1:] if exclusive else text)
         if math.isnan(bound):
             raise ValueError("min or max is not a float")
-        if limit is None:
-            raise ValueError("``start`` and ``num`` must both be specified")
         n = int(limit)
         if n == 0:
             return []

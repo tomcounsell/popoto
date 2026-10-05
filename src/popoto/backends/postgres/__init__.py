@@ -62,7 +62,7 @@ from ..types import (
 )
 from ..planning import has_filters
 from .codec import decode_json, encode_json_element
-from .graph import GraphMixin, graph_delete_sql
+from .graph import GraphMixin, graph_delete_lock_sql, graph_delete_sql
 from .recipes import RecipeOpsMixin
 from .memory import NOT_HANDLED, PostgresMemoryOps
 from .plan import (
@@ -934,12 +934,16 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         keys = [rid.canonical for rid in ids]
         # CoOccurrenceField.on_delete, as CTEs of the same statement (M4).
         graph_sql, uses = graph_delete_sql(ts, spec)
-        sql, params = self._record_locked(
-            ts,
-            keys,
-            f'{graph_sql}DELETE FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])',
-            [keys] * (uses + 1),
+        statement = (
+            f'{graph_sql}DELETE FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])'
         )
+        # A symmetric graph field's reverse-edge CTE writes the partners'
+        # edge sets, so their record-key locks join the deleted keys' (M4).
+        lock_sql, lock_params = graph_delete_lock_sql(ts, spec, keys)
+        if lock_sql:
+            sql, params = lock_sql + statement, lock_params + [keys] * (uses + 1)
+        else:
+            sql, params = self._record_locked(ts, keys, statement, [keys] * (uses + 1))
         rows, count = self._run(sql, params, uow=uow, write=True)
         for obj in options.get("objs") or ():
             obj._db_content = dict()

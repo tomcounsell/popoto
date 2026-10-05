@@ -5,9 +5,11 @@ The model-level parity is the conformance suite (gate (b):
 of ``test_composite_score_query``) and ``scripts/probe_graph_parity.py``'s
 seeded two-leg probe, a slice of which runs here. This file covers what has
 no Redis counterpart: the edge table the compiler emits, the delete cleanup
-inside the record ``DELETE``, the record-key locks behind every edge write
-and what they buy under concurrency, the two ``graph_expand`` paths (the
-``WITH RECURSIVE`` statement and the exact replay of the Lua queue), the
+inside the record ``DELETE`` (and the partners' locks it takes), the
+record-key locks behind every edge write and what they buy under
+concurrency, the three ``graph_expand`` paths (the ``WITH RECURSIVE``
+statement, the visited-pruned statement per layer, and the exact replay of
+the Lua queue), the
 Postgres twins of the two conformance tests that plant raw sorted-set
 scores, and the divergences the feature page documents.
 """
@@ -369,10 +371,11 @@ def test_outside_the_monotone_domain_the_lua_queue_is_replayed(pg, monkeypatch):
     assert calls == [["a"], ["b"], ["c"]]
 
 
-def test_the_two_bfs_paths_agree(pg):
-    """The ``WITH RECURSIVE`` statement and the exact replay give the same
-    answer wherever the statement is used (the probe compares them on every
-    shape; this is a fixed graph with cycles, ties and a fan-out cut)."""
+def test_the_three_bfs_paths_agree(pg):
+    """The ``WITH RECURSIVE`` statement, the visited-pruned statement per
+    layer and the exact replay give the same answer wherever the SQL domain
+    holds (the probe compares all three on every shape; this is a fixed graph
+    with cycles, ties and a fan-out cut)."""
     f = GraphNode._meta.fields["links"]
     names = [f"n{i}" for i in range(12)]
     for i, a in enumerate(names):
@@ -380,12 +383,195 @@ def test_the_two_bfs_paths_agree(pg):
             f.link(
                 GraphNode, a, names[(i + j) % 12], initial_weight=((i * j) % 7 + 1) / 7
             )
-    for depth in (1, 2, 3, 5):
-        sql = f.propagate(GraphNode, ["n0", "n4"], depth=depth, threshold=0.001)
+    for depth in (1, 2, 3, 5, 2.5, 10**9):
+        args = dict(depth=depth, threshold=0.001)
+        answers = []
+        for layers in (10**9, 0):
+            if layers and depth > 5:
+                continue  # the recursive statement would expand 1e9 layers
+            with pytest.MonkeyPatch.context() as mp:
+                mp.setattr(Defaults, "PG_GRAPH_RECURSIVE_MAX_LAYERS", layers)
+                answers.append(f.propagate(GraphNode, ["n0", "n4"], **args))
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(graph_mod, "_bfs_in_sql_domain", lambda *a: False)
-            exact = f.propagate(GraphNode, ["n0", "n4"], depth=depth, threshold=0.001)
-        assert sql == exact
+            answers.append(f.propagate(GraphNode, ["n0", "n4"], **args))
+        assert all(a == answers[-1] for a in answers), (depth, answers)
+
+
+def _spy_statements(monkeypatch, backend):
+    sent = []
+    real = backend._run
+
+    def spy(sql, params=(), **kw):
+        sent.append(sql)
+        return real(sql, params, **kw)
+
+    monkeypatch.setattr(backend, "_run", spy)
+    return sent
+
+
+def test_a_deep_propagate_prunes_as_the_visited_map_does(pg, monkeypatch):
+    """Past ``Defaults.PG_GRAPH_RECURSIVE_MAX_LAYERS`` layers ``propagate``
+    runs one statement per layer, and a node goes on to the next layer only
+    when it arrived strictly heavier than before -- ``PROPAGATE_BFS_LUA``'s
+    visited rule. Around a 4-cycle at ``depth=1e9`` that is four statements:
+    the fourth reaches the seed again, lighter, and the walk stops (the
+    recursive statement would go round until ``(0.999999 * 1)^d`` fell under
+    the threshold, ~4.6 million layers)."""
+    g = GraphOneWay._meta.fields["links"]
+    for a, b in ("ab", "bc", "cd", "da"):
+        g.link(GraphOneWay, a, b, initial_weight=1.0)
+    sent = _spy_statements(monkeypatch, get_backend(GraphOneWay))
+    args = dict(depth=10**9, decay_per_hop=0.999999, threshold=0.01)
+    got = g.propagate(GraphOneWay, ["a"], **args)
+    assert len(sent) == 4
+    assert not any("WITH RECURSIVE" in s for s in sent)
+    monkeypatch.setattr(graph_mod, "_bfs_in_sql_domain", lambda *a: False)
+    assert got == g.propagate(GraphOneWay, ["a"], **args)  # the exact replay
+    assert list(got) == ["b", "c", "d"]
+
+
+def test_depth_two_is_still_the_one_recursive_statement(pg, monkeypatch):
+    """Up to ``PG_GRAPH_RECURSIVE_MAX_LAYERS`` (2) layers the recursive
+    statement does exactly the pruned work in one round trip, so it stays."""
+    assert Defaults.PG_GRAPH_RECURSIVE_MAX_LAYERS == 2
+    f = GraphNode._meta.fields["links"]
+    f.link(GraphNode, "a", "b", initial_weight=1.0)
+    sent = _spy_statements(monkeypatch, get_backend(GraphNode))
+    f.propagate(GraphNode, ["a"], depth=2)
+    f.propagate(GraphNode, ["a"], depth=3)
+    assert ["WITH RECURSIVE" in s for s in sent] == [True, False, False]
+
+
+class GraphClique(popoto.Model):
+    name = popoto.KeyField()
+    links = CoOccurrenceField(symmetric=False, max_edges=100)
+
+
+def test_a_dense_clique_at_any_depth_answers_inside_the_statement_timeout(
+    pg, pg_schema, admin, monkeypatch
+):
+    """#781 review: on a clique with a decay near 1 the recursive statement
+    re-expanded every node on every layer until ``statement_timeout``, which
+    the outage contract reports as ``BackendUnavailableError`` and counts
+    against ``health``. Redis answered in milliseconds. A 40-node clique
+    (1,560 edges) at ``depth=1e9`` now answers in two statements, with the
+    timeout lowered to 3 s so the old statement fails fast, and the health
+    record never sees a failure."""
+    monkeypatch.setattr(Defaults, "PG_STATEMENT_TIMEOUT_MS", 3000)
+    g = GraphClique._meta.fields["links"]
+    g.link(GraphClique, "c0", "c1", initial_weight=1.0)  # creates the table
+    ts = get_backend(GraphClique)._table(GraphClique._meta.spec)
+    admin.execute(
+        f"INSERT INTO {graph_mod.edge_table(ts, 'links')} "
+        "SELECT 'c' || i, 'c' || j, 1.0 FROM generate_series(0, 39) AS i, "
+        "generate_series(0, 39) AS j WHERE i <> j ON CONFLICT DO NOTHING"
+    )
+    for args in (
+        dict(depth=50, decay_per_hop=0.99, threshold=0.01),
+        dict(depth=10**9, decay_per_hop=0.999999, threshold=0.01),
+        dict(depth=math.inf, decay_per_hop=0.999, threshold=1e-280),
+    ):
+        got = g.propagate(GraphClique, ["c0"], **args)
+        assert len(got) == 39 and set(got.values()) == {
+            float(f"{args['decay_per_hop']:.14g}")
+        }
+    assert pg.health.ok and pg.health.consecutive_failures == 0
+
+
+# -- delete: the partners' record locks ----------------------------------------------
+
+
+def test_a_delete_locks_its_partners_in_key_order_before_the_delete(pg, monkeypatch):
+    """A symmetric field's delete writes the partners' edge sets (the reverse
+    edges), so the partners' record-key locks join the deleted keys' in one
+    ``_pk``-ordered sequence, before any row is touched; an asymmetric
+    field's delete writes only the deleted keys' own rows and keeps the plain
+    record lock."""
+    backend = get_backend(GraphNode)
+    f = GraphNode._meta.fields["links"]
+    m = GraphNode.create(name="m")
+    km = m.db_key.redis_key
+    f.link(GraphNode, km, "zz", initial_weight=0.5)
+    f.link(GraphNode, "Aa", km, initial_weight=0.5)
+    sent = _spy_statements(monkeypatch, backend)
+    m.delete()
+    (stmt,) = [s for s in sent if "DELETE FROM" in s]
+    head = stmt[: stmt.index('WITH "_g0"')]
+    assert head.count("pg_advisory_xact_lock") == 2  # in order, then late partners
+    assert head.count('ORDER BY a.k COLLATE "C"') == 2
+    assert "__links__edge" in head
+    ts = backend._table(GraphNode._meta.spec)
+    rows, _ = backend._run(
+        "SELECT ARRAY(SELECT a.k FROM (SELECT unnest(%s::text[]) AS k UNION "
+        'SELECT unnest(%s::text[])) AS a ORDER BY a.k COLLATE "C")',
+        [[km], ["zz", "Aa"]],
+    )
+    assert rows[0][0] == ["Aa", km, "zz"]  # bytewise, as record_lock_sql sorts
+    assert graph_mod.graph_delete_lock_sql(ts, GraphOneWay._meta.spec, [km]) == (
+        "",
+        [],
+    )
+
+
+def _delete_beside_a_transaction_on_a_partner_set(pg, monkeypatch):
+    """Transaction H weakens partner ``Aa``'s set (holding ``Aa``'s key lock
+    and the row ``(Aa, k)``); a delete of record ``k`` starts from another
+    thread; then H links into ``k``'s set and commits. ``Aa`` sorts before
+    ``k``, so H takes its locks in the global order. Retries are off, so a
+    deadlock surfaces. Returns the errors H and the delete raised."""
+    monkeypatch.setattr(Defaults, "PG_TRANSACTION_RETRIES", 0)
+    f = GraphNode._meta.fields["links"]
+    rec = GraphNode.create(name="k")
+    k = rec.db_key.redis_key
+    assert "Aa".encode() < k.encode()
+    f.link(GraphNode, "Aa", k, initial_weight=0.5)
+    errors = {}
+
+    def delete():
+        try:
+            rec.delete()
+        except Exception as exc:
+            errors["delete"] = exc
+
+    try:
+        with pg.transaction() as uow:
+            f.weaken_all(GraphNode, "Aa", factor=0.5, pipeline=uow)
+            thread = threading.Thread(target=delete)
+            thread.start()
+            time.sleep(0.5)
+            f.link(GraphNode, "Zz", k, initial_weight=0.5, pipeline=uow)
+    except Exception as exc:
+        errors["transaction"] = exc
+    thread.join()
+    return errors, k
+
+
+def test_a_delete_cannot_deadlock_a_transaction_holding_a_partner_set(
+    pg, pg_schema, admin, monkeypatch
+):
+    """With the partners' locks the delete queues on ``Aa`` before taking
+    ``k``, so H's link into ``k`` goes through, H commits, and the delete
+    then removes ``k``'s edges and every reverse edge -- including the one
+    H's link added while the delete waited (its second lock statement)."""
+    errors, k = _delete_beside_a_transaction_on_a_partner_set(pg, monkeypatch)
+    assert errors == {}
+    assert [r for r in _edges(admin, pg_schema, GraphNode) if k in r[:2]] == []
+
+
+def test_a_delete_without_partner_locks_deadlocks_that_transaction(pg, monkeypatch):
+    """The control: without the partners' locks the delete holds ``k`` and
+    waits on the row ``(Aa, k)`` H holds, while H's link waits on ``k`` --
+    Postgres detects the deadlock and one side raises
+    ``BackendRetryableError`` (40P01). So the test above is not vacuous."""
+    monkeypatch.setattr(
+        "popoto.backends.postgres.graph_delete_lock_sql",
+        lambda ts, spec, keys: ("", []),
+    )
+    errors, _k = _delete_beside_a_transaction_on_a_partner_set(pg, monkeypatch)
+    assert len(errors) == 1
+    (exc,) = errors.values()
+    assert isinstance(exc, BackendRetryableError) and "40P01" in str(exc)
 
 
 # -- Postgres twins of the conformance tests that plant raw sorted-set scores -------

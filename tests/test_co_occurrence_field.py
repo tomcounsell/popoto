@@ -28,6 +28,7 @@ Tests cover:
 - Synergy: CoOccurrenceField + ConfidenceField
 """
 
+import math
 import os
 import sys
 
@@ -762,3 +763,93 @@ class TestSynergyWithConfidenceField:
         effective_weight = edge_weight * conf
         assert effective_weight > 0
         assert effective_weight <= edge_weight  # confidence <= 1.0
+
+
+# --- Two-leg pins of the M4 fixes and divergences (#781 review) ---
+
+
+def _all_edges(model, pk):
+    field = model._meta.fields["associations"]
+    return field.get_linked(model, pk, min_weight="-inf", limit=-1)
+
+
+class TestImportStateAndErrorParity:
+    """Each test runs on both legs. The ones named ``..._divergence`` assert
+    the documented difference (docs/features/postgres-backend.md, the M4
+    rows); the others pin a Postgres fix by asserting the Redis answer."""
+
+    def test_import_state_replaces_a_set_it_overlaps(self):
+        """``import_state`` replaces the set, including edges it imports again.
+        Pins the two-statement replace: a ``DELETE`` CTE beside the ``INSERT``
+        in one statement does not see its own deletes, so it raises a unique
+        violation on ``(src, dst)`` for an edge already present."""
+        field = CoOcAsymmetric._meta.fields["associations"]
+        item = CoOcAsymmetric.create(name="src")
+        pk = item.db_key.redis_key
+        field.link(CoOcAsymmetric, pk, "b", initial_weight=0.5)
+        field.link(CoOcAsymmetric, pk, "c", initial_weight=0.25)
+        CoOccurrenceField.import_state(
+            item, "associations", {"edges": {"b": 0.75, "d": 0.125}}
+        )
+        assert _all_edges(CoOcAsymmetric, pk) == [("b", 0.75), ("d", 0.125)]
+
+    def test_import_state_stores_negative_zero_as_zero(self):
+        """A sorted set replies ``0`` for a ``-0`` score, so an imported ``-0``
+        weight reads back as ``+0`` on both legs."""
+        item = CoOcAsymmetric.create(name="src")
+        pk = item.db_key.redis_key
+        CoOccurrenceField.import_state(item, "associations", {"edges": {"b": -0.0}})
+        ((dst, weight),) = _all_edges(CoOcAsymmetric, pk)
+        assert dst == "b" and weight == 0.0 and math.copysign(1, weight) == 1
+        exported = CoOccurrenceField.export_state(item, "associations")
+        assert math.copysign(1, exported["edges"]["b"]) == 1
+
+    def test_link_stores_negative_zero_as_zero(self):
+        field = CoOcAsymmetric._meta.fields["associations"]
+        field.link(CoOcAsymmetric, "a", "b", initial_weight=-0.0)
+        ((_, weight),) = _all_edges(CoOcAsymmetric, "a")
+        assert weight == 0.0 and math.copysign(1, weight) == 1
+
+    def test_a_nan_import_is_refused_a_documented_divergence(self, backend_is_redis):
+        """Redis's ``import_state`` runs ``DELETE`` then a ``ZADD`` that
+        refuses the NaN score (``ResponseError``), so the set is left empty.
+        Postgres refuses before any write (``ValueError``, same text): the set
+        is unchanged. No NaN edge is stored on either."""
+        field = CoOcAsymmetric._meta.fields["associations"]
+        item = CoOcAsymmetric.create(name="src")
+        pk = item.db_key.redis_key
+        field.link(CoOcAsymmetric, pk, "old", initial_weight=0.5)
+        with pytest.raises(Exception, match="value is not a valid float") as raised:
+            CoOccurrenceField.import_state(
+                item, "associations", {"edges": {"a": math.nan, "b": 0.3}}
+            )
+        if backend_is_redis:
+            assert type(raised.value).__name__ == "ResponseError"
+            assert _all_edges(CoOcAsymmetric, pk) == []
+        else:
+            assert type(raised.value) is ValueError
+            assert _all_edges(CoOcAsymmetric, pk) == [("old", 0.5)]
+
+    def test_get_linked_limit_none_a_documented_divergence(self, backend_is_redis):
+        """redis-py refuses ``num=None`` client-side with ``DataError``;
+        Postgres raises ``ValueError`` with the same text -- before the NaN
+        bound check, as redis-py's comes before the server's."""
+        field = CoOcAsymmetric._meta.fields["associations"]
+        field.link(CoOcAsymmetric, "a", "b", initial_weight=0.5)
+        for min_weight in (0.01, math.nan):
+            with pytest.raises(Exception) as raised:
+                field.get_linked(CoOcAsymmetric, "a", min_weight=min_weight, limit=None)
+            assert str(raised.value) == "``start`` and ``num`` must both be specified"
+            expected = "DataError" if backend_is_redis else "ValueError"
+            assert type(raised.value).__name__ == expected
+
+    def test_get_linked_nan_min_weight_a_documented_divergence(self, backend_is_redis):
+        """The server refuses a NaN bound with ``ResponseError``; Postgres
+        raises ``ValueError`` with the same text."""
+        field = CoOcAsymmetric._meta.fields["associations"]
+        field.link(CoOcAsymmetric, "a", "b", initial_weight=0.5)
+        with pytest.raises(Exception) as raised:
+            field.get_linked(CoOcAsymmetric, "a", min_weight=math.nan)
+        assert str(raised.value) == "min or max is not a float"
+        expected = "ResponseError" if backend_is_redis else "ValueError"
+        assert type(raised.value).__name__ == expected
