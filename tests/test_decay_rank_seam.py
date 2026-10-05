@@ -235,7 +235,9 @@ def test_cyclic_override_is_a_distinct_implementation():
 
 
 @pytest.mark.redis_only(
-    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    reason="CyclicDecayField.rank_decayed(zset_key) ranks a Redis sorted set and is "
+    "refused off Redis (plan §1.1, TD-40); the Postgres twin ranks through the "
+    "backend in tests/test_backend_parity_longtail.py"
 )
 def test_cyclic_rank_decayed_returns_scores():
     tag = uuid.uuid4().hex[:8]
@@ -253,7 +255,9 @@ def test_cyclic_rank_decayed_returns_scores():
 
 
 @pytest.mark.redis_only(
-    reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
+    reason="CyclicDecayField.rank_decayed(zset_key) ranks a Redis sorted set and is "
+    "refused off Redis (plan §1.1, TD-40); the Postgres twin ranks through the "
+    "backend in tests/test_backend_parity_longtail.py"
 )
 def test_cyclic_override_ignores_the_validity_gate():
     """CYCLIC_DECAY_LUA has no validity gate: KEYS 1-4 are taken and its header

@@ -620,7 +620,10 @@ including `DefaultMemory`, does.
     should use `composite_score`, or intersect with
     `filter(validity__current=True)`. Pinned by
     `tests/test_validity_field.py::TestCyclicDecayGatingGap`, which fails
-    loudly if the gate is ever added — update this entry then.
+    loudly if the gate is ever added — update this entry then. The Postgres
+    backend reproduces the gap (#759 M5): its cyclic ranking expression
+    accepts the validity field and ignores it, and the same test runs on both
+    conformance legs.
 
     Where the gap lives changed in
     [#662](https://github.com/tomcounsell/popoto/issues/662), though the gap

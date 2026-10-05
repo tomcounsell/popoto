@@ -64,6 +64,7 @@ from ..planning import has_filters
 from .codec import decode_json, encode_json_element
 from .events import EventsMixin, stream_deletes
 from .graph import GraphMixin, graph_delete_lock_sql, graph_delete_sql
+from .longtail import LongtailOpsMixin, cyclic_save_parts
 from .recipes import RecipeOpsMixin
 from .memory import NOT_HANDLED, PostgresMemoryOps
 from .plan import (
@@ -398,7 +399,12 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 
 
 class PostgresBackend(
-    SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin, EventsMixin
+    SearchMixin,
+    PostgresMemoryOps,
+    GraphMixin,
+    RecipeOpsMixin,
+    EventsMixin,
+    LongtailOpsMixin,
 ):
     """The Postgres implementation of :class:`popoto.backends.Backend`.
 
@@ -410,7 +416,9 @@ class PostgresBackend(
     (``graph_update``, ``graph_expand``) from :class:`~.graph.GraphMixin`, and
     the recipe-layer ``field_call`` adapters (``idle_seconds``, a sorted
     field's partition reads, counters, tombstones, the question queue) from
-    :class:`~.recipes.RecipeOpsMixin` (#759 M4)."""
+    :class:`~.recipes.RecipeOpsMixin` (#759 M4); ``CyclicDecayField``,
+    ``TDValueField`` and ``PredictionLedgerMixin`` from
+    :class:`~.longtail.LongtailOpsMixin` (#759 M5)."""
 
     name = "postgres"
 
@@ -880,6 +888,14 @@ class PostgresBackend(
         # M3: a ValidityField's interval columns, written as SUPERSEDE_LUA's
         # mode 'open' writes them (.validity.save_parts).
         state, overrides, guards = save_parts(ts, spec, obj, names)
+        # M5: CyclicDecayField.on_save's CYCLES_MERGE_LUA, as columns and
+        # ON CONFLICT expressions of this upsert (.longtail).
+        cyclic = cyclic_save_parts(ts, spec, obj, names)
+        returning = cyclic.returning if cyclic is not None else []
+        if cyclic is not None:
+            state.update(cyclic.cols)
+            overrides.update(cyclic.overrides)
+        extra = "".join(f', {expr} AS "_r{i}"' for i, expr in enumerate(returning))
         search = (
             prepare_save(self, ts, obj, fields, values, new_key)
             if ts.search is not None
@@ -909,7 +925,7 @@ class PostgresBackend(
         sql = (
             f"INSERT INTO {ts.qualified} ({col_sql}) VALUES ({placeholders}) "
             f'ON CONFLICT ("_pk") DO UPDATE SET {updates}{guard} '
-            "RETURNING (xmax = 0)"
+            f'RETURNING (xmax = 0) AS "_ins"{extra}'
         )
         params = [new_key] + list(values.values()) + list(state.values())
         if expires is not None:
@@ -918,10 +934,11 @@ class PostgresBackend(
             # Postings, document length and membership rows ride in the same
             # statement as data-modifying CTEs: one round trip, one
             # transaction, and a scope change moves the postings atomically.
+            extra_cols = "".join(f', "_r{i}"' for i in range(len(returning)))
             sql = (
-                f'WITH "_row" AS ({sql} AS "_ins"), '
+                f'WITH "_row" AS ({sql}), '
                 + ", ".join(search.ctes)
-                + ' SELECT "_ins" FROM "_row"'
+                + f' SELECT "_ins"{extra_cols} FROM "_row"'
             )
             params += search.params
         # The record-key lock goes first, as a statement of its own: the
@@ -992,6 +1009,9 @@ class PostgresBackend(
             # with the stored start (a save racing past pre_save_validate).
             refuse_valid_from_conflict(self, spec, obj, uow=uow)
         inserted = bool(rows and rows[0][0])
+        if cyclic is not None and rows:
+            # The #698 reset log line, from the cycles the merge replaced.
+            cyclic.report(obj, rows[0][1:])
 
         obj._redis_key = new_key
         obj.obsolete_redis_key = None
@@ -1305,10 +1325,11 @@ class PostgresBackend(
         handled = self._recipe_field_call(spec, field, op, args, kwargs, uow)
         if handled is not NOT_HANDLED:
             return handled
+        handled = self._longtail_field_call(spec, field, op, args, kwargs, uow)
+        if handled is not NOT_HANDLED:
+            return handled
         raise BackendCapabilityError(
-            f"PostgresBackend.field_call({kind or field}, {op!r}) has no adapter; "
-            "the remaining ones (CyclicDecayField, TDValueField, "
-            "PredictionLedgerMixin) each arrives in #759 M5"
+            f"PostgresBackend.field_call({kind or field}, {op!r}) has no adapter"
         )
 
     def _capped_push(

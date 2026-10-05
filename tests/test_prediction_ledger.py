@@ -31,6 +31,13 @@ from src.popoto.fields.observation import ObservationProtocol  # noqa: E402
 from src.popoto.fields.prediction_ledger import PredictionLedgerMixin  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # --- Test Models ---
 
 
@@ -434,7 +441,8 @@ class TestEventStreamSynergy:
 
         # Read stream entries
         stream_key = item._get_stream_key()
-        entries = POPOTO_REDIS_DB.xrange(stream_key)
+        # The stream lives on the model's backend (#759 M5).
+        entries = item.stream_client().xrange(stream_key)
 
         # Find prediction_resolved entry (skip create entry from save)
         resolved_entries = [
@@ -454,7 +462,8 @@ class TestEventStreamSynergy:
         PredictionLedgerMixin.auto_resolve(item, "dismissed")
 
         stream_key = item._get_stream_key()
-        entries = POPOTO_REDIS_DB.xrange(stream_key)
+        # The stream lives on the model's backend (#759 M5).
+        entries = item.stream_client().xrange(stream_key)
 
         resolved_entries = [
             e
@@ -776,7 +785,8 @@ class TestFullIntegration:
 
         # EventStream should have entry
         stream_key = item._get_stream_key()
-        entries = POPOTO_REDIS_DB.xrange(stream_key)
+        # The stream lives on the model's backend (#759 M5).
+        entries = item.stream_client().xrange(stream_key)
         resolved_entries = [
             e
             for e in entries
