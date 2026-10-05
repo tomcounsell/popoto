@@ -180,10 +180,10 @@ def _retryable(exc: BaseException, attempts: int = 1) -> BackendRetryableError:
 _async_bridge: Any = None
 """Installed by :mod:`.aio` on import. While sync backend code runs inside
 one of its bridge greenlets (an ``async_*`` call on a Postgres model), the
-three helpers below route that code's I/O onto the event loop: the pool is
-the loop's ``AsyncConnectionPool``, a retry back-off is ``asyncio.sleep``, and
-a blocking provider call goes to a worker thread. Everywhere else they are
-exactly what they were."""
+helpers below route that code's I/O onto the event loop: the pool is the
+loop's pool of ``AsyncConnection`` objects, a retry back-off is
+``asyncio.sleep``, and a blocking provider call goes to a worker thread.
+Everywhere else they are exactly what they were."""
 
 
 def _set_async_bridge(bridge: Any) -> None:
