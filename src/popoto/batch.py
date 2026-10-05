@@ -202,6 +202,8 @@ class Batch(GuardedPipeline):
         backend, stack, uow = pg
         uow.reap.clear()
         uow._after_commit.clear()
+        uow._before_commit.clear()
+        uow._stream_appends.clear()
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:

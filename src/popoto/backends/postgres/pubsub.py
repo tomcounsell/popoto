@@ -244,19 +244,38 @@ def publish(
             f"at most {room} message bytes fit on this channel). Publish a smaller "
             "message, or the key of a record that holds it."
         )
-    t = backend._events_ready()
     from . import _pg_uow
 
+    pg = _pg_uow(uow)
+    if pg is not None and _async_unit_outside_bridge(pg):
+        # A popoto.batch() an async_* call opened (#784): its connection
+        # belongs to the event loop, so this sync call cannot send now. The
+        # NOTIFY is delivered at COMMIT either way, so it is sent then, from
+        # inside the transaction that ``await pipe.async_execute()`` commits
+        # (and never after a rollback). The count is not knowable yet: 0.
+        pg.before_commit(lambda: publish(backend, ch, data, uow=pg))
+        return 0
+    t = backend._events_ready()
     rows, _ = backend._run(
         "SELECT pg_notify(%s, %s), (SELECT count(*) FROM "
         f"{t['popoto_pubsub_listener']} l WHERE l.pid IN (SELECT pid FROM "
         "pg_stat_activity) AND ((NOT l.pattern AND l.name = %s) OR (l.pattern AND "
         "%s ~ ('^(' || l.regex || ')$'))))",
         [pubsub_channel(backend.schema), payload, ch, as_bytes_text(ch)],
-        uow=_pg_uow(uow),
+        uow=pg,
         write=True,
     )
     return int(rows[0][1])
+
+
+def _async_unit_outside_bridge(uow: Any) -> bool:
+    """Whether ``uow``'s connection belongs to an event loop (an async_*
+    call opened it) while this code runs outside the bridge that drives it."""
+    if not hasattr(uow.conn, "async_connection"):
+        return False
+    from .aio import _in_bridge
+
+    return not _in_bridge()
 
 
 class PostgresPubSub:

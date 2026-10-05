@@ -944,7 +944,11 @@ or the default.
   work, or a `popoto.batch()`, as `pipeline=` is delivered when that
   transaction commits (the batch's `execute()`), and never if it rolls back
   (`reset()`); a Postgres `Publisher` never queues a Redis `PUBLISH` on a
-  batch. Postgres folds identical notifications sent in one transaction into
+  batch. A batch an `async_*` call opened (whose connection belongs to the
+  event loop) takes the same publish: the `NOTIFY` is sent from inside the
+  transaction `await pipe.async_execute()` commits, as are its stream
+  appends (pinned by `tests/postgres/test_postgres_async.py::test_an_async_opened_batch_carries_its_events_and_notifies_to_commit`).
+  Postgres folds identical notifications sent in one transaction into
   one, so each payload carries an 8-character per-publish nonce, stripped
   before delivery: `dup, dup, other, dup` published in one transaction
   arrives as all four, in order, as a Redis `MULTI` delivers them (pinned on
