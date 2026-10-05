@@ -7,8 +7,13 @@ and each subscriber keeps what its subscriptions match. So a channel name is
 not bound by Postgres's 63-byte identifier limit, and pattern subscriptions
 (``PSUBSCRIBE``) are matched **client-side**, with Redis's glob rules
 (``*``, ``?``, ``[...]``, ``[^...]``, ``\\`` escapes) translated to a regular
-expression. The cost: every subscriber of the schema receives every message
-and drops what it did not ask for.
+expression and matched byte-wise, as Redis's ``stringmatchlen`` matches
+(:func:`glob_match`). The cost: every subscriber of the schema receives every
+message and drops what it did not ask for.
+
+Each payload starts with a per-publish nonce, stripped before delivery:
+Postgres folds identical notifications sent in one transaction into one, so
+without it a message published twice in a transaction would arrive once.
 
 ``NOTIFY`` is transactional: a message published inside the backend's unit
 of work (``pipeline=uow``) is delivered when that transaction commits and
@@ -36,6 +41,7 @@ import base64
 import binascii
 import collections
 import hashlib
+import itertools
 import logging
 import re
 import uuid
@@ -50,6 +56,8 @@ __all__ = [
     "NOTIFY_PAYLOAD_LIMIT",
     "PostgresPubSub",
     "PubSubPayloadTooLarge",
+    "as_bytes_text",
+    "glob_match",
     "glob_to_regex",
     "publish",
 ]
@@ -73,7 +81,13 @@ def glob_to_regex(pattern: str) -> str:
     """Redis's ``stringmatchlen`` glob as a regular expression body that
     means the same in Python ``re`` (with ``DOTALL``) and in Postgres's
     ``~``; the caller anchors it. ``*`` any run, ``?`` one character,
-    ``[abc]``/``[^abc]``/``[a-z]`` a class, ``\\x`` a literal ``x``."""
+    ``[abc]``/``[^abc]``/``[a-z]`` a class, ``\\x`` a literal ``x``.
+
+    Redis matches **bytes**. To mean what it means on a non-ASCII channel,
+    translate and match the *byte* forms (:func:`as_bytes_text`: UTF-8,
+    then each byte as one character) -- then ``?`` and ``[^...]`` consume
+    one byte, and a range compares byte values, as ``stringmatchlen``
+    does. :func:`glob_match` does both."""
     out: list[str] = []
     i, n = 0, len(pattern)
     special = set(".^$*+?()[]{}|\\-/")
@@ -107,7 +121,9 @@ def glob_to_regex(pattern: str) -> str:
                 elif c == "]":
                     closed = True
                     break
-                elif j + 2 < n and pattern[j + 1] == "-" and pattern[j + 2] != "]":
+                elif j + 2 < n and pattern[j + 1] == "-":
+                    # stringmatchlen: any "x-y" is a range, "]" included as
+                    # its end ("[a-]" ranges a..] and leaves the class open).
                     lo, hi = c, pattern[j + 2]
                     if lo > hi:
                         lo, hi = hi, lo
@@ -129,17 +145,54 @@ def glob_to_regex(pattern: str) -> str:
     return "".join(out)
 
 
-def _encode_payload(channel: str, data: bytes) -> str:
+def as_bytes_text(value: Union[str, bytes]) -> str:
+    """``value``'s UTF-8 bytes, one character per byte (``latin-1``): the
+    form a glob and a channel are matched in, so the match is byte-wise like
+    Redis's. Every byte maps to a character Postgres ``text`` can hold
+    (U+0001..U+00FF; a channel has no NUL)."""
+    raw = value.encode("utf-8") if isinstance(value, str) else bytes(value)
+    return raw.decode("latin-1")
+
+
+def glob_match(pattern: Union[str, bytes], channel: Union[str, bytes]) -> bool:
+    """Whether ``channel`` matches the ``PSUBSCRIBE`` glob ``pattern`` as
+    Redis's ``stringmatchlen`` decides it, byte for byte."""
+    regex = re.compile(glob_to_regex(as_bytes_text(pattern)), re.DOTALL)
+    return regex.fullmatch(as_bytes_text(channel)) is not None
+
+
+_NONCE_WIDTH = 8
+_nonce = itertools.count()
+
+
+def _next_nonce() -> str:
+    """A per-publish tag, fixed width so the payload limit does not move.
+    Postgres folds identical ``(channel, payload)`` notifications sent in one
+    transaction into one; the tag makes every publish distinct, so a message
+    published twice in a transaction is delivered twice, as a Redis
+    ``MULTI`` delivers it. It only has to differ within one transaction (one
+    session, one process), so a process-wide counter mod 16**8 suffices."""
+    return format(next(_nonce) % (16**_NONCE_WIDTH), "0%dx" % _NONCE_WIDTH)
+
+
+def _encode_payload(channel: str, data: bytes, nonce: Optional[str] = None) -> str:
+    """``<nonce>:<base64 channel>.<base64 message>``. The nonce is stripped
+    on delivery; it is never part of the message."""
     return (
-        base64.b64encode(channel.encode("utf-8")).decode("ascii")
+        (nonce if nonce is not None else _next_nonce())
+        + ":"
+        + base64.b64encode(channel.encode("utf-8")).decode("ascii")
         + "."
         + base64.b64encode(data).decode("ascii")
     )
 
 
 def _decode_payload(payload: str) -> Optional[tuple[bytes, bytes]]:
+    nonce, sep, body = payload.partition(":")
+    if not sep or len(nonce) != _NONCE_WIDTH:
+        return None
     try:
-        channel, _, data = payload.partition(".")
+        channel, _, data = body.partition(".")
         return base64.b64decode(channel), base64.b64decode(data)
     except (binascii.Error, ValueError):
         return None
@@ -158,7 +211,7 @@ def publish(
     payload = _encode_payload(ch, data)
     size = len(payload)
     if size >= NOTIFY_PAYLOAD_LIMIT:
-        head = len(_encode_payload(ch, b""))
+        head = len(_encode_payload(ch, b"", "0" * _NONCE_WIDTH))
         room = max(((NOTIFY_PAYLOAD_LIMIT - 1 - head) // 4) * 3, 0)
         raise PubSubPayloadTooLarge(
             f"publish to {ch!r}: a Postgres NOTIFY payload must be shorter than "
@@ -175,7 +228,7 @@ def publish(
         f"{t['popoto_pubsub_listener']} l WHERE l.pid IN (SELECT pid FROM "
         "pg_stat_activity) AND ((NOT l.pattern AND l.name = %s) OR (l.pattern AND "
         "%s ~ ('^(' || l.regex || ')$'))))",
-        [pubsub_channel(backend.schema), payload, ch, ch],
+        [pubsub_channel(backend.schema), payload, ch, as_bytes_text(ch)],
         uow=_pg_uow(uow),
         write=True,
     )
@@ -257,7 +310,7 @@ class PostgresPubSub:
                 self.token,
                 pattern,
                 text,
-                glob_to_regex(text) if pattern else None,
+                glob_to_regex(as_bytes_text(text)) if pattern else None,
             ],
             write=True,
         )
@@ -302,7 +355,7 @@ class PostgresPubSub:
             table[name] = handler
             if pattern:
                 self._compiled[name] = re.compile(
-                    glob_to_regex(name.decode("utf-8")), re.DOTALL
+                    glob_to_regex(as_bytes_text(name)), re.DOTALL
                 )
             if fresh:
                 self._register(name, pattern=pattern)
@@ -349,7 +402,7 @@ class PostgresPubSub:
                 {"type": "message", "pattern": None, "channel": channel, "data": data}
             )
         if self.patterns:
-            text = channel.decode("utf-8", "replace")
+            text = as_bytes_text(channel)
             for name, regex in list(self._compiled.items()):
                 if regex.fullmatch(text):
                     self._pending.append(

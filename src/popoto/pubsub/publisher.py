@@ -224,11 +224,13 @@ class Publisher(ABC):
         backend = _native_backend(self, pipeline)
         if backend is not None:
             # #759 M5: NOTIFY on the backend -- inside its unit of work when
-            # one is passed (a pipeline publish names the instance's channel,
-            # as the Redis pipeline branch below does).
-            from ..backends import UnitOfWork
+            # one is passed, or inside a popoto.batch()'s transaction (which
+            # it joins, so the message is delivered at execute()'s COMMIT and
+            # never after reset()). A pipeline publish names the instance's
+            # channel, as the Redis pipeline branch below does.
+            from ..batch import unit_of
 
-            uow = pipeline if isinstance(pipeline, UnitOfWork) else None
+            uow = unit_of(pipeline, backend)
             target = self._channel_name if pipeline else channel_name
             subscriber_count = backend.publish(
                 target, msgpack.packb(self._publish_data), uow=uow
@@ -255,9 +257,13 @@ class Publisher(ABC):
 
 def _native_backend(obj: object, pipeline: object = None) -> "typing.Any":
     """The non-Redis backend ``obj`` publishes or subscribes on, or ``None``
-    for Redis (#759 M5): a Redis pipeline means Redis; otherwise ``obj``'s
-    model backend, its ``backend=`` choice, or the process default."""
-    if isinstance(pipeline, redis.client.Pipeline):
+    for Redis (#759 M5): a plain Redis pipeline means Redis; otherwise
+    ``obj``'s model backend, its ``backend=`` choice, or the process default.
+    A ``popoto.batch()`` is not a plain pipeline: it carries whichever
+    backend ``obj`` publishes on (a Postgres publish joins its transaction)."""
+    from ..batch import Batch
+
+    if isinstance(pipeline, redis.client.Pipeline) and not isinstance(pipeline, Batch):
         return None
     from ..backends import UnitOfWork, _instance, get_backend
 

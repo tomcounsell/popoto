@@ -827,10 +827,28 @@ entry **in the same transaction** as the record: the record and its entry
 commit together or not at all. On Redis the `XADD` rides the save's
 `MULTI`/`EXEC`, which applies queued commands without rollback, so this is
 strictly stronger. Without a caller transaction the save takes one of its own
-(the write, then the append); inside a caller's `transaction()` the entry is
-appended just before that transaction's `COMMIT` (`uow.before_commit`).
-`ConfidenceField.update_confidence` and `CoOccurrenceField.strengthen` log
-their events to the same stream, as on Redis. The cost is the owned
+(the write, then the append); inside a caller's `transaction()` or a
+`popoto.batch()` the entry is appended just before that transaction's
+`COMMIT` (`uow.defer_stream_append`), so a batch that is `reset()` appends
+nothing. `ConfidenceField.update_confidence` and `CoOccurrenceField.strengthen`
+log their events to the same stream, as on Redis, and a custom
+`_xadd_event(..., pipeline=batch)` joins the batch the same way.
+
+**Stream locks are taken in one global order.** Each append locks its
+stream's `popoto_stream` row until the transaction ends (that lock is what
+makes ids commit in id order, below). A unit's appends therefore run at
+`COMMIT`, after every record lock the unit takes, **sorted by stream key**
+(stably, so one stream's entries keep their order); a write that appends in
+its own transaction (a multi-record delete) sorts the same way. Two
+transactions that write two `EventStreamMixin` models, or two partitions of
+one, in opposite orders then queue on the first stream rather than
+deadlocking. Measured with 4 threads × 40 `transaction()`s, each saving one
+record of two stream models in random order: 82-86 of 160 failed with
+`40P01 deadlock detected` on `popoto_stream` before the sort, 0 after; the
+partitioned variant went from 35/160 to 0 (pool size 16, so that the pool
+did not run out first). Pinned by
+`test_postgres_events.py::test_opposite_order_transactions_never_deadlock_on_stream_locks`
+and `::test_a_units_stream_appends_run_in_stream_key_order`. The cost is the owned
 transaction: a save of an `EventStreamMixin` model measured p50 0.83-0.99 ms
 against 0.32-0.38 ms for a plain model (3 runs × 400 saves, PostgreSQL 18.6
 on localhost, Apple M1 Max, load 4.7-4.9).
@@ -861,8 +879,11 @@ Redis client on Redis, the backend's stream store on Postgres, with the same
 redis-py methods and replies (`xadd`, `xrange`, `xrevrange`, `xlen`, `xdel`,
 `xtrim`, `xgroup_*`, `xreadgroup`, `xack`, `xpending`, `xpending_range`,
 `xclaim`, `xautoclaim`, `xinfo_groups`, `xinfo_consumers`, `delete`,
-`exists`). Errors keep Redis's message text (`BUSYGROUP …`, `NOGROUP …`) as
-`StreamCommandError`, and redis-py's client-side checks as `StreamDataError`.
+`exists`). Errors keep Redis's message text (`BUSYGROUP …`, `NOGROUP …`;
+`XINFO CONSUMERS` answers `no such key` for a missing stream and `NOGROUP No
+such consumer group 'g' for key name 'k'` for a missing group, as Redis does)
+as `StreamCommandError`, and redis-py's client-side checks as
+`StreamDataError`.
 
 **`StreamConsumer`** finds its backend from `backend=` or `model=`, else from
 the `EventStreamMixin` models that write its `stream_key` (and their `dead:`
@@ -901,15 +922,25 @@ or the default.
 - One notification channel per schema carries every popoto channel: the
   payload names the channel, so channel names are not bound by Postgres's
   63-byte identifier limit. **Pattern subscriptions are matched
-  client-side**, with Redis's glob rules translated to a regular expression;
-  every subscriber of the schema receives every message and keeps what its
-  subscriptions match.
+  client-side**, with Redis's glob rules translated to a regular expression
+  and matched **byte-wise**, as Redis's `stringmatchlen` matches: `?` and
+  `[^…]` consume one byte of a non-ASCII channel, a range compares byte
+  values, and `[x-]` is a range ending at `]`
+  (`popoto.backends.postgres.pubsub.glob_match`). Every subscriber of the
+  schema receives every message and keeps what its subscriptions match.
 - `NOTIFY` is transactional: a message published with the backend's unit of
-  work as `pipeline=` is delivered when that transaction commits, and never
-  if it rolls back.
+  work, or a `popoto.batch()`, as `pipeline=` is delivered when that
+  transaction commits (the batch's `execute()`), and never if it rolls back
+  (`reset()`); a Postgres `Publisher` never queues a Redis `PUBLISH` on a
+  batch. Postgres folds identical notifications sent in one transaction into
+  one, so each payload carries an 8-character per-publish nonce, stripped
+  before delivery: `dup, dup, other, dup` published in one transaction
+  arrives as all four, in order, as a Redis `MULTI` delivers them (pinned on
+  both legs by
+  `tests/test_pubsub.py::test_identical_messages_in_one_unit_are_each_delivered`).
 - **Payload limit.** A `NOTIFY` payload must be shorter than 8000 bytes, and
-  the message travels base64-encoded beside the channel name, so about
-  5.9 KB of message fits. A larger one is **refused** with
+  the message travels base64-encoded beside the channel name and the nonce,
+  so about 5.9 KB of message fits. A larger one is **refused** with
   `PubSubPayloadTooLarge` (a `PublisherException`) before anything is sent,
   not split: a split message could be half-delivered to a subscriber that
   joins between its parts. Publish a key and keep the body in a record.
@@ -918,6 +949,22 @@ or the default.
   (`pg_stat_activity`); a subscriber deletes its rows on `close()`, and rows
   of a session that died stop counting and are swept by the next subscriber
   to connect. The `LISTEN` URL must reach the same server.
+
+**Connection cost.** `LISTEN` belongs to a session, so each blocking
+`StreamConsumer` (`block_ms`) and each `Subscriber` holds **one dedicated
+Postgres session** for as long as it is open, outside the pool and outside
+any transaction-mode pooler; it cannot be pooled or shared. Measured: 4
+blocking consumers hold 4 `LISTEN` sessions plus the pool's connections. In
+the central-database topology every agent process counts against the one
+server's `max_connections`: N processes × (blocking consumers + subscribers)
+sessions, on top of N × `Defaults.PG_POOL_MAX_SIZE` pooled ones. Size
+`max_connections` (or a session-mode pool behind `POPOTO_POSTGRES_LISTEN_URL`)
+for that sum, and prefer a non-blocking consumer (`block_ms=None`, polled)
+where a wake-up latency of a poll interval is acceptable. Each `publish` also
+reads `pg_stat_activity` for its count, so its cost grows with the server's
+session count. One multiplexed listener per process and schema, shared by
+all consumers and subscribers, is a planned follow-up
+([plan](../plans/sdlc-631-v2.md), M5 follow-ups).
 
 **Divergences** (stream and pub/sub; Redis behaviour unchanged):
 
@@ -931,7 +978,11 @@ or the default.
 | A pending row another transaction holds during `XCLAIM`/`XAUTOCLAIM` | single-threaded: never contended | skipped (`SKIP LOCKED`) |
 | A message published inside a transaction | `MULTI`/`EXEC` sends it at `EXEC` | delivered at `COMMIT`, never after a rollback |
 | A pub/sub message whose payload encodes to 8000 bytes or more | delivered | `PubSubPayloadTooLarge` |
-| Pattern subscriptions | matched by the server | matched by each subscriber; every subscriber of the schema receives every message |
+| Pattern subscriptions | matched by the server | matched by each subscriber (byte-wise, the same result); every subscriber of the schema receives every message |
+| Stream id parts in `(2**63 - 1, 2**64 - 1]` | valid ids | refused by every stream command with `StreamIdOutOfRange` (a `StreamCommandError`), since each part is a `bigint`; no clock reaches them. Past `2**64 - 1` both refuse with `Invalid stream ID`. `XCLAIM` with such an id raises the refusal, where Redis returns `[]`. Pinned: `test_ids_past_bigint_are_refused_a_documented_divergence` |
+| A message matching several pattern subscriptions | one `pmessage` per pattern, in the order of the server's pattern table (unspecified) | the `message` (if the channel is subscribed), then one `pmessage` per pattern in subscription order. The payloads are the same as a multiset. Pinned: `test_delivery_and_confirmation_order_a_documented_divergence` |
+| `unsubscribe()` / `punsubscribe()` with no arguments | one confirmation per subscription in the server's table order, count falling to 0 | confirmations in subscription order, count falling to 0 (same pin) |
+| A confirmation while nothing is subscribed (an unsubscribe-all of nothing, or one reaching 0) | redis-py's `get_message` does not read while unsubscribed, so it surfaces only after the client subscribes again | returned by the next `get_message` at once (same pin) |
 
 The seeded probe, `scripts/probe_events_parity.py`, replays random sessions
 on both legs -- appends with auto and explicit ids, ranges with every bound
@@ -1038,10 +1089,12 @@ it runs immediately. Pinned by
 **Before-commit hook (M5).** `uow.before_commit(fn)` runs `fn` *inside* the
 transaction, just before its `COMMIT`, in registration order; an exception
 from it rolls the whole unit back and propagates. A save's or delete's
-`EventStreamMixin` entry is appended this way inside a caller's
-`transaction()`, so the stream's row lock is the last lock the transaction
-takes (after every record-key and row lock, the one lock order of §6) and the
-entry commits or rolls back with the record. Pinned by
+`EventStreamMixin` entry is queued beside them with
+`uow.defer_stream_append(stream, fn)` inside a caller's `transaction()` or a
+`popoto.batch()`; those run after the `before_commit` callbacks, sorted by
+stream key, so the stream row locks are the last locks the transaction takes
+(after every record-key and row lock, the one lock order of §6), always in
+the same order, and the entry commits or rolls back with the record. Pinned by
 `tests/postgres/test_postgres_journal.py::test_the_mutation_stream_is_written_only_after_commit`.
 
 Before #759 M2a's patch these reached the caller as raw psycopg

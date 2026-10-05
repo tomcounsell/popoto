@@ -338,13 +338,15 @@ class EventStreamMixin:
         backend = non_redis_backend(self)
         if backend is not None:
             # #759 M5: the backend's stream, inside the caller's unit of work
-            # when one is passed (appended just before its COMMIT).
-            from ..backends import UnitOfWork
+            # when one is passed, or the transaction of a popoto.batch() it
+            # joins (appended just before that COMMIT, so a batch that is
+            # reset() appends nothing).
+            from ..batch import unit_of
 
             try:
                 backend.stream_append(
                     self._stream_append(op, extra_fields=extra_fields),
-                    uow=pipeline if isinstance(pipeline, UnitOfWork) else None,
+                    uow=unit_of(pipeline, backend),
                 )
             except Exception as e:
                 if pipeline:

@@ -54,6 +54,7 @@ Never imports ``redis``; ``psycopg`` only through the backend.
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import logging
 import os
@@ -73,6 +74,7 @@ __all__ = [
     "StreamCommandError",
     "StreamDataError",
     "StreamError",
+    "StreamIdOutOfRange",
     "StreamStore",
     "LISTEN_URL_ENV",
     "STREAM_WAIT_POLL_SECONDS",
@@ -95,7 +97,10 @@ LISTEN_RECONNECT_BACKOFF_SECONDS = 0.2
 
 MAX_ID_PART = 2**63 - 1
 """``bigint``'s ceiling. Redis ids are unsigned 64-bit; ids past 2**63 - 1
-are refused here (no clock reaches them)."""
+are refused here with :class:`StreamIdOutOfRange` (no clock reaches them)."""
+
+MAX_REDIS_ID_PART = 2**64 - 1
+"""Redis's own ceiling: an id part past it is ``Invalid stream ID``."""
 
 NOW_MS = "floor(extract(epoch from clock_timestamp()) * 1000)::bigint"
 
@@ -171,6 +176,15 @@ class StreamCommandError(StreamError):
     Consumer Group name already exists``, ``NOGROUP No such key ...``), so
     code matching on the text keeps working. The type differs: the Postgres
     backend never imports ``redis`` (a documented divergence)."""
+
+
+class StreamIdOutOfRange(StreamCommandError):
+    """An id whose part lies in ``(2**63 - 1, 2**64 - 1]``: a valid Redis id
+    (Redis ids are unsigned 64-bit) that Postgres ``bigint`` cannot hold.
+    Every stream command refuses one with this error, where Redis accepts it
+    -- a documented divergence (``docs/features/postgres-backend.md``, "Event
+    streams and pub/sub"). An id past ``2**64 - 1`` is not a Redis id at all
+    and gets Redis's own ``Invalid stream ID`` text instead."""
 
 
 class StreamDataError(StreamError, ValueError):
@@ -256,8 +270,10 @@ def _parse_parts(raw: str, missing_seq: Optional[int]) -> StreamId:
     if not ms_s.isdigit() or not seq_s.isdigit():
         raise _invalid_id()
     ms, seq = int(ms_s), int(seq_s)
+    if ms > MAX_REDIS_ID_PART or seq > MAX_REDIS_ID_PART:
+        raise _invalid_id()  # past u64: Redis's strtoull refuses it too
     if ms > MAX_ID_PART or seq > MAX_ID_PART:
-        raise StreamCommandError(
+        raise StreamIdOutOfRange(
             "stream ids past 2**63 - 1 do not fit Postgres bigint (a documented "
             "divergence)"
         )
@@ -1377,6 +1393,10 @@ class StreamStore:
             for raw in message_ids:
                 try:
                     parsed.append(parse_strict_id(raw))
+                except StreamIdOutOfRange:
+                    # A Redis id Postgres cannot hold: the bigint refusal,
+                    # never "Unrecognized XCLAIM option" (the id is one).
+                    raise
                 except StreamCommandError:
                     # XCLAIM reads ids until one does not parse, then options.
                     raise StreamCommandError(
@@ -1632,7 +1652,11 @@ class StreamStore:
         t = self.t
 
         def work(tx: UnitOfWork) -> list[dict[str, Any]]:
-            now = int(self._require_group(tx, s, g, "XINFO")[3])
+            # Redis's two texts: "no such key" for a missing stream, then
+            # NOGROUP worded as XGROUP words it for a missing group.
+            if self._stream_meta(tx, s) is None:
+                raise StreamCommandError("no such key")
+            now = int(self._require_group(tx, s, g, "XGROUP")[3])
             rows = self._run(
                 "SELECT c.consumer, c.seen_ms, c.active_ms, (SELECT count(*) FROM "
                 f"{t['popoto_stream_pending']} p WHERE p.stream = c.stream AND p.grp = "
@@ -1828,22 +1852,35 @@ class EventsMixin:
     # -- appends from the model layer ---------------------------------------------------
 
     def _append_entries(self, entries: Sequence[StreamAppend], uow: Any) -> None:
+        """Append ``entries`` now, in ``uow``, sorted by stream key (stably):
+        the same global lock order :meth:`PostgresUnitOfWork.defer_stream_append`
+        keeps, so a multi-stream write cannot deadlock another."""
+        store = self.streams()
+        for item in sorted(entries, key=lambda e: e.stream):
+            store.append(item, uow=uow)
+
+    def _defer_entries(self, entries: Sequence[StreamAppend], pg: Any) -> None:
+        """Queue ``entries`` for ``pg``'s ``COMMIT``, where they are appended
+        in stream-key order after every record lock the unit takes."""
         store = self.streams()
         for item in entries:
-            store.append(item, uow=uow)
+            pg.defer_stream_append(
+                item.stream, functools.partial(store.append, item, uow=pg)
+            )
 
     def stream_append(
         self, item: StreamAppend, *, uow: Optional[UnitOfWork] = None
     ) -> Optional[bytes]:
         """Append ``item`` now, or -- inside the backend's unit of work --
-        just before that transaction commits (``before_commit``), so the
-        stream's lock is the last one the transaction takes."""
+        just before that transaction commits
+        (:meth:`PostgresUnitOfWork.defer_stream_append`), so the stream locks
+        are the last the transaction takes, in stream-key order."""
         from . import _pg_uow
 
         self._events_ready()
         pg = _pg_uow(uow)
         if pg is not None:
-            pg.before_commit(lambda: self.streams().append(item, uow=pg))
+            self._defer_entries([item], pg)
             return None
         return self.streams().append(item)
 
@@ -1872,7 +1909,7 @@ class EventsMixin:
         pg = _pg_uow(uow)
         if pg is not None:
             out = self._run(sql, params, uow=pg, write=True)
-            pg.before_commit(lambda: self._append_entries(entries, pg))
+            self._defer_entries(entries, pg)
             return out
 
         def work(tx: UnitOfWork) -> tuple[list[tuple[Any, ...]], int]:

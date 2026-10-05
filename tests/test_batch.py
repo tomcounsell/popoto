@@ -188,11 +188,14 @@ def _effects_clean():
     for model in (StreamGadget, TaggedGadget):
         for rec in model.query.all():
             rec.delete()
-    get_REDIS_DB().delete(STREAM, TaggedGadget(name="x")._wf_key("priority"))
+    # The stream lives on the model's backend (Redis, or the Postgres events
+    # tables since #759 M5): clear and read it there, never from Redis alone.
+    StreamGadget.stream_client().delete(STREAM)
+    get_REDIS_DB().delete(TaggedGadget(name="x")._wf_key("priority"))
 
 
 def _stream_len():
-    return get_REDIS_DB().xlen(STREAM)
+    return StreamGadget.stream_len()
 
 
 def _tags():
@@ -239,7 +242,7 @@ def test_an_executed_batch_sends_one_stream_entry_per_save(effects):
     assert _stream_len() == 0
     pipe.execute()
     assert _stream_len() == 2
-    ops = [e[1][b"op"] for e in get_REDIS_DB().xrange(STREAM)]
+    ops = [e[1][b"op"] for e in StreamGadget.stream_range()]
     assert ops == [b"create", b"create"]
 
 
@@ -271,7 +274,8 @@ def test_a_caught_validation_error_lets_the_rest_of_the_batch_commit(effects):
     # stream entry included. Only a statement that fails inside the
     # Postgres transaction aborts the batch (the test above).
     StreamGadget(name="held", code="x").save()
-    get_REDIS_DB().delete(STREAM)
+    StreamGadget.stream_client().delete(STREAM)
+    assert _stream_len() == 0
     pipe = effects()
     StreamGadget(name="a", code="a").save(pipeline=pipe)
     with pytest.raises(popoto.exceptions.ModelException, match="Unique"):
@@ -280,6 +284,27 @@ def test_a_caught_validation_error_lets_the_rest_of_the_batch_commit(effects):
     assert StreamGadget.query.get(name="a") is not None
     assert StreamGadget.query.get(name="b") is None
     assert _stream_len() == 1
+
+
+def test_a_custom_event_joins_the_batch(effects):
+    """#787 review blocker 3: ``_xadd_event(pipeline=batch)`` (the path
+    ``update_confidence`` and the prediction ledger take) appends at
+    ``execute()`` and not at all after ``reset()``, on both legs -- on
+    Postgres by joining the batch's transaction, never escaping it."""
+    StreamGadget(name="ev", code="ev").save()
+    StreamGadget.stream_client().delete(STREAM)
+    gadget = StreamGadget.query.get(name="ev")
+    pipe = effects()
+    gadget._xadd_event("custom", extra_fields={"k": "dropped"}, pipeline=pipe)
+    assert _stream_len() == 0
+    pipe.reset()
+    assert _stream_len() == 0
+    pipe = effects()
+    gadget._xadd_event("custom", extra_fields={"k": "kept"}, pipeline=pipe)
+    assert _stream_len() == 0
+    pipe.execute()
+    entries = StreamGadget.stream_range()
+    assert [(e[1][b"op"], e[1][b"k"]) for e in entries] == [(b"custom", b"kept")]
 
 
 def test_write_filter_tags_follow_the_batch(backend, effects):

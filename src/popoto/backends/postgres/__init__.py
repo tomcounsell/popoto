@@ -278,13 +278,22 @@ class PostgresUnitOfWork(UnitOfWork):
     ``bool(uow)`` is always ``True`` (TD-10).
     """
 
-    __slots__ = ("conn", "_after_commit", "_before_commit", "reap", "locked")
+    __slots__ = (
+        "conn",
+        "_after_commit",
+        "_before_commit",
+        "_stream_appends",
+        "reap",
+        "locked",
+    )
 
     def __init__(self, conn: Any) -> None:
         super().__init__(None, backend="postgres")
         self.conn = conn
         self._after_commit: list[Callable[[], Any]] = []
         self._before_commit: list[Callable[[], Any]] = []
+        # Stream appends (#759 M5), keyed by stream: run at COMMIT, sorted.
+        self._stream_appends: list[tuple[str, Callable[[], Any]]] = []
         # Meta.ttl tables written in this unit (M5): reaped after it commits.
         self.reap: dict[str, TableSpec] = {}
         # Record-key locks this unit holds (#783): another open unit -- or an
@@ -296,7 +305,7 @@ class PostgresUnitOfWork(UnitOfWork):
         """Run ``callback`` once this transaction has committed; drop it if
         the transaction rolls back. ``WriteFilterMixin``'s priority tag runs
         this way (#759 M4b B2); ``EventStreamMixin``'s entry no longer does --
-        since M5 it is appended inside the transaction (:meth:`before_commit`).
+        since M5 it is appended inside the transaction (:meth:`defer_stream_append`).
         Callbacks run in registration order, after ``COMMIT`` returns
         and the connection is back in the pool; one that raises is logged and
         the rest still run, because the transaction has already committed."""
@@ -304,16 +313,31 @@ class PostgresUnitOfWork(UnitOfWork):
 
     def before_commit(self, callback: Callable[[], Any]) -> None:
         """Run ``callback`` inside this transaction, just before its
-        ``COMMIT``; an exception from it rolls the whole unit back. A save's
-        ``EventStreamMixin`` entry is appended this way (#759 M5), so the
-        stream's lock is the last lock the transaction takes and the entry
-        commits or rolls back with the record. Callbacks run in registration
-        order; one registered while they run runs too."""
+        ``COMMIT``; an exception from it rolls the whole unit back. Callbacks
+        run in registration order; one registered while they run runs too.
+        A save's ``EventStreamMixin`` entry is not queued here but with
+        :meth:`defer_stream_append`, which runs after these, in stream-key
+        order (#759 M5)."""
         self._before_commit.append(callback)
 
+    def defer_stream_append(self, stream: str, callback: Callable[[], Any]) -> None:
+        """Queue one stream append (``callback`` appends to ``stream``) for
+        this transaction's ``COMMIT`` (#759 M5). Appends run after the
+        :meth:`before_commit` callbacks, **sorted by stream key** (stably, so
+        one stream's entries keep the order they were queued in): every
+        transaction then takes its ``popoto_stream`` row locks in one global
+        order, after all of its record locks, and two transactions that
+        append to the same streams in opposite orders cannot deadlock."""
+        self._stream_appends.append((stream, callback))
+
     def _run_before_commit(self) -> None:
-        while self._before_commit:
-            self._before_commit.pop(0)()
+        while self._before_commit or self._stream_appends:
+            while self._before_commit:
+                self._before_commit.pop(0)()
+            pending, self._stream_appends = self._stream_appends, []
+            pending.sort(key=lambda queued: queued[0])
+            for _stream, callback in pending:
+                callback()
 
     def _run_after_commit(self) -> None:
         callbacks, self._after_commit = self._after_commit, []

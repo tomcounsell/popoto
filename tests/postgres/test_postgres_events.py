@@ -184,6 +184,124 @@ def test_concurrent_appenders_commit_in_id_order(pg):
     assert store.xlen(KEY) == 121
 
 
+class EvOrderA(EventStreamMixin, popoto.Model):
+    _stream_name = "pg_order_a"
+
+    name = popoto.KeyField()
+
+
+class EvOrderB(EventStreamMixin, popoto.Model):
+    _stream_name = "pg_order_b"
+
+    name = popoto.KeyField()
+
+
+class EvOrderPart(EventStreamMixin, popoto.Model):
+    _stream_name = "pg_order_part"
+    _stream_partition_field = "agent"
+
+    name = popoto.KeyField()
+    agent = popoto.StringField(default="")
+
+
+def _record_appends(monkeypatch):
+    """Spy on ``StreamStore.append``: the stream key of every append, in the
+    order the appends ran."""
+    order = []
+    real = StreamStore.append
+
+    def spy(self, item, *, uow=None):
+        order.append(item.stream)
+        return real(self, item, uow=uow)
+
+    monkeypatch.setattr(StreamStore, "append", spy)
+    return order
+
+
+def test_a_units_stream_appends_run_in_stream_key_order(pg, monkeypatch):
+    """#787 review blocker 1: a unit's appends run at COMMIT sorted by
+    stream key, whatever order its saves ran in, so every transaction takes
+    its ``popoto_stream`` row locks in one global order. One stream's own
+    entries keep their order (the sort is stable)."""
+    order = _record_appends(monkeypatch)
+    with pg.transaction() as uow:
+        EvOrderB(name="b1").save(pipeline=uow)
+        EvOrderA(name="a1").save(pipeline=uow)
+        EvOrderB(name="b2").save(pipeline=uow)
+        EvOrderA(name="a1").delete(pipeline=uow)
+        assert order == []  # nothing before COMMIT
+    assert order == ["stream:pg_order_a"] * 2 + ["stream:pg_order_b"] * 2
+    assert [f[b"op"] for _, f in EvOrderA.stream_range()] == [b"create", b"delete"]
+    assert [f[b"pk"] for _, f in EvOrderB.stream_range()] == [
+        b"EvOrderB:b1",
+        b"EvOrderB:b2",
+    ]
+    # A popoto.batch() is the same unit, and a multi-record delete in its own
+    # transaction appends sorted too.
+    order.clear()
+    pipe = popoto.batch()
+    EvOrderPart(name="p1", agent="zed").save(pipeline=pipe)
+    EvOrderPart(name="p2", agent="amy").save(pipeline=pipe)
+    assert order == []
+    pipe.execute()
+    assert order == ["stream:pg_order_part:amy", "stream:pg_order_part:zed"]
+    order.clear()
+    objs = [EvOrderPart.query.get(name="p1"), EvOrderPart.query.get(name="p2")]
+    spec = EvOrderPart._meta.spec
+    rids = [
+        popoto.backends.RecordId.from_key("EvOrderPart", o.db_key.redis_key)
+        for o in objs
+    ]
+    assert pg.delete(spec, rids, objs=objs) == 2
+    assert order == ["stream:pg_order_part:amy", "stream:pg_order_part:zed"]
+
+
+def test_opposite_order_transactions_never_deadlock_on_stream_locks(pg, monkeypatch):
+    """#787 review blocker 1, the race itself: two transactions save one
+    record of each of two stream models in opposite orders, and each pauses
+    after its first append until the other has made its own. Appended in
+    registration order, each held one stream lock and waited on the other's
+    (``40P01`` deadlock); in stream-key order the second waits on the first
+    stream's lock instead, and both commit."""
+    EvOrderA(name="seed").save()
+    EvOrderB(name="seed").save()
+    barrier = threading.Barrier(2, timeout=1.5)
+    local = threading.local()
+    real = StreamStore.append
+
+    def paused(self, item, *, uow=None):
+        out = real(self, item, uow=uow)
+        if not getattr(local, "paused", False):
+            local.paused = True
+            try:
+                barrier.wait()
+            except threading.BrokenBarrierError:
+                pass  # the other is waiting on our lock: carry on
+        return out
+
+    monkeypatch.setattr(StreamStore, "append", paused)
+    errors = []
+
+    def run(models, tag):
+        try:
+            with pg.transaction() as uow:
+                for model in models:
+                    model(name=tag).save(pipeline=uow)
+        except Exception as exc:  # pragma: no cover - the failure being pinned
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=run, args=((EvOrderA, EvOrderB), "t1")),
+        threading.Thread(target=run, args=((EvOrderB, EvOrderA), "t2")),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    assert errors == []
+    assert EvOrderA.stream_len() == 3 and EvOrderB.stream_len() == 3
+
+
 def test_maxlen_trims_exactly_a_documented_divergence(pg):
     """``MAXLEN ~ 5`` on Redis keeps whole radix nodes, so at least 5 and
     usually more; Postgres keeps exactly 5, the newest."""
@@ -221,6 +339,46 @@ def test_confidence_and_strengthen_events_reach_the_stream(pg):
     _, conf = EvItem.stream_range()[-2]
     assert float(conf[b"new_confidence"]) == pytest.approx(a.trust)
     assert conf[b"tag"] == b"t"
+
+
+def test_ids_past_bigint_are_refused_a_documented_divergence(pg):
+    """#787 review blocker 5: Redis ids are unsigned 64-bit; Postgres stores
+    each part in a ``bigint``. An id part in ``(2**63 - 1, 2**64 - 1]`` is
+    refused by every command with :class:`StreamIdOutOfRange` (Redis accepts
+    it); past ``2**64 - 1`` Redis refuses it too, with the same text here."""
+    from popoto.backends.postgres.events import StreamIdOutOfRange
+
+    store = _store(pg)
+    store.xadd(KEY, {"a": 1})
+    store.xgroup_create(KEY, "g", id="0")
+    big, huge = f"{2**63}-0", f"{2**64}-0"
+    for call in (
+        lambda i: store.xadd(KEY, {"a": 1}, id=i),
+        lambda i: store.xrange(KEY, min=i),
+        lambda i: store.xack(KEY, "g", i),
+        lambda i: store.xdel(KEY, i),
+        lambda i: store.xclaim(KEY, "g", "c", 0, [i]),
+    ):
+        with pytest.raises(StreamIdOutOfRange, match="2\\*\\*63 - 1"):
+            call(big)
+    with pytest.raises(StreamCommandError, match="Invalid stream ID"):
+        store.xadd(KEY, {"a": 1}, id=huge)
+    with pytest.raises(StreamCommandError, match="Unrecognized XCLAIM option"):
+        store.xclaim(KEY, "g", "c", 0, [huge])
+
+
+def test_xinfo_consumers_errors_keep_redis_text(pg):
+    """#787 review blocker 5: Redis answers a missing stream with ``no such
+    key`` and a missing group with XGROUP's NOGROUP text."""
+    store = _store(pg)
+    with pytest.raises(StreamCommandError, match="^no such key$"):
+        store.xinfo_consumers("stream:nope", "g")
+    store.xadd(KEY, {"a": 1})
+    with pytest.raises(
+        StreamCommandError,
+        match=f"^NOGROUP No such consumer group 'g' for key name '{KEY}'$",
+    ):
+        store.xinfo_consumers(KEY, "g")
 
 
 # -- consumer groups ----------------------------------------------------------------
@@ -415,6 +573,126 @@ def test_glob_patterns_mean_what_redis_means(pg, pattern, hits, misses):
         assert pg.publish(name, b"m") == 1, (pattern, name)
     for name in misses:
         assert pg.publish(name, b"m") == 0, (pattern, name)
+    sub.close()
+
+
+def _drain(sub, timeout=0.6):
+    out = []
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        message = sub.get_message(timeout=0.05)
+        if message is not None:
+            out.append(message)
+    return out
+
+
+def test_identical_messages_in_one_transaction_are_each_delivered(pg):
+    """#787 review blocker 2: Postgres folds identical ``NOTIFY`` payloads
+    in one transaction, so ``dup, dup, other, dup`` arrived as ``dup,
+    other``. A per-publish nonce makes every payload distinct; it is stripped
+    before delivery. Redis's ``MULTI`` twin is
+    ``tests/test_pubsub.py::test_identical_messages_in_one_unit_are_each_delivered``."""
+    sub = pg.pubsub()
+    sub.subscribe("dups")
+    sub.get_message(timeout=0.2)
+    with pg.transaction() as uow:
+        for message in (b"dup", b"dup", b"other", b"dup"):
+            pg.publish("dups", message, uow=uow)
+    got = [m["data"] for m in _drain(sub) if m["type"] == "message"]
+    assert got == [b"dup", b"dup", b"other", b"dup"]
+    sub.close()
+
+
+def test_the_nonce_never_reaches_the_message(pg):
+    from popoto.backends.postgres import pubsub as pubsub_module
+
+    payload = pubsub_module._encode_payload("ch", b"data")
+    nonce, _, _ = payload.partition(":")
+    assert len(nonce) == 8
+    assert pubsub_module._decode_payload(payload) == (b"ch", b"data")
+    assert pubsub_module._encode_payload("ch", b"data") != payload
+    # A payload without the nonce (or a foreign NOTIFY) is ignored, not
+    # misread.
+    assert pubsub_module._decode_payload(payload.partition(":")[2]) is None
+
+
+@pytest.mark.parametrize(
+    "pattern, channel, redis_says",
+    [
+        # Redis matches bytes: "?" is one byte, "é" two.
+        ("?", "é", False),
+        ("??", "é", True),
+        ("a?", "aé", False),
+        ("a??", "aé", True),
+        ("[^x]", "é", False),
+        ("[^x][^x]", "é", True),
+        ("a[é", "aé", False),
+        # stringmatchlen reads "x-]" as a range ending at "]" ...
+        ("[--]b", "-b", False),
+        ("[--]b", "-]", False),
+        ("[a-]b]", "b", True),
+        ("[a-]b]", "bb", False),
+        ("[a-]", "]", True),
+        # ... and a byte range compares byte values.
+        ("[\x01-\x7f]*", "abc", True),
+        ("[\x01-\x7f]*", "é", False),
+        ("[^\x01-\x7f][^\x01-\x7f]", "é", True),
+    ],
+)
+def test_glob_matching_is_byte_wise_like_redis(pg, pattern, channel, redis_says):
+    """#787 review blocker 5. Each row was checked against Redis 8's
+    ``HSCAN MATCH`` (its ``stringmatchlen``); the subscriber's count and its
+    delivery agree with the client-side matcher."""
+    from popoto.backends.postgres.pubsub import glob_match
+
+    assert glob_match(pattern, channel) is redis_says
+    sub = pg.pubsub()
+    sub.psubscribe(pattern)
+    sub.get_message(timeout=0.2)
+    assert pg.publish(channel, b"m") == (1 if redis_says else 0)
+    got = [m for m in _drain(sub, 0.3) if m["type"] == "pmessage"]
+    assert len(got) == (1 if redis_says else 0)
+    sub.close()
+
+
+def test_delivery_and_confirmation_order_a_documented_divergence(pg):
+    """Pinned, documented divergences (docs "Event streams and pub/sub"):
+    a message matching a channel subscription and several patterns arrives
+    as the ``message``, then one ``pmessage`` per pattern **in subscription
+    order** (Redis walks its pattern table, whose order is unspecified); an
+    ``unsubscribe()`` of everything confirms in subscription order with the
+    count falling to 0 (Redis walks its channel table); and a confirmation
+    sent while nothing is subscribed comes back at once, where redis-py
+    holds it until the client subscribes again."""
+    sub = pg.pubsub()
+    sub.subscribe("ord.x")
+    sub.psubscribe("ord.*", "*", "ord.?")
+    _drain(sub, 0.2)
+    pg.publish("ord.x", b"m")
+    got = [(m["type"], m["pattern"]) for m in _drain(sub, 0.4)]
+    assert got == [
+        ("message", None),
+        ("pmessage", b"ord.*"),
+        ("pmessage", b"*"),
+        ("pmessage", b"ord.?"),
+    ]
+    sub.punsubscribe()
+    sub.subscribe("u.b", "u.a")
+    _drain(sub, 0.2)
+    sub.unsubscribe()
+    got = [(m["type"], m["channel"], m["data"]) for m in _drain(sub, 0.3)]
+    assert got == [
+        ("unsubscribe", b"ord.x", 2),
+        ("unsubscribe", b"u.b", 1),
+        ("unsubscribe", b"u.a", 0),
+    ]
+    sub.unsubscribe()  # nothing subscribed: confirmed at once, channel None
+    assert sub.get_message(timeout=0.1) == {
+        "type": "unsubscribe",
+        "pattern": None,
+        "channel": None,
+        "data": 0,
+    }
     sub.close()
 
 

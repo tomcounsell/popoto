@@ -188,3 +188,67 @@ def test_a_pipeline_publish_is_delivered_when_the_unit_runs(subscribers):
 
 def test_an_empty_publish_sends_nothing():
     assert popoto.Publisher().publish({}, channel_name=_channel("empty")) is None
+
+
+def test_identical_messages_in_one_unit_are_each_delivered(subscribers):
+    """#787 review blocker 2: a Redis ``MULTI`` delivers every ``PUBLISH``;
+    Postgres folds identical ``NOTIFY`` payloads in one transaction unless
+    each carries a nonce. ``dup, dup, other, dup`` arrives whole, in order."""
+    ch = _channel("dups")
+    sub = Recorder([ch])
+    subscribers.append(sub)
+    publisher = popoto.Publisher(channel_name=ch)
+    with _unit_of_work() as pipe:
+        for value in ("dup", "dup", "other", "dup"):
+            publisher.publish({"v": value}, pipeline=pipe)
+    _drain(sub, 4)
+    assert [data["v"] for _, data in sub.seen] == ["dup", "dup", "other", "dup"]
+
+
+class BatchNote(popoto.Model):
+    name = popoto.KeyField()
+
+
+def test_a_batch_publish_is_delivered_at_execute_and_never_after_reset(
+    subscribers,
+):
+    """#787 review blocker 4: a ``Publisher`` handed a ``popoto.batch()``
+    publishes on its own backend inside the batch -- a queued ``PUBLISH`` on
+    Redis, a ``NOTIFY`` in the batch's transaction on Postgres (never a
+    Redis ``PUBLISH``) -- so the message arrives at ``execute()``, never
+    after ``reset()``, and rides in one batch with a model save."""
+    ch = _channel("batched")
+    sub = Recorder([ch])
+    subscribers.append(sub)
+    publisher = popoto.Publisher(channel_name=ch)
+    backend = get_backend()
+
+    opened = []
+    try:
+        pipe = popoto.batch()
+        opened.append(pipe)
+        BatchNote(name="dropped").save(pipeline=pipe)
+        assert publisher.publish({"n": "dropped"}, pipeline=pipe) is pipe
+        pipe.reset()
+
+        pipe = popoto.batch()
+        opened.append(pipe)
+        BatchNote(name="kept").save(pipeline=pipe)
+        assert publisher.publish({"n": "kept"}, pipeline=pipe) is pipe
+        queued = [args[0][0] for args in pipe.command_stack]
+        if backend.name == "redis":
+            assert "PUBLISH" in queued
+        else:
+            assert queued == []  # nothing for Redis: it joined the transaction
+        sub()
+        assert sub.seen == []
+        pipe.execute()
+    finally:
+        for opened_pipe in opened:
+            opened_pipe.reset()  # never leave a transaction holding locks
+    _drain(sub, 1)
+    assert sub.seen == [(ch, {"n": "kept"})]
+    assert BatchNote.query.get(name="kept") is not None
+    assert BatchNote.query.get(name="dropped") is None
+    for note in BatchNote.query.all():
+        note.delete()
