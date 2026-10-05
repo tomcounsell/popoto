@@ -64,6 +64,7 @@ from ..planning import has_filters
 from .codec import decode_json, encode_json_element
 from .graph import GraphMixin, graph_delete_lock_sql, graph_delete_sql
 from .longtail import LongtailOpsMixin, cyclic_save_parts
+from .maintain import MaintainOpsMixin
 from .recipes import RecipeOpsMixin
 from .memory import NOT_HANDLED, PostgresMemoryOps
 from .plan import (
@@ -359,7 +360,12 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 
 
 class PostgresBackend(
-    SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin, LongtailOpsMixin
+    SearchMixin,
+    PostgresMemoryOps,
+    GraphMixin,
+    RecipeOpsMixin,
+    LongtailOpsMixin,
+    MaintainOpsMixin,
 ):
     """The Postgres implementation of :class:`popoto.backends.Backend`.
 
@@ -373,7 +379,9 @@ class PostgresBackend(
     field's partition reads, counters, tombstones, the question queue) from
     :class:`~.recipes.RecipeOpsMixin` (#759 M4); ``CyclicDecayField``,
     ``TDValueField`` and ``PredictionLedgerMixin`` from
-    :class:`~.longtail.LongtailOpsMixin` (#759 M5)."""
+    :class:`~.longtail.LongtailOpsMixin` (#759 M5); ``maintain``, ``raw_update``
+    and the record-column transfer state from
+    :class:`~.maintain.MaintainOpsMixin` (#759 M5)."""
 
     name = "postgres"
 
@@ -1238,9 +1246,6 @@ class PostgresBackend(
             "in this release"
         )
 
-    def maintain(self, *a: Any, **kw: Any) -> Any:
-        raise self._later("maintain", "M5")
-
     def field_call(
         self,
         spec: ModelSpec,
@@ -1270,6 +1275,9 @@ class PostgresBackend(
         if handled is not NOT_HANDLED:
             return handled
         handled = self._longtail_field_call(spec, field, op, args, kwargs, uow)
+        if handled is not NOT_HANDLED:
+            return handled
+        handled = self._maintain_field_call(spec, field, op, args, kwargs, uow)
         if handled is not NOT_HANDLED:
             return handled
         raise BackendCapabilityError(

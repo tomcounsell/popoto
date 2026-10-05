@@ -36,6 +36,7 @@ import time
 import uuid
 from typing import Any
 
+from ..backends.routing import non_redis_backend
 from .field import Field
 
 logger = logging.getLogger("POPOTO.EmbeddingField")
@@ -463,6 +464,18 @@ class EmbeddingField(Field):
         if not isinstance(field_instance, EmbeddingField):
             return None
 
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            # #759 M5: the vector column, as the same float32 .npy bytes.
+            from ..backends import record_id
+
+            return backend.field_call(
+                model_instance._meta.spec,
+                field_name,
+                "export_state",
+                record_id(model_instance),
+            )
+
         model_class_name = model_instance.__class__.__name__
         redis_key = model_instance._redis_key or model_instance.db_key.redis_key
         npy_path = cls._embedding_path(model_class_name, redis_key)
@@ -502,6 +515,22 @@ class EmbeddingField(Field):
 
         encoded = state.get("vector_npy_b64")
         if not encoded:
+            return None
+
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            # #759 M5: the vector column and the narrow vector row, under the
+            # record's scope (what its save wrote them under).
+            from ..backends import record_id
+
+            backend.field_call(
+                model_instance._meta.spec,
+                field_name,
+                "import_state",
+                record_id(model_instance),
+                state,
+                instance=model_instance,
+            )
             return None
 
         model_class_name = model_instance.__class__.__name__

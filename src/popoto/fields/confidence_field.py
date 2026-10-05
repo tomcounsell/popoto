@@ -205,6 +205,18 @@ class ConfidenceField(Field):
         if not isinstance(field, ConfidenceField):
             return None
 
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            # #759 M5: the four state columns of the record's row.
+            from ..backends import record_id
+
+            return backend.field_call(
+                model_instance._meta.spec,
+                field_name,
+                "export_state",
+                record_id(model_instance),
+            )
+
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
         member_key = model_instance.db_key.redis_key
         raw = get_REDIS_DB().hget(data_hash_key, member_key)
@@ -248,6 +260,20 @@ class ConfidenceField(Field):
 
         field = model_instance._meta.fields.get(field_name)
         if not isinstance(field, ConfidenceField):
+            return None
+
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            # #759 M5: overwrite the four state columns the save seeded.
+            from ..backends import record_id
+
+            backend.field_call(
+                model_instance._meta.spec,
+                field_name,
+                "import_state",
+                record_id(model_instance),
+                state,
+            )
             return None
 
         data_hash_key = field.get_data_hash_key(model_instance, field_name)

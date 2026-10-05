@@ -3352,6 +3352,16 @@ class Model(metaclass=ModelBase):
             if result.diverged_count:
                 print(Event.audit_datetime_keys())
         """
+        backend = get_backend(cls)
+        if backend.name != "redis":
+            # #759 M5: another backend recomputes its own derived state
+            # (Postgres: the companion tables, then REINDEX + ANALYZE;
+            # docs/features/postgres-backend.md, "Index maintenance").
+            count, diverged = backend.maintain(
+                cls._meta.spec, "rebuild", batch_size=batch_size, model=cls
+            )
+            return RebuildIndexesResult(count, diverged)
+
         from .encoding import decode_popoto_model_hashmap
 
         model_name = cls._meta.model_name
@@ -3657,7 +3667,18 @@ class Model(metaclass=ModelBase):
                         f"hashes that will be DEL'd by clean_indexes()."
                     )
                 User.rebuild_indexes()
+
+        On a model bound to another backend (#759 M5) the same dict comes
+        back from that backend's ``maintain("check")``; on Postgres it adds
+        ``side_tables`` (orphan / missing / stale companion rows per field)
+        and the five Redis index kinds are always ``0`` -- they are the
+        table and its B-trees there (docs/features/postgres-backend.md).
         """
+        backend = get_backend(cls)
+        if backend.name != "redis":
+            return backend.maintain(
+                cls._meta.spec, "check", batch_size=batch_size, model=cls
+            )
 
         def _count_orphans(keys_to_check: list) -> int:
             """Pipeline EXISTS in batches, return count of non-existent keys."""
@@ -3919,7 +3940,16 @@ class Model(metaclass=ModelBase):
             if result['total'] > 0:
                 removed = User.clean_indexes()
                 print(f"Removed {removed} orphaned index entries")
+
+        On a model bound to another backend (#759 M5) this is that backend's
+        ``maintain("clean")``: on Postgres, orphan companion rows and
+        partial-write rows are deleted (docs/features/postgres-backend.md).
         """
+        backend = get_backend(cls)
+        if backend.name != "redis":
+            return backend.maintain(
+                cls._meta.spec, "clean", batch_size=batch_size, model=cls
+            )
 
         def _collect_orphans(keys_to_check: list) -> list:
             """Pipeline EXISTS in batches, return list of non-existent keys."""
@@ -4159,6 +4189,22 @@ class Model(metaclass=ModelBase):
         """
         if not redis_keys:
             return 0
+
+        backend = get_backend(cls)
+        if backend.name != "redis":
+            # #759 M5: an UPDATE of those columns, with no hooks and no
+            # side-table work, on the record rows that exist (Postgres).
+            from ..backends.postgres.maintain import MAINTAIN_FIELD
+
+            return backend.field_call(
+                cls._meta.spec,
+                MAINTAIN_FIELD,
+                "raw_update",
+                list(redis_keys),
+                field_values,
+                model=cls,
+                batch_size=batch_size,
+            )
 
         from .encoding import TYPE_ENCODER_DECODERS
         from ..redis_db import ENCODING

@@ -121,7 +121,16 @@ class AccessTrackerMixin:
             never had a confirmed access. Each key is omitted when its source
             structure is absent, so an instance with counters but an empty log
             exports exactly the shape #554-era code produced.
+
+        On a model bound to another backend (#759 M5) the counters come from
+        that backend; Postgres keeps no confirmed log (its §1.1 divergence),
+        so its export has no ``access_log`` key.
         """
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            return model_instance._access_call(
+                backend, "export_state", model_instance._at_record_id()
+            )
         meta_key = model_instance._at_key("meta")
         raw_count = get_REDIS_DB().hget(meta_key, "access_count")
         raw_last = get_REDIS_DB().hget(meta_key, "last_accessed")
@@ -176,6 +185,15 @@ class AccessTrackerMixin:
         cleanly rather than raise.
         """
         if not state:
+            return None
+
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            # #759 M5: the counters onto the record's row; a carried
+            # access_log has nowhere to go on Postgres and is dropped (§1.1).
+            model_instance._access_call(
+                backend, "import_state", model_instance._at_record_id(), state
+            )
             return None
 
         mapping: dict[str, Any] = {}

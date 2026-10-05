@@ -43,6 +43,13 @@ from popoto.fields.supersession import SupersessionProtocol  # noqa: E402
 from popoto.fields.validity_field import ValidityField  # noqa: E402
 from popoto.transfer import export_records, import_records  # noqa: E402
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # --- Test models -------------------------------------------------------
 
 
@@ -473,6 +480,9 @@ class RegenFact(popoto.Model):
     validity = ValidityField()
 
 
+@pytest.mark.redis_only(
+    reason="reads the validity chain:fwd hash through the raw Redis client"
+)
 def test_carried_state_keys_are_not_remapped():
     """Pins a documented limitation, deliberately, rather than hiding it.
 

@@ -204,10 +204,23 @@ def _restore_state(
         klass.import_state(instance, from_jsonable(carried))
 
 
-def _exists_many(keys: "list[str]") -> "dict[str, bool]":
-    """Pipelined EXISTS over a batch of redis keys."""
+def _exists_many(model_class: "type[Model]", keys: "list[str]") -> "dict[str, bool]":
+    """Pipelined EXISTS over a batch of redis keys.
+
+    On a model bound to another backend (#759 M5) the same question goes to
+    that backend's ``exists`` -- a Redis ``EXISTS`` would ask a store the
+    record was never written to, and report every landed record as lost.
+    """
     if not keys:
         return {}
+    from ..backends.routing import non_redis_backend
+
+    backend = non_redis_backend(model_class)
+    if backend is not None:
+        from ..models.query import _record_ids
+
+        found = backend.exists(model_class._meta.spec, _record_ids(model_class, keys))
+        return {key: bool(value) for key, value in zip(keys, found)}
     pipeline = get_REDIS_DB().pipeline()
     for key in keys:
         pipeline.exists(key)
@@ -231,7 +244,7 @@ def _process_batch(
     re-assignment after construction is required.
     """
     keys = [record["key"] for record in batch]
-    existing = _exists_many(keys)
+    existing = _exists_many(model_class, keys)
 
     bypass = on_write_gate == "bypass"
     landed: "list[RecordOutcome]" = []
@@ -324,7 +337,7 @@ def _process_batch(
 
     # Reconciliation: ground-truth the landed records that were NOT on the
     # collision path. Downgrade only -- never an upgrade.
-    confirmed = _exists_many([outcome.key for outcome in landed])
+    confirmed = _exists_many(model_class, [outcome.key for outcome in landed])
     for outcome in landed:
         if not confirmed.get(outcome.key):
             outcome.category = ERRORED

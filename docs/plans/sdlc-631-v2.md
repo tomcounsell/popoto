@@ -1126,6 +1126,50 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     `strtod`'s rounding boundaries (`±inf` / `±0`, exact), where the cast
     raised "out of range"; `Decimal('-0')` is a documented divergence. The
     long-tail writers join a `popoto.batch()`.
+- **M5 `maintain` and `transfer/` as shipped: departures, recorded.** The
+  index maintenance and same-backend transfer PR
+  (`backends/postgres/maintain.py`).
+  - **`check` does not return "zero drift by construction".** §2 assumed
+    every index is transactional. The five Redis index kinds are (the table
+    and its B-trees), and keep their dict keys at `0`. But popoto writes the
+    companion tables itself, so they can drift. `check_indexes()` therefore
+    adds `side_tables: {field: {orphans, missing, stale}}` for BM25
+    postings and lengths, narrow vector rows, `ExistenceFilter` tokens and
+    validity open-claim pointers. Orphans need a foreign-key bypass (a
+    trigger-less load, the shape a #756 copy may take). Missing and stale rows
+    need direct SQL or a `raw_update()` of a source column. `partial_writes`
+    is a `NULL`/`''` auto-key column. Not drift: co-occurrence edges (no
+    foreign key, as on Redis), `FrequencySketch` counts, the prediction
+    ledger, and state held in the record row.
+  - **`rebuild` is more than `REINDEX` + `ANALYZE`.** It first recomputes
+    the drifted companion rows from the live records, a keyset page per
+    transaction, behind the page's record-key locks (the one lock order).
+    Rows whose key columns no longer produce their `_pk` are skipped and
+    reported as `diverged_keys`, as on Redis. It then deletes orphans and
+    runs `REINDEX TABLE CONCURRENTLY`, not plain `REINDEX`, so writes are not
+    blocked, followed by `ANALYZE`. It never re-counts a `FrequencySketch` or
+    calls the embedding provider, both of which a Redis rebuild's `on_save`
+    replay does.
+  - **The protocol's `maintain` takes `model=`** (the `Model` class). The
+    derivation needs the live fields, such as a fingerprint function or a
+    `ContentField` store, which a `ModelSpec` does not carry. `raw_update` is
+    a `field_call` adapter (`_maintain`, `raw_update`), not a protocol
+    method.
+  - **Transfer is composed as §2 said**, plus three routes: import's
+    existence check (`exists`), a filtered export (one id-only `select`), and
+    `export_state`/`import_state` for `ConfidenceField`, `EmbeddingField` and
+    `AccessTrackerMixin` as `field_call` adapters. The record format is
+    unchanged and backend-neutral. An `EmbeddingField` vector travels as the
+    same float32 `.npy` bytes on both backends.
+  - **Cross-backend (toward #756).** A Redis export of a plain model, Valor's
+    memory slice and the carried long tail imports into Postgres and
+    re-exports identically, except for the confirmed access log, which
+    Postgres does not keep. The cycles' declared-baseline slot is dropped on
+    import on both backends (#698).
+  - **The async variants stay on the thread path.** #784 (the async backend)
+    had not merged when this PR was built.
+  - **Wire trace:** `trace_redis_wire.py --with-maintain` covers every
+    rerouted Redis path, and is byte-identical to `main` with all flags.
 
 ## 6. Carried forward from the POC
 

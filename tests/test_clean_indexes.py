@@ -13,6 +13,14 @@ import logging
 import popoto
 from popoto.redis_db import POPOTO_REDIS_DB
 from popoto.fields.geo_field import GeoField
+import pytest
+
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
 
 # ---------------------------------------------------------------------------
 # Test model definitions (reuse same patterns as test_check_indexes.py)
@@ -97,6 +105,13 @@ class TestCleanIndexesHealthy:
 class TestCleanIndexesOrphanRemoval:
     """Tests that orphaned index entries are removed for each index type."""
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_class_set_orphan_removal(self):
         """Removes orphan from class set when instance hash is deleted."""
         user = CleanUser.create(email="csorphan@test.com", score=5.0)
@@ -112,6 +127,13 @@ class TestCleanIndexesOrphanRemoval:
         removed = CleanUser.clean_indexes()
         assert removed >= 1
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_key_field_orphan_removal(self):
         """Removes orphan from key field index."""
         user = CleanUser.create(email="kforphan@test.com", score=5.0)
@@ -122,6 +144,13 @@ class TestCleanIndexesOrphanRemoval:
         removed = CleanUser.clean_indexes()
         assert removed >= 1
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_sorted_field_orphan_removal(self):
         """Removes orphan from sorted field index."""
         user = CleanUser.create(email="sforphan@test.com", score=15.0)
@@ -132,6 +161,13 @@ class TestCleanIndexesOrphanRemoval:
         removed = CleanUser.clean_indexes()
         assert removed >= 1
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_geo_field_orphan_removal(self):
         """Removes orphan from geo field index."""
         place = CleanGeoPlace.create(name="ghost", location=(51.5074, -0.1278))
@@ -142,6 +178,13 @@ class TestCleanIndexesOrphanRemoval:
         removed = CleanGeoPlace.clean_indexes()
         assert removed >= 1
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_composite_index_orphan_removal(self):
         """Removes orphan from composite index."""
         item = CleanComposite.create(
@@ -154,6 +197,13 @@ class TestCleanIndexesOrphanRemoval:
         removed = CleanComposite.clean_indexes()
         assert removed >= 1
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_partitioned_sorted_field_orphan_removal(self):
         """Removes orphan from partitioned sorted field index."""
         item = CleanPartitioned.create(category="electronics", price=99.99)
@@ -164,6 +214,13 @@ class TestCleanIndexesOrphanRemoval:
         removed = CleanPartitioned.clean_indexes()
         assert removed >= 1
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_multiple_orphans_counted(self):
         """Multiple orphaned entries are counted correctly."""
         users = []
@@ -189,6 +246,13 @@ class TestCleanIndexesOrphanRemoval:
 class TestCleanIndexesRoundTrip:
     """Verify that after clean_indexes, check_indexes reports zero orphans."""
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_class_set_clean_then_check(self):
         """After cleaning class set orphans, check_indexes reports 0."""
         user = CleanUser.create(email="rtcs@test.com", score=1.0)
@@ -198,6 +262,13 @@ class TestCleanIndexesRoundTrip:
         CleanUser.clean_indexes()
         assert CleanUser.check_indexes()["total"] == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_geo_clean_then_check(self):
         """After cleaning geo orphans, check_indexes reports 0."""
         place = CleanGeoPlace.create(name="rtgeo", location=(40.7128, -74.006))
@@ -207,6 +278,13 @@ class TestCleanIndexesRoundTrip:
         CleanGeoPlace.clean_indexes()
         assert CleanGeoPlace.check_indexes()["total"] == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_composite_clean_then_check(self):
         """After cleaning composite orphans, check_indexes reports 0."""
         item = CleanComposite.create(
@@ -218,6 +296,13 @@ class TestCleanIndexesRoundTrip:
         CleanComposite.clean_indexes()
         assert CleanComposite.check_indexes()["total"] == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_partitioned_clean_then_check(self):
         """After cleaning partitioned orphans, check_indexes reports 0."""
         item = CleanPartitioned.create(category="books", price=19.99)
@@ -227,6 +312,13 @@ class TestCleanIndexesRoundTrip:
         CleanPartitioned.clean_indexes()
         assert CleanPartitioned.check_indexes()["total"] == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_full_round_trip_multiple_types(self):
         """Create orphans across multiple index types, clean, verify all zero."""
         user = CleanUser.create(email="rtfull@test.com", score=42.0)
@@ -263,6 +355,13 @@ class TestAsyncCleanIndexes:
         async_result = asyncio.run(CleanUser.async_clean_indexes())
         assert sync_result == async_result == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_async_removes_orphans(self):
         """async_clean_indexes correctly removes orphans."""
         user = CleanUser.create(email="asyncorphan@test.com", score=3.0)
@@ -283,6 +382,13 @@ class TestAsyncCleanIndexes:
 class TestCleanIndexesBatchSize:
     """Verify batch_size parameter works correctly."""
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_batch_size_accepted(self):
         """batch_size parameter is accepted and produces same results."""
         user = CleanUser.create(email="batchtest@test.com", score=1.0)
@@ -301,6 +407,13 @@ class TestCleanIndexesBatchSize:
         assert removed > 0
         assert CleanUser.check_indexes()["total"] == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects drift by deleting the record hash through the raw Redis "
+            "client; Postgres drift is injected by SQL in "
+            "tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_large_batch_size(self):
         """Large batch_size works without error."""
         user = CleanUser.create(email="largebatch@test.com", score=1.0)
@@ -318,6 +431,9 @@ class TestCleanIndexesBatchSize:
 class TestDeprecationWarning:
     """Verify Query.keys(clean=True) warning is updated."""
 
+    @pytest.mark.redis_only(
+        reason="Query.keys(clean=True) scans Redis keys and is Redis-only (plan §1)"
+    )
     def test_warning_references_clean_indexes(self, caplog):
         """Warning message references Model.clean_indexes()."""
         CleanUser.create(email="warntest@test.com", score=1.0)
@@ -329,6 +445,9 @@ class TestDeprecationWarning:
             "clean_indexes()" in record.message for record in caplog.records
         ), f"Expected warning referencing clean_indexes(), got: {[r.message for r in caplog.records]}"
 
+    @pytest.mark.redis_only(
+        reason="Query.keys(clean=True) scans Redis keys and is Redis-only (plan §1)"
+    )
     def test_warning_says_deprecated(self, caplog):
         """Warning message says deprecated."""
         CleanUser.create(email="warntest2@test.com", score=1.0)
@@ -364,6 +483,13 @@ def _inject_partial_write_orphan(model_cls, missing_field_name: str) -> str:
 class TestCleanIndexesPartialWriteOrphans:
     """Verify partial-write orphan removal in clean_indexes()."""
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects a partial-write hash and $Class: member through the raw Redis "
+            "client; the Postgres partial write (a NULL auto-key column) is "
+            "injected by SQL in tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_partial_write_orphan_removed_from_class_set(self):
         """The orphan's class-set membership is SREM'd."""
         orphan_key = _inject_partial_write_orphan(CleanMinimal, "uuid")
@@ -375,6 +501,13 @@ class TestCleanIndexesPartialWriteOrphans:
         assert removed >= 1
         assert POPOTO_REDIS_DB.sismember(class_set_key, orphan_key) == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects a partial-write hash and $Class: member through the raw Redis "
+            "client; the Postgres partial write (a NULL auto-key column) is "
+            "injected by SQL in tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_partial_write_orphan_hash_deleted(self):
         """The orphan hash itself is DEL'd from Redis (no leftover memory)."""
         orphan_key = _inject_partial_write_orphan(CleanMinimal, "uuid")
@@ -384,6 +517,13 @@ class TestCleanIndexesPartialWriteOrphans:
         CleanMinimal.clean_indexes()
         assert POPOTO_REDIS_DB.exists(orphan_key) == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects a partial-write hash and $Class: member through the raw Redis "
+            "client; the Postgres partial write (a NULL auto-key column) is "
+            "injected by SQL in tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_partial_write_round_trip_with_check(self):
         """After clean_indexes, check_indexes reports partial_writes == 0."""
         _inject_partial_write_orphan(CleanMinimal, "uuid")
@@ -395,6 +535,13 @@ class TestCleanIndexesPartialWriteOrphans:
         assert result_after["partial_writes"] == 0
         assert result_after["total"] == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects a partial-write hash and $Class: member through the raw Redis "
+            "client; the Postgres partial write (a NULL auto-key column) is "
+            "injected by SQL in tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_partial_write_count_in_return(self):
         """clean_indexes return count includes partial-write orphans."""
         # Healthy instance — should not be touched.
@@ -433,6 +580,13 @@ class TestCleanIndexesPartialWriteOrphans:
         POPOTO_REDIS_DB.delete(fake_key)
         POPOTO_REDIS_DB.srem(class_set_key, fake_key)
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects a partial-write hash and $Class: member through the raw Redis "
+            "client; the Postgres partial write (a NULL auto-key column) is "
+            "injected by SQL in tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_async_removes_partial_write_orphans(self):
         """async_clean_indexes removes partial-write orphans (sync parity)."""
         orphan_key = _inject_partial_write_orphan(CleanMinimal, "uuid")
@@ -445,6 +599,13 @@ class TestCleanIndexesPartialWriteOrphans:
         result_after = asyncio.run(CleanMinimal.async_check_indexes())
         assert result_after["partial_writes"] == 0
 
+    @pytest.mark.redis_only(
+        reason=(
+            "injects a partial-write hash and $Class: member through the raw Redis "
+            "client; the Postgres partial write (a NULL auto-key column) is "
+            "injected by SQL in tests/postgres/test_postgres_maintain.py"
+        )
+    )
     def test_healthy_instance_not_touched(self):
         """A healthy instance alongside an orphan must survive cleanup."""
         healthy = CleanMinimal.create(data="keep_me")
