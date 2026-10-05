@@ -935,8 +935,9 @@ or the default.
   63-byte identifier limit. **Pattern subscriptions are matched
   client-side**, with Redis's glob rules translated to a regular expression
   and matched **byte-wise**, as Redis's `stringmatchlen` matches: `?` and
-  `[^…]` consume one byte of a non-ASCII channel, a range compares byte
-  values, and `[x-]` is a range ending at `]`
+  `[^…]` consume one byte of a non-ASCII channel, a range compares bytes as
+  C `char` (signed on the x86-64 and Apple-silicon builds, so bytes 0x80-0xFF
+  sort below 0x00), and `[x-]` is a range ending at `]`
   (`popoto.backends.postgres.pubsub.glob_match`). Every subscriber of the
   schema receives every message and keeps what its subscriptions match.
 - `NOTIFY` is transactional: a message published with the backend's unit of
@@ -975,7 +976,7 @@ where a wake-up latency of a poll interval is acceptable. Each `publish` also
 reads `pg_stat_activity` for its count, so its cost grows with the server's
 session count. One multiplexed listener per process and schema, shared by
 all consumers and subscribers, is a planned follow-up
-([plan](../plans/sdlc-631-v2.md), M5 follow-ups).
+(`docs/plans/sdlc-631-v2.md`, "M5 events as shipped").
 
 **Divergences** (stream and pub/sub; Redis behaviour unchanged):
 

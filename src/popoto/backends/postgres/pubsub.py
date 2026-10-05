@@ -86,8 +86,8 @@ def glob_to_regex(pattern: str) -> str:
     Redis matches **bytes**. To mean what it means on a non-ASCII channel,
     translate and match the *byte* forms (:func:`as_bytes_text`: UTF-8,
     then each byte as one character) -- then ``?`` and ``[^...]`` consume
-    one byte, and a range compares byte values, as ``stringmatchlen``
-    does. :func:`glob_match` does both."""
+    one byte, and a range compares bytes as ``stringmatchlen`` does (as
+    signed ``char``, :func:`_range_items`). :func:`glob_match` does both."""
     out: list[str] = []
     i, n = 0, len(pattern)
     special = set(".^$*+?()[]{}|\\-/")
@@ -124,10 +124,7 @@ def glob_to_regex(pattern: str) -> str:
                 elif j + 2 < n and pattern[j + 1] == "-":
                     # stringmatchlen: any "x-y" is a range, "]" included as
                     # its end ("[a-]" ranges a..] and leaves the class open).
-                    lo, hi = c, pattern[j + 2]
-                    if lo > hi:
-                        lo, hi = hi, lo
-                    items.append(f"{lit(lo)}-{lit(hi)}")
+                    items.extend(_range_items(c, pattern[j + 2], lit))
                     j += 2
                 else:
                     items.append(lit(c))
@@ -143,6 +140,33 @@ def glob_to_regex(pattern: str) -> str:
             out.append(lit(ch))
         i += 1
     return "".join(out)
+
+
+def _signed(ch: str) -> int:
+    """A byte-character's value as Redis compares it: ``stringmatchlen``
+    reads the range ends and the string byte as C ``char``, which is signed
+    on the x86-64 and Apple-silicon builds Redis ships for, so bytes
+    0x80-0xFF sort *below* 0x00. Characters past U+00FF (a pattern not in
+    byte form) keep their code point."""
+    code = ord(ch)
+    return code - 256 if 0x80 <= code <= 0xFF else code
+
+
+def _range_items(lo: str, hi: str, lit: Callable[[str], str]) -> list[str]:
+    """The class items for the range ``lo-hi`` in Redis's comparison order
+    (:func:`_signed`; the ends swapped when reversed). A signed range that
+    crosses zero is two byte ranges: ``0x80+..0xFF`` and ``0x01..`` (a
+    channel never holds NUL, and Postgres ``text`` -- where the listener
+    table stores the regex -- cannot)."""
+    a, b = _signed(lo), _signed(hi)
+    if a > b:
+        a, b = b, a
+    spans = (
+        [(a + 256, 0xFF), (1, b)]
+        if a < 0 <= b
+        else [(a % 256, b % 256)] if -128 <= a and b <= 0xFF else [(a, b)]
+    )
+    return [f"{lit(chr(x))}-{lit(chr(y))}" for x, y in spans]
 
 
 def as_bytes_text(value: Union[str, bytes]) -> str:

@@ -637,6 +637,12 @@ def test_the_nonce_never_reaches_the_message(pg):
         ("[\x01-\x7f]*", "abc", True),
         ("[\x01-\x7f]*", "é", False),
         ("[^\x01-\x7f][^\x01-\x7f]", "é", True),
+        # Redis compares range bytes as C (signed) char: 0x80-0xFF sort
+        # below 0x00, so "*-\xc3" spans 0xC3..0xFF and 0x01..0x2A.
+        ("[*-é]", "!", True),
+        ("[*-é]", "-", False),
+        ("[*-é]?", "é", True),
+        ("[é-*é", "-", False),
     ],
 )
 def test_glob_matching_is_byte_wise_like_redis(pg, pattern, channel, redis_says):
