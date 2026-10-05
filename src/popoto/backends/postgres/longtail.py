@@ -359,12 +359,14 @@ def safe_div(a: str, b: str) -> str:
     )
 
 
-def _levels(first: str, steps: list[tuple[list[str], str]]) -> str:
+def _levels(first: str, steps: list[list[str]]) -> str:
     """Nest derived tables: ``first`` is the innermost ``SELECT`` (aliased
-    ``l0``); each step is ``(columns, from-alias)`` selecting from the
-    previous level. ``OFFSET 0`` keeps each one evaluated once per row."""
+    ``l0``); each step is the column list of the next level, selecting from
+    the previous one (``l<n>``). ``OFFSET 0`` keeps each level evaluated once
+    per row, so a clamped helper that names its inputs several times does
+    not re-evaluate them."""
     sql = first
-    for depth, (cols, _alias) in enumerate(steps):
+    for depth, cols in enumerate(steps):
         sql = f"SELECT {', '.join(cols)} FROM ({sql}) AS l{depth} OFFSET 0"
     return sql
 
@@ -395,18 +397,15 @@ def _cycles_sql(field: str, now: float, alias: str = "t") -> str:
     terms = _levels(
         l0,
         [
-            (["l0.o", "l0.a", "l0.p", f"{safe_mul(two_pi, 'l0.d')} AS m"], "l0"),
-            (["l1.o", "l1.a", f"{safe_div('l1.m', 'l1.p')} AS x"], "l1"),
-            (
-                [
-                    "l2.o",
-                    "l2.a",
-                    f"(CASE WHEN abs(l2.x) = {_INF} THEN {_NAN} ELSE cos(l2.x) END)"
-                    " AS c",
-                ],
-                "l2",
-            ),
-            (["l3.o", f"{safe_mul('l3.a', 'l3.c')} AS v"], "l3"),
+            ["l0.o", "l0.a", "l0.p", f"{safe_mul(two_pi, 'l0.d')} AS m"],
+            ["l1.o", "l1.a", f"{safe_div('l1.m', 'l1.p')} AS x"],
+            [
+                "l2.o",
+                "l2.a",
+                f"(CASE WHEN abs(l2.x) = {_INF} THEN {_NAN} ELSE cos(l2.x) END)"
+                " AS c",
+            ],
+            ["l3.o", f"{safe_mul('l3.a', 'l3.c')} AS v"],
         ],
     )
     fold = (
