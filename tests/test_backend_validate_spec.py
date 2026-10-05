@@ -229,9 +229,11 @@ def test_postgres_refuses_hook_overriding_custom_fields_only():
     assert "custom_class" in VsCustom._meta.spec.fields["quiet"].options
 
 
-def test_postgres_refuses_meta_ttl_and_accepts_indexes():
-    with pytest.raises(BackendCapabilityError, match="Meta.ttl"):
-        validate_spec(VsTtl._meta.spec, "postgres")
+def test_postgres_accepts_meta_ttl_and_indexes():
+    # Meta.ttl arrived in M5 (an _expires_at column, a read filter and the
+    # reaper); it was refused here until then.
+    validate_spec(VsTtl._meta.spec, "postgres")
+    assert VsTtl._meta.spec.ttl == 60
     spec = ModelSpec(
         name="X",
         key_fields=("k",),

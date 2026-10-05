@@ -201,8 +201,9 @@ class Backend(Protocol):
         **options: Any,
     ) -> SaveOutcome:
         """Persist ``obj``; ``fields`` is ``update_fields``. ``expiry=None``
-        means the instance's own TTL settings (``Meta.ttl``, ``save(ttl=)``).
-        Redis options: ``ignore_errors`` and the caller's hook ``**kwargs``."""
+        means the instance's own TTL settings (``Meta.ttl``, ``_ttl``,
+        ``_expire_at``). Redis options: ``ignore_errors`` and the caller's hook ``**kwargs``.
+        """
         ...
 
     def load(
@@ -696,8 +697,8 @@ def validate_spec(spec: ModelSpec, backend_name: str) -> None:
                 f"{mixin} is not supported yet (it arrives in "
                 f"{_POSTGRES_REFUSED_MIXINS[mixin]})"
             )
-    if spec.ttl is not None:
-        problems.append("Meta.ttl (record expiry arrives in M5)")
+    # Meta.ttl is supported since M5: an ``_expires_at`` column, a read
+    # filter and an automatic reaper (popoto.backends.postgres.ttl).
     if problems:
         raise BackendCapabilityError(
             f"{spec.name} cannot use the {backend_name!r} backend: "

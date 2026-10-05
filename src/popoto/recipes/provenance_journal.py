@@ -1345,15 +1345,22 @@ def _append_on_backend(
     raised at the call, with nothing written, where Redis maps the script's
     reply after ``EXEC`` has kept the entry."""
     from ..backends.types import UnitOfWork
+    from ..batch import unit_of
 
-    if pipeline is not None and (
-        not isinstance(pipeline, UnitOfWork) or pipeline.is_redis_pipeline
-    ):
-        raise ValueError(
-            f"{model.__name__}: the journal is stored on the {backend.name!r} "
-            f"backend, so pipeline must be a unit of work from that backend's "
-            f"transaction(), got {type(pipeline).__name__}"
-        )
+    # The backend's own unit of work, or a popoto.batch() -- whose Postgres
+    # transaction the write joins (#759 M5, #783 review) -- carries the
+    # write. A plain Redis pipeline cannot.
+    uow: Any = None
+    if pipeline is not None:
+        if not (isinstance(pipeline, UnitOfWork) and pipeline.is_redis_pipeline):
+            uow = unit_of(pipeline, backend)
+        if uow is None:
+            raise ValueError(
+                f"{model.__name__}: the journal is stored on the "
+                f"{backend.name!r} backend, so pipeline must be a unit of work "
+                f"from that backend's transaction() or a popoto.batch(), got "
+                f"{type(pipeline).__name__}"
+            )
     coupling_enabled = bool(Defaults.JOURNAL_VALIDITY_COUPLING_ENABLED)
     should_close = model.kind_is_closing(kind) and target_key is not None
     if should_close and not coupling_enabled:
@@ -1368,7 +1375,7 @@ def _append_on_backend(
                 field_name=VALIDITY_FIELD_NAME,
                 # A backend unit of work: save_and_invalidate's annotation
                 # names the Redis pipeline its Redis path takes.
-                pipeline=cast(Any, pipeline),
+                pipeline=cast(Any, uow),
             )
         except SupersedeDeclinedError as exc:
             verdict = getattr(exc, "verdict", None)
@@ -1386,7 +1393,7 @@ def _append_on_backend(
             ) from exc
         target_closed = bool(result.closed_key)
     else:
-        saved = entry.save(pipeline=pipeline)
+        saved = entry.save(pipeline=uow)
         blocked = getattr(entry, "_never_record_verdict", None)
         if not saved or blocked is not None:
             reason = (

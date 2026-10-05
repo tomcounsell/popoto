@@ -262,9 +262,14 @@ class RecipeOpsMixin:
             if "_last_accessed" in {c.name for c in ts.columns}
             else 'extract(epoch from "_updated_at")'
         )
+        from .ttl import live_sql
+
+        # M5: an expired record has no idle time, as OBJECT IDLETIME of a key
+        # Redis expired is nil.
+        live = live_sql(ts)
         rows, _ = self._run(
             f"SELECT floor(greatest({_NOW} - {last}, 0))::float8 "
-            f'FROM {ts.qualified} WHERE "_pk" = %s',
+            f'FROM {ts.qualified} WHERE "_pk" = %s' + (f" AND {live}" if live else ""),
             [id.canonical],
             uow=uow,
         )

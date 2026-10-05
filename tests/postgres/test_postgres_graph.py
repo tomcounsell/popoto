@@ -23,7 +23,11 @@ from pathlib import Path
 import pytest
 
 import popoto
-from popoto.backends import BackendRetryableError, get_backend
+from popoto.backends import (
+    BackendCapabilityError,
+    BackendRetryableError,
+    get_backend,
+)
 from popoto.backends.postgres import graph as graph_mod
 from popoto.fields.co_occurrence_field import CoOccurrenceField
 from popoto.fields.confidence_field import ConfidenceField
@@ -678,3 +682,63 @@ def test_interleaved_links_overflow_without_the_record_lock(pg, monkeypatch):
     )
     size, _waited = _interleaved_links(pg)
     assert size == 4
+
+
+# -- popoto.batch() (#759 M5, #783 review blocker 2) -----------------------------
+
+
+def test_a_link_handed_a_batch_joins_it_and_reuses_its_record_lock(
+    pg, pg_schema, admin
+):
+    """The batch holds the record lock of what it saved; a link of that
+    record handed the batch runs in the batch's transaction (a held advisory
+    lock is re-entrant there) instead of waiting on it from another
+    connection until the statement timeout."""
+    a = GraphNode(name="a")
+    pipe = popoto.batch()
+    try:
+        a.save(pipeline=pipe)
+        started = time.monotonic()
+        weight = GraphNode.links.link(
+            GraphNode, a.db_key.redis_key, "GraphNode:b", pipeline=pipe
+        )
+        assert time.monotonic() - started < 1.0
+        assert isinstance(weight, float)
+        assert _edges(admin, pg_schema, GraphNode) == [], "nothing before execute"
+        pipe.execute()
+    finally:
+        pipe.reset()
+    assert GraphNode.query.get(name="a") is not None
+    assert {(s, d) for s, d, _ in _edges(admin, pg_schema, GraphNode)} == {
+        ("GraphNode:a", "GraphNode:b"),
+        ("GraphNode:b", "GraphNode:a"),
+    }
+    assert pg.health.dropped_writes == 0
+
+
+def test_a_reset_batch_drops_its_edge_writes(pg, pg_schema, admin):
+    pipe = popoto.batch()
+    GraphNode(name="a").save(pipeline=pipe)
+    GraphNode.links.link(GraphNode, "GraphNode:a", "GraphNode:b", pipeline=pipe)
+    GraphNode.links.strengthen(
+        GraphNode, "GraphNode:a", "GraphNode:c", 2.0, pipeline=pipe
+    )
+    pipe.reset()
+    assert _edges(admin, pg_schema, GraphNode) == []
+    assert GraphNode.query.get(name="a") is None
+
+
+def test_deleting_a_record_an_open_batch_holds_is_refused_at_once(pg):
+    """The graph delete takes its locks in a statement of its own shape;
+    the same-thread check still reads the deleted keys from it."""
+    GraphNode.create(name="a")
+    pipe = popoto.batch()
+    try:
+        GraphNode(name="a").save(pipeline=pipe)
+        started = time.monotonic()
+        with pytest.raises(BackendCapabilityError, match="this thread holds"):
+            GraphNode.query.get(name="a").delete()
+        assert time.monotonic() - started < 1.0
+    finally:
+        pipe.execute()
+    assert GraphNode.query.get(name="a") is not None

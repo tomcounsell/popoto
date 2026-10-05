@@ -227,11 +227,9 @@ ALL_MODELS = [
     ObservedMemory,
 ]
 
-#: Models the Postgres leg cannot store yet: ``Meta.ttl`` (M5). A test that
-#: uses one is ``redis_only``. (The ``CyclicDecayField`` models joined the
-#: Postgres leg with #759 M5.)
-REDIS_ONLY_MODELS = (TTLFact,)
-NEEDS_TTL = "uses a Meta.ttl model, which Postgres stores from #759 M5"
+#: Models the Postgres leg cannot store. Empty since #759 M5: ``Meta.ttl``
+#: (``TTLFact``) and the ``CyclicDecayField`` models are both stored now.
+REDIS_ONLY_MODELS: tuple = ()
 NEEDS_CYCLIC = "uses a CyclicDecayField, which Postgres stores from #759 M5"
 LUA_ONLY = "evaluates or inspects a Redis Lua script; Postgres runs no Lua"
 REDIS_PIPELINE = (
@@ -299,8 +297,8 @@ def _reset():
 
     if default_backend_name() == "redis":
         # On the Postgres leg the `backend` fixture has already dropped every
-        # table, and some models here (TTLFact, the CyclicDecayField ones)
-        # cannot be bound to Postgres at all.
+        # table, and some models here (the CyclicDecayField ones) cannot be
+        # bound to Postgres at all.
         for model in ALL_MODELS:
             model.delete_all()
     _wipe_validity_keys()
@@ -1957,7 +1955,6 @@ class TestFailurePaths:
         closed = SupersessionProtocol.supersede(new, identity_key=("User_42", " plan "))
         assert closed == old.db_key.redis_key
 
-    @pytest.mark.redis_only(reason=NEEDS_TTL)
     def test_ttl_model_warns_once(self, caplog):
         validity_module._TTL_WARNED.clear()
         with caplog.at_level("WARNING", logger="POPOTO.ValidityField"):
