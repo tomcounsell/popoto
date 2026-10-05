@@ -3390,7 +3390,47 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <span class="normal"><a href="#__codelineno-0-246">246</a></span>
 <span class="normal"><a href="#__codelineno-0-247">247</a></span>
 <span class="normal"><a href="#__codelineno-0-248">248</a></span>
-<span class="normal"><a href="#__codelineno-0-249">249</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="k">class</span><span class="w"> </span><span class="nc">EventStreamMixin</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-249">249</a></span>
+<span class="normal"><a href="#__codelineno-0-250">250</a></span>
+<span class="normal"><a href="#__codelineno-0-251">251</a></span>
+<span class="normal"><a href="#__codelineno-0-252">252</a></span>
+<span class="normal"><a href="#__codelineno-0-253">253</a></span>
+<span class="normal"><a href="#__codelineno-0-254">254</a></span>
+<span class="normal"><a href="#__codelineno-0-255">255</a></span>
+<span class="normal"><a href="#__codelineno-0-256">256</a></span>
+<span class="normal"><a href="#__codelineno-0-257">257</a></span>
+<span class="normal"><a href="#__codelineno-0-258">258</a></span>
+<span class="normal"><a href="#__codelineno-0-259">259</a></span>
+<span class="normal"><a href="#__codelineno-0-260">260</a></span>
+<span class="normal"><a href="#__codelineno-0-261">261</a></span>
+<span class="normal"><a href="#__codelineno-0-262">262</a></span>
+<span class="normal"><a href="#__codelineno-0-263">263</a></span>
+<span class="normal"><a href="#__codelineno-0-264">264</a></span>
+<span class="normal"><a href="#__codelineno-0-265">265</a></span>
+<span class="normal"><a href="#__codelineno-0-266">266</a></span>
+<span class="normal"><a href="#__codelineno-0-267">267</a></span>
+<span class="normal"><a href="#__codelineno-0-268">268</a></span>
+<span class="normal"><a href="#__codelineno-0-269">269</a></span>
+<span class="normal"><a href="#__codelineno-0-270">270</a></span>
+<span class="normal"><a href="#__codelineno-0-271">271</a></span>
+<span class="normal"><a href="#__codelineno-0-272">272</a></span>
+<span class="normal"><a href="#__codelineno-0-273">273</a></span>
+<span class="normal"><a href="#__codelineno-0-274">274</a></span>
+<span class="normal"><a href="#__codelineno-0-275">275</a></span>
+<span class="normal"><a href="#__codelineno-0-276">276</a></span>
+<span class="normal"><a href="#__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#__codelineno-0-278">278</a></span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span>
+<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+<span class="normal"><a href="#__codelineno-0-281">281</a></span>
+<span class="normal"><a href="#__codelineno-0-282">282</a></span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span>
+<span class="normal"><a href="#__codelineno-0-284">284</a></span>
+<span class="normal"><a href="#__codelineno-0-285">285</a></span>
+<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="k">class</span><span class="w"> </span><span class="nc">EventStreamMixin</span><span class="p">:</span>
 <a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="w">    </span><span class="sd">"""Mixin that appends mutation entries to a Redis Stream on save/delete.</span>
 <a id="__codelineno-0-64" name="__codelineno-0-64"></a>
 <a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    Add as a base class alongside Model:</span>
@@ -3540,44 +3580,84 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-209" name="__codelineno-0-209"></a>                <span class="n">e</span><span class="p">,</span>
 <a id="__codelineno-0-210" name="__codelineno-0-210"></a>            <span class="p">)</span>
 <a id="__codelineno-0-211" name="__codelineno-0-211"></a>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_xadd_event</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">extra_fields</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="w">        </span><span class="sd">"""Append a custom event entry to the Redis Stream.</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">        Public method for non-save operations (e.g., ConfidenceField.update_confidence,</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">        CoOccurrenceField.strengthen) that bypass Model.save() and write to Redis</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">        directly.</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">            op: Operation type string (e.g., "confidence_update", "strengthen").</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">            extra_fields: Optional dict of additional fields to include in the entry.</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">            pipeline: Optional Redis pipeline to queue the XADD onto.</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">        """</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>            <span class="n">stream_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_stream_key</span><span class="p">()</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>            <span class="n">entry</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_stream_entry</span><span class="p">(</span><span class="n">op</span><span class="p">,</span> <span class="n">extra_fields</span><span class="o">=</span><span class="n">extra_fields</span><span class="p">)</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>                <span class="n">pipeline</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>                    <span class="n">stream_key</span><span class="p">,</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>                    <span class="n">entry</span><span class="p">,</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>                    <span class="n">maxlen</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream_max_length</span><span class="p">,</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>                    <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>                <span class="p">)</span>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>                <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>                    <span class="n">stream_key</span><span class="p">,</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>                    <span class="n">entry</span><span class="p">,</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>                    <span class="n">maxlen</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream_max_length</span><span class="p">,</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>                    <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>                <span class="p">)</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a>            <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a>                <span class="k">raise</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a>                <span class="s2">"EventStreamMixin _xadd_event failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a>                <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a>                <span class="n">e</span><span class="p">,</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a>            <span class="p">)</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_defer_xadd_mutation</span><span class="p">(</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>        <span class="n">op</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>        <span class="n">after_commit</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">Callable</span><span class="p">[[],</span> <span class="kc">None</span><span class="p">]],</span> <span class="kc">None</span><span class="p">],</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>        <span class="n">update_fields</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="w">        </span><span class="sd">"""Register this save's mutation entry to be appended once the</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">        surrounding Postgres transaction commits (#759 M4b B2).</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">        A Postgres unit of work is not a Redis pipeline, so there is nothing</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">        to queue the ``XADD`` onto; issuing it at once would log a mutation</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">        whose write the caller may still roll back. The entry is built now --</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">        from the record as this save wrote it, like a queued ``XADD`` -- and</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">        sent by ``after_commit``'s callback, which the transaction runs only</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">        after a successful ``COMMIT``. Sending is best-effort, as on the</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">        no-pipeline path: the write has committed, so a failing ``XADD`` is</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">        logged, never raised.</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">            op: Operation type ("create" or "update").</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">            after_commit: The unit of work's ``after_commit`` registrar.</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">            update_fields: Optional list of field names that were updated.</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a><span class="sd">        """</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="n">name</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>            <span class="n">stream_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_stream_key</span><span class="p">()</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>            <span class="n">entry</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_stream_entry</span><span class="p">(</span><span class="n">op</span><span class="p">,</span> <span class="n">update_fields</span><span class="o">=</span><span class="n">update_fields</span><span class="p">)</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"EventStreamMixin XADD failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>            <span class="k">return</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="n">maxlen</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stream_max_length</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">_emit</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>                <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span><span class="n">stream_key</span><span class="p">,</span> <span class="n">entry</span><span class="p">,</span> <span class="n">maxlen</span><span class="o">=</span><span class="n">maxlen</span><span class="p">,</span> <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"EventStreamMixin XADD failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a>        <span class="n">after_commit</span><span class="p">(</span><span class="n">_emit</span><span class="p">)</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_xadd_event</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">extra_fields</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="w">        </span><span class="sd">"""Append a custom event entry to the Redis Stream.</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">        Public method for non-save operations (e.g., ConfidenceField.update_confidence,</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">        CoOccurrenceField.strengthen) that bypass Model.save() and write to Redis</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">        directly.</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">            op: Operation type string (e.g., "confidence_update", "strengthen").</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">            extra_fields: Optional dict of additional fields to include in the entry.</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">            pipeline: Optional Redis pipeline to queue the XADD onto.</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">        """</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a>            <span class="n">stream_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_stream_key</span><span class="p">()</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a>            <span class="n">entry</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_stream_entry</span><span class="p">(</span><span class="n">op</span><span class="p">,</span> <span class="n">extra_fields</span><span class="o">=</span><span class="n">extra_fields</span><span class="p">)</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a>            <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a>                <span class="n">pipeline</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a>                    <span class="n">stream_key</span><span class="p">,</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a>                    <span class="n">entry</span><span class="p">,</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a>                    <span class="n">maxlen</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream_max_length</span><span class="p">,</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a>                    <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a>                <span class="p">)</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>            <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a>                <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">xadd</span><span class="p">(</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>                    <span class="n">stream_key</span><span class="p">,</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a>                    <span class="n">entry</span><span class="p">,</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>                    <span class="n">maxlen</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream_max_length</span><span class="p">,</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>                    <span class="n">approximate</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>                <span class="p">)</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>            <span class="k">if</span> <span class="n">pipeline</span><span class="p">:</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a>                <span class="k">raise</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>                <span class="s2">"EventStreamMixin _xadd_event failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>                <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>                <span class="n">e</span><span class="p">,</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>            <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 

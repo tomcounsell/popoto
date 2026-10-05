@@ -3651,7 +3651,48 @@ keyspace.</p>
 <span class="normal"><a href="#__codelineno-0-274">274</a></span>
 <span class="normal"><a href="#__codelineno-0-275">275</a></span>
 <span class="normal"><a href="#__codelineno-0-276">276</a></span>
-<span class="normal"><a href="#__codelineno-0-277">277</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="k">class</span><span class="w"> </span><span class="nc">TombstoneStore</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#__codelineno-0-278">278</a></span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span>
+<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+<span class="normal"><a href="#__codelineno-0-281">281</a></span>
+<span class="normal"><a href="#__codelineno-0-282">282</a></span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span>
+<span class="normal"><a href="#__codelineno-0-284">284</a></span>
+<span class="normal"><a href="#__codelineno-0-285">285</a></span>
+<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span>
+<span class="normal"><a href="#__codelineno-0-292">292</a></span>
+<span class="normal"><a href="#__codelineno-0-293">293</a></span>
+<span class="normal"><a href="#__codelineno-0-294">294</a></span>
+<span class="normal"><a href="#__codelineno-0-295">295</a></span>
+<span class="normal"><a href="#__codelineno-0-296">296</a></span>
+<span class="normal"><a href="#__codelineno-0-297">297</a></span>
+<span class="normal"><a href="#__codelineno-0-298">298</a></span>
+<span class="normal"><a href="#__codelineno-0-299">299</a></span>
+<span class="normal"><a href="#__codelineno-0-300">300</a></span>
+<span class="normal"><a href="#__codelineno-0-301">301</a></span>
+<span class="normal"><a href="#__codelineno-0-302">302</a></span>
+<span class="normal"><a href="#__codelineno-0-303">303</a></span>
+<span class="normal"><a href="#__codelineno-0-304">304</a></span>
+<span class="normal"><a href="#__codelineno-0-305">305</a></span>
+<span class="normal"><a href="#__codelineno-0-306">306</a></span>
+<span class="normal"><a href="#__codelineno-0-307">307</a></span>
+<span class="normal"><a href="#__codelineno-0-308">308</a></span>
+<span class="normal"><a href="#__codelineno-0-309">309</a></span>
+<span class="normal"><a href="#__codelineno-0-310">310</a></span>
+<span class="normal"><a href="#__codelineno-0-311">311</a></span>
+<span class="normal"><a href="#__codelineno-0-312">312</a></span>
+<span class="normal"><a href="#__codelineno-0-313">313</a></span>
+<span class="normal"><a href="#__codelineno-0-314">314</a></span>
+<span class="normal"><a href="#__codelineno-0-315">315</a></span>
+<span class="normal"><a href="#__codelineno-0-316">316</a></span>
+<span class="normal"><a href="#__codelineno-0-317">317</a></span>
+<span class="normal"><a href="#__codelineno-0-318">318</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="k">class</span><span class="w"> </span><span class="nc">TombstoneStore</span><span class="p">:</span>
 <a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="w">    </span><span class="sd">"""Owns the ``$TOMB:{Model}:*`` keyspace for a single model class.</span>
 <a id="__codelineno-0-169" name="__codelineno-0-169"></a>
 <a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">    Field-layer keeper of tombstone reads/writes. Every method issues the</span>
@@ -3671,97 +3712,138 @@ keyspace.</p>
 <a id="__codelineno-0-184" name="__codelineno-0-184"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_class</span><span class="p">:</span> <span class="n">Any</span><span class="p">):</span>
 <a id="__codelineno-0-185" name="__codelineno-0-185"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span> <span class="o">=</span> <span class="n">model_class</span>
 <a id="__codelineno-0-186" name="__codelineno-0-186"></a>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">keys</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="w">        </span><span class="sd">"""Return the (data hash, recency index) Redis keys for tombstones."""</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>        <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>        <span class="k">return</span> <span class="p">(</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TOMBSTONE_KEY_PREFIX</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:data"</span><span class="p">,</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TOMBSTONE_KEY_PREFIX</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:index"</span><span class="p">,</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>        <span class="p">)</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">archive</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">entry_bytes</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">ts</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="w">        </span><span class="sd">"""Write a tombstone entry: HSET the data hash, ZADD the recency index.</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">        Both commands are queued in one transactional pipeline (``HSET`` then</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">        ``ZADD``, matching the original write order) and executed together.</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="sd">        """</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">,</span> <span class="n">entry_bytes</span><span class="p">)</span>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="p">{</span><span class="n">redis_key</span><span class="p">:</span> <span class="n">ts</span><span class="p">})</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_backend</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="w">        </span><span class="sd">"""The model's backend when it is not Redis (#759 M4): the archive</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">        is then that backend's ``popoto_tombstone`` table (``_tomb``</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        ``field_call`` adapters), still outside the model's own table so no</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">        query can surface a tombstoned record."""</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..backends.routing</span><span class="w"> </span><span class="kn">import</span> <span class="n">non_redis_backend</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>        <span class="k">return</span> <span class="n">non_redis_backend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">)</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_call</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">backend</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>        <span class="k">return</span> <span class="n">backend</span><span class="o">.</span><span class="n">field_call</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span> <span class="s2">"_tomb"</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">keys</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="w">        </span><span class="sd">"""Return the (data hash, recency index) Redis keys for tombstones."""</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>        <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>        <span class="k">return</span> <span class="p">(</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TOMBSTONE_KEY_PREFIX</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:data"</span><span class="p">,</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TOMBSTONE_KEY_PREFIX</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:index"</span><span class="p">,</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>        <span class="p">)</span>
 <a id="__codelineno-0-206" name="__codelineno-0-206"></a>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="w">        </span><span class="sd">"""Return the number of retained tombstones (``ZCARD`` on the index)."""</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>        <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">_sync</span><span class="p">(</span><span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">index_key</span><span class="p">)))</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">oldest_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="w">        </span><span class="sd">"""Return up to ``n`` oldest tombstoned keys (``ZRANGE`` 0..n-1)."""</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>        <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>        <span class="k">return</span> <span class="n">_decoded_members</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">newest_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stop</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="w">        </span><span class="sd">"""Return keys newest-death-first up to ``stop`` (``ZREVRANGE`` 0..stop)."""</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>        <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">stop</span><span class="p">)</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>        <span class="k">return</span> <span class="n">_decoded_members</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">evict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="w">        </span><span class="sd">"""Remove tombstones for ``keys``: ``HDEL`` data + ``ZREM`` index.</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">        Both commands are queued in one transactional pipeline (``HDEL`` then</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">        ``ZREM``, matching the original eviction order) and executed together.</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">        """</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="o">*</span><span class="n">keys</span><span class="p">)</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="o">*</span><span class="n">keys</span><span class="p">)</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a><span class="w">        </span><span class="sd">"""Return the raw stored entry bytes for one key (``HGET``), or None."""</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>        <span class="k">return</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_entries</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">]:</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="w">        </span><span class="sd">"""Return raw stored entry bytes for ``keys`` (``HMGET``).</span>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">        Preserves argument order, with ``None`` holes for missing members —</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">        callers rely on positional correspondence with ``keys``.</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="sd">        """</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a>        <span class="k">return</span> <span class="n">_sync</span><span class="p">(</span><span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hmget</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">keys</span><span class="p">))</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">purge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="w">        </span><span class="sd">"""Drop one tombstone permanently: ``HDEL`` data + ``ZREM`` index.</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">        Both commands are queued in one transactional pipeline and executed</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">        together. Returns True if a tombstone was actually removed.</span>
-<a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">        """</span>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a>        <span class="n">removed</span> <span class="o">=</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a>        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">removed</span> <span class="ow">and</span> <span class="n">removed</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">purge_all</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="w">        </span><span class="sd">"""Drop every retained tombstone for this model: one ``DEL`` over both keys.</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">        The count read is best-effort and its failure is swallowed: the caller</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">        this was relocated from (``MemoryLifecycle.purge_all_tombstones``) read</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">        the count through an error-swallowing helper and issued the ``DEL``</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">        regardless. A failed count must not leave the tombstones in place — the</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        return value is a report, the delete is the job.</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        """</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a>            <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a>            <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>        <span class="k">return</span> <span class="n">count</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">archive</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">entry_bytes</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">ts</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="w">        </span><span class="sd">"""Write a tombstone entry: HSET the data hash, ZADD the recency index.</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="sd">        Both commands are queued in one transactional pipeline (``HSET`` then</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">        ``ZADD``, matching the original write order) and executed together.</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">        """</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"archive"</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">,</span> <span class="n">entry_bytes</span><span class="p">,</span> <span class="n">ts</span><span class="p">)</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>            <span class="k">return</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">,</span> <span class="n">entry_bytes</span><span class="p">)</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="p">{</span><span class="n">redis_key</span><span class="p">:</span> <span class="n">ts</span><span class="p">})</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="w">        </span><span class="sd">"""Return the number of retained tombstones (``ZCARD`` on the index)."""</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>            <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"count"</span><span class="p">))</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">_sync</span><span class="p">(</span><span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">index_key</span><span class="p">)))</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">oldest_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="w">        </span><span class="sd">"""Return up to ``n`` oldest tombstoned keys (``ZRANGE`` 0..n-1)."""</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"oldest"</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>        <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>        <span class="k">return</span> <span class="n">_decoded_members</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">newest_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stop</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="w">        </span><span class="sd">"""Return keys newest-death-first up to ``stop`` (``ZREVRANGE`` 0..stop)."""</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"newest"</span><span class="p">,</span> <span class="n">stop</span><span class="p">))</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>        <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">stop</span><span class="p">)</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>        <span class="k">return</span> <span class="n">_decoded_members</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">evict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="w">        </span><span class="sd">"""Remove tombstones for ``keys``: ``HDEL`` data + ``ZREM`` index.</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">        Both commands are queued in one transactional pipeline (``HDEL`` then</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">        ``ZREM``, matching the original eviction order) and executed together.</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">        """</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"evict"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">keys</span><span class="p">))</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a>            <span class="k">return</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="o">*</span><span class="n">keys</span><span class="p">)</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="o">*</span><span class="n">keys</span><span class="p">)</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="w">        </span><span class="sd">"""Return the raw stored entry bytes for one key (``HGET``), or None."""</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a>            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"entries"</span><span class="p">,</span> <span class="p">[</span><span class="n">redis_key</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a>        <span class="k">return</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_entries</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">]:</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="w">        </span><span class="sd">"""Return raw stored entry bytes for ``keys`` (``HMGET``).</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">        Preserves argument order, with ``None`` holes for missing members —</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">        callers rely on positional correspondence with ``keys``.</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        """</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"entries"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">keys</span><span class="p">)))</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>        <span class="k">return</span> <span class="n">_sync</span><span class="p">(</span><span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hmget</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">keys</span><span class="p">))</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">purge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="w">        </span><span class="sd">"""Drop one tombstone permanently: ``HDEL`` data + ``ZREM`` index.</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">        Both commands are queued in one transactional pipeline and executed</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">        together. Returns True if a tombstone was actually removed.</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">        """</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>            <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"purge"</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">))</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>        <span class="n">removed</span> <span class="o">=</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">removed</span> <span class="ow">and</span> <span class="n">removed</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">purge_all</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="w">        </span><span class="sd">"""Drop every retained tombstone for this model: one ``DEL`` over both keys.</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">        The count read is best-effort and its failure is swallowed: the caller</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">        this was relocated from (``MemoryLifecycle.purge_all_tombstones``) read</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">        the count through an error-swallowing helper and issued the ``DEL``</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">        regardless. A failed count must not leave the tombstones in place — the</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">        return value is a report, the delete is the job.</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">        """</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>            <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"purge_all"</span><span class="p">))</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>            <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>            <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>        <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>        <span class="k">return</span> <span class="n">count</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3794,19 +3876,19 @@ keyspace.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/tombstone_store.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-187">187</a></span>
-<span class="normal"><a href="#__codelineno-0-188">188</a></span>
-<span class="normal"><a href="#__codelineno-0-189">189</a></span>
-<span class="normal"><a href="#__codelineno-0-190">190</a></span>
-<span class="normal"><a href="#__codelineno-0-191">191</a></span>
-<span class="normal"><a href="#__codelineno-0-192">192</a></span>
-<span class="normal"><a href="#__codelineno-0-193">193</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="k">def</span><span class="w"> </span><span class="nf">keys</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="w">    </span><span class="sd">"""Return the (data hash, recency index) Redis keys for tombstones."""</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>    <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>    <span class="k">return</span> <span class="p">(</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TOMBSTONE_KEY_PREFIX</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:data"</span><span class="p">,</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a>        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TOMBSTONE_KEY_PREFIX</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:index"</span><span class="p">,</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="k">def</span><span class="w"> </span><span class="nf">keys</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="w">    </span><span class="sd">"""Return the (data hash, recency index) Redis keys for tombstones."""</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>    <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>    <span class="k">return</span> <span class="p">(</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TOMBSTONE_KEY_PREFIX</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:data"</span><span class="p">,</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TOMBSTONE_KEY_PREFIX</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:index"</span><span class="p">,</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3831,27 +3913,35 @@ keyspace.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/tombstone_store.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-195">195</a></span>
-<span class="normal"><a href="#__codelineno-0-196">196</a></span>
-<span class="normal"><a href="#__codelineno-0-197">197</a></span>
-<span class="normal"><a href="#__codelineno-0-198">198</a></span>
-<span class="normal"><a href="#__codelineno-0-199">199</a></span>
-<span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span>
-<span class="normal"><a href="#__codelineno-0-202">202</a></span>
-<span class="normal"><a href="#__codelineno-0-203">203</a></span>
-<span class="normal"><a href="#__codelineno-0-204">204</a></span>
-<span class="normal"><a href="#__codelineno-0-205">205</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="k">def</span><span class="w"> </span><span class="nf">archive</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">entry_bytes</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">ts</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="w">    </span><span class="sd">"""Write a tombstone entry: HSET the data hash, ZADD the recency index.</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">    Both commands are queued in one transactional pipeline (``HSET`` then</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">    ``ZADD``, matching the original write order) and executed together.</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="sd">    """</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a>    <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">,</span> <span class="n">entry_bytes</span><span class="p">)</span>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="p">{</span><span class="n">redis_key</span><span class="p">:</span> <span class="n">ts</span><span class="p">})</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="k">def</span><span class="w"> </span><span class="nf">archive</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">entry_bytes</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">ts</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="w">    </span><span class="sd">"""Write a tombstone entry: HSET the data hash, ZADD the recency index.</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="sd">    Both commands are queued in one transactional pipeline (``HSET`` then</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">    ``ZADD``, matching the original write order) and executed together.</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">    """</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"archive"</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">,</span> <span class="n">entry_bytes</span><span class="p">,</span> <span class="n">ts</span><span class="p">)</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>        <span class="k">return</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>    <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">,</span> <span class="n">entry_bytes</span><span class="p">)</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="p">{</span><span class="n">redis_key</span><span class="p">:</span> <span class="n">ts</span><span class="p">})</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3874,13 +3964,19 @@ keyspace.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/tombstone_store.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-207">207</a></span>
-<span class="normal"><a href="#__codelineno-0-208">208</a></span>
-<span class="normal"><a href="#__codelineno-0-209">209</a></span>
-<span class="normal"><a href="#__codelineno-0-210">210</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="k">def</span><span class="w"> </span><span class="nf">count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="w">    </span><span class="sd">"""Return the number of retained tombstones (``ZCARD`` on the index)."""</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>    <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">_sync</span><span class="p">(</span><span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">index_key</span><span class="p">)))</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="k">def</span><span class="w"> </span><span class="nf">count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="w">    </span><span class="sd">"""Return the number of retained tombstones (``ZCARD`` on the index)."""</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"count"</span><span class="p">))</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>    <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">_sync</span><span class="p">(</span><span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zcard</span><span class="p">(</span><span class="n">index_key</span><span class="p">)))</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3903,15 +3999,21 @@ keyspace.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/tombstone_store.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span>
-<span class="normal"><a href="#__codelineno-0-214">214</a></span>
-<span class="normal"><a href="#__codelineno-0-215">215</a></span>
-<span class="normal"><a href="#__codelineno-0-216">216</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="k">def</span><span class="w"> </span><span class="nf">oldest_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="w">    </span><span class="sd">"""Return up to ``n`` oldest tombstoned keys (``ZRANGE`` 0..n-1)."""</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="k">return</span> <span class="n">_decoded_members</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#__codelineno-0-238">238</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="k">def</span><span class="w"> </span><span class="nf">oldest_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="w">    </span><span class="sd">"""Return up to ``n`` oldest tombstoned keys (``ZRANGE`` 0..n-1)."""</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"oldest"</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrange</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="k">return</span> <span class="n">_decoded_members</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3934,15 +4036,21 @@ keyspace.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/tombstone_store.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-218">218</a></span>
-<span class="normal"><a href="#__codelineno-0-219">219</a></span>
-<span class="normal"><a href="#__codelineno-0-220">220</a></span>
-<span class="normal"><a href="#__codelineno-0-221">221</a></span>
-<span class="normal"><a href="#__codelineno-0-222">222</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="k">def</span><span class="w"> </span><span class="nf">newest_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stop</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="w">    </span><span class="sd">"""Return keys newest-death-first up to ``stop`` (``ZREVRANGE`` 0..stop)."""</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>    <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">stop</span><span class="p">)</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>    <span class="k">return</span> <span class="n">_decoded_members</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-240">240</a></span>
+<span class="normal"><a href="#__codelineno-0-241">241</a></span>
+<span class="normal"><a href="#__codelineno-0-242">242</a></span>
+<span class="normal"><a href="#__codelineno-0-243">243</a></span>
+<span class="normal"><a href="#__codelineno-0-244">244</a></span>
+<span class="normal"><a href="#__codelineno-0-245">245</a></span>
+<span class="normal"><a href="#__codelineno-0-246">246</a></span>
+<span class="normal"><a href="#__codelineno-0-247">247</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-240" name="__codelineno-0-240"></a><span class="k">def</span><span class="w"> </span><span class="nf">newest_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stop</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="w">    </span><span class="sd">"""Return keys newest-death-first up to ``stop`` (``ZREVRANGE`` 0..stop)."""</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"newest"</span><span class="p">,</span> <span class="n">stop</span><span class="p">))</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>    <span class="n">_</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">zrevrange</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">stop</span><span class="p">)</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>    <span class="k">return</span> <span class="n">_decoded_members</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3967,27 +4075,35 @@ keyspace.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/tombstone_store.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-224">224</a></span>
-<span class="normal"><a href="#__codelineno-0-225">225</a></span>
-<span class="normal"><a href="#__codelineno-0-226">226</a></span>
-<span class="normal"><a href="#__codelineno-0-227">227</a></span>
-<span class="normal"><a href="#__codelineno-0-228">228</a></span>
-<span class="normal"><a href="#__codelineno-0-229">229</a></span>
-<span class="normal"><a href="#__codelineno-0-230">230</a></span>
-<span class="normal"><a href="#__codelineno-0-231">231</a></span>
-<span class="normal"><a href="#__codelineno-0-232">232</a></span>
-<span class="normal"><a href="#__codelineno-0-233">233</a></span>
-<span class="normal"><a href="#__codelineno-0-234">234</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="k">def</span><span class="w"> </span><span class="nf">evict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="w">    </span><span class="sd">"""Remove tombstones for ``keys``: ``HDEL`` data + ``ZREM`` index.</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">    Both commands are queued in one transactional pipeline (``HDEL`` then</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">    ``ZREM``, matching the original eviction order) and executed together.</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">    """</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>    <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="o">*</span><span class="n">keys</span><span class="p">)</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="o">*</span><span class="n">keys</span><span class="p">)</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-249">249</a></span>
+<span class="normal"><a href="#__codelineno-0-250">250</a></span>
+<span class="normal"><a href="#__codelineno-0-251">251</a></span>
+<span class="normal"><a href="#__codelineno-0-252">252</a></span>
+<span class="normal"><a href="#__codelineno-0-253">253</a></span>
+<span class="normal"><a href="#__codelineno-0-254">254</a></span>
+<span class="normal"><a href="#__codelineno-0-255">255</a></span>
+<span class="normal"><a href="#__codelineno-0-256">256</a></span>
+<span class="normal"><a href="#__codelineno-0-257">257</a></span>
+<span class="normal"><a href="#__codelineno-0-258">258</a></span>
+<span class="normal"><a href="#__codelineno-0-259">259</a></span>
+<span class="normal"><a href="#__codelineno-0-260">260</a></span>
+<span class="normal"><a href="#__codelineno-0-261">261</a></span>
+<span class="normal"><a href="#__codelineno-0-262">262</a></span>
+<span class="normal"><a href="#__codelineno-0-263">263</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="k">def</span><span class="w"> </span><span class="nf">evict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="w">    </span><span class="sd">"""Remove tombstones for ``keys``: ``HDEL`` data + ``ZREM`` index.</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">    Both commands are queued in one transactional pipeline (``HDEL`` then</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    ``ZREM``, matching the original eviction order) and executed together.</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">    """</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"evict"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">keys</span><span class="p">))</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a>        <span class="k">return</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>    <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="o">*</span><span class="n">keys</span><span class="p">)</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="o">*</span><span class="n">keys</span><span class="p">)</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4010,13 +4126,19 @@ keyspace.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/tombstone_store.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-236">236</a></span>
-<span class="normal"><a href="#__codelineno-0-237">237</a></span>
-<span class="normal"><a href="#__codelineno-0-238">238</a></span>
-<span class="normal"><a href="#__codelineno-0-239">239</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-236" name="__codelineno-0-236"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a><span class="w">    </span><span class="sd">"""Return the raw stored entry bytes for one key (``HGET``), or None."""</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="k">return</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-265">265</a></span>
+<span class="normal"><a href="#__codelineno-0-266">266</a></span>
+<span class="normal"><a href="#__codelineno-0-267">267</a></span>
+<span class="normal"><a href="#__codelineno-0-268">268</a></span>
+<span class="normal"><a href="#__codelineno-0-269">269</a></span>
+<span class="normal"><a href="#__codelineno-0-270">270</a></span>
+<span class="normal"><a href="#__codelineno-0-271">271</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="w">    </span><span class="sd">"""Return the raw stored entry bytes for one key (``HGET``), or None."""</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"entries"</span><span class="p">,</span> <span class="p">[</span><span class="n">redis_key</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a>    <span class="k">return</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4041,21 +4163,27 @@ callers rely on positional correspondence with <code>keys</code>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/tombstone_store.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-241">241</a></span>
-<span class="normal"><a href="#__codelineno-0-242">242</a></span>
-<span class="normal"><a href="#__codelineno-0-243">243</a></span>
-<span class="normal"><a href="#__codelineno-0-244">244</a></span>
-<span class="normal"><a href="#__codelineno-0-245">245</a></span>
-<span class="normal"><a href="#__codelineno-0-246">246</a></span>
-<span class="normal"><a href="#__codelineno-0-247">247</a></span>
-<span class="normal"><a href="#__codelineno-0-248">248</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_entries</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">]:</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="w">    </span><span class="sd">"""Return raw stored entry bytes for ``keys`` (``HMGET``).</span>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">    Preserves argument order, with ``None`` holes for missing members —</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">    callers rely on positional correspondence with ``keys``.</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="sd">    """</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a>    <span class="k">return</span> <span class="n">_sync</span><span class="p">(</span><span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hmget</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">keys</span><span class="p">))</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-273">273</a></span>
+<span class="normal"><a href="#__codelineno-0-274">274</a></span>
+<span class="normal"><a href="#__codelineno-0-275">275</a></span>
+<span class="normal"><a href="#__codelineno-0-276">276</a></span>
+<span class="normal"><a href="#__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#__codelineno-0-278">278</a></span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span>
+<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+<span class="normal"><a href="#__codelineno-0-281">281</a></span>
+<span class="normal"><a href="#__codelineno-0-282">282</a></span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_entries</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">]:</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="w">    </span><span class="sd">"""Return raw stored entry bytes for ``keys`` (``HMGET``).</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">    Preserves argument order, with ``None`` holes for missing members —</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">    callers rely on positional correspondence with ``keys``.</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    """</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"entries"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">keys</span><span class="p">)))</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="k">return</span> <span class="n">_sync</span><span class="p">(</span><span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">hmget</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">keys</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4080,29 +4208,35 @@ together. Returns True if a tombstone was actually removed.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/tombstone_store.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-250">250</a></span>
-<span class="normal"><a href="#__codelineno-0-251">251</a></span>
-<span class="normal"><a href="#__codelineno-0-252">252</a></span>
-<span class="normal"><a href="#__codelineno-0-253">253</a></span>
-<span class="normal"><a href="#__codelineno-0-254">254</a></span>
-<span class="normal"><a href="#__codelineno-0-255">255</a></span>
-<span class="normal"><a href="#__codelineno-0-256">256</a></span>
-<span class="normal"><a href="#__codelineno-0-257">257</a></span>
-<span class="normal"><a href="#__codelineno-0-258">258</a></span>
-<span class="normal"><a href="#__codelineno-0-259">259</a></span>
-<span class="normal"><a href="#__codelineno-0-260">260</a></span>
-<span class="normal"><a href="#__codelineno-0-261">261</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="k">def</span><span class="w"> </span><span class="nf">purge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="w">    </span><span class="sd">"""Drop one tombstone permanently: ``HDEL`` data + ``ZREM`` index.</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    Both commands are queued in one transactional pipeline and executed</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">    together. Returns True if a tombstone was actually removed.</span>
-<a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">    """</span>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a>    <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a>    <span class="n">removed</span> <span class="o">=</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a>    <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">removed</span> <span class="ow">and</span> <span class="n">removed</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-285">285</a></span>
+<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span>
+<span class="normal"><a href="#__codelineno-0-292">292</a></span>
+<span class="normal"><a href="#__codelineno-0-293">293</a></span>
+<span class="normal"><a href="#__codelineno-0-294">294</a></span>
+<span class="normal"><a href="#__codelineno-0-295">295</a></span>
+<span class="normal"><a href="#__codelineno-0-296">296</a></span>
+<span class="normal"><a href="#__codelineno-0-297">297</a></span>
+<span class="normal"><a href="#__codelineno-0-298">298</a></span>
+<span class="normal"><a href="#__codelineno-0-299">299</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="k">def</span><span class="w"> </span><span class="nf">purge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="w">    </span><span class="sd">"""Drop one tombstone permanently: ``HDEL`` data + ``ZREM`` index.</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">    Both commands are queued in one transactional pipeline and executed</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">    together. Returns True if a tombstone was actually removed.</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">    """</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"purge"</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">))</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="n">pipeline</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">()</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="n">removed</span> <span class="o">=</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">removed</span> <span class="ow">and</span> <span class="n">removed</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4130,35 +4264,41 @@ return value is a report, the delete is the job.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/tombstone_store.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-263">263</a></span>
-<span class="normal"><a href="#__codelineno-0-264">264</a></span>
-<span class="normal"><a href="#__codelineno-0-265">265</a></span>
-<span class="normal"><a href="#__codelineno-0-266">266</a></span>
-<span class="normal"><a href="#__codelineno-0-267">267</a></span>
-<span class="normal"><a href="#__codelineno-0-268">268</a></span>
-<span class="normal"><a href="#__codelineno-0-269">269</a></span>
-<span class="normal"><a href="#__codelineno-0-270">270</a></span>
-<span class="normal"><a href="#__codelineno-0-271">271</a></span>
-<span class="normal"><a href="#__codelineno-0-272">272</a></span>
-<span class="normal"><a href="#__codelineno-0-273">273</a></span>
-<span class="normal"><a href="#__codelineno-0-274">274</a></span>
-<span class="normal"><a href="#__codelineno-0-275">275</a></span>
-<span class="normal"><a href="#__codelineno-0-276">276</a></span>
-<span class="normal"><a href="#__codelineno-0-277">277</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="k">def</span><span class="w"> </span><span class="nf">purge_all</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="w">    </span><span class="sd">"""Drop every retained tombstone for this model: one ``DEL`` over both keys.</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    The count read is best-effort and its failure is swallowed: the caller</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">    this was relocated from (``MemoryLifecycle.purge_all_tombstones``) read</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">    the count through an error-swallowing helper and issued the ``DEL``</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">    regardless. A failed count must not leave the tombstones in place — the</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">    return value is a report, the delete is the job.</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">    """</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a>        <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a>        <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a>    <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>    <span class="k">return</span> <span class="n">count</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-301">301</a></span>
+<span class="normal"><a href="#__codelineno-0-302">302</a></span>
+<span class="normal"><a href="#__codelineno-0-303">303</a></span>
+<span class="normal"><a href="#__codelineno-0-304">304</a></span>
+<span class="normal"><a href="#__codelineno-0-305">305</a></span>
+<span class="normal"><a href="#__codelineno-0-306">306</a></span>
+<span class="normal"><a href="#__codelineno-0-307">307</a></span>
+<span class="normal"><a href="#__codelineno-0-308">308</a></span>
+<span class="normal"><a href="#__codelineno-0-309">309</a></span>
+<span class="normal"><a href="#__codelineno-0-310">310</a></span>
+<span class="normal"><a href="#__codelineno-0-311">311</a></span>
+<span class="normal"><a href="#__codelineno-0-312">312</a></span>
+<span class="normal"><a href="#__codelineno-0-313">313</a></span>
+<span class="normal"><a href="#__codelineno-0-314">314</a></span>
+<span class="normal"><a href="#__codelineno-0-315">315</a></span>
+<span class="normal"><a href="#__codelineno-0-316">316</a></span>
+<span class="normal"><a href="#__codelineno-0-317">317</a></span>
+<span class="normal"><a href="#__codelineno-0-318">318</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="k">def</span><span class="w"> </span><span class="nf">purge_all</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="w">    </span><span class="sd">"""Drop every retained tombstone for this model: one ``DEL`` over both keys.</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">    The count read is best-effort and its failure is swallowed: the caller</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">    this was relocated from (``MemoryLifecycle.purge_all_tombstones``) read</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    the count through an error-swallowing helper and issued the ``DEL``</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    regardless. A failed count must not leave the tombstones in place — the</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">    return value is a report, the delete is the job.</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    """</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backend</span><span class="p">()</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="s2">"purge_all"</span><span class="p">))</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>        <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>        <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="k">return</span> <span class="n">count</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

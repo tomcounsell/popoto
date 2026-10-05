@@ -3460,40 +3460,7 @@ A key is never user content.</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-572">572</a></span>
-<span class="normal"><a href="#__codelineno-0-573">573</a></span>
-<span class="normal"><a href="#__codelineno-0-574">574</a></span>
-<span class="normal"><a href="#__codelineno-0-575">575</a></span>
-<span class="normal"><a href="#__codelineno-0-576">576</a></span>
-<span class="normal"><a href="#__codelineno-0-577">577</a></span>
-<span class="normal"><a href="#__codelineno-0-578">578</a></span>
-<span class="normal"><a href="#__codelineno-0-579">579</a></span>
-<span class="normal"><a href="#__codelineno-0-580">580</a></span>
-<span class="normal"><a href="#__codelineno-0-581">581</a></span>
-<span class="normal"><a href="#__codelineno-0-582">582</a></span>
-<span class="normal"><a href="#__codelineno-0-583">583</a></span>
-<span class="normal"><a href="#__codelineno-0-584">584</a></span>
-<span class="normal"><a href="#__codelineno-0-585">585</a></span>
-<span class="normal"><a href="#__codelineno-0-586">586</a></span>
-<span class="normal"><a href="#__codelineno-0-587">587</a></span>
-<span class="normal"><a href="#__codelineno-0-588">588</a></span>
-<span class="normal"><a href="#__codelineno-0-589">589</a></span>
-<span class="normal"><a href="#__codelineno-0-590">590</a></span>
-<span class="normal"><a href="#__codelineno-0-591">591</a></span>
-<span class="normal"><a href="#__codelineno-0-592">592</a></span>
-<span class="normal"><a href="#__codelineno-0-593">593</a></span>
-<span class="normal"><a href="#__codelineno-0-594">594</a></span>
-<span class="normal"><a href="#__codelineno-0-595">595</a></span>
-<span class="normal"><a href="#__codelineno-0-596">596</a></span>
-<span class="normal"><a href="#__codelineno-0-597">597</a></span>
-<span class="normal"><a href="#__codelineno-0-598">598</a></span>
-<span class="normal"><a href="#__codelineno-0-599">599</a></span>
-<span class="normal"><a href="#__codelineno-0-600">600</a></span>
-<span class="normal"><a href="#__codelineno-0-601">601</a></span>
-<span class="normal"><a href="#__codelineno-0-602">602</a></span>
-<span class="normal"><a href="#__codelineno-0-603">603</a></span>
-<span class="normal"><a href="#__codelineno-0-604">604</a></span>
-<span class="normal"><a href="#__codelineno-0-605">605</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-605">605</a></span>
 <span class="normal"><a href="#__codelineno-0-606">606</a></span>
 <span class="normal"><a href="#__codelineno-0-607">607</a></span>
 <span class="normal"><a href="#__codelineno-0-608">608</a></span>
@@ -3622,169 +3589,220 @@ A key is never user content.</p>
 <span class="normal"><a href="#__codelineno-0-731">731</a></span>
 <span class="normal"><a href="#__codelineno-0-732">732</a></span>
 <span class="normal"><a href="#__codelineno-0-733">733</a></span>
-<span class="normal"><a href="#__codelineno-0-734">734</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-572" name="__codelineno-0-572"></a><span class="k">class</span><span class="w"> </span><span class="nc">NeverRecordMixin</span><span class="p">:</span>
-<a id="__codelineno-0-573" name="__codelineno-0-573"></a><span class="w">    </span><span class="sd">"""Model mixin enforcing the never-record firewall on ``save()``.</span>
-<a id="__codelineno-0-574" name="__codelineno-0-574"></a>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">    Deliberately **not** a :class:`~popoto.fields.write_filter.WriteFilterMixin`</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">    subclass. The write filter is a scalar salience score with one</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">    ``compute_filter_score()`` slot per class, already claimed by salience</span>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a><span class="sd">    scoring in the documented pattern; a firewall is a boolean content</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a><span class="sd">    predicate with a tombstone side effect. Different shape, different slot.</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a><span class="sd">    Usage::</span>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="sd">        class Memory(NeverRecordMixin, Model):</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">            content = StringField()</span>
-<a id="__codelineno-0-585" name="__codelineno-0-585"></a>
-<a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">        Memory(content="my key is sk-ant-api03-AAAA...").save()  # -&gt; False</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a>
-<a id="__codelineno-0-588" name="__codelineno-0-588"></a><span class="sd">        Memory.never_record_counts()   # {"credential_prefix": 1}</span>
-<a id="__codelineno-0-589" name="__codelineno-0-589"></a>
-<a id="__codelineno-0-590" name="__codelineno-0-590"></a><span class="sd">    :class:`~popoto.recipes.default_memory.DefaultMemory` carries this mixin</span>
-<a id="__codelineno-0-591" name="__codelineno-0-591"></a><span class="sd">    already, so the batteries-included path and the Claude Code / Codex</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a><span class="sd">    harness are gated with no adopter code change.</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>
-<a id="__codelineno-0-594" name="__codelineno-0-594"></a><span class="sd">    Key fields are excluded from the scan. ``AutoKeyField``/``KeyField``</span>
-<a id="__codelineno-0-595" name="__codelineno-0-595"></a><span class="sd">    values are generated UUID/hex shapes -- exactly what the entropy detector</span>
-<a id="__codelineno-0-596" name="__codelineno-0-596"></a><span class="sd">    targets -- so scanning them would let a model block on its own identity.</span>
-<a id="__codelineno-0-597" name="__codelineno-0-597"></a><span class="sd">    A key is never user content.</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a><span class="sd">    """</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a>
-<a id="__codelineno-0-600" name="__codelineno-0-600"></a>    <span class="c1"># Export/import: the $NR: keys are audit telemetry about writes that were</span>
-<a id="__codelineno-0-601" name="__codelineno-0-601"></a>    <span class="c1"># refused, not state belonging to any record. Nothing to carry across a</span>
-<a id="__codelineno-0-602" name="__codelineno-0-602"></a>    <span class="c1"># round trip. Matches WriteFilterMixin's precedent.</span>
-<a id="__codelineno-0-603" name="__codelineno-0-603"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"rebuild"</span>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a>
-<a id="__codelineno-0-605" name="__codelineno-0-605"></a>    <span class="c1">#: Verdict from the most recent _check_never_record() on this instance:</span>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a>    <span class="c1">#: a blocking NeverRecordVerdict, or None when the scan came back clean.</span>
-<a id="__codelineno-0-607" name="__codelineno-0-607"></a>    <span class="c1">#: Content-free by construction, like every other verdict.</span>
-<a id="__codelineno-0-608" name="__codelineno-0-608"></a>    <span class="n">_never_record_verdict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">NeverRecordVerdict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>
-<a id="__codelineno-0-610" name="__codelineno-0-610"></a>    <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
-<a id="__codelineno-0-611" name="__codelineno-0-611"></a>        <span class="c1"># Supplied by Model, which every user of this mixin also</span>
-<a id="__codelineno-0-612" name="__codelineno-0-612"></a>        <span class="c1"># inherits from. Declared for the type checker only.</span>
-<a id="__codelineno-0-613" name="__codelineno-0-613"></a>        <span class="n">_meta</span><span class="p">:</span> <span class="n">Any</span>
-<a id="__codelineno-0-614" name="__codelineno-0-614"></a>
-<a id="__codelineno-0-615" name="__codelineno-0-615"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_never_record_scan_field_names</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="w">        </span><span class="sd">"""Yield the field names whose values are exposed to the scan.</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a>
-<a id="__codelineno-0-618" name="__codelineno-0-618"></a><span class="sd">        Excludes key fields (see the class docstring). Mirrors the key-field</span>
-<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">        iteration the ``KeyMutationError`` guard uses in ``Model.save()``.</span>
+<span class="normal"><a href="#__codelineno-0-734">734</a></span>
+<span class="normal"><a href="#__codelineno-0-735">735</a></span>
+<span class="normal"><a href="#__codelineno-0-736">736</a></span>
+<span class="normal"><a href="#__codelineno-0-737">737</a></span>
+<span class="normal"><a href="#__codelineno-0-738">738</a></span>
+<span class="normal"><a href="#__codelineno-0-739">739</a></span>
+<span class="normal"><a href="#__codelineno-0-740">740</a></span>
+<span class="normal"><a href="#__codelineno-0-741">741</a></span>
+<span class="normal"><a href="#__codelineno-0-742">742</a></span>
+<span class="normal"><a href="#__codelineno-0-743">743</a></span>
+<span class="normal"><a href="#__codelineno-0-744">744</a></span>
+<span class="normal"><a href="#__codelineno-0-745">745</a></span>
+<span class="normal"><a href="#__codelineno-0-746">746</a></span>
+<span class="normal"><a href="#__codelineno-0-747">747</a></span>
+<span class="normal"><a href="#__codelineno-0-748">748</a></span>
+<span class="normal"><a href="#__codelineno-0-749">749</a></span>
+<span class="normal"><a href="#__codelineno-0-750">750</a></span>
+<span class="normal"><a href="#__codelineno-0-751">751</a></span>
+<span class="normal"><a href="#__codelineno-0-752">752</a></span>
+<span class="normal"><a href="#__codelineno-0-753">753</a></span>
+<span class="normal"><a href="#__codelineno-0-754">754</a></span>
+<span class="normal"><a href="#__codelineno-0-755">755</a></span>
+<span class="normal"><a href="#__codelineno-0-756">756</a></span>
+<span class="normal"><a href="#__codelineno-0-757">757</a></span>
+<span class="normal"><a href="#__codelineno-0-758">758</a></span>
+<span class="normal"><a href="#__codelineno-0-759">759</a></span>
+<span class="normal"><a href="#__codelineno-0-760">760</a></span>
+<span class="normal"><a href="#__codelineno-0-761">761</a></span>
+<span class="normal"><a href="#__codelineno-0-762">762</a></span>
+<span class="normal"><a href="#__codelineno-0-763">763</a></span>
+<span class="normal"><a href="#__codelineno-0-764">764</a></span>
+<span class="normal"><a href="#__codelineno-0-765">765</a></span>
+<span class="normal"><a href="#__codelineno-0-766">766</a></span>
+<span class="normal"><a href="#__codelineno-0-767">767</a></span>
+<span class="normal"><a href="#__codelineno-0-768">768</a></span>
+<span class="normal"><a href="#__codelineno-0-769">769</a></span>
+<span class="normal"><a href="#__codelineno-0-770">770</a></span>
+<span class="normal"><a href="#__codelineno-0-771">771</a></span>
+<span class="normal"><a href="#__codelineno-0-772">772</a></span>
+<span class="normal"><a href="#__codelineno-0-773">773</a></span>
+<span class="normal"><a href="#__codelineno-0-774">774</a></span>
+<span class="normal"><a href="#__codelineno-0-775">775</a></span>
+<span class="normal"><a href="#__codelineno-0-776">776</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-605" name="__codelineno-0-605"></a><span class="k">class</span><span class="w"> </span><span class="nc">NeverRecordMixin</span><span class="p">:</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a><span class="w">    </span><span class="sd">"""Model mixin enforcing the never-record firewall on ``save()``.</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a><span class="sd">    Deliberately **not** a :class:`~popoto.fields.write_filter.WriteFilterMixin`</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a><span class="sd">    subclass. The write filter is a scalar salience score with one</span>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a><span class="sd">    ``compute_filter_score()`` slot per class, already claimed by salience</span>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a><span class="sd">    scoring in the documented pattern; a firewall is a boolean content</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a><span class="sd">    predicate with a tombstone side effect. Different shape, different slot.</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a><span class="sd">    Usage::</span>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="sd">        class Memory(NeverRecordMixin, Model):</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="sd">            content = StringField()</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">        Memory(content="my key is sk-ant-api03-AAAA...").save()  # -&gt; False</span>
 <a id="__codelineno-0-620" name="__codelineno-0-620"></a>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">        Split out from :meth:`_never_record_scan_values` so a subclass can</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a><span class="sd">        narrow the surface by *name* without re-deriving the key-field rule --</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a><span class="sd">        see ``JournalEntry._never_record_scan_values``, which drops the</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a><span class="sd">        machine-generated ``target`` pointer.</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a><span class="sd">        """</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>        <span class="n">meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_meta</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="n">key_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">key_field_names</span><span class="p">)</span> <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">auto_field_names</span><span class="p">)</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a>        <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">field_names</span><span class="p">:</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>            <span class="k">if</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">key_names</span><span class="p">:</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a>            <span class="k">yield</span> <span class="n">field_name</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">        Memory.never_record_counts()   # {"credential_prefix": 1}</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a><span class="sd">    :class:`~popoto.recipes.default_memory.DefaultMemory` carries this mixin</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a><span class="sd">    already, so the batteries-included path and the Claude Code / Codex</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a><span class="sd">    harness are gated with no adopter code change.</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a><span class="sd">    Key fields are excluded from the scan. ``AutoKeyField``/``KeyField``</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a><span class="sd">    values are generated UUID/hex shapes -- exactly what the entropy detector</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a><span class="sd">    targets -- so scanning them would let a model block on its own identity.</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a><span class="sd">    A key is never user content.</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a><span class="sd">    """</span>
 <a id="__codelineno-0-632" name="__codelineno-0-632"></a>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_never_record_scan_values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a><span class="w">        </span><span class="sd">"""Yield the string field values this instance exposes to the scan.</span>
-<a id="__codelineno-0-635" name="__codelineno-0-635"></a>
-<a id="__codelineno-0-636" name="__codelineno-0-636"></a><span class="sd">        Excludes key fields (see the class docstring) and any non-string</span>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="sd">        value.</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">        """</span>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a>        <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_scan_field_names</span><span class="p">():</span>
-<a id="__codelineno-0-640" name="__codelineno-0-640"></a>            <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a>                <span class="k">yield</span> <span class="n">value</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_check_never_record</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NeverRecordVerdict</span><span class="p">:</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="w">        </span><span class="sd">"""Evaluate the firewall and gate the save.</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a>
-<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">        Each field is scanned independently under both renderings. There is</span>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="sd">        deliberately no cross-field concatenated pass: with whitespace</span>
-<a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="sd">        removed, any join separator either vanishes -- letting two innocuous</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a><span class="sd">        adjacent values merge into a shape neither contains -- or has to be a</span>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">        normalization-surviving sentinel, which is per-field scanning with</span>
-<a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="sd">        extra steps. Issue #561 names only intra-value splitting as the</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">        adversarial case.</span>
-<a id="__codelineno-0-654" name="__codelineno-0-654"></a>
-<a id="__codelineno-0-655" name="__codelineno-0-655"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-656" name="__codelineno-0-656"></a><span class="sd">            NeverRecordVerdict: A clean verdict when the save may proceed.</span>
-<a id="__codelineno-0-657" name="__codelineno-0-657"></a>
-<a id="__codelineno-0-658" name="__codelineno-0-658"></a><span class="sd">        Raises:</span>
-<a id="__codelineno-0-659" name="__codelineno-0-659"></a><span class="sd">            NeverRecordException: If any scanned value is blocked. The</span>
-<a id="__codelineno-0-660" name="__codelineno-0-660"></a><span class="sd">                message carries only the reason code and detector name --</span>
-<a id="__codelineno-0-661" name="__codelineno-0-661"></a><span class="sd">                never the matched text, an offset, or a length. That is</span>
-<a id="__codelineno-0-662" name="__codelineno-0-662"></a><span class="sd">                load-bearing: ``MemoryService._record_failure`` writes</span>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="sd">                ``f"{type(exc).__name__}: {exc}"`` into a plaintext log file,</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="sd">                so a message quoting the match would defeat this module</span>
-<a id="__codelineno-0-665" name="__codelineno-0-665"></a><span class="sd">                through a side channel.</span>
-<a id="__codelineno-0-666" name="__codelineno-0-666"></a><span class="sd">        """</span>
-<a id="__codelineno-0-667" name="__codelineno-0-667"></a>        <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_scan_values</span><span class="p">():</span>
-<a id="__codelineno-0-668" name="__codelineno-0-668"></a>            <span class="n">verdict</span> <span class="o">=</span> <span class="n">scan_never_record</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-<a id="__codelineno-0-669" name="__codelineno-0-669"></a>            <span class="k">if</span> <span class="n">verdict</span><span class="o">.</span><span class="n">blocked</span><span class="p">:</span>
-<a id="__codelineno-0-670" name="__codelineno-0-670"></a>                <span class="c1"># Recorded on the instance so a caller that only sees</span>
-<a id="__codelineno-0-671" name="__codelineno-0-671"></a>                <span class="c1"># save() -&gt; False can tell a privacy drop from a rejected</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a>                <span class="c1"># write without re-scanning the content. The verdict is</span>
-<a id="__codelineno-0-673" name="__codelineno-0-673"></a>                <span class="c1"># content-free, so holding it costs nothing.</span>
-<a id="__codelineno-0-674" name="__codelineno-0-674"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_verdict</span> <span class="o">=</span> <span class="n">verdict</span>
-<a id="__codelineno-0-675" name="__codelineno-0-675"></a>                <span class="n">write_tombstone</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">verdict</span><span class="p">)</span>
-<a id="__codelineno-0-676" name="__codelineno-0-676"></a>                <span class="k">raise</span> <span class="n">NeverRecordException</span><span class="p">(</span>
-<a id="__codelineno-0-677" name="__codelineno-0-677"></a>                    <span class="sa">f</span><span class="s2">"never-record: </span><span class="si">{</span><span class="n">verdict</span><span class="o">.</span><span class="n">reason</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">verdict</span><span class="o">.</span><span class="n">detector</span><span class="si">}</span><span class="s2">)"</span>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a>                <span class="p">)</span>
-<a id="__codelineno-0-679" name="__codelineno-0-679"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_verdict</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a>        <span class="k">return</span> <span class="n">_CLEAN</span>
-<a id="__codelineno-0-681" name="__codelineno-0-681"></a>
-<a id="__codelineno-0-682" name="__codelineno-0-682"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-683" name="__codelineno-0-683"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">never_record_counts</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
-<a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="w">        </span><span class="sd">"""Return ``{reason_code: count}`` of drops for this model.</span>
-<a id="__codelineno-0-685" name="__codelineno-0-685"></a>
-<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">        Content-free by construction -- this is the auditable half of the</span>
-<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">        guarantee.</span>
-<a id="__codelineno-0-688" name="__codelineno-0-688"></a>
-<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">            redis_client: Optional client override, for tests.</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a>
-<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">            dict: Reason code to integer count. Empty if nothing dropped.</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">        """</span>
-<a id="__codelineno-0-695" name="__codelineno-0-695"></a>        <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-696" name="__codelineno-0-696"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-697" name="__codelineno-0-697"></a>
-<a id="__codelineno-0-698" name="__codelineno-0-698"></a>            <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">))</span> <span class="ow">or</span> <span class="p">{}</span>
-<a id="__codelineno-0-700" name="__codelineno-0-700"></a>        <span class="n">counts</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-701" name="__codelineno-0-701"></a>        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">raw</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-703" name="__codelineno-0-703"></a>                <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a>            <span class="n">counts</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-<a id="__codelineno-0-705" name="__codelineno-0-705"></a>        <span class="k">return</span> <span class="n">counts</span>
-<a id="__codelineno-0-706" name="__codelineno-0-706"></a>
-<a id="__codelineno-0-707" name="__codelineno-0-707"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">never_record_log</span><span class="p">(</span>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="bp">cls</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
-<a id="__codelineno-0-711" name="__codelineno-0-711"></a><span class="w">        </span><span class="sd">"""Return the most recent drop tombstones, newest first.</span>
-<a id="__codelineno-0-712" name="__codelineno-0-712"></a>
-<a id="__codelineno-0-713" name="__codelineno-0-713"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-714" name="__codelineno-0-714"></a><span class="sd">            limit: Maximum entries to return.</span>
-<a id="__codelineno-0-715" name="__codelineno-0-715"></a><span class="sd">            redis_client: Optional client override, for tests.</span>
-<a id="__codelineno-0-716" name="__codelineno-0-716"></a>
-<a id="__codelineno-0-717" name="__codelineno-0-717"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-718" name="__codelineno-0-718"></a><span class="sd">            list: Dicts with ``id``, ``reason``, ``detector``, ``at``. No</span>
-<a id="__codelineno-0-719" name="__codelineno-0-719"></a><span class="sd">            entry contains any fragment of the dropped content.</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="sd">        """</span>
-<a id="__codelineno-0-721" name="__codelineno-0-721"></a>        <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-722" name="__codelineno-0-722"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a>
-<a id="__codelineno-0-724" name="__codelineno-0-724"></a>            <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">lrange</span><span class="p">(</span><span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"drops"</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a>        <span class="n">entries</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">raw</span> <span class="ow">or</span> <span class="p">[]:</span>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-729" name="__codelineno-0-729"></a>                <span class="n">item</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
-<a id="__codelineno-0-730" name="__codelineno-0-730"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-731" name="__codelineno-0-731"></a>                <span class="n">entries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">item</span><span class="p">))</span>
-<a id="__codelineno-0-732" name="__codelineno-0-732"></a>            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>  <span class="c1"># pragma: no cover - corrupt entry</span>
-<a id="__codelineno-0-733" name="__codelineno-0-733"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a>        <span class="k">return</span> <span class="n">entries</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>    <span class="c1"># Export/import: the $NR: keys are audit telemetry about writes that were</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>    <span class="c1"># refused, not state belonging to any record. Nothing to carry across a</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a>    <span class="c1"># round trip. Matches WriteFilterMixin's precedent.</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"rebuild"</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a>    <span class="c1">#: Verdict from the most recent _check_never_record() on this instance:</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>    <span class="c1">#: a blocking NeverRecordVerdict, or None when the scan came back clean.</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a>    <span class="c1">#: Content-free by construction, like every other verdict.</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a>    <span class="n">_never_record_verdict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">NeverRecordVerdict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a>    <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>        <span class="c1"># Supplied by Model, which every user of this mixin also</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a>        <span class="c1"># inherits from. Declared for the type checker only.</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a>        <span class="n">_meta</span><span class="p">:</span> <span class="n">Any</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_never_record_scan_field_names</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="w">        </span><span class="sd">"""Yield the field names whose values are exposed to the scan.</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">        Excludes key fields (see the class docstring). Mirrors the key-field</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="sd">        iteration the ``KeyMutationError`` guard uses in ``Model.save()``.</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="sd">        Split out from :meth:`_never_record_scan_values` so a subclass can</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a><span class="sd">        narrow the surface by *name* without re-deriving the key-field rule --</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a><span class="sd">        see ``JournalEntry._never_record_scan_values``, which drops the</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a><span class="sd">        machine-generated ``target`` pointer.</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a><span class="sd">        """</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a>        <span class="n">meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_meta</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="n">key_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">key_field_names</span><span class="p">)</span> <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">auto_field_names</span><span class="p">)</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">field_names</span><span class="p">:</span>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>            <span class="k">if</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">key_names</span><span class="p">:</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a>            <span class="k">yield</span> <span class="n">field_name</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_never_record_scan_values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a><span class="w">        </span><span class="sd">"""Yield the string field values this instance exposes to the scan.</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a><span class="sd">        Excludes key fields (see the class docstring) and any non-string</span>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a><span class="sd">        value.</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="sd">        """</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a>        <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_scan_field_names</span><span class="p">():</span>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a>            <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a>                <span class="k">yield</span> <span class="n">value</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_check_never_record</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NeverRecordVerdict</span><span class="p">:</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a><span class="w">        </span><span class="sd">"""Evaluate the firewall and gate the save.</span>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">        Each field is scanned independently under both renderings. There is</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a><span class="sd">        deliberately no cross-field concatenated pass: with whitespace</span>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="sd">        removed, any join separator either vanishes -- letting two innocuous</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">        adjacent values merge into a shape neither contains -- or has to be a</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="sd">        normalization-surviving sentinel, which is per-field scanning with</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="sd">        extra steps. Issue #561 names only intra-value splitting as the</span>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">        adversarial case.</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">            NeverRecordVerdict: A clean verdict when the save may proceed.</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="sd">        Raises:</span>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="sd">            NeverRecordException: If any scanned value is blocked. The</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">                message carries only the reason code and detector name --</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">                never the matched text, an offset, or a length. That is</span>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="sd">                load-bearing: ``MemoryService._record_failure`` writes</span>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">                ``f"{type(exc).__name__}: {exc}"`` into a plaintext log file,</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="sd">                so a message quoting the match would defeat this module</span>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="sd">                through a side channel.</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="sd">        """</span>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a>        <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_scan_values</span><span class="p">():</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a>            <span class="n">verdict</span> <span class="o">=</span> <span class="n">scan_never_record</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a>            <span class="k">if</span> <span class="n">verdict</span><span class="o">.</span><span class="n">blocked</span><span class="p">:</span>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a>                <span class="c1"># Recorded on the instance so a caller that only sees</span>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a>                <span class="c1"># save() -&gt; False can tell a privacy drop from a rejected</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a>                <span class="c1"># write without re-scanning the content. The verdict is</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a>                <span class="c1"># content-free, so holding it costs nothing.</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_verdict</span> <span class="o">=</span> <span class="n">verdict</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>                <span class="n">write_tombstone</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">verdict</span><span class="p">,</span> <span class="n">model_class</span><span class="o">=</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>                <span class="k">raise</span> <span class="n">NeverRecordException</span><span class="p">(</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>                    <span class="sa">f</span><span class="s2">"never-record: </span><span class="si">{</span><span class="n">verdict</span><span class="o">.</span><span class="n">reason</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">verdict</span><span class="o">.</span><span class="n">detector</span><span class="si">}</span><span class="s2">)"</span>
+<a id="__codelineno-0-711" name="__codelineno-0-711"></a>                <span class="p">)</span>
+<a id="__codelineno-0-712" name="__codelineno-0-712"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_never_record_verdict</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a>        <span class="k">return</span> <span class="n">_CLEAN</span>
+<a id="__codelineno-0-714" name="__codelineno-0-714"></a>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">never_record_counts</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<a id="__codelineno-0-717" name="__codelineno-0-717"></a><span class="w">        </span><span class="sd">"""Return ``{reason_code: count}`` of drops for this model.</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a><span class="sd">        Content-free by construction -- this is the auditable half of the</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="sd">        guarantee.</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">            redis_client: Optional client override, for tests.</span>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="sd">            dict: Reason code to integer count. Empty if nothing dropped.</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a><span class="sd">        """</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="n">_audit_backend</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a>            <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">backend</span><span class="o">.</span><span class="n">field_call</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span> <span class="s2">"_never_record"</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">))</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a>        <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a>            <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">))</span> <span class="ow">or</span> <span class="p">{}</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a>        <span class="n">counts</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a>        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">raw</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a>                <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a>            <span class="n">counts</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a>        <span class="k">return</span> <span class="n">counts</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">never_record_log</span><span class="p">(</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a>        <span class="bp">cls</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="w">        </span><span class="sd">"""Return the most recent drop tombstones, newest first.</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="sd">            limit: Maximum entries to return.</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">            redis_client: Optional client override, for tests.</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="sd">            list: Dicts with ``id``, ``reason``, ``detector``, ``at``. No</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">            entry contains any fragment of the dropped content.</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">        """</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="n">_audit_backend</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>            <span class="n">raw</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">field_call</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span> <span class="s2">"_never_record"</span><span class="p">,</span> <span class="s2">"log"</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>            <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>                <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>                <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>            <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">lrange</span><span class="p">(</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>                <span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"drops"</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>            <span class="p">)</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>        <span class="n">entries</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a>        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">raw</span> <span class="ow">or</span> <span class="p">[]:</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a>                <span class="n">item</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a>                <span class="n">entries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">item</span><span class="p">))</span>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a>            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>  <span class="c1"># pragma: no cover - corrupt entry</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a>        <span class="k">return</span> <span class="n">entries</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3877,53 +3895,59 @@ guarantee.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-682">682</a></span>
-<span class="normal"><a href="#__codelineno-0-683">683</a></span>
-<span class="normal"><a href="#__codelineno-0-684">684</a></span>
-<span class="normal"><a href="#__codelineno-0-685">685</a></span>
-<span class="normal"><a href="#__codelineno-0-686">686</a></span>
-<span class="normal"><a href="#__codelineno-0-687">687</a></span>
-<span class="normal"><a href="#__codelineno-0-688">688</a></span>
-<span class="normal"><a href="#__codelineno-0-689">689</a></span>
-<span class="normal"><a href="#__codelineno-0-690">690</a></span>
-<span class="normal"><a href="#__codelineno-0-691">691</a></span>
-<span class="normal"><a href="#__codelineno-0-692">692</a></span>
-<span class="normal"><a href="#__codelineno-0-693">693</a></span>
-<span class="normal"><a href="#__codelineno-0-694">694</a></span>
-<span class="normal"><a href="#__codelineno-0-695">695</a></span>
-<span class="normal"><a href="#__codelineno-0-696">696</a></span>
-<span class="normal"><a href="#__codelineno-0-697">697</a></span>
-<span class="normal"><a href="#__codelineno-0-698">698</a></span>
-<span class="normal"><a href="#__codelineno-0-699">699</a></span>
-<span class="normal"><a href="#__codelineno-0-700">700</a></span>
-<span class="normal"><a href="#__codelineno-0-701">701</a></span>
-<span class="normal"><a href="#__codelineno-0-702">702</a></span>
-<span class="normal"><a href="#__codelineno-0-703">703</a></span>
-<span class="normal"><a href="#__codelineno-0-704">704</a></span>
-<span class="normal"><a href="#__codelineno-0-705">705</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="k">def</span><span class="w"> </span><span class="nf">never_record_counts</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
-<a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="w">    </span><span class="sd">"""Return ``{reason_code: count}`` of drops for this model.</span>
-<a id="__codelineno-0-685" name="__codelineno-0-685"></a>
-<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">    Content-free by construction -- this is the auditable half of the</span>
-<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">    guarantee.</span>
-<a id="__codelineno-0-688" name="__codelineno-0-688"></a>
-<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">        redis_client: Optional client override, for tests.</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a>
-<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">        dict: Reason code to integer count. Empty if nothing dropped.</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">    """</span>
-<a id="__codelineno-0-695" name="__codelineno-0-695"></a>    <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-696" name="__codelineno-0-696"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-697" name="__codelineno-0-697"></a>
-<a id="__codelineno-0-698" name="__codelineno-0-698"></a>        <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">))</span> <span class="ow">or</span> <span class="p">{}</span>
-<a id="__codelineno-0-700" name="__codelineno-0-700"></a>    <span class="n">counts</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-701" name="__codelineno-0-701"></a>    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">raw</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-703" name="__codelineno-0-703"></a>            <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a>        <span class="n">counts</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-<a id="__codelineno-0-705" name="__codelineno-0-705"></a>    <span class="k">return</span> <span class="n">counts</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-715">715</a></span>
+<span class="normal"><a href="#__codelineno-0-716">716</a></span>
+<span class="normal"><a href="#__codelineno-0-717">717</a></span>
+<span class="normal"><a href="#__codelineno-0-718">718</a></span>
+<span class="normal"><a href="#__codelineno-0-719">719</a></span>
+<span class="normal"><a href="#__codelineno-0-720">720</a></span>
+<span class="normal"><a href="#__codelineno-0-721">721</a></span>
+<span class="normal"><a href="#__codelineno-0-722">722</a></span>
+<span class="normal"><a href="#__codelineno-0-723">723</a></span>
+<span class="normal"><a href="#__codelineno-0-724">724</a></span>
+<span class="normal"><a href="#__codelineno-0-725">725</a></span>
+<span class="normal"><a href="#__codelineno-0-726">726</a></span>
+<span class="normal"><a href="#__codelineno-0-727">727</a></span>
+<span class="normal"><a href="#__codelineno-0-728">728</a></span>
+<span class="normal"><a href="#__codelineno-0-729">729</a></span>
+<span class="normal"><a href="#__codelineno-0-730">730</a></span>
+<span class="normal"><a href="#__codelineno-0-731">731</a></span>
+<span class="normal"><a href="#__codelineno-0-732">732</a></span>
+<span class="normal"><a href="#__codelineno-0-733">733</a></span>
+<span class="normal"><a href="#__codelineno-0-734">734</a></span>
+<span class="normal"><a href="#__codelineno-0-735">735</a></span>
+<span class="normal"><a href="#__codelineno-0-736">736</a></span>
+<span class="normal"><a href="#__codelineno-0-737">737</a></span>
+<span class="normal"><a href="#__codelineno-0-738">738</a></span>
+<span class="normal"><a href="#__codelineno-0-739">739</a></span>
+<span class="normal"><a href="#__codelineno-0-740">740</a></span>
+<span class="normal"><a href="#__codelineno-0-741">741</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-715" name="__codelineno-0-715"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a><span class="k">def</span><span class="w"> </span><span class="nf">never_record_counts</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<a id="__codelineno-0-717" name="__codelineno-0-717"></a><span class="w">    </span><span class="sd">"""Return ``{reason_code: count}`` of drops for this model.</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a><span class="sd">    Content-free by construction -- this is the auditable half of the</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="sd">    guarantee.</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">        redis_client: Optional client override, for tests.</span>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="sd">        dict: Reason code to integer count. Empty if nothing dropped.</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a><span class="sd">    """</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="n">_audit_backend</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a>        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">backend</span><span class="o">.</span><span class="n">field_call</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span> <span class="s2">"_never_record"</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">))</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a>    <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a>        <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">))</span> <span class="ow">or</span> <span class="p">{}</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a>    <span class="n">counts</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a>    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">raw</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a>            <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a>        <span class="n">counts</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a>    <span class="k">return</span> <span class="n">counts</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4030,61 +4054,73 @@ guarantee.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-707">707</a></span>
-<span class="normal"><a href="#__codelineno-0-708">708</a></span>
-<span class="normal"><a href="#__codelineno-0-709">709</a></span>
-<span class="normal"><a href="#__codelineno-0-710">710</a></span>
-<span class="normal"><a href="#__codelineno-0-711">711</a></span>
-<span class="normal"><a href="#__codelineno-0-712">712</a></span>
-<span class="normal"><a href="#__codelineno-0-713">713</a></span>
-<span class="normal"><a href="#__codelineno-0-714">714</a></span>
-<span class="normal"><a href="#__codelineno-0-715">715</a></span>
-<span class="normal"><a href="#__codelineno-0-716">716</a></span>
-<span class="normal"><a href="#__codelineno-0-717">717</a></span>
-<span class="normal"><a href="#__codelineno-0-718">718</a></span>
-<span class="normal"><a href="#__codelineno-0-719">719</a></span>
-<span class="normal"><a href="#__codelineno-0-720">720</a></span>
-<span class="normal"><a href="#__codelineno-0-721">721</a></span>
-<span class="normal"><a href="#__codelineno-0-722">722</a></span>
-<span class="normal"><a href="#__codelineno-0-723">723</a></span>
-<span class="normal"><a href="#__codelineno-0-724">724</a></span>
-<span class="normal"><a href="#__codelineno-0-725">725</a></span>
-<span class="normal"><a href="#__codelineno-0-726">726</a></span>
-<span class="normal"><a href="#__codelineno-0-727">727</a></span>
-<span class="normal"><a href="#__codelineno-0-728">728</a></span>
-<span class="normal"><a href="#__codelineno-0-729">729</a></span>
-<span class="normal"><a href="#__codelineno-0-730">730</a></span>
-<span class="normal"><a href="#__codelineno-0-731">731</a></span>
-<span class="normal"><a href="#__codelineno-0-732">732</a></span>
-<span class="normal"><a href="#__codelineno-0-733">733</a></span>
-<span class="normal"><a href="#__codelineno-0-734">734</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="k">def</span><span class="w"> </span><span class="nf">never_record_log</span><span class="p">(</span>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a>    <span class="bp">cls</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
-<a id="__codelineno-0-711" name="__codelineno-0-711"></a><span class="w">    </span><span class="sd">"""Return the most recent drop tombstones, newest first.</span>
-<a id="__codelineno-0-712" name="__codelineno-0-712"></a>
-<a id="__codelineno-0-713" name="__codelineno-0-713"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-714" name="__codelineno-0-714"></a><span class="sd">        limit: Maximum entries to return.</span>
-<a id="__codelineno-0-715" name="__codelineno-0-715"></a><span class="sd">        redis_client: Optional client override, for tests.</span>
-<a id="__codelineno-0-716" name="__codelineno-0-716"></a>
-<a id="__codelineno-0-717" name="__codelineno-0-717"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-718" name="__codelineno-0-718"></a><span class="sd">        list: Dicts with ``id``, ``reason``, ``detector``, ``at``. No</span>
-<a id="__codelineno-0-719" name="__codelineno-0-719"></a><span class="sd">        entry contains any fragment of the dropped content.</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="sd">    """</span>
-<a id="__codelineno-0-721" name="__codelineno-0-721"></a>    <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-722" name="__codelineno-0-722"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a>
-<a id="__codelineno-0-724" name="__codelineno-0-724"></a>        <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">lrange</span><span class="p">(</span><span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"drops"</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a>    <span class="n">entries</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a>    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">raw</span> <span class="ow">or</span> <span class="p">[]:</span>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-729" name="__codelineno-0-729"></a>            <span class="n">item</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
-<a id="__codelineno-0-730" name="__codelineno-0-730"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-731" name="__codelineno-0-731"></a>            <span class="n">entries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">item</span><span class="p">))</span>
-<a id="__codelineno-0-732" name="__codelineno-0-732"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>  <span class="c1"># pragma: no cover - corrupt entry</span>
-<a id="__codelineno-0-733" name="__codelineno-0-733"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a>    <span class="k">return</span> <span class="n">entries</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-743">743</a></span>
+<span class="normal"><a href="#__codelineno-0-744">744</a></span>
+<span class="normal"><a href="#__codelineno-0-745">745</a></span>
+<span class="normal"><a href="#__codelineno-0-746">746</a></span>
+<span class="normal"><a href="#__codelineno-0-747">747</a></span>
+<span class="normal"><a href="#__codelineno-0-748">748</a></span>
+<span class="normal"><a href="#__codelineno-0-749">749</a></span>
+<span class="normal"><a href="#__codelineno-0-750">750</a></span>
+<span class="normal"><a href="#__codelineno-0-751">751</a></span>
+<span class="normal"><a href="#__codelineno-0-752">752</a></span>
+<span class="normal"><a href="#__codelineno-0-753">753</a></span>
+<span class="normal"><a href="#__codelineno-0-754">754</a></span>
+<span class="normal"><a href="#__codelineno-0-755">755</a></span>
+<span class="normal"><a href="#__codelineno-0-756">756</a></span>
+<span class="normal"><a href="#__codelineno-0-757">757</a></span>
+<span class="normal"><a href="#__codelineno-0-758">758</a></span>
+<span class="normal"><a href="#__codelineno-0-759">759</a></span>
+<span class="normal"><a href="#__codelineno-0-760">760</a></span>
+<span class="normal"><a href="#__codelineno-0-761">761</a></span>
+<span class="normal"><a href="#__codelineno-0-762">762</a></span>
+<span class="normal"><a href="#__codelineno-0-763">763</a></span>
+<span class="normal"><a href="#__codelineno-0-764">764</a></span>
+<span class="normal"><a href="#__codelineno-0-765">765</a></span>
+<span class="normal"><a href="#__codelineno-0-766">766</a></span>
+<span class="normal"><a href="#__codelineno-0-767">767</a></span>
+<span class="normal"><a href="#__codelineno-0-768">768</a></span>
+<span class="normal"><a href="#__codelineno-0-769">769</a></span>
+<span class="normal"><a href="#__codelineno-0-770">770</a></span>
+<span class="normal"><a href="#__codelineno-0-771">771</a></span>
+<span class="normal"><a href="#__codelineno-0-772">772</a></span>
+<span class="normal"><a href="#__codelineno-0-773">773</a></span>
+<span class="normal"><a href="#__codelineno-0-774">774</a></span>
+<span class="normal"><a href="#__codelineno-0-775">775</a></span>
+<span class="normal"><a href="#__codelineno-0-776">776</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-743" name="__codelineno-0-743"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="k">def</span><span class="w"> </span><span class="nf">never_record_log</span><span class="p">(</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a>    <span class="bp">cls</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="w">    </span><span class="sd">"""Return the most recent drop tombstones, newest first.</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="sd">        limit: Maximum entries to return.</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">        redis_client: Optional client override, for tests.</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="sd">        list: Dicts with ``id``, ``reason``, ``detector``, ``at``. No</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">        entry contains any fragment of the dropped content.</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">    """</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="n">_audit_backend</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>        <span class="n">raw</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">field_call</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span> <span class="s2">"_never_record"</span><span class="p">,</span> <span class="s2">"log"</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>        <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>            <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="n">raw</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">lrange</span><span class="p">(</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>            <span class="n">never_record_key</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"drops"</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="mi">1</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>        <span class="p">)</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>    <span class="n">entries</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a>    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">raw</span> <span class="ow">or</span> <span class="p">[]:</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a>            <span class="n">item</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a>            <span class="n">entries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">item</span><span class="p">))</span>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>  <span class="c1"># pragma: no cover - corrupt entry</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a>    <span class="k">return</span> <span class="n">entries</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4449,7 +4485,7 @@ callers pass field values of arbitrary type.</p>
 
 
 <h3 id="popoto.privacy.never_record.write_tombstone" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">write_tombstone</span><span class="p">(</span><span class="n">class_name</span><span class="p">,</span> <span class="n">verdict</span><span class="p">,</span> <span class="n">redis_client</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">write_tombstone</span><span class="p">(</span><span class="n">class_name</span><span class="p">,</span> <span class="n">verdict</span><span class="p">,</span> <span class="n">redis_client</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">model_class</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
 
 <a href="#popoto.privacy.never_record.write_tombstone" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -4538,6 +4574,24 @@ with the dropped text.</p>
                   <code>None</code>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>model_class</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The refusing model (#759 M4). On a non-Redis backend
+the entry goes to that backend's audit tables instead; omitted
+(or a Redis-bound model), it goes to Redis as before.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -4567,19 +4621,7 @@ with the dropped text.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/privacy/never_record.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-501">501</a></span>
-<span class="normal"><a href="#__codelineno-0-502">502</a></span>
-<span class="normal"><a href="#__codelineno-0-503">503</a></span>
-<span class="normal"><a href="#__codelineno-0-504">504</a></span>
-<span class="normal"><a href="#__codelineno-0-505">505</a></span>
-<span class="normal"><a href="#__codelineno-0-506">506</a></span>
-<span class="normal"><a href="#__codelineno-0-507">507</a></span>
-<span class="normal"><a href="#__codelineno-0-508">508</a></span>
-<span class="normal"><a href="#__codelineno-0-509">509</a></span>
-<span class="normal"><a href="#__codelineno-0-510">510</a></span>
-<span class="normal"><a href="#__codelineno-0-511">511</a></span>
-<span class="normal"><a href="#__codelineno-0-512">512</a></span>
-<span class="normal"><a href="#__codelineno-0-513">513</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-513">513</a></span>
 <span class="normal"><a href="#__codelineno-0-514">514</a></span>
 <span class="normal"><a href="#__codelineno-0-515">515</a></span>
 <span class="normal"><a href="#__codelineno-0-516">516</a></span>
@@ -4630,70 +4672,124 @@ with the dropped text.</p>
 <span class="normal"><a href="#__codelineno-0-561">561</a></span>
 <span class="normal"><a href="#__codelineno-0-562">562</a></span>
 <span class="normal"><a href="#__codelineno-0-563">563</a></span>
-<span class="normal"><a href="#__codelineno-0-564">564</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="k">def</span><span class="w"> </span><span class="nf">write_tombstone</span><span class="p">(</span>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a>    <span class="n">class_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-503" name="__codelineno-0-503"></a>    <span class="n">verdict</span><span class="p">:</span> <span class="n">NeverRecordVerdict</span><span class="p">,</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a>    <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-506" name="__codelineno-0-506"></a><span class="w">    </span><span class="sd">"""Record that a drop happened, without recording what was dropped.</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a>
-<a id="__codelineno-0-508" name="__codelineno-0-508"></a><span class="sd">    Writes two plain Redis/Valkey structures (no modules):</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">    - ``$NR:{class}:counts`` -- HASH, ``HINCRBY &lt;reason&gt; 1``</span>
-<a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">    - ``$NR:{class}:drops``  -- LIST, capped at</span>
-<a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="sd">      :attr:`Defaults.NR_TOMBSTONE_LOG_MAX`</span>
-<a id="__codelineno-0-513" name="__codelineno-0-513"></a>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a><span class="sd">    The entry id is :func:`uuid.uuid4`, deliberately **not** a hash or</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a><span class="sd">    fingerprint of the content. A content-derived id would be a confirmation</span>
-<a id="__codelineno-0-516" name="__codelineno-0-516"></a><span class="sd">    oracle: anyone holding a candidate secret could hash it and check the log</span>
-<a id="__codelineno-0-517" name="__codelineno-0-517"></a><span class="sd">    for a match. This is the precise point where the never-record tombstone</span>
-<a id="__codelineno-0-518" name="__codelineno-0-518"></a><span class="sd">    diverges from :class:`popoto.recipes.memory_lifecycle.Tombstone`, which</span>
-<a id="__codelineno-0-519" name="__codelineno-0-519"></a><span class="sd">    stores an ExistenceFilter fingerprint on purpose so writes can be matched</span>
-<a id="__codelineno-0-520" name="__codelineno-0-520"></a><span class="sd">    against it.</span>
+<span class="normal"><a href="#__codelineno-0-564">564</a></span>
+<span class="normal"><a href="#__codelineno-0-565">565</a></span>
+<span class="normal"><a href="#__codelineno-0-566">566</a></span>
+<span class="normal"><a href="#__codelineno-0-567">567</a></span>
+<span class="normal"><a href="#__codelineno-0-568">568</a></span>
+<span class="normal"><a href="#__codelineno-0-569">569</a></span>
+<span class="normal"><a href="#__codelineno-0-570">570</a></span>
+<span class="normal"><a href="#__codelineno-0-571">571</a></span>
+<span class="normal"><a href="#__codelineno-0-572">572</a></span>
+<span class="normal"><a href="#__codelineno-0-573">573</a></span>
+<span class="normal"><a href="#__codelineno-0-574">574</a></span>
+<span class="normal"><a href="#__codelineno-0-575">575</a></span>
+<span class="normal"><a href="#__codelineno-0-576">576</a></span>
+<span class="normal"><a href="#__codelineno-0-577">577</a></span>
+<span class="normal"><a href="#__codelineno-0-578">578</a></span>
+<span class="normal"><a href="#__codelineno-0-579">579</a></span>
+<span class="normal"><a href="#__codelineno-0-580">580</a></span>
+<span class="normal"><a href="#__codelineno-0-581">581</a></span>
+<span class="normal"><a href="#__codelineno-0-582">582</a></span>
+<span class="normal"><a href="#__codelineno-0-583">583</a></span>
+<span class="normal"><a href="#__codelineno-0-584">584</a></span>
+<span class="normal"><a href="#__codelineno-0-585">585</a></span>
+<span class="normal"><a href="#__codelineno-0-586">586</a></span>
+<span class="normal"><a href="#__codelineno-0-587">587</a></span>
+<span class="normal"><a href="#__codelineno-0-588">588</a></span>
+<span class="normal"><a href="#__codelineno-0-589">589</a></span>
+<span class="normal"><a href="#__codelineno-0-590">590</a></span>
+<span class="normal"><a href="#__codelineno-0-591">591</a></span>
+<span class="normal"><a href="#__codelineno-0-592">592</a></span>
+<span class="normal"><a href="#__codelineno-0-593">593</a></span>
+<span class="normal"><a href="#__codelineno-0-594">594</a></span>
+<span class="normal"><a href="#__codelineno-0-595">595</a></span>
+<span class="normal"><a href="#__codelineno-0-596">596</a></span>
+<span class="normal"><a href="#__codelineno-0-597">597</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="k">def</span><span class="w"> </span><span class="nf">write_tombstone</span><span class="p">(</span>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a>    <span class="n">class_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>    <span class="n">verdict</span><span class="p">:</span> <span class="n">NeverRecordVerdict</span><span class="p">,</span>
+<a id="__codelineno-0-516" name="__codelineno-0-516"></a>    <span class="n">redis_client</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-517" name="__codelineno-0-517"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a><span class="w">    </span><span class="sd">"""Record that a drop happened, without recording what was dropped.</span>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>
-<a id="__codelineno-0-522" name="__codelineno-0-522"></a><span class="sd">    No field of the entry contains, derives from, or is length-correlated</span>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a><span class="sd">    with the dropped text.</span>
-<a id="__codelineno-0-524" name="__codelineno-0-524"></a>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-526" name="__codelineno-0-526"></a><span class="sd">        class_name: Model class name, for the key namespace.</span>
-<a id="__codelineno-0-527" name="__codelineno-0-527"></a><span class="sd">        verdict: The blocking verdict. Only its reason/detector are stored.</span>
-<a id="__codelineno-0-528" name="__codelineno-0-528"></a><span class="sd">        redis_client: Optional client override, for tests.</span>
-<a id="__codelineno-0-529" name="__codelineno-0-529"></a>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a><span class="sd">        str: The tombstone entry id.</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a><span class="sd">    """</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>    <span class="n">entry_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">())</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>    <span class="n">entry</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>        <span class="p">{</span>
-<a id="__codelineno-0-536" name="__codelineno-0-536"></a>            <span class="s2">"id"</span><span class="p">:</span> <span class="n">entry_id</span><span class="p">,</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>            <span class="s2">"reason"</span><span class="p">:</span> <span class="n">verdict</span><span class="o">.</span><span class="n">reason</span><span class="p">,</span>
-<a id="__codelineno-0-538" name="__codelineno-0-538"></a>            <span class="s2">"detector"</span><span class="p">:</span> <span class="n">verdict</span><span class="o">.</span><span class="n">detector</span><span class="p">,</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a>            <span class="s2">"at"</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span> <span class="mi">3</span><span class="p">),</span>
-<a id="__codelineno-0-540" name="__codelineno-0-540"></a>        <span class="p">},</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>        <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a>    <span class="p">)</span>
-<a id="__codelineno-0-543" name="__codelineno-0-543"></a>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a>    <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-545" name="__codelineno-0-545"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-522" name="__codelineno-0-522"></a><span class="sd">    Writes two plain Redis/Valkey structures (no modules):</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="sd">    - ``$NR:{class}:counts`` -- HASH, ``HINCRBY &lt;reason&gt; 1``</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">    - ``$NR:{class}:drops``  -- LIST, capped at</span>
+<a id="__codelineno-0-526" name="__codelineno-0-526"></a><span class="sd">      :attr:`Defaults.NR_TOMBSTONE_LOG_MAX`</span>
+<a id="__codelineno-0-527" name="__codelineno-0-527"></a>
+<a id="__codelineno-0-528" name="__codelineno-0-528"></a><span class="sd">    The entry id is :func:`uuid.uuid4`, deliberately **not** a hash or</span>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a><span class="sd">    fingerprint of the content. A content-derived id would be a confirmation</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a><span class="sd">    oracle: anyone holding a candidate secret could hash it and check the log</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a><span class="sd">    for a match. This is the precise point where the never-record tombstone</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a><span class="sd">    diverges from :class:`popoto.recipes.memory_lifecycle.Tombstone`, which</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a><span class="sd">    stores an ExistenceFilter fingerprint on purpose so writes can be matched</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a><span class="sd">    against it.</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">    No field of the entry contains, derives from, or is length-correlated</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">    with the dropped text.</span>
+<a id="__codelineno-0-538" name="__codelineno-0-538"></a>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a><span class="sd">        class_name: Model class name, for the key namespace.</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a><span class="sd">        verdict: The blocking verdict. Only its reason/detector are stored.</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="sd">        redis_client: Optional client override, for tests.</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a><span class="sd">        model_class: The refusing model (#759 M4). On a non-Redis backend</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a><span class="sd">            the entry goes to that backend's audit tables instead; omitted</span>
+<a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">            (or a Redis-bound model), it goes to Redis as before.</span>
 <a id="__codelineno-0-546" name="__codelineno-0-546"></a>
-<a id="__codelineno-0-547" name="__codelineno-0-547"></a>        <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a>    <span class="n">counts_key</span> <span class="o">=</span> <span class="n">never_record_key</span><span class="p">(</span><span class="n">class_name</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">)</span>
-<a id="__codelineno-0-550" name="__codelineno-0-550"></a>    <span class="n">drops_key</span> <span class="o">=</span> <span class="n">never_record_key</span><span class="p">(</span><span class="n">class_name</span><span class="p">,</span> <span class="s2">"drops"</span><span class="p">)</span>
-<a id="__codelineno-0-551" name="__codelineno-0-551"></a>
-<a id="__codelineno-0-552" name="__codelineno-0-552"></a>    <span class="c1"># Best-effort: a firewall that raises when its audit log is unwritable</span>
-<a id="__codelineno-0-553" name="__codelineno-0-553"></a>    <span class="c1"># would fail *open* under Redis trouble, which is the one direction this</span>
-<a id="__codelineno-0-554" name="__codelineno-0-554"></a>    <span class="c1"># module must never fail in. The drop itself is enforced by the caller.</span>
-<a id="__codelineno-0-555" name="__codelineno-0-555"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-556" name="__codelineno-0-556"></a>        <span class="n">pipe</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">hincrby</span><span class="p">(</span><span class="n">counts_key</span><span class="p">,</span> <span class="n">verdict</span><span class="o">.</span><span class="n">reason</span> <span class="ow">or</span> <span class="s2">"unknown"</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">lpush</span><span class="p">(</span><span class="n">drops_key</span><span class="p">,</span> <span class="n">entry</span><span class="p">)</span>
-<a id="__codelineno-0-559" name="__codelineno-0-559"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">ltrim</span><span class="p">(</span><span class="n">drops_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">NR_TOMBSTONE_LOG_MAX</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-0-560" name="__codelineno-0-560"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
-<a id="__codelineno-0-561" name="__codelineno-0-561"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover - exercised only on Redis failure</span>
-<a id="__codelineno-0-562" name="__codelineno-0-562"></a>        <span class="k">pass</span>
-<a id="__codelineno-0-563" name="__codelineno-0-563"></a>
-<a id="__codelineno-0-564" name="__codelineno-0-564"></a>    <span class="k">return</span> <span class="n">entry_id</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a><span class="sd">        str: The tombstone entry id.</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="sd">    """</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a>    <span class="n">entry_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">())</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a>    <span class="n">entry</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a>        <span class="p">{</span>
+<a id="__codelineno-0-553" name="__codelineno-0-553"></a>            <span class="s2">"id"</span><span class="p">:</span> <span class="n">entry_id</span><span class="p">,</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a>            <span class="s2">"reason"</span><span class="p">:</span> <span class="n">verdict</span><span class="o">.</span><span class="n">reason</span><span class="p">,</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a>            <span class="s2">"detector"</span><span class="p">:</span> <span class="n">verdict</span><span class="o">.</span><span class="n">detector</span><span class="p">,</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a>            <span class="s2">"at"</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span> <span class="mi">3</span><span class="p">),</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a>        <span class="p">},</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a>        <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a>    <span class="p">)</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a>
+<a id="__codelineno-0-561" name="__codelineno-0-561"></a>    <span class="n">backend</span> <span class="o">=</span> <span class="n">_audit_backend</span><span class="p">(</span><span class="n">model_class</span><span class="p">)</span> <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a>    <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a>        <span class="c1"># Best-effort, as the Redis pipeline below is.</span>
+<a id="__codelineno-0-564" name="__codelineno-0-564"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a>            <span class="n">backend</span><span class="o">.</span><span class="n">field_call</span><span class="p">(</span>
+<a id="__codelineno-0-566" name="__codelineno-0-566"></a>                <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span>
+<a id="__codelineno-0-567" name="__codelineno-0-567"></a>                <span class="s2">"_never_record"</span><span class="p">,</span>
+<a id="__codelineno-0-568" name="__codelineno-0-568"></a>                <span class="s2">"drop"</span><span class="p">,</span>
+<a id="__codelineno-0-569" name="__codelineno-0-569"></a>                <span class="n">verdict</span><span class="o">.</span><span class="n">reason</span> <span class="ow">or</span> <span class="s2">"unknown"</span><span class="p">,</span>
+<a id="__codelineno-0-570" name="__codelineno-0-570"></a>                <span class="n">entry</span><span class="p">,</span>
+<a id="__codelineno-0-571" name="__codelineno-0-571"></a>                <span class="nb">int</span><span class="p">(</span><span class="n">Defaults</span><span class="o">.</span><span class="n">NR_TOMBSTONE_LOG_MAX</span><span class="p">),</span>
+<a id="__codelineno-0-572" name="__codelineno-0-572"></a>            <span class="p">)</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover - exercised only on an outage</span>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a>            <span class="k">pass</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a>        <span class="k">return</span> <span class="n">entry_id</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>    <span class="k">if</span> <span class="n">redis_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>        <span class="n">redis_client</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>    <span class="n">counts_key</span> <span class="o">=</span> <span class="n">never_record_key</span><span class="p">(</span><span class="n">class_name</span><span class="p">,</span> <span class="s2">"counts"</span><span class="p">)</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>    <span class="n">drops_key</span> <span class="o">=</span> <span class="n">never_record_key</span><span class="p">(</span><span class="n">class_name</span><span class="p">,</span> <span class="s2">"drops"</span><span class="p">)</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>    <span class="c1"># Best-effort: a firewall that raises when its audit log is unwritable</span>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a>    <span class="c1"># would fail *open* under Redis trouble, which is the one direction this</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a>    <span class="c1"># module must never fail in. The drop itself is enforced by the caller.</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>        <span class="n">pipe</span> <span class="o">=</span> <span class="n">redis_client</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">hincrby</span><span class="p">(</span><span class="n">counts_key</span><span class="p">,</span> <span class="n">verdict</span><span class="o">.</span><span class="n">reason</span> <span class="ow">or</span> <span class="s2">"unknown"</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">lpush</span><span class="p">(</span><span class="n">drops_key</span><span class="p">,</span> <span class="n">entry</span><span class="p">)</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">ltrim</span><span class="p">(</span><span class="n">drops_key</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">NR_TOMBSTONE_LOG_MAX</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>        <span class="n">pipe</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover - exercised only on Redis failure</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a>        <span class="k">pass</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a>    <span class="k">return</span> <span class="n">entry_id</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
