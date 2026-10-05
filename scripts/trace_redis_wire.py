@@ -1315,6 +1315,32 @@ if WITH_RECIPES:
         out.append(_qq.prune("TrQFact-tq", 10_000))
         return out
 
+    @scenario
+    def m4_provenance_journal():
+        from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+        from popoto.recipes.reconciliation import drop_cached_embedding
+
+        first = ProvenanceJournal.append(
+            agent_id="TrQFact-j", statement="the launch slipped", at=1_700_000_000.0
+        ).entry
+        second = ProvenanceJournal.supersede(
+            first, agent_id="TrQFact-j", statement="no, it did not", at=1_700_000_050.0
+        )
+        out = [second.target_closed, second.close_index]
+        pipe = get_REDIS_DB().pipeline()
+        third = ProvenanceJournal.confirm(
+            second.entry, agent_id="TrQFact-j", pipeline=pipe
+        )
+        out.append((third.target_closed, third.close_index))
+        out.append(len(pipe.execute()))
+        out.append([e.statement for e in ProvenanceJournal.annotations_for(first)])
+        out.append(JournalEntry.hard_delete(second.entry))
+        drop_cached_embedding(first.db_key.redis_key)
+        out.append(JournalEntry.hard_delete(first))
+        for entry in JournalEntry.query.filter(agent_id="TrQFact-j"):
+            JournalEntry.hard_delete(entry)
+        return out
+
 
 def main() -> None:
     global _TRACE
