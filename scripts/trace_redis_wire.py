@@ -28,6 +28,10 @@ Usage -- trace a base tree and the working tree, then compare::
         python scripts/trace_redis_wire.py > head.trace
     cmp base.trace head.trace
 
+``--with-graph`` appends the ``CoOccurrenceField`` scenarios (#759 M4): every
+graph write and read, a record delete's edge cleanup, export/import, the
+``composite_score`` boost and ``graph_traversal.traverse``.
+
 ``--with-assembler`` appends the ``ContextAssembler`` scenarios (#759 M2c):
 ``assemble()`` in every mode with scopes, tags, budgets and the gate,
 ``assess()``, the score proxy and ``on_context_used()``. They are off by
@@ -1089,6 +1093,129 @@ if WITH_ASSEMBLER:
                 for n in ("m1", "m2", "m3", "m5")
             ],
         ]
+
+
+# -- CoOccurrenceField and the graph arm (#759 M4) ----------------------------
+# M4 routes CoOccurrenceField to a non-Redis backend from the field methods
+# and turns composite_score(co_occurrence_boost=) into a Postgres arm. These
+# scenarios pin that a Redis-bound model's graph wire is unchanged: every
+# write and read, a record delete's edge cleanup, export/import, the
+# composite boost and graph_traversal.traverse. Off by default, like the
+# assembler set.
+
+WITH_GRAPH = "--with-graph" in sys.argv
+
+if WITH_GRAPH:
+    from popoto import ConfidenceField as _GConfidence  # noqa: E402
+    from popoto.fields.co_occurrence_field import CoOccurrenceField  # noqa: E402
+    from popoto.recipes import graph_traversal  # noqa: E402
+
+    class TrNode(popoto.Model):
+        name = popoto.KeyField()
+        certainty = _GConfidence()
+        links = CoOccurrenceField(max_edges=3)
+
+    class TrArrow(popoto.Model):
+        name = popoto.KeyField()
+        links = CoOccurrenceField(symmetric=False, max_edges=50)
+
+    MODELS = MODELS + (TrNode, TrArrow)
+
+    def _links():
+        return TrNode._meta.fields["links"]
+
+    @scenario
+    def m4_link_prune_and_replies():
+        f = _links()
+        out = [
+            f.link(TrNode, "s", t, initial_weight=w)
+            for t, w in (
+                ("t", 0.7),
+                ("u", -2.5),
+                ("t", 0.1),
+                ("v", 0.9),
+                ("w", -1e300),
+                ("x", 0.95),
+            )
+        ]
+        try:
+            f.link(TrNode, "s", "y", initial_weight=float("nan"))
+        except Exception as exc:  # noqa: BLE001 - recorded
+            out.append(type(exc).__name__)
+        g = TrArrow._meta.fields["links"]
+        out.append(g.link(TrArrow, "a", "b", initial_weight=0.5))
+        return out
+
+    @scenario
+    def m4_strengthen_unlink_weaken():
+        f = _links()
+        out = [
+            f.strengthen(TrNode, "s", "t", delta=0.1234567890123456),
+            f.strengthen(TrNode, "p", "q", delta=2.0),
+        ]
+        pipe = get_REDIS_DB().pipeline()
+        out.append(f.strengthen(TrNode, "s", "v", delta=0.01, pipeline=pipe))
+        f.unlink(TrNode, "p", "q", pipeline=pipe)
+        out.append(pipe.execute())
+        f.unlink(TrNode, "s", "x")
+        out.append(f.weaken_all(TrNode, "s", factor=0.5))
+        out.append(f.weaken_all(TrNode, "t", factor=0))
+        out.append(f.weaken_all(TrNode, "zz"))
+        return out
+
+    @scenario
+    def m4_get_linked_and_propagate():
+        f = _links()
+        for a, b, w in (
+            ("a", "b", 1.0),
+            ("b", "c", 0.6),
+            ("c", "d", 0.8),
+            ("a", "c", 0.2),
+        ):
+            f.link(TrNode, a, b, initial_weight=w)
+        return [
+            f.get_linked(TrNode, "s"),
+            f.get_linked(TrNode, "a", min_weight="(0.2", limit=1),
+            f.get_linked(TrNode, "b", min_weight="-inf", limit=-1),
+            sorted(f.propagate(TrNode, ["a"], depth=3).items()),
+            sorted(
+                f.propagate(
+                    TrNode, ["a", "d"], depth=2, decay_per_hop=0.3, threshold=0.0
+                ).items()
+            ),
+            f.propagate(TrNode, ["a"], depth=0),
+        ]
+
+    @scenario
+    def m4_delete_export_import_and_composite():
+        f = _links()
+        n1 = TrNode.create(name="n1")
+        n2 = TrNode.create(name="n2")
+        k1, k2 = n1.db_key.redis_key, n2.db_key.redis_key
+        f.link(TrNode, k1, k2, initial_weight=0.5)
+        f.link(TrNode, "outside", k1, initial_weight=0.4)
+        exported = CoOccurrenceField.export_state(n2, "links")
+        CoOccurrenceField.import_state(
+            n2, "links", {"edges": {"e1": 0.3, "e2": 2.0}, "max_edges": 3}
+        )
+        boost = f.propagate(TrNode, [k2], depth=2)
+        ranked = TrNode.query.composite_score(
+            {"certainty": 1.0}, co_occurrence_boost={k1: 0.9, "nope": 5.0}, limit=3
+        )
+        n1.delete()
+        return [
+            exported,
+            boost,
+            [r.name for r in ranked],
+            f.get_linked(TrNode, "outside"),
+            f.get_linked(TrNode, k2),
+        ]
+
+    @scenario
+    def m4_graph_traversal():
+        return graph_traversal.traverse(
+            TrNode, ["a"], co_occurrence_field=_links(), depth=2, decay_per_hop=0.5
+        )
 
 
 def main() -> None:

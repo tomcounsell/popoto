@@ -337,8 +337,8 @@ class TestAssembleEmpty:
 
     @pytest.mark.redis_only(
         reason=(
-            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
-            "Postgres refuses at first use until #759 M5 and M4"
+            "FullMemory declares a CyclicDecayField, which Postgres refuses at "
+            "first use until #759 M5"
         )
     )
     def test_no_cues_with_cyclic_runs_push_path(self):
@@ -384,8 +384,8 @@ class TestAssemblePullPath:
 
     @pytest.mark.redis_only(
         reason=(
-            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
-            "Postgres refuses at first use until #759 M5 and M4; the two-leg version is "
+            "FullMemory declares a CyclicDecayField, which Postgres refuses at "
+            "first use until #759 M5; the two-leg version is "
             "in tests/test_backend_parity_assembler.py"
         )
     )
@@ -592,8 +592,8 @@ class TestAssembleMetadata:
 class TestFullPipeline:
     @pytest.mark.redis_only(
         reason=(
-            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
-            "Postgres refuses at first use until #759 M5 and M4"
+            "FullMemory declares a CyclicDecayField, which Postgres refuses at "
+            "first use until #759 M5"
         )
     )
     def test_end_to_end_with_full_memory(self):
@@ -687,8 +687,8 @@ class TestRetrievalQuality:
 
     @pytest.mark.redis_only(
         reason=(
-            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
-            "Postgres refuses at first use until #759 M5 and M4; the two-leg version is "
+            "FullMemory declares a CyclicDecayField, which Postgres refuses at "
+            "first use until #759 M5; the two-leg version is "
             "in tests/test_backend_parity_assembler.py"
         )
     )
@@ -743,8 +743,8 @@ class TestRetrievalQuality:
 
     @pytest.mark.redis_only(
         reason=(
-            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
-            "Postgres refuses at first use until #759 M5 and M4; the two-leg version is "
+            "FullMemory declares a CyclicDecayField, which Postgres refuses at "
+            "first use until #759 M5; the two-leg version is "
             "in tests/test_backend_parity_assembler.py"
         )
     )
@@ -767,8 +767,8 @@ class TestRetrievalQuality:
 
     @pytest.mark.redis_only(
         reason=(
-            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
-            "Postgres refuses at first use until #759 M5 and M4; the two-leg version is "
+            "FullMemory declares a CyclicDecayField, which Postgres refuses at "
+            "first use until #759 M5; the two-leg version is "
             "in tests/test_backend_parity_assembler.py"
         )
     )
@@ -792,8 +792,8 @@ class TestRetrievalQuality:
 
     @pytest.mark.redis_only(
         reason=(
-            "FullMemory declares a CyclicDecayField and a CoOccurrenceField, which "
-            "Postgres refuses at first use until #759 M5 and M4; the two-leg version is "
+            "FullMemory declares a CyclicDecayField, which Postgres refuses at "
+            "first use until #759 M5; the two-leg version is "
             "in tests/test_backend_parity_assembler.py"
         )
     )
@@ -1663,8 +1663,9 @@ class TestConfidenceGate:
     @pytest.mark.redis_only(
         reason=(
             "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
-            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
-            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+            "until #759 M5 (the push path it exercises needs one): _push_path logs and "
+            "swallows the refusal, so a Postgres pass would be vacuous; the two-leg "
+            "version of the pull-path gate is in tests/test_backend_parity_assembler.py"
         )
     )
     def test_empty_pull_records_with_threshold(self):
@@ -1692,8 +1693,9 @@ class TestConfidenceGate:
     @pytest.mark.redis_only(
         reason=(
             "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
-            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
-            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+            "until #759 M5 (the push path it exercises needs one): _push_path logs and "
+            "swallows the refusal, so a Postgres pass would be vacuous; the two-leg "
+            "version of the pull-path gate is in tests/test_backend_parity_assembler.py"
         )
     )
     def test_query_cues_none_skips_pull_path_gate_still_empty(self):
@@ -1768,8 +1770,9 @@ class TestConfidenceGate:
     @pytest.mark.redis_only(
         reason=(
             "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
-            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
-            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+            "until #759 M5 (the push path it exercises needs one): _push_path logs and "
+            "swallows the refusal, so a Postgres pass would be vacuous; the two-leg "
+            "version of the pull-path gate is in tests/test_backend_parity_assembler.py"
         )
     )
     def test_refused_keys_come_from_all_pull_candidates_in_rank_order(self):
@@ -1805,8 +1808,9 @@ class TestConfidenceGate:
     @pytest.mark.redis_only(
         reason=(
             "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
-            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
-            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+            "until #759 M5 (the push path it exercises needs one): _push_path logs and "
+            "swallows the refusal, so a Postgres pass would be vacuous; the two-leg "
+            "version of the pull-path gate is in tests/test_backend_parity_assembler.py"
         )
     )
     def test_refuse_not_gated_retains_records(self):
@@ -1834,8 +1838,9 @@ class TestConfidenceGate:
     @pytest.mark.redis_only(
         reason=(
             "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
-            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
-            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+            "until #759 M5 (the push path it exercises needs one): _push_path logs and "
+            "swallows the refusal, so a Postgres pass would be vacuous; the two-leg "
+            "version of the pull-path gate is in tests/test_backend_parity_assembler.py"
         )
     )
     def test_refuse_assess_quality_fok_not_corrupted(self):
@@ -1869,8 +1874,9 @@ class TestConfidenceGate:
     @pytest.mark.redis_only(
         reason=(
             "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
-            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
-            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+            "until #759 M5 (the push path it exercises needs one): _push_path logs and "
+            "swallows the refusal, so a Postgres pass would be vacuous; the two-leg "
+            "version of the pull-path gate is in tests/test_backend_parity_assembler.py"
         )
     )
     def test_flag_mode_gated_retains_records(self):
@@ -1907,8 +1913,9 @@ class TestConfidenceGate:
     @pytest.mark.redis_only(
         reason=(
             "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
-            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
-            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+            "until #759 M5 (the push path it exercises needs one): _push_path logs and "
+            "swallows the refusal, so a Postgres pass would be vacuous; the two-leg "
+            "version of the pull-path gate is in tests/test_backend_parity_assembler.py"
         )
     )
     def test_flag_not_gated_retains_records(self):
@@ -1937,8 +1944,9 @@ class TestConfidenceGate:
     @pytest.mark.redis_only(
         reason=(
             "GateMemory declares a CyclicDecayField, which Postgres refuses at first use "
-            "until #759 M5 (the push path it exercises needs one); the two-leg version of "
-            "the pull-path gate is in tests/test_backend_parity_assembler.py"
+            "until #759 M5 (the push path it exercises needs one): _push_path logs and "
+            "swallows the refusal, so a Postgres pass would be vacuous; the two-leg "
+            "version of the pull-path gate is in tests/test_backend_parity_assembler.py"
         )
     )
     def test_get_confidence_raises_gate_not_applied(self, caplog):

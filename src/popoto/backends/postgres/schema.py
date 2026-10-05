@@ -105,7 +105,10 @@ KEY_KINDS = frozenset({"KeyField", "UniqueKeyField", "AutoKeyField", "SortedKeyF
 SORTED_KINDS = frozenset({"SortedField", "SortedKeyField"})
 #: Side-effect fields with no column of their own (M2b): their state lives
 #: in companion tables (``.search``).
-COLUMNLESS_KINDS = frozenset({"BM25Field", "ExistenceFilter", "FrequencySketch"})
+COLUMNLESS_KINDS = frozenset(
+    {"BM25Field", "ExistenceFilter", "FrequencySketch", "CoOccurrenceField"}
+)
+"""(M4 adds ``CoOccurrenceField``: its edges live in ``.graph``'s table.)"""
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -351,6 +354,13 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
         columns.extend(search.columns)
         indexes.extend(search.indexes)
     indexes.extend(memory_indexes(spec, index_name))
+    # M4: one edge table per CoOccurrenceField (.graph).
+    from .graph import compile_graph
+
+    companions = (search.companions if search is not None else ()) + compile_graph(
+        spec, schema, table
+    )
+
     # M5: Meta.ttl adds _expires_at and its partial index (.ttl); a model
     # without it compiles exactly as before.
     from .ttl import ttl_columns, ttl_indexes
@@ -371,7 +381,7 @@ def compile_table(spec: ModelSpec, schema: str) -> TableSpec:
             name for name, fs in spec.fields.items() if fs.options.get("capped")
         ),
         meta_indexes=meta_indexes,
-        companions=search.companions if search is not None else (),
+        companions=companions,
         search=search,
         ttl=spec.ttl is not None,
     )

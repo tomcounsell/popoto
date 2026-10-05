@@ -494,8 +494,11 @@ SEARCH_FIELD_KINDS: frozenset[str] = frozenset(
     }
 )
 STATIC_FIELD_KINDS["postgres"] = (
-    STATIC_FIELD_KINDS["postgres"] or frozenset()
-) | SEARCH_FIELD_KINDS
+    (STATIC_FIELD_KINDS["postgres"] or frozenset())
+    | SEARCH_FIELD_KINDS
+    # M4: the edge table (popoto.backends.postgres.graph).
+    | frozenset({"CoOccurrenceField"})
+)
 #: Popoto mixins a Postgres model may not declare yet, with the milestone that
 #: brings each. ``PredictionLedgerMixin`` keeps its ledger in Redis structures
 #: (``RESOLVE_PREDICTION_LUA``); on a Postgres model ``record_prediction`` and
@@ -581,6 +584,10 @@ def _field_spec(name: str, field: Any) -> FieldSpec:
             options[attr] = value
     if getattr(field, "evidence_cap", None) is not None:
         options["evidence_cap"] = field.evidence_cap
+    if base.__name__ == "CoOccurrenceField":
+        # M4: what the edge writes and the delete cleanup need (.postgres.graph).
+        options["symmetric"] = bool(getattr(field, "symmetric", True))
+        options["max_edges"] = int(getattr(field, "max_edges", 500))
     if getattr(field, "_capped", False):
         # ListField(max_length=N): Redis keeps it in its own list key; on
         # Postgres it is a jsonb column with type-tagged elements.
