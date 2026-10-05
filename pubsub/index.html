@@ -2937,6 +2937,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3279,6 +3290,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3495,6 +3517,31 @@ calls in a try/except block in production to keep the listener running.</p>
 </code></pre></div>
 <p>Enable DEBUG level during development to see every message published and received. In
 production, INFO level shows subscription setup without the per-message noise.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On the Postgres backend (<code>Meta.backend = "postgres"</code> or
+<code>POPOTO_BACKEND=postgres</code>), <code>Publisher</code> and <code>Subscriber</code> keep this API and
+these message shapes over Postgres <code>NOTIFY</code>/<code>LISTEN</code>, with no Redis
+connection. A subscriber holds a dedicated <code>LISTEN</code> session (never a pooled
+connection; set <code>POPOTO_POSTGRES_LISTEN_URL</code> to reach the server past a
+transaction-mode pooler) and is polled the same way; call
+<code>subscriber.pubsub.close()</code> to end it. Pass <code>backend="postgres"</code> to a
+standalone <code>Publisher</code> or <code>Subscriber</code> to choose it explicitly.</p>
+<p>Three things differ:</p>
+<ul>
+<li><strong>Transactions.</strong> Publishing with the backend's unit of work as
+  <code>pipeline=</code> delivers the message when that transaction commits, and never
+  if it rolls back.</li>
+<li><strong>Size.</strong> A message must encode to under 8000 bytes as a <code>NOTIFY</code> payload
+  (about 5.9 KB of msgpack data); a larger one raises
+  <code>PubSubPayloadTooLarge</code>, a <code>PublisherException</code>, before anything is sent.
+  Publish a key and keep the body in a record.</li>
+<li><strong>Patterns</strong> (<code>subscriber.pubsub.psubscribe("orders.*")</code>) are matched by
+  each subscriber with Redis's glob rules, so every subscriber receives every
+  message published in the schema and drops what it did not ask for.</li>
+</ul>
+<p><code>publish()</code> still returns the number of subscriptions reached, counted from
+the live subscribers' registrations. See
+<a href="../features/postgres-backend/#event-streams-and-pubsub-m5">Postgres Backend: event streams and pub/sub</a>.</p>
 
 
 

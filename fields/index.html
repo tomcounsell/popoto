@@ -3270,6 +3270,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -4751,6 +4762,17 @@
     <span class="md-ellipsis">
       
         Redis Key Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
       
     </span>
   </a>
@@ -7182,6 +7204,8 @@ pre-canonical rendering.</p>
 <li><code>stream:{stream_name}</code> — default stream key</li>
 <li><code>stream:{stream_name}:{partition_value}</code> — partitioned stream key</li>
 </ul>
+<h3 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h3>
+<p>A Postgres-bound model's stream is kept in the backend's events tables, not in Redis. The stream keys, ids (<code>&lt;ms&gt;-&lt;seq&gt;</code>) and entry fields stay the same. The entry is appended in the save's or delete's own transaction, so the record and its entry commit or roll back together. Because of that, an append that fails at the server fails the save. Read the stream with <code>Model.stream_range()</code> / <code>Model.stream_len()</code>, or with <code>popoto.streams.stream_client(Model)</code>, which has the same redis-py methods on both backends. See <a href="../features/postgres-backend/#event-streams-and-pubsub-m5">Postgres Backend: event streams and pub/sub</a>.</p>
 <h2 id="tagfield">TagField<a class="headerlink" href="#tagfield" title="Permanent link">&para;</a></h2>
 <p><code>TagField</code> adds <strong>optional, indexed, multi-value scoping</strong> to a model. It is the
 scoping primitive for a <strong>centrally hosted Redis/Valkey serving many agents</strong>: a

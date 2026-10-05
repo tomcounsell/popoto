@@ -4223,13 +4223,7 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <span class="normal"><a href="#__codelineno-0-1080">1080</a></span>
 <span class="normal"><a href="#__codelineno-0-1081">1081</a></span>
 <span class="normal"><a href="#__codelineno-0-1082">1082</a></span>
-<span class="normal"><a href="#__codelineno-0-1083">1083</a></span>
-<span class="normal"><a href="#__codelineno-0-1084">1084</a></span>
-<span class="normal"><a href="#__codelineno-0-1085">1085</a></span>
-<span class="normal"><a href="#__codelineno-0-1086">1086</a></span>
-<span class="normal"><a href="#__codelineno-0-1087">1087</a></span>
-<span class="normal"><a href="#__codelineno-0-1088">1088</a></span>
-<span class="normal"><a href="#__codelineno-0-1089">1089</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="k">class</span><span class="w"> </span><span class="nc">PredictionLedgerMixin</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-1083">1083</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="k">class</span><span class="w"> </span><span class="nc">PredictionLedgerMixin</span><span class="p">:</span>
 <a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="w">    </span><span class="sd">"""Mixin that adds prediction recording, resolution, and error tracking.</span>
 <a id="__codelineno-0-136" name="__codelineno-0-136"></a>
 <a id="__codelineno-0-137" name="__codelineno-0-137"></a><span class="sd">    Add as a base class alongside Model:</span>
@@ -4802,8 +4796,8 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-704" name="__codelineno-0-704"></a>        <span class="k">if</span> <span class="n">result</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
 <a id="__codelineno-0-705" name="__codelineno-0-705"></a>            <span class="k">return</span> <span class="kc">None</span>
 <a id="__codelineno-0-706" name="__codelineno-0-706"></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">_apply_confidence_feedback</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">prediction_error</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
-<a id="__codelineno-0-707" name="__codelineno-0-707"></a>        <span class="c1"># A batch's event follows its transaction's commit, as a unit of</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a>        <span class="c1"># work's does (after_commit); a plain Redis pipeline queues it.</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a>        <span class="c1"># A batch's or unit of work's event is appended in its transaction,</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>        <span class="c1"># just before COMMIT; a plain Redis pipeline queues it.</span>
 <a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="bp">cls</span><span class="o">.</span><span class="n">_log_resolution_event</span><span class="p">(</span>
 <a id="__codelineno-0-710" name="__codelineno-0-710"></a>            <span class="n">instance</span><span class="p">,</span> <span class="n">prediction_error</span><span class="p">,</span> <span class="n">mode</span><span class="p">,</span> <span class="n">uow</span> <span class="k">if</span> <span class="n">uow</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">pipeline</span>
 <a id="__codelineno-0-711" name="__codelineno-0-711"></a>        <span class="p">)</span>
@@ -5161,30 +5155,24 @@ Popoto's ModelBase metaclass, which requires public attributes to be Fields.</p>
 <a id="__codelineno-0-1063" name="__codelineno-0-1063"></a><span class="sd">        """</span>
 <a id="__codelineno-0-1064" name="__codelineno-0-1064"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">.event_stream</span><span class="w"> </span><span class="kn">import</span> <span class="n">EventStreamMixin</span>
 <a id="__codelineno-0-1065" name="__codelineno-0-1065"></a>
-<a id="__codelineno-0-1066" name="__codelineno-0-1066"></a>        <span class="n">after_commit</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pipeline</span><span class="p">,</span> <span class="s2">"after_commit"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-1067" name="__codelineno-0-1067"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">EventStreamMixin</span><span class="p">)</span> <span class="ow">and</span> <span class="n">after_commit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1068" name="__codelineno-0-1068"></a>            <span class="c1"># A Postgres unit of work (#759 M5): the stream is still Redis, so</span>
-<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a>            <span class="c1"># the XADD is sent once the transaction commits, never for one</span>
-<a id="__codelineno-0-1070" name="__codelineno-0-1070"></a>            <span class="c1"># that rolls back (the M4b rule for EventStreamMixin).</span>
-<a id="__codelineno-0-1071" name="__codelineno-0-1071"></a>            <span class="n">after_commit</span><span class="p">(</span>
-<a id="__codelineno-0-1072" name="__codelineno-0-1072"></a>                <span class="k">lambda</span><span class="p">:</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_log_resolution_event</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">prediction_error</span><span class="p">,</span> <span class="n">mode</span><span class="p">)</span>
-<a id="__codelineno-0-1073" name="__codelineno-0-1073"></a>            <span class="p">)</span>
-<a id="__codelineno-0-1074" name="__codelineno-0-1074"></a>            <span class="k">return</span>
-<a id="__codelineno-0-1075" name="__codelineno-0-1075"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">EventStreamMixin</span><span class="p">):</span>
-<a id="__codelineno-0-1076" name="__codelineno-0-1076"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-1077" name="__codelineno-0-1077"></a>                <span class="n">instance</span><span class="o">.</span><span class="n">_xadd_event</span><span class="p">(</span>
-<a id="__codelineno-0-1078" name="__codelineno-0-1078"></a>                    <span class="n">op</span><span class="o">=</span><span class="s2">"prediction_resolved"</span><span class="p">,</span>
-<a id="__codelineno-0-1079" name="__codelineno-0-1079"></a>                    <span class="n">extra_fields</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-0-1080" name="__codelineno-0-1080"></a>                        <span class="s2">"prediction_error"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">prediction_error</span><span class="p">),</span>
-<a id="__codelineno-0-1081" name="__codelineno-0-1081"></a>                        <span class="s2">"resolution_mode"</span><span class="p">:</span> <span class="n">mode</span><span class="p">,</span>
-<a id="__codelineno-0-1082" name="__codelineno-0-1082"></a>                    <span class="p">},</span>
-<a id="__codelineno-0-1083" name="__codelineno-0-1083"></a>                    <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">,</span>
-<a id="__codelineno-0-1084" name="__codelineno-0-1084"></a>                <span class="p">)</span>
-<a id="__codelineno-0-1085" name="__codelineno-0-1085"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-1086" name="__codelineno-0-1086"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-1087" name="__codelineno-0-1087"></a>                    <span class="s2">"PredictionLedger event logging failed for </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
-<a id="__codelineno-0-1088" name="__codelineno-0-1088"></a>                    <span class="nb">type</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-1089" name="__codelineno-0-1089"></a>                <span class="p">)</span>
+<a id="__codelineno-0-1066" name="__codelineno-0-1066"></a>        <span class="c1"># A Postgres unit of work or batch (#759 M5): _xadd_event appends to</span>
+<a id="__codelineno-0-1067" name="__codelineno-0-1067"></a>        <span class="c1"># the backend's stream inside that transaction, just before its</span>
+<a id="__codelineno-0-1068" name="__codelineno-0-1068"></a>        <span class="c1"># COMMIT, so the event commits or rolls back with the resolution.</span>
+<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">EventStreamMixin</span><span class="p">):</span>
+<a id="__codelineno-0-1070" name="__codelineno-0-1070"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-1071" name="__codelineno-0-1071"></a>                <span class="n">instance</span><span class="o">.</span><span class="n">_xadd_event</span><span class="p">(</span>
+<a id="__codelineno-0-1072" name="__codelineno-0-1072"></a>                    <span class="n">op</span><span class="o">=</span><span class="s2">"prediction_resolved"</span><span class="p">,</span>
+<a id="__codelineno-0-1073" name="__codelineno-0-1073"></a>                    <span class="n">extra_fields</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-0-1074" name="__codelineno-0-1074"></a>                        <span class="s2">"prediction_error"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">prediction_error</span><span class="p">),</span>
+<a id="__codelineno-0-1075" name="__codelineno-0-1075"></a>                        <span class="s2">"resolution_mode"</span><span class="p">:</span> <span class="n">mode</span><span class="p">,</span>
+<a id="__codelineno-0-1076" name="__codelineno-0-1076"></a>                    <span class="p">},</span>
+<a id="__codelineno-0-1077" name="__codelineno-0-1077"></a>                    <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">,</span>
+<a id="__codelineno-0-1078" name="__codelineno-0-1078"></a>                <span class="p">)</span>
+<a id="__codelineno-0-1079" name="__codelineno-0-1079"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-1080" name="__codelineno-0-1080"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-1081" name="__codelineno-0-1081"></a>                    <span class="s2">"PredictionLedger event logging failed for </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
+<a id="__codelineno-0-1082" name="__codelineno-0-1082"></a>                    <span class="nb">type</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-1083" name="__codelineno-0-1083"></a>                <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
