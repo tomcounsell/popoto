@@ -184,6 +184,18 @@ class TombstoneStore:
     def __init__(self, model_class: Any):
         self.model_class = model_class
 
+    def _backend(self) -> Any:
+        """The model's backend when it is not Redis (#759 M4): the archive
+        is then that backend's ``popoto_tombstone`` table (``_tomb``
+        ``field_call`` adapters), still outside the model's own table so no
+        query can surface a tombstoned record."""
+        from ..backends.routing import non_redis_backend
+
+        return non_redis_backend(self.model_class)
+
+    def _call(self, backend: Any, op: str, *args: Any) -> Any:
+        return backend.field_call(self.model_class._meta.spec, "_tomb", op, *args)
+
     def keys(self) -> Tuple[str, str]:
         """Return the (data hash, recency index) Redis keys for tombstones."""
         name = self.model_class.__name__
@@ -198,6 +210,10 @@ class TombstoneStore:
         Both commands are queued in one transactional pipeline (``HSET`` then
         ``ZADD``, matching the original write order) and executed together.
         """
+        backend = self._backend()
+        if backend is not None:
+            self._call(backend, "archive", redis_key, entry_bytes, ts)
+            return
         data_key, index_key = self.keys()
         pipeline = _batch()
         pipeline.hset(data_key, redis_key, entry_bytes)
@@ -206,17 +222,26 @@ class TombstoneStore:
 
     def count(self) -> int:
         """Return the number of retained tombstones (``ZCARD`` on the index)."""
+        backend = self._backend()
+        if backend is not None:
+            return int(self._call(backend, "count"))
         _, index_key = self.keys()
         return int(_sync(get_REDIS_DB().zcard(index_key)))
 
     def oldest_keys(self, n: int) -> List[str]:
         """Return up to ``n`` oldest tombstoned keys (``ZRANGE`` 0..n-1)."""
+        backend = self._backend()
+        if backend is not None:
+            return list(self._call(backend, "oldest", n))
         _, index_key = self.keys()
         raw = get_REDIS_DB().zrange(index_key, 0, n - 1)
         return _decoded_members(raw)
 
     def newest_keys(self, stop: int) -> List[str]:
         """Return keys newest-death-first up to ``stop`` (``ZREVRANGE`` 0..stop)."""
+        backend = self._backend()
+        if backend is not None:
+            return list(self._call(backend, "newest", stop))
         _, index_key = self.keys()
         raw = get_REDIS_DB().zrevrange(index_key, 0, stop)
         return _decoded_members(raw)
@@ -227,6 +252,10 @@ class TombstoneStore:
         Both commands are queued in one transactional pipeline (``HDEL`` then
         ``ZREM``, matching the original eviction order) and executed together.
         """
+        backend = self._backend()
+        if backend is not None:
+            self._call(backend, "evict", list(keys))
+            return
         data_key, index_key = self.keys()
         pipeline = _batch()
         pipeline.hdel(data_key, *keys)
@@ -235,6 +264,9 @@ class TombstoneStore:
 
     def get_entry(self, redis_key: str) -> Any:
         """Return the raw stored entry bytes for one key (``HGET``), or None."""
+        backend = self._backend()
+        if backend is not None:
+            return self._call(backend, "entries", [redis_key])[0]
         data_key, _ = self.keys()
         return get_REDIS_DB().hget(data_key, redis_key)
 
@@ -244,6 +276,9 @@ class TombstoneStore:
         Preserves argument order, with ``None`` holes for missing members —
         callers rely on positional correspondence with ``keys``.
         """
+        backend = self._backend()
+        if backend is not None:
+            return list(self._call(backend, "entries", list(keys)))
         data_key, _ = self.keys()
         return _sync(get_REDIS_DB().hmget(data_key, keys))
 
@@ -253,6 +288,9 @@ class TombstoneStore:
         Both commands are queued in one transactional pipeline and executed
         together. Returns True if a tombstone was actually removed.
         """
+        backend = self._backend()
+        if backend is not None:
+            return bool(self._call(backend, "purge", redis_key))
         data_key, index_key = self.keys()
         pipeline = _batch()
         pipeline.hdel(data_key, redis_key)
@@ -269,6 +307,9 @@ class TombstoneStore:
         regardless. A failed count must not leave the tombstones in place — the
         return value is a report, the delete is the job.
         """
+        backend = self._backend()
+        if backend is not None:
+            return int(self._call(backend, "purge_all"))
         try:
             count = self.count()
         except Exception:

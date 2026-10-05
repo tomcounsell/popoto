@@ -44,7 +44,7 @@ import random
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Iterator, Optional, Sequence, Union
+from typing import Any, Callable, Iterator, Optional, Sequence, Union
 
 from ...fields.constants import Defaults
 from ..types import (
@@ -63,6 +63,7 @@ from ..types import (
 from ..planning import has_filters
 from .codec import decode_json, encode_json_element
 from .graph import GraphMixin, graph_delete_lock_sql, graph_delete_sql
+from .recipes import RecipeOpsMixin
 from .memory import NOT_HANDLED, PostgresMemoryOps
 from .plan import (
     non_null_fields,
@@ -276,17 +277,35 @@ class PostgresUnitOfWork(UnitOfWork):
     ``bool(uow)`` is always ``True`` (TD-10).
     """
 
-    __slots__ = ("conn", "reap", "locked")
+    __slots__ = ("conn", "_after_commit", "reap", "locked")
 
     def __init__(self, conn: Any) -> None:
         super().__init__(None, backend="postgres")
         self.conn = conn
+        self._after_commit: list[Callable[[], Any]] = []
         # Meta.ttl tables written in this unit (M5): reaped after it commits.
         self.reap: dict[str, TableSpec] = {}
         # Record-key locks this unit holds (#783): another open unit -- or an
         # autocommit statement -- on the same thread that asks for one of
         # them would wait on its own thread forever.
         self.locked: set[str] = set()
+
+    def after_commit(self, callback: Callable[[], Any]) -> None:
+        """Run ``callback`` once this transaction has committed; drop it if
+        the transaction rolls back. ``EventStreamMixin`` sends its Redis
+        ``XADD`` this way, so a rolled-back write logs no mutation (#759 M4b
+        B2). Callbacks run in registration order, after ``COMMIT`` returns
+        and the connection is back in the pool; one that raises is logged and
+        the rest still run, because the transaction has already committed."""
+        self._after_commit.append(callback)
+
+    def _run_after_commit(self) -> None:
+        callbacks, self._after_commit = self._after_commit, []
+        for callback in callbacks:
+            try:
+                callback()
+            except Exception as exc:
+                logger.warning("after-commit callback %r failed: %s", callback, exc)
 
     @property
     def is_redis_pipeline(self) -> bool:
@@ -338,7 +357,7 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 # -- the backend --------------------------------------------------------------
 
 
-class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin):
+class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin):
     """The Postgres implementation of :class:`popoto.backends.Backend`.
 
     Search -- ``keyword_search``, ``vector_search``, ``membership_*`` and the
@@ -346,8 +365,10 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin):
     (#759 M2b). Groups D/E's ranking and memory state (``touch``,
     ``update_confidence``, ``rank_decayed``, ``rank_composite``) come from
     :class:`~.memory.PostgresMemoryOps` (#759 M2a); the co-occurrence graph
-    (``graph_update``, ``graph_expand``) from :class:`~.graph.GraphMixin`
-    (#759 M4)."""
+    (``graph_update``, ``graph_expand``) from :class:`~.graph.GraphMixin`, and
+    the recipe-layer ``field_call`` adapters (``idle_seconds``, a sorted
+    field's partition reads, counters, tombstones, the question queue) from
+    :class:`~.recipes.RecipeOpsMixin` (#759 M4)."""
 
     name = "postgres"
 
@@ -631,6 +652,7 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin):
             self._tables.clear()
             self.__dict__.pop("_recall_ready", None)
             self._reaper.forget()
+            self.__dict__.pop("_engine_ready", None)
 
     # -- A. lifecycle ----------------------------------------------------------
 
@@ -682,6 +704,11 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin):
                     yield uow
                 finally:
                     units.remove(uow)
+        # Reached only after COMMIT succeeded: an exception in the block, or
+        # at COMMIT, propagates past this line and the callbacks are dropped.
+        # (A popoto.batch() rolled back by reset() clears both lists first:
+        # psycopg swallows its own Rollback signal, so that path gets here.)
+        uow._run_after_commit()
         for ts in list(uow.reap.values()):
             reap(self, ts)
 
@@ -1222,7 +1249,14 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin):
         handled = self._memory_field_call(spec, field, op, args, kwargs, uow)
         if handled is not NOT_HANDLED:
             return handled
-        raise self._later(f"field_call({kind}, {op!r})", "M2")
+        handled = self._recipe_field_call(spec, field, op, args, kwargs, uow)
+        if handled is not NOT_HANDLED:
+            return handled
+        raise BackendCapabilityError(
+            f"PostgresBackend.field_call({kind or field}, {op!r}) has no adapter; "
+            "the remaining ones (CyclicDecayField, TDValueField, "
+            "PredictionLedgerMixin) each arrives in #759 M5"
+        )
 
     def _capped_push(
         self,

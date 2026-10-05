@@ -47,6 +47,7 @@ __all__ = [
     "Column",
     "TableSpec",
     "compile_table",
+    "engine_table_ddl",
     "ensure_table",
     "quote_ident",
     "table_name_for",
@@ -440,6 +441,43 @@ def _record(cur: Any, ts: TableSpec, ddl: Sequence[str], *, insert: bool) -> Non
         )
 
 
+def schema_lock_key(schema: str) -> str:
+    """The advisory-lock key every first use of ``schema`` serialises on.
+
+    ``CREATE SCHEMA IF NOT EXISTS`` is not race-free: two sessions that both
+    see the schema missing both insert into ``pg_namespace`` and one fails
+    with a unique violation. So *every* path that may create the schema --
+    :func:`ensure_table` and :func:`engine_table_ddl` -- takes this one key
+    first, then its per-table key (:func:`table_lock_key`), always in that
+    order so the two never deadlock (#759 M4b B1).
+    """
+    return f"popoto:ddl:{schema}"
+
+
+def table_lock_key(schema: str, table: str) -> str:
+    """The per-table advisory-lock key, taken after :func:`schema_lock_key`."""
+    return f"popoto:ddl:{schema}.{table}"
+
+
+def engine_table_ddl(schema: str, table: str, body: str) -> tuple[str, list[str]]:
+    """One message that creates an engine-owned side table on first use.
+
+    It takes the schema lock, then the table lock, then creates the schema and
+    the table, all in the one implicit transaction the caller runs it in, so a
+    concurrent :func:`ensure_table` or another engine table's first use waits
+    on the schema rather than racing it into ``pg_namespace``. Returns the SQL
+    and its parameters for ``PostgresBackend._run(..., write=True)``.
+    """
+    return (
+        "SELECT pg_advisory_xact_lock(hashtext(%s)); "
+        "SELECT pg_advisory_xact_lock(hashtext(%s)); "
+        f"CREATE SCHEMA IF NOT EXISTS {quote_ident(schema)}; "
+        f"CREATE TABLE IF NOT EXISTS {quote_ident(schema)}.{quote_ident(table)} "
+        f"({body})",
+        [schema_lock_key(schema), table_lock_key(schema, table)],
+    )
+
+
 def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
     """Create or check ``ts`` on ``conn`` inside one transaction, under an
     advisory transaction lock (PgBouncer transaction-mode safe). Returns what
@@ -452,7 +490,7 @@ def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
     with conn.transaction():
         cur = conn.cursor()
         cur.execute(
-            "SELECT pg_advisory_xact_lock(hashtext(%s))", (f"popoto:ddl:{ts.schema}",)
+            "SELECT pg_advisory_xact_lock(hashtext(%s))", (schema_lock_key(ts.schema),)
         )
         exists = cur.execute(
             "SELECT 1 FROM pg_namespace WHERE nspname = %s", (ts.schema,)
@@ -466,7 +504,7 @@ def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
         cur.execute(_registry_sql(ts.schema))
         cur.execute(
             "SELECT pg_advisory_xact_lock(hashtext(%s))",
-            (f"popoto:ddl:{ts.schema}.{ts.table}",),
+            (table_lock_key(ts.schema, ts.table),),
         )
         row = cur.execute(
             f"SELECT model, fingerprint, columns, indexes, format_version, "

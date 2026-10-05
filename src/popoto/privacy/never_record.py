@@ -498,10 +498,24 @@ def never_record_key(class_name: str, kind: str) -> str:
     return f"$NR:{class_name}:{kind}"
 
 
+def _audit_backend(model_class: Any) -> Any:
+    """The model's backend when it is not Redis (#759 M4), else ``None``: the
+    audit log then lives in that backend's ``popoto_never_record_count`` /
+    ``popoto_never_record_log`` tables, so a Postgres-bound model's firewall
+    needs no Redis. Resolving it issues no command."""
+    if model_class is None or not hasattr(model_class, "_meta"):
+        return None
+    from ..backends.routing import non_redis_backend
+
+    return non_redis_backend(model_class)
+
+
 def write_tombstone(
     class_name: str,
     verdict: NeverRecordVerdict,
     redis_client: Any = None,
+    *,
+    model_class: Any = None,
 ) -> str:
     """Record that a drop happened, without recording what was dropped.
 
@@ -526,6 +540,9 @@ def write_tombstone(
         class_name: Model class name, for the key namespace.
         verdict: The blocking verdict. Only its reason/detector are stored.
         redis_client: Optional client override, for tests.
+        model_class: The refusing model (#759 M4). On a non-Redis backend
+            the entry goes to that backend's audit tables instead; omitted
+            (or a Redis-bound model), it goes to Redis as before.
 
     Returns:
         str: The tombstone entry id.
@@ -540,6 +557,22 @@ def write_tombstone(
         },
         sort_keys=True,
     )
+
+    backend = _audit_backend(model_class) if redis_client is None else None
+    if backend is not None:
+        # Best-effort, as the Redis pipeline below is.
+        try:
+            backend.field_call(
+                model_class._meta.spec,
+                "_never_record",
+                "drop",
+                verdict.reason or "unknown",
+                entry,
+                int(Defaults.NR_TOMBSTONE_LOG_MAX),
+            )
+        except Exception:  # pragma: no cover - exercised only on an outage
+            pass
+        return entry_id
 
     if redis_client is None:
         from ..redis_db import POPOTO_REDIS_DB
@@ -672,7 +705,7 @@ class NeverRecordMixin:
                 # write without re-scanning the content. The verdict is
                 # content-free, so holding it costs nothing.
                 self._never_record_verdict = verdict
-                write_tombstone(type(self).__name__, verdict)
+                write_tombstone(type(self).__name__, verdict, model_class=type(self))
                 raise NeverRecordException(
                     f"never-record: {verdict.reason} ({verdict.detector})"
                 )
@@ -692,6 +725,9 @@ class NeverRecordMixin:
         Returns:
             dict: Reason code to integer count. Empty if nothing dropped.
         """
+        backend = _audit_backend(cls) if redis_client is None else None
+        if backend is not None:
+            return dict(backend.field_call(cls._meta.spec, "_never_record", "counts"))
         if redis_client is None:
             from ..redis_db import POPOTO_REDIS_DB
 
@@ -718,11 +754,17 @@ class NeverRecordMixin:
             list: Dicts with ``id``, ``reason``, ``detector``, ``at``. No
             entry contains any fragment of the dropped content.
         """
-        if redis_client is None:
-            from ..redis_db import POPOTO_REDIS_DB
+        backend = _audit_backend(cls) if redis_client is None else None
+        if backend is not None:
+            raw: Any = backend.field_call(cls._meta.spec, "_never_record", "log", limit)
+        else:
+            if redis_client is None:
+                from ..redis_db import POPOTO_REDIS_DB
 
-            redis_client = POPOTO_REDIS_DB
-        raw = redis_client.lrange(never_record_key(cls.__name__, "drops"), 0, limit - 1)
+                redis_client = POPOTO_REDIS_DB
+            raw = redis_client.lrange(
+                never_record_key(cls.__name__, "drops"), 0, limit - 1
+            )
         entries: list[dict[str, Any]] = []
         for item in raw or []:
             if isinstance(item, bytes):

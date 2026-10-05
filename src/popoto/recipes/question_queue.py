@@ -504,6 +504,16 @@ def _bucket_key(agent_id: str) -> str:
     return f"$QuestionBucket:{agent_id}"
 
 
+def _queue_backend() -> Any:
+    """``QuestionCandidate``'s backend when it is not Redis (#759 M4), else
+    ``None``. The bucket, the propose lock and the candidate CAS then go
+    through its ``_qq`` ``field_call`` adapters (``FOR UPDATE SKIP LOCKED``
+    delivery) instead of the Lua below."""
+    from ..backends.routing import non_redis_backend
+
+    return non_redis_backend(QuestionCandidate)
+
+
 #: Propose lock: a correctness bound, not a tuning knob, so it is pinned here
 #: rather than in ``Defaults``. The TTL only has to outlive one dedup scan
 #: plus one save (it exists so a crashed holder cannot wedge the agent's
@@ -533,6 +543,17 @@ def _acquire_propose_lock(agent_id: str) -> Optional[str]:
     Raises on Redis errors."""
     token = uuid.uuid4().hex
     key = _propose_lock_key(agent_id)
+    backend = _queue_backend()
+    if backend is not None:
+        spec = QuestionCandidate._meta.spec
+        for attempt in range(_PROPOSE_LOCK_ATTEMPTS):
+            if backend.field_call(
+                spec, "_qq", "lock", key, token, _PROPOSE_LOCK_TTL_MS
+            ):
+                return token
+            if attempt + 1 < _PROPOSE_LOCK_ATTEMPTS:
+                time.sleep(_PROPOSE_LOCK_RETRY_SECONDS)
+        return None
     client = get_REDIS_DB()
     for attempt in range(_PROPOSE_LOCK_ATTEMPTS):
         if client.set(key, token, nx=True, px=_PROPOSE_LOCK_TTL_MS):
@@ -544,6 +565,16 @@ def _acquire_propose_lock(agent_id: str) -> Optional[str]:
 
 def _release_propose_lock(agent_id: str, token: str) -> None:
     try:
+        backend = _queue_backend()
+        if backend is not None:
+            backend.field_call(
+                QuestionCandidate._meta.spec,
+                "_qq",
+                "release",
+                _propose_lock_key(agent_id),
+                token,
+            )
+            return
         run_lua(get_REDIS_DB(), _RELEASE_LUA, 1, _propose_lock_key(agent_id), token)
     except Exception:
         # The TTL bounds the damage; never let a release error mask the result.
@@ -564,20 +595,35 @@ def _try_deliver(
     if not ordered:
         return None
     allowed = tuple(sorted(_DELIVERABLE_STATUSES))
-    result = run_lua(
-        get_REDIS_DB(),
-        _DELIVER_LUA,
-        1 + len(ordered),
-        _bucket_key(agent_id),
-        *[cand.db_key.redis_key for cand in ordered],
-        int(turn),
-        int(QUESTION_BUDGET_TURNS),
-        int(QUESTION_BUCKET_TTL_SECONDS),
-        msgpack.packb("delivered"),
-        msgpack.packb(int(turn)),
-        len(allowed),
-        *[msgpack.packb(s) for s in allowed],
-    )
+    backend = _queue_backend()
+    if backend is not None:
+        got = backend.field_call(
+            QuestionCandidate._meta.spec,
+            "_qq",
+            "deliver",
+            str(agent_id),
+            [cand.db_key.redis_key for cand in ordered],
+            int(turn),
+            int(QUESTION_BUDGET_TURNS),
+            int(QUESTION_BUCKET_TTL_SECONDS),
+            allowed,
+        )
+        result: Any = None if got is None else list(got)
+    else:
+        result = run_lua(
+            get_REDIS_DB(),
+            _DELIVER_LUA,
+            1 + len(ordered),
+            _bucket_key(agent_id),
+            *[cand.db_key.redis_key for cand in ordered],
+            int(turn),
+            int(QUESTION_BUDGET_TURNS),
+            int(QUESTION_BUCKET_TTL_SECONDS),
+            msgpack.packb("delivered"),
+            msgpack.packb(int(turn)),
+            len(allowed),
+            *[msgpack.packb(s) for s in allowed],
+        )
     if not isinstance(result, (list, tuple)) or len(result) != 2:
         return None
     cand = ordered[int(result[0]) - 1]
@@ -602,6 +648,26 @@ def _claim(
     through the same status again (ABA).
     """
     guard = guard or {}
+    backend = _queue_backend()
+    if backend is not None:
+        from ..backends.types import RecordId
+
+        claimed_on_backend = backend.field_call(
+            QuestionCandidate._meta.spec,
+            "_qq",
+            "claim",
+            RecordId.from_key(
+                QuestionCandidate._meta.model_name, candidate.db_key.redis_key
+            ),
+            tuple(allowed),
+            dict(updates),
+            dict(guard),
+        )
+        if claimed_on_backend:
+            for field_name, value in updates.items():
+                setattr(candidate, field_name, value)
+            return True
+        return False
     args: List[Any] = [len(allowed), len(guard)]
     args.extend(msgpack.packb(s) for s in allowed)
     for field_name, value in guard.items():

@@ -281,6 +281,22 @@ class SubconsciousMemory:
                     "subclass)."
                 )
 
+            from ..backends.routing import non_redis_backend
+
+            backend = non_redis_backend(model_class)
+            if backend is not None:
+                # #759 M4: the decision log is a Redis-only extraction surface
+                # (extraction/decision_log.py, plan §1); a Postgres-bound
+                # model must not split its audit trail across two stores.
+                from ..backends import BackendCapabilityError
+
+                raise BackendCapabilityError(
+                    f"auditable_extraction keeps its decision log in Redis "
+                    f"(extraction/decision_log.py is Redis-only); "
+                    f"{model_class.__name__} is stored on the {backend.name!r} "
+                    "backend"
+                )
+
             from ..extraction.decision_log import DecisionLog
 
             self._decision_log = DecisionLog()
@@ -507,7 +523,9 @@ class SubconsciousMemory:
         if Defaults.NEVER_RECORD_ENABLED:
             verdict = scan_never_record(response_text)
             if verdict.blocked:
-                write_tombstone(self.model_class.__name__, verdict)
+                write_tombstone(
+                    self.model_class.__name__, verdict, model_class=self.model_class
+                )
                 self._last_extraction_privacy_dropped = True
                 if self._auditable is not None:
                     self._log_turn_firewall_block(turn_id)

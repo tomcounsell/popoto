@@ -137,14 +137,10 @@ def _rank_decayed_gated(i: int) -> Any:
             zkey,
             now=_NOW,
             n=10,
-            confidence=confidence_modulation_args(
-                BenchValidMemory, field, "last_seen"
-            ),
+            confidence=confidence_modulation_args(BenchValidMemory, field, "last_seen"),
             validity=validity_gate_args(BenchValidMemory),
         )
-    conf, _ = resolve_confidence_modulation_field(
-        BenchValidMemory, field, "last_seen"
-    )
+    conf, _ = resolve_confidence_modulation_field(BenchValidMemory, field, "last_seen")
     return backend.rank_decayed(
         BenchValidMemory._meta.spec,
         "last_seen",

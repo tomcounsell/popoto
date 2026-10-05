@@ -971,6 +971,36 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     pruned count of `weaken_all`; `(RecordId, score)` pairs), and take a
     `mode` (`bfs`, `linked`, `edges`) and `cap`, so `get_linked` and
     `export_state` are `graph_expand` reads.
+- **M4b as shipped: departures from this plan, recorded.**
+  - **The recipe-layer state outside a model's hash is engine tables**, one
+    per schema, created on first use like `popoto_recall_proposal`:
+    `popoto_counter`, `popoto_tombstone`, `popoto_tombstone_prior` /
+    `_stats`, `popoto_never_record_count` / `_log`,
+    `popoto_question_bucket`, `popoto_lease` and `popoto_embedding_cache`.
+    Each is reached through a `field_call` adapter keyed by a pseudo-field
+    (`_counter`, `_tomb`, `_tombprior`, `_never_record`, `_qq`,
+    `_embed_cache`, `_idle`); a sorted field's `count`/`members`/`score` are
+    adapters on the field itself. `counters.increment`/`read` gain `model=`
+    to pick the backend.
+  - **The question queue's delivery waits only on the agent's bucket
+    advisory lock** and takes the candidate with `FOR UPDATE SKIP LOCKED`,
+    not behind its record-key lock: it never waits on a record, so it cannot
+    join a deadlock cycle, and a candidate a concurrent writer holds is
+    skipped (a documented divergence). The claim CAS is an ordinary record
+    writer (record-key lock, then the row).
+  - **`idle_seconds` is the row's write or confirmed-read clock**, not every
+    read's (no per-read write on Postgres): whole seconds since the later of
+    `_updated_at` and `_last_accessed`.
+  - **`MemoryLifecycle` cannot promote a `KeyField` tier on Postgres**: that
+    is a key migration, which v2 refuses (§1.1); the tier must be a non-key
+    field there. Documented, not worked around in the recipe.
+  - **`EventStreamMixin` is still Redis** (M5): a Postgres-bound
+    `JournalEntry` `XADD`s to Redis after its write.
+    `SubconsciousMemory(auditable_extraction=…)` is refused on a
+    Postgres-bound model, because the decision log is Redis-only (§1).
+  - **`AppendOnlyMixin`'s guard reads inside a Postgres unit of work**, so
+    two saves of one key in one transaction refuse the second -- the
+    intra-pipeline gap stays open on Redis only.
 
 ### M5: the remainder
 

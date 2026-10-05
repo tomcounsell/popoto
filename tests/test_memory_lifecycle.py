@@ -31,6 +31,13 @@ from src.popoto.recipes.memory_lifecycle import (
     MemoryLifecycle,
 )
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Test models
 # ---------------------------------------------------------------------------
@@ -83,13 +90,65 @@ LinkedMemory.related = popoto.Relationship(model=LinkedMemory, null=True)
 LinkedMemory._meta.add_field("related", LinkedMemory.related)
 
 
+# The Postgres leg's declarations (#759 M4b). A KeyField tier makes every
+# promotion a key migration, which Postgres refuses in v2, so MemoryLifecycle
+# refuses a KeyField tier at construction on a Postgres-bound model
+# (tests/postgres/test_postgres_recipes.py::
+# test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres). On that
+# leg each test runs against a twin that declares the tier as an IndexedField,
+# the declaration the refusal points to; the Redis leg keeps the KeyField
+# models above, unchanged.
+
+
+class TrackedMemoryIndexedTier(AccessTrackerMixin, popoto.Model):
+    key = popoto.AutoKeyField()
+    tier = popoto.IndexedField(type=str, default="episodic")
+    relevance = DecayingSortedField(decay_rate=0.5)
+    confidence = ConfidenceField(initial_confidence=0.5)
+
+
+class UntrackedMemoryIndexedTier(popoto.Model):
+    key = popoto.AutoKeyField()
+    tier = popoto.IndexedField(type=str, default="episodic")
+    relevance = DecayingSortedField(decay_rate=0.5)
+
+
+class LinkedMemoryIndexedTier(popoto.Model):
+    key = popoto.AutoKeyField()
+    tier = popoto.IndexedField(type=str, default="episodic")
+    relevance = DecayingSortedField(decay_rate=0.5)
+    confidence = ConfidenceField(initial_confidence=0.5)
+
+
+LinkedMemoryIndexedTier.related = popoto.Relationship(
+    model=LinkedMemoryIndexedTier, null=True
+)
+LinkedMemoryIndexedTier._meta.add_field("related", LinkedMemoryIndexedTier.related)
+
+_INDEXED_TIER_TWINS = {
+    "TrackedMemory": TrackedMemoryIndexedTier,
+    "UntrackedMemory": UntrackedMemoryIndexedTier,
+    "LinkedMemory": LinkedMemoryIndexedTier,
+}
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
-def clean_db():
+def _leg_models(backend, monkeypatch):
+    """On a non-Redis leg, rebind the KeyField-tier models to their
+    IndexedField-tier twins for the test (the module globals are read at
+    call time, so the test bodies and helpers need no change)."""
+    if not backend.is_redis:
+        for name, twin in _INDEXED_TIER_TWINS.items():
+            monkeypatch.setitem(globals(), name, twin)
+
+
+@pytest.fixture(autouse=True)
+def clean_db(_leg_models):
     """Flush all test models before and after each test."""
     models = [
         TrackedMemory,
@@ -908,6 +967,12 @@ def test_forget_guard_skips_record_promoted_to_semantic():
     ), "Re-check-tier guard failed: record was deleted despite tier being semantic in Redis"
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "races the forget with a raw Redis DEL and checks EXISTS; the twin deletes "
+        "the row (test_postgres_recipes.py::test_the_forget_guard_skips_a_vanished_row)"
+    )
+)
 def test_forget_guard_skips_absent_key():
     """Re-check-tier guard: a record already deleted (key absent) is skipped
     without raising an exception.
@@ -1013,7 +1078,20 @@ def _set_confidence(record, confidence, evidence_count, field_name="confidence")
     """
     import msgpack
     import popoto as popoto_pkg
+    from popoto.backends import get_backend
 
+    backend = get_backend(type(record))
+    if backend.name != "redis":
+        # The Postgres leg (#759 M4): the same state, in the field's state
+        # columns (<f>__conf/__n/__corr/__contra) instead of the :data hash.
+        ts = backend._table(type(record)._meta.spec)
+        backend._run(
+            f'UPDATE {ts.qualified} SET "{field_name}__conf" = %s, '
+            f'"{field_name}__n" = %s, "{field_name}__corr" = 0, '
+            f'"{field_name}__contra" = %s WHERE "_pk" = %s',
+            [confidence, evidence_count, evidence_count, record.db_key.redis_key],
+        )
+        return
     field = type(record)._meta.fields[field_name]
     data_key = field.get_data_hash_key(record, field_name)
     popoto_pkg.get_redis().hset(
@@ -1305,6 +1383,13 @@ def test_tombstoned_record_excluded_from_graph_traversal():
     assert lifecycle.tombstone_count() == 1
 
 
+@pytest.mark.redis_only(
+    reason=(
+        "plants the partial entry with a raw HSET/ZADD on the $TOMB keys; the twin "
+        "writes it to popoto_tombstone "
+        "(test_postgres_recipes.py::test_a_partial_tombstone_entry_is_dropped)"
+    )
+)
 def test_partial_tombstone_entry_is_dropped_not_inflated(caplog):
     """A partial msgpack entry is skipped, never inflated into a None-filled Tombstone.
 

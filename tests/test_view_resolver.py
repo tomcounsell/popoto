@@ -26,6 +26,13 @@ from src.popoto.recipes.view_resolver import (
     resolve_policy,
 )
 
+# Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Fakes (pure-fold tests touch no Redis)
 # ---------------------------------------------------------------------------
@@ -378,6 +385,12 @@ class TestResolverIntegration:
         sheet = _resolver().resolve({"content": "hello"}, reader={"agent_id": "a1"})
         assert len(sheet.claims) == 1
 
+    @pytest.mark.redis_only(
+        reason=(
+            "counts TagFieldMixin.filter_query, the Redis tag-set read; on Postgres the "
+            "tag gate is one id-only SELECT with && / @> and never calls it"
+        )
+    )
     def test_tagged_gate_is_one_batched_read(self, clean_store, monkeypatch):
         _save(SheetMemory, agent_id="a1", content="hello", labels=["keep"])
         calls = []

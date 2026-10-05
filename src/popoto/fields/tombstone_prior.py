@@ -140,6 +140,18 @@ class TombstonePriorStore:
     def __init__(self, model_class: Any):
         self.model_class = model_class
 
+    def _backend(self) -> Any:
+        """The model's backend when it is not Redis (#759 M4): the prior is
+        then that backend's ``popoto_tombstone_prior`` / ``popoto_tombstone_stats``
+        tables (``_tombprior`` ``field_call`` adapters). Every call keeps this
+        module's best-effort posture."""
+        from ..backends.routing import non_redis_backend
+
+        return non_redis_backend(self.model_class)
+
+    def _call(self, backend: Any, op: str, *args: Any) -> Any:
+        return backend.field_call(self.model_class._meta.spec, "_tombprior", op, *args)
+
     def keys(self) -> Tuple[str, str, str]:
         """Return the (burials hash, recency index, stats hash) Redis keys."""
         name = self.model_class.__name__
@@ -168,6 +180,19 @@ class TombstonePriorStore:
         key = digest_fingerprint(fingerprint)
         if key is None:
             return False
+        backend = self._backend()
+        if backend is not None:
+            # The burial and the retention sweep, as two statements.
+            try:
+                self._call(
+                    backend, "bury", key, ts, int(Defaults.TOMBSTONE_PRIOR_LIMIT)
+                )
+            except Exception as exc:
+                logger.warning(
+                    "tombstone prior: burial write failed for %s: %s", key, exc
+                )
+                return False
+            return True
         burials_key, index_key, _ = self.keys()
         try:
             pipeline = _batch()
@@ -223,6 +248,15 @@ class TombstonePriorStore:
         key = digest_fingerprint(fingerprint)
         if key is None:
             return 0
+        backend = self._backend()
+        if backend is not None:
+            try:
+                return max(int(self._call(backend, "burials", key)), 0)
+            except Exception as exc:
+                logger.warning(
+                    "tombstone prior: burial read failed for %s: %s", key, exc
+                )
+                return 0
         burials_key, _, _ = self.keys()
         try:
             raw = get_REDIS_DB().hget(burials_key, key)
@@ -251,6 +285,13 @@ class TombstonePriorStore:
         Both counters move in one transactional pipeline so they can never
         disagree about how much drawdown the penalized writes account for.
         """
+        backend = self._backend()
+        if backend is not None:
+            try:
+                self._call(backend, "penalty", before - after)
+            except Exception as exc:
+                logger.warning("tombstone prior: telemetry write failed: %s", exc)
+            return
         _, _, stats_key = self.keys()
         try:
             pipeline = _batch()
@@ -268,8 +309,19 @@ class TombstonePriorStore:
             nothing has been penalized or the read fails, so a caller can
             always render the numbers.
         """
-        _, _, stats_key = self.keys()
         result: Dict[str, float] = {STAT_PENALIZED: 0, STAT_DRAWDOWN_TOTAL: 0.0}
+        backend = self._backend()
+        if backend is not None:
+            try:
+                row = self._call(backend, "stats")
+            except Exception as exc:
+                logger.warning("tombstone prior: stats read failed: %s", exc)
+                return result
+            if row is not None:
+                result[STAT_PENALIZED] = int(row[0])
+                result[STAT_DRAWDOWN_TOTAL] = float(row[1])
+            return result
+        _, _, stats_key = self.keys()
         try:
             raw = cast(Any, get_REDIS_DB().hgetall(stats_key)) or {}
         except Exception as exc:
@@ -295,6 +347,9 @@ class TombstonePriorStore:
 
     def count(self) -> int:
         """Return how many distinct buried fingerprints are tracked."""
+        backend = self._backend()
+        if backend is not None:
+            return int(self._call(backend, "count"))
         _, index_key, _ = self.keys()
         return int(cast(Any, get_REDIS_DB().zcard(index_key)))
 
@@ -304,6 +359,9 @@ class TombstonePriorStore:
         The count read is best-effort — the return value is a report, the
         delete is the job.
         """
+        backend = self._backend()
+        if backend is not None:
+            return int(self._call(backend, "purge_all"))
         try:
             count = self.count()
         except Exception:

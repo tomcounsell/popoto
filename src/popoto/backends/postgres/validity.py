@@ -238,7 +238,7 @@ def ensure_validity_tables(conn: Any, ts: TableSpec, spec: ModelSpec) -> None:
     holds the model table's locks. ``CREATE … IF NOT EXISTS`` is idempotent,
     so a process that finds the table does nothing."""
     from . import _schema_auto
-    from .schema import _bounded
+    from .schema import _bounded, table_lock_key
 
     for field in validity_field_names(spec):
         qualified = pointer_table(ts, field)
@@ -258,7 +258,7 @@ def ensure_validity_tables(conn: Any, ts: TableSpec, spec: ModelSpec) -> None:
                 )
             cur.execute(
                 "SELECT pg_advisory_xact_lock(hashtext(%s))",
-                (f"popoto:ddl:{ts.schema}.{ts.table}",),
+                (table_lock_key(ts.schema, ts.table),),
             )
             cur.execute(
                 f"CREATE TABLE IF NOT EXISTS {qualified} ("
