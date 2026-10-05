@@ -4191,7 +4191,10 @@ straight to <code>top_by_decay</code> on a cyclic field sees the gap; such a cal
 should use <code>composite_score</code>, or intersect with
 <code>filter(validity__current=True)</code>. Pinned by
 <code>tests/test_validity_field.py::TestCyclicDecayGatingGap</code>, which fails
-loudly if the gate is ever added — update this entry then.</p>
+loudly if the gate is ever added — update this entry then. The Postgres
+backend reproduces the gap (#759 M5): its cyclic ranking expression
+accepts the validity field and ignores it, and the same test runs on both
+conformance legs.</p>
 <p>Where the gap lives changed in
 <a href="https://github.com/tomcounsell/popoto/issues/662">#662</a>, though the gap
 itself did not. <code>top_by_decay</code> no longer branches on field type to pick a

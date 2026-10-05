@@ -1256,6 +1256,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#valkey-compatibility" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3249,6 +3260,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#valkey-compatibility" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3384,6 +3406,11 @@
 <h2 id="storage-and-encoding">Storage and encoding<a class="headerlink" href="#storage-and-encoding" title="Permanent link">&para;</a></h2>
 <p>The value is written as the <code>__Decimal__</code> tagged dict that every <code>DecimalField</code> uses, encoded with <code>cmsgpack</code> inside the script so it is byte-interchangeable with what Python's msgpack encoder produces.</p>
 <p>This matters beyond tidiness. <code>DecayingSortedField</code> reads a <code>base_score_field</code> straight out of the member's hash in its own Lua and falls back to <code>1.0</code> for any encoding it does not recognize. A <code>PolicyEntry</code> declares <code>expected_value = DecayingSortedField(base_score_field="q_value")</code>, so if <code>TDValueField</code> wrote any other encoding, the decay clock would silently fall back to a magnitude of 1.0 rather than error. Keeping <code>TDValueField</code> a <code>DecimalField</code> subclass — <code>type is Decimal</code> — is what keeps that contract.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On a Postgres-bound model (#759 M5) the field is a <code>numeric</code> column and
+<code>td_update</code> is one <code>UPDATE</code> with the script's arithmetic in the same order,
+storing the script's <code>tostring</code> of the new value and replying its <code>tostring</code>
+of the TD error. See <a href="../postgres-backend/#long-tail-fields-m5">Postgres Backend</a>.</p>
 <h2 id="valkey-compatibility">Valkey compatibility<a class="headerlink" href="#valkey-compatibility" title="Permanent link">&para;</a></h2>
 <p>Core commands only — <code>HGET</code>, <code>HSET</code>, and <code>cmsgpack</code> inside the script. No Redis-module commands (<code>BF.</code>, <code>CMS.</code>, <code>TOPK.</code>, <code>TS.</code>, <code>JSON.</code>), so this field behaves identically on Redis and Valkey.</p>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>

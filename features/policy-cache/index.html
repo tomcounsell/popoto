@@ -1631,6 +1631,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3316,6 +3327,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3484,6 +3506,12 @@ update on a model that is not a <code>PolicyEntry</code>.</p>
 <li><code>wilson_ci_lower(successes, total)</code> — Wilson score confidence interval lower bound</li>
 <li><code>chi_squared_uniform(observed)</code> — chi-squared test against uniform distribution</li>
 </ul>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p><code>PolicyEntry</code> runs unchanged on a Postgres-bound model (#759 M5): its
+<code>TDValueField</code>, <code>PredictionLedgerMixin</code>, <code>ConfidenceField</code>, decay clock,
+co-occurrence graph and existence filter are all stored there, and its
+<code>EventStreamMixin</code> mutation log is still sent to Redis after each write
+commits. See <a href="../postgres-backend/#long-tail-fields-m5">Postgres Backend</a>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../context-assembler/">ContextAssembler</a> — retrieval-to-injection bridge</li>

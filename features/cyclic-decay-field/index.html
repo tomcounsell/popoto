@@ -1278,6 +1278,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#scoring-formula" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3455,6 +3466,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#scoring-formula" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3811,6 +3833,15 @@ subclassed field read hashes nothing had written; it degraded silently to
 plain decay rather than raising, and is fixed in
 <a href="https://github.com/tomcounsell/popoto/issues/662">#662</a>.</p>
 </div>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On a Postgres-bound model (#759 M5) the clock is the field's column and the
+two companion hashes are columns beside it: the cycles as four parallel
+<code>double precision[]</code> columns, the pressure as two <code>double precision</code> columns.
+The scoring formula below, the save-time merge (#698's three-way rule) and
+<code>strengthen_cycle</code> / <code>weaken_cycle</code> / <code>resolve_pressure</code> are the same SQL
+transcriptions of the three scripts, bit for bit, and the ranking has the same
+missing validity gate. See
+<a href="../postgres-backend/#long-tail-fields-m5">Postgres Backend</a>.</p>
 <h2 id="scoring-formula">Scoring Formula<a class="headerlink" href="#scoring-formula" title="Permanent link">&para;</a></h2>
 <p>The extended Lua script computes per member:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>elapsed_days = max((now - last_updated) / 86400, 0.01)
