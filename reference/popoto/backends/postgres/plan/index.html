@@ -3271,7 +3271,7 @@ normalised <code>text[]</code>, a <code>Relationship</code> as the target's key 
 
 
 <h3 id="popoto.backends.postgres.plan.render_where" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">render_where</span><span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">kinds</span><span class="p">,</span> <span class="n">where</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">render_where</span><span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">kinds</span><span class="p">,</span> <span class="n">where</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">live</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
 
 <a href="#popoto.backends.postgres.plan.render_where" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -3279,6 +3279,11 @@ normalised <code>text[]</code>, a <code>Relationship</code> as the target's key 
     <div class="doc doc-contents ">
 
         <p><code>(" WHERE …", params)</code>, or <code>("", [])</code> for no predicate.</p>
+<p>On a <code>Meta.ttl</code> model the TTL read filter is ANDed on (M5, <code>.ttl</code>):
+every reader that scopes the record table through this -- <code>select</code>,
+<code>count</code>, ranking, search, <code>recall</code> -- sees only rows that have not
+expired. <code>live=False</code> leaves it off. A model without <code>Meta.ttl</code>
+renders exactly as before.</p>
 
 
             <details class="mkdocstrings-source">
@@ -3290,14 +3295,36 @@ normalised <code>text[]</code>, a <code>Relationship</code> as the target's key 
 <span class="normal"><a href="#__codelineno-0-549">549</a></span>
 <span class="normal"><a href="#__codelineno-0-550">550</a></span>
 <span class="normal"><a href="#__codelineno-0-551">551</a></span>
-<span class="normal"><a href="#__codelineno-0-552">552</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="k">def</span><span class="w"> </span><span class="nf">render_where</span><span class="p">(</span>
-<a id="__codelineno-0-546" name="__codelineno-0-546"></a>    <span class="n">ts</span><span class="p">:</span> <span class="n">TableSpec</span><span class="p">,</span> <span class="n">kinds</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">where</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Predicate</span><span class="p">]</span>
-<a id="__codelineno-0-547" name="__codelineno-0-547"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]]:</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a><span class="w">    </span><span class="sd">"""``(" WHERE …", params)``, or ``("", [])`` for no predicate."""</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a>    <span class="k">if</span> <span class="n">where</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-550" name="__codelineno-0-550"></a>        <span class="k">return</span> <span class="s2">""</span><span class="p">,</span> <span class="p">[]</span>
-<a id="__codelineno-0-551" name="__codelineno-0-551"></a>    <span class="n">params</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-552" name="__codelineno-0-552"></a>    <span class="k">return</span> <span class="s2">" WHERE "</span> <span class="o">+</span> <span class="n">_pred_sql</span><span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">kinds</span><span class="p">,</span> <span class="n">where</span><span class="p">,</span> <span class="n">params</span><span class="p">),</span> <span class="n">params</span>
+<span class="normal"><a href="#__codelineno-0-552">552</a></span>
+<span class="normal"><a href="#__codelineno-0-553">553</a></span>
+<span class="normal"><a href="#__codelineno-0-554">554</a></span>
+<span class="normal"><a href="#__codelineno-0-555">555</a></span>
+<span class="normal"><a href="#__codelineno-0-556">556</a></span>
+<span class="normal"><a href="#__codelineno-0-557">557</a></span>
+<span class="normal"><a href="#__codelineno-0-558">558</a></span>
+<span class="normal"><a href="#__codelineno-0-559">559</a></span>
+<span class="normal"><a href="#__codelineno-0-560">560</a></span>
+<span class="normal"><a href="#__codelineno-0-561">561</a></span>
+<span class="normal"><a href="#__codelineno-0-562">562</a></span>
+<span class="normal"><a href="#__codelineno-0-563">563</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="k">def</span><span class="w"> </span><span class="nf">render_where</span><span class="p">(</span>
+<a id="__codelineno-0-546" name="__codelineno-0-546"></a>    <span class="n">ts</span><span class="p">:</span> <span class="n">TableSpec</span><span class="p">,</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a>    <span class="n">kinds</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a>    <span class="n">where</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Predicate</span><span class="p">],</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a>    <span class="n">live</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]]:</span>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="w">    </span><span class="sd">"""``(" WHERE …", params)``, or ``("", [])`` for no predicate.</span>
+<a id="__codelineno-0-553" name="__codelineno-0-553"></a>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="sd">    On a ``Meta.ttl`` model the TTL read filter is ANDed on (M5, ``.ttl``):</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a><span class="sd">    every reader that scopes the record table through this -- ``select``,</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a><span class="sd">    ``count``, ranking, search, ``recall`` -- sees only rows that have not</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">    expired. ``live=False`` leaves it off. A model without ``Meta.ttl``</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">    renders exactly as before."""</span>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">.ttl</span><span class="w"> </span><span class="kn">import</span> <span class="n">and_live</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a>
+<a id="__codelineno-0-561" name="__codelineno-0-561"></a>    <span class="n">params</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a>    <span class="n">sql</span> <span class="o">=</span> <span class="s2">""</span> <span class="k">if</span> <span class="n">where</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">" WHERE "</span> <span class="o">+</span> <span class="n">_pred_sql</span><span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">kinds</span><span class="p">,</span> <span class="n">where</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a>    <span class="k">return</span> <span class="p">(</span><span class="n">and_live</span><span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">sql</span><span class="p">)</span> <span class="k">if</span> <span class="n">live</span> <span class="k">else</span> <span class="n">sql</span><span class="p">),</span> <span class="n">params</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3321,27 +3348,27 @@ non-<code>None</code> exact match) in the top-level conjunction.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/backends/postgres/plan.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-582">582</a></span>
-<span class="normal"><a href="#__codelineno-0-583">583</a></span>
-<span class="normal"><a href="#__codelineno-0-584">584</a></span>
-<span class="normal"><a href="#__codelineno-0-585">585</a></span>
-<span class="normal"><a href="#__codelineno-0-586">586</a></span>
-<span class="normal"><a href="#__codelineno-0-587">587</a></span>
-<span class="normal"><a href="#__codelineno-0-588">588</a></span>
-<span class="normal"><a href="#__codelineno-0-589">589</a></span>
-<span class="normal"><a href="#__codelineno-0-590">590</a></span>
-<span class="normal"><a href="#__codelineno-0-591">591</a></span>
-<span class="normal"><a href="#__codelineno-0-592">592</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-582" name="__codelineno-0-582"></a><span class="k">def</span><span class="w"> </span><span class="nf">non_null_fields</span><span class="p">(</span><span class="n">where</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Predicate</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a><span class="w">    </span><span class="sd">"""Fields the predicate guarantees are not ``NULL``: a range lookup (or a</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">    non-``None`` exact match) in the top-level conjunction."""</span>
-<a id="__codelineno-0-585" name="__codelineno-0-585"></a>    <span class="n">items</span> <span class="o">=</span> <span class="n">where</span><span class="o">.</span><span class="n">items</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">where</span><span class="p">,</span> <span class="n">And</span><span class="p">)</span> <span class="k">else</span> <span class="p">(</span><span class="n">where</span><span class="p">,)</span> <span class="k">if</span> <span class="n">where</span> <span class="k">else</span> <span class="p">()</span>
-<a id="__codelineno-0-586" name="__codelineno-0-586"></a>    <span class="n">out</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a>    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
-<a id="__codelineno-0-588" name="__codelineno-0-588"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">Cond</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span>
-<a id="__codelineno-0-589" name="__codelineno-0-589"></a>            <span class="n">item</span><span class="o">.</span><span class="n">op</span> <span class="ow">in</span> <span class="n">_NON_NULL_OPS</span> <span class="ow">or</span> <span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">op</span> <span class="ow">is</span> <span class="n">Op</span><span class="o">.</span><span class="n">EXACT</span> <span class="ow">and</span> <span class="n">item</span><span class="o">.</span><span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-590" name="__codelineno-0-590"></a>        <span class="p">):</span>
-<a id="__codelineno-0-591" name="__codelineno-0-591"></a>            <span class="n">out</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">field</span><span class="p">)</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>    <span class="k">return</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-593">593</a></span>
+<span class="normal"><a href="#__codelineno-0-594">594</a></span>
+<span class="normal"><a href="#__codelineno-0-595">595</a></span>
+<span class="normal"><a href="#__codelineno-0-596">596</a></span>
+<span class="normal"><a href="#__codelineno-0-597">597</a></span>
+<span class="normal"><a href="#__codelineno-0-598">598</a></span>
+<span class="normal"><a href="#__codelineno-0-599">599</a></span>
+<span class="normal"><a href="#__codelineno-0-600">600</a></span>
+<span class="normal"><a href="#__codelineno-0-601">601</a></span>
+<span class="normal"><a href="#__codelineno-0-602">602</a></span>
+<span class="normal"><a href="#__codelineno-0-603">603</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-593" name="__codelineno-0-593"></a><span class="k">def</span><span class="w"> </span><span class="nf">non_null_fields</span><span class="p">(</span><span class="n">where</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Predicate</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a><span class="w">    </span><span class="sd">"""Fields the predicate guarantees are not ``NULL``: a range lookup (or a</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a><span class="sd">    non-``None`` exact match) in the top-level conjunction."""</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a>    <span class="n">items</span> <span class="o">=</span> <span class="n">where</span><span class="o">.</span><span class="n">items</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">where</span><span class="p">,</span> <span class="n">And</span><span class="p">)</span> <span class="k">else</span> <span class="p">(</span><span class="n">where</span><span class="p">,)</span> <span class="k">if</span> <span class="n">where</span> <span class="k">else</span> <span class="p">()</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a>    <span class="n">out</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a>    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">Cond</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a>            <span class="n">item</span><span class="o">.</span><span class="n">op</span> <span class="ow">in</span> <span class="n">_NON_NULL_OPS</span> <span class="ow">or</span> <span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">op</span> <span class="ow">is</span> <span class="n">Op</span><span class="o">.</span><span class="n">EXACT</span> <span class="ow">and</span> <span class="n">item</span><span class="o">.</span><span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a>        <span class="p">):</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a>            <span class="n">out</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">field</span><span class="p">)</span>
+<a id="__codelineno-0-603" name="__codelineno-0-603"></a>    <span class="k">return</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3370,18 +3397,7 @@ column is ordered, so its B-tree can serve the <code>ORDER BY … LIMIT</code>.<
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/backends/postgres/plan.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-595">595</a></span>
-<span class="normal"><a href="#__codelineno-0-596">596</a></span>
-<span class="normal"><a href="#__codelineno-0-597">597</a></span>
-<span class="normal"><a href="#__codelineno-0-598">598</a></span>
-<span class="normal"><a href="#__codelineno-0-599">599</a></span>
-<span class="normal"><a href="#__codelineno-0-600">600</a></span>
-<span class="normal"><a href="#__codelineno-0-601">601</a></span>
-<span class="normal"><a href="#__codelineno-0-602">602</a></span>
-<span class="normal"><a href="#__codelineno-0-603">603</a></span>
-<span class="normal"><a href="#__codelineno-0-604">604</a></span>
-<span class="normal"><a href="#__codelineno-0-605">605</a></span>
-<span class="normal"><a href="#__codelineno-0-606">606</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-606">606</a></span>
 <span class="normal"><a href="#__codelineno-0-607">607</a></span>
 <span class="normal"><a href="#__codelineno-0-608">608</a></span>
 <span class="normal"><a href="#__codelineno-0-609">609</a></span>
@@ -3408,45 +3424,56 @@ column is ordered, so its B-tree can serve the <code>ORDER BY … LIMIT</code>.<
 <span class="normal"><a href="#__codelineno-0-630">630</a></span>
 <span class="normal"><a href="#__codelineno-0-631">631</a></span>
 <span class="normal"><a href="#__codelineno-0-632">632</a></span>
-<span class="normal"><a href="#__codelineno-0-633">633</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-595" name="__codelineno-0-595"></a><span class="k">def</span><span class="w"> </span><span class="nf">render_order</span><span class="p">(</span>
-<a id="__codelineno-0-596" name="__codelineno-0-596"></a>    <span class="n">ts</span><span class="p">:</span> <span class="n">TableSpec</span><span class="p">,</span>
-<a id="__codelineno-0-597" name="__codelineno-0-597"></a>    <span class="n">terms</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">OrderTerm</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a>    <span class="n">not_null</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(),</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-600" name="__codelineno-0-600"></a><span class="w">    </span><span class="sd">"""``ORDER BY`` for ``terms`` plus the deterministic tie-break</span>
-<a id="__codelineno-0-601" name="__codelineno-0-601"></a><span class="sd">    ``_pk COLLATE "C"`` (Redis's bytewise member order).</span>
-<a id="__codelineno-0-602" name="__codelineno-0-602"></a>
-<a id="__codelineno-0-603" name="__codelineno-0-603"></a><span class="sd">    A ``NULL`` sorts as the type's zero value, as ``prepare_results``'s</span>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a><span class="sd">    ``getattr(obj, f) or type()`` does; a descending primary term reverses</span>
-<a id="__codelineno-0-605" name="__codelineno-0-605"></a><span class="sd">    the whole order, as ``list(reversed(…))`` does on Redis. For a field in</span>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a><span class="sd">    ``not_null`` (the WHERE already excludes its ``NULL`` rows) the bare</span>
-<a id="__codelineno-0-607" name="__codelineno-0-607"></a><span class="sd">    column is ordered, so its B-tree can serve the ``ORDER BY … LIMIT``.</span>
-<a id="__codelineno-0-608" name="__codelineno-0-608"></a><span class="sd">    """</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>    <span class="n">parts</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-610" name="__codelineno-0-610"></a>    <span class="n">descending</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">terms</span><span class="p">)</span> <span class="ow">and</span> <span class="n">terms</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">descending</span>
-<a id="__codelineno-0-611" name="__codelineno-0-611"></a>    <span class="k">for</span> <span class="n">term</span> <span class="ow">in</span> <span class="n">terms</span><span class="p">:</span>
-<a id="__codelineno-0-612" name="__codelineno-0-612"></a>        <span class="k">if</span> <span class="n">term</span><span class="o">.</span><span class="n">random</span><span class="p">:</span>
-<a id="__codelineno-0-613" name="__codelineno-0-613"></a>            <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"random()"</span><span class="p">)</span>
-<a id="__codelineno-0-614" name="__codelineno-0-614"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-615" name="__codelineno-0-615"></a>        <span class="k">assert</span> <span class="n">term</span><span class="o">.</span><span class="n">field</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-616" name="__codelineno-0-616"></a>        <span class="k">if</span> <span class="n">ts</span><span class="o">.</span><span class="n">is_json</span><span class="p">(</span><span class="n">term</span><span class="o">.</span><span class="n">field</span><span class="p">):</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a>            <span class="k">raise</span> <span class="n">_collection_order_error</span><span class="p">(</span><span class="n">term</span><span class="o">.</span><span class="n">field</span><span class="p">)</span>
-<a id="__codelineno-0-618" name="__codelineno-0-618"></a>        <span class="n">col</span> <span class="o">=</span> <span class="n">quote_ident</span><span class="p">(</span><span class="n">term</span><span class="o">.</span><span class="n">field</span><span class="p">)</span>
-<a id="__codelineno-0-619" name="__codelineno-0-619"></a>        <span class="n">py_type</span> <span class="o">=</span> <span class="n">ts</span><span class="o">.</span><span class="n">field_types</span><span class="p">[</span><span class="n">term</span><span class="o">.</span><span class="n">field</span><span class="p">]</span>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a>        <span class="n">zero</span> <span class="o">=</span> <span class="n">_ZERO</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">py_type</span><span class="p">)</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a>        <span class="n">known_not_null</span> <span class="o">=</span> <span class="n">term</span><span class="o">.</span><span class="n">field</span> <span class="ow">in</span> <span class="n">not_null</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>        <span class="k">if</span> <span class="n">known_not_null</span><span class="p">:</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>            <span class="n">zero</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="n">expr</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"coalesce(</span><span class="si">{</span><span class="n">col</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">zero</span><span class="si">}</span><span class="s2">)"</span> <span class="k">if</span> <span class="n">zero</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">col</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>        <span class="k">if</span> <span class="n">py_type</span> <span class="ow">is</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>            <span class="n">expr</span> <span class="o">+=</span> <span class="s1">' COLLATE "C"'</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="n">direction</span> <span class="o">=</span> <span class="s2">"DESC"</span> <span class="k">if</span> <span class="n">term</span><span class="o">.</span><span class="n">descending</span> <span class="k">else</span> <span class="s2">"ASC"</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a>        <span class="n">nulls</span> <span class="o">=</span> <span class="s2">""</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>        <span class="k">if</span> <span class="n">zero</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">known_not_null</span><span class="p">:</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>            <span class="n">nulls</span> <span class="o">=</span> <span class="s2">" NULLS LAST"</span> <span class="k">if</span> <span class="n">term</span><span class="o">.</span><span class="n">descending</span> <span class="k">else</span> <span class="s2">" NULLS FIRST"</span>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">expr</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">direction</span><span class="si">}{</span><span class="n">nulls</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>    <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">'"_pk" COLLATE "C" </span><span class="si">{</span><span class="s2">"DESC"</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">descending</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s2">"ASC"</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a>    <span class="k">return</span> <span class="s2">" ORDER BY "</span> <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-633">633</a></span>
+<span class="normal"><a href="#__codelineno-0-634">634</a></span>
+<span class="normal"><a href="#__codelineno-0-635">635</a></span>
+<span class="normal"><a href="#__codelineno-0-636">636</a></span>
+<span class="normal"><a href="#__codelineno-0-637">637</a></span>
+<span class="normal"><a href="#__codelineno-0-638">638</a></span>
+<span class="normal"><a href="#__codelineno-0-639">639</a></span>
+<span class="normal"><a href="#__codelineno-0-640">640</a></span>
+<span class="normal"><a href="#__codelineno-0-641">641</a></span>
+<span class="normal"><a href="#__codelineno-0-642">642</a></span>
+<span class="normal"><a href="#__codelineno-0-643">643</a></span>
+<span class="normal"><a href="#__codelineno-0-644">644</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-606" name="__codelineno-0-606"></a><span class="k">def</span><span class="w"> </span><span class="nf">render_order</span><span class="p">(</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>    <span class="n">ts</span><span class="p">:</span> <span class="n">TableSpec</span><span class="p">,</span>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>    <span class="n">terms</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">OrderTerm</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>    <span class="n">not_null</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(),</span>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a><span class="w">    </span><span class="sd">"""``ORDER BY`` for ``terms`` plus the deterministic tie-break</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a><span class="sd">    ``_pk COLLATE "C"`` (Redis's bytewise member order).</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a><span class="sd">    A ``NULL`` sorts as the type's zero value, as ``prepare_results``'s</span>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a><span class="sd">    ``getattr(obj, f) or type()`` does; a descending primary term reverses</span>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="sd">    the whole order, as ``list(reversed(…))`` does on Redis. For a field in</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="sd">    ``not_null`` (the WHERE already excludes its ``NULL`` rows) the bare</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a><span class="sd">    column is ordered, so its B-tree can serve the ``ORDER BY … LIMIT``.</span>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">    """</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a>    <span class="n">parts</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>    <span class="n">descending</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">terms</span><span class="p">)</span> <span class="ow">and</span> <span class="n">terms</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">descending</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>    <span class="k">for</span> <span class="n">term</span> <span class="ow">in</span> <span class="n">terms</span><span class="p">:</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="k">if</span> <span class="n">term</span><span class="o">.</span><span class="n">random</span><span class="p">:</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>            <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"random()"</span><span class="p">)</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>        <span class="k">assert</span> <span class="n">term</span><span class="o">.</span><span class="n">field</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="k">if</span> <span class="n">ts</span><span class="o">.</span><span class="n">is_json</span><span class="p">(</span><span class="n">term</span><span class="o">.</span><span class="n">field</span><span class="p">):</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>            <span class="k">raise</span> <span class="n">_collection_order_error</span><span class="p">(</span><span class="n">term</span><span class="o">.</span><span class="n">field</span><span class="p">)</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>        <span class="n">col</span> <span class="o">=</span> <span class="n">quote_ident</span><span class="p">(</span><span class="n">term</span><span class="o">.</span><span class="n">field</span><span class="p">)</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>        <span class="n">py_type</span> <span class="o">=</span> <span class="n">ts</span><span class="o">.</span><span class="n">field_types</span><span class="p">[</span><span class="n">term</span><span class="o">.</span><span class="n">field</span><span class="p">]</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>        <span class="n">zero</span> <span class="o">=</span> <span class="n">_ZERO</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">py_type</span><span class="p">)</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>        <span class="n">known_not_null</span> <span class="o">=</span> <span class="n">term</span><span class="o">.</span><span class="n">field</span> <span class="ow">in</span> <span class="n">not_null</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>        <span class="k">if</span> <span class="n">known_not_null</span><span class="p">:</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>            <span class="n">zero</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a>        <span class="n">expr</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"coalesce(</span><span class="si">{</span><span class="n">col</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">zero</span><span class="si">}</span><span class="s2">)"</span> <span class="k">if</span> <span class="n">zero</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">col</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>        <span class="k">if</span> <span class="n">py_type</span> <span class="ow">is</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>            <span class="n">expr</span> <span class="o">+=</span> <span class="s1">' COLLATE "C"'</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a>        <span class="n">direction</span> <span class="o">=</span> <span class="s2">"DESC"</span> <span class="k">if</span> <span class="n">term</span><span class="o">.</span><span class="n">descending</span> <span class="k">else</span> <span class="s2">"ASC"</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>        <span class="n">nulls</span> <span class="o">=</span> <span class="s2">""</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a>        <span class="k">if</span> <span class="n">zero</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">known_not_null</span><span class="p">:</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a>            <span class="n">nulls</span> <span class="o">=</span> <span class="s2">" NULLS LAST"</span> <span class="k">if</span> <span class="n">term</span><span class="o">.</span><span class="n">descending</span> <span class="k">else</span> <span class="s2">" NULLS FIRST"</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">expr</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">direction</span><span class="si">}{</span><span class="n">nulls</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a>    <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">'"_pk" COLLATE "C" </span><span class="si">{</span><span class="s2">"DESC"</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">descending</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s2">"ASC"</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>    <span class="k">return</span> <span class="s2">" ORDER BY "</span> <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
