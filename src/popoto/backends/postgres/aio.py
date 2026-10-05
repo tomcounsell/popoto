@@ -390,7 +390,7 @@ class _LoopPool:
             # pool opens connections inline, so a down server fails the
             # connect below instead). The backend raises BackendBusyError.
             busy = PoolTimeout(f"couldn't get a connection after {wait:.2f} sec")
-            busy.popoto_busy = True  # type: ignore[attr-defined]
+            setattr(busy, "popoto_busy", True)  # PoolTimeout may resolve to Any
             raise busy from None
         try:
             while self.idle:
