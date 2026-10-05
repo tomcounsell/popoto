@@ -520,7 +520,19 @@ def record_lock_keys(sql: str, params: Sequence[Any]) -> list[str]:
         return [params[0]]
     if sql.startswith(_LOCK_MANY):
         return list(params[0])
+    if sql.startswith(PREFIXED_LOCK_MANY):
+        # graph_delete_lock_sql: the key prefix, then the deleted keys (the
+        # partners it also locks are found by the statement, not named).
+        return [params[0] + k for k in params[1]]
     return []
+
+
+#: A ``count(pg_advisory_xact_lock(...))`` over ``prefix || key`` -- the head of
+#: :func:`.graph.graph_delete_lock_sql`, shared so :func:`record_lock_keys`
+#: recognises it.
+PREFIXED_LOCK_MANY = (
+    "SELECT count(pg_advisory_xact_lock(hashtextextended(%s || u.k, 0))) "
+)
 
 
 #: Column types whose SQL text is exactly ``str()`` of the decoded value, so a
