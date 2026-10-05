@@ -317,8 +317,9 @@ class _LoopPool:
 
     Mirrors the sync pool (``_pool_for``): at most
     ``Defaults.PG_POOL_MAX_SIZE`` connections, a wait for a free one bounded
-    by ``Defaults.PG_CONNECT_TIMEOUT_SECONDS`` (then ``PoolTimeout``, an
-    ``OperationalError``, as the sync pool raises), each validated on checkout
+    by ``Defaults.PG_CONNECT_TIMEOUT_SECONDS`` (then ``PoolTimeout``, marked
+    busy, which the backend raises as ``BackendBusyError``: contention, not an
+    outage), each validated on checkout
     with one empty-query round trip, opened ``autocommit`` with no
     server-side prepared statements (PgBouncer transaction mode) and a
     client-side cursor, so one message carries ``SET LOCAL …; <statement>``.
@@ -385,9 +386,12 @@ class _LoopPool:
         try:
             await asyncio.wait_for(self.slots.acquire(), wait)
         except asyncio.TimeoutError:
-            raise PoolTimeout(
-                f"couldn't get a connection after {wait:.2f} sec"
-            ) from None
+            # Every slot is checked out: contention, never an outage (this
+            # pool opens connections inline, so a down server fails the
+            # connect below instead). The backend raises BackendBusyError.
+            busy = PoolTimeout(f"couldn't get a connection after {wait:.2f} sec")
+            busy.popoto_busy = True  # type: ignore[attr-defined]
+            raise busy from None
         try:
             while self.idle:
                 conn = self.idle.pop()  # most recently used first

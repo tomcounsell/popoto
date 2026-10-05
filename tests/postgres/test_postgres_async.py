@@ -12,6 +12,8 @@ first-use server checks -- because it *is* the sync backend's code.
 
 import asyncio
 import contextvars
+import os
+import random
 import threading
 import time
 
@@ -22,6 +24,7 @@ import popoto
 from popoto import DecayingSortedField, ValidityField, ValidityValidFromConflictError
 from popoto.backends import (
     AsyncBackend,
+    BackendBusyError,
     BackendCapabilityError,
     BackendRetryableError,
     BackendUnavailableError,
@@ -33,6 +36,7 @@ from popoto.embeddings import AbstractEmbeddingProvider
 from popoto.fields.bm25_field import BM25Field
 from popoto.fields.constants import Defaults
 from popoto.fields.embedding_field import EmbeddingField
+from popoto.redis_db import get_REDIS_DB
 
 psycopg = pytest.importorskip("psycopg")
 pytest.importorskip("greenlet")
@@ -632,3 +636,245 @@ def test_without_greenlet_the_thread_shim_remains(pg, monkeypatch, caplog):
     assert asyncio.run(main()) == 1
     assert "greenlet is not installed" in caplog.text
     assert get_backend(AioNote) is pg
+
+
+# -- the held-record-lock registry is per task (#783 x #784 review) ------------------
+#
+# #783 refuses a write that would wait on a record lock its own thread holds in
+# another open transaction. Under the async backend every task's I/O runs on
+# the loop thread, so a per-thread registry refused task B's wait on task A's
+# lock -- a wait A releases as soon as B yields: 18 of 20 concurrent async
+# transactions failed with BackendCapabilityError. The registry is now keyed
+# by the running task (the thread when there is none).
+
+
+def _registry_empty(backend):
+    return all(not units for units in list(backend._open.values()))
+
+
+@pytest.mark.asyncio
+async def test_twenty_concurrent_async_transactions_on_overlapping_records(pg):
+    twin = aio.get_async_backend(AioNote)
+    keys = [f"k{i}" for i in range(5)]
+    for k in keys:
+        await AioNote.async_create(key=k)
+
+    async def work(i):
+        mine = [k for j, k in enumerate(keys) if j != i % 5]  # 4 of 5, sorted
+        async with twin.transaction() as uow:
+            for k in mine:
+                await AioNote(key=k, n=i).async_save(pipeline=uow)
+                await asyncio.sleep(0)
+
+    results = await asyncio.gather(
+        *(work(i) for i in range(20)), return_exceptions=True
+    )
+    assert results == [None] * 20, [r for r in results if r is not None][:3]
+    assert _registry_empty(pg)
+    assert pg.health.ok and pg.health.dropped_writes == 0
+
+
+@pytest.mark.slow  # ~30 s: each real deadlock costs deadlock_timeout (1 s)
+@pytest.mark.asyncio
+async def test_unsorted_concurrent_async_transactions_fail_only_retryably(
+    pg, monkeypatch
+):
+    """Unsorted keys deadlock for real, and 20 transactions outnumber the
+    pool: both are BackendRetryableError (a deadlock, or BackendBusyError),
+    never a capability refusal or an outage, and every task completes on a
+    rerun."""
+    monkeypatch.setattr(Defaults, "PG_CONNECT_TIMEOUT_SECONDS", 1.0)
+    twin = aio.get_async_backend(AioNote)
+    keys = [f"u{i}" for i in range(5)]
+    for k in keys:
+        await AioNote.async_create(key=k)
+    failures = []
+
+    async def work(i):
+        rng = random.Random(i)
+        for _attempt in range(100):
+            mine = rng.sample(keys, 4)
+            try:
+                async with twin.transaction() as uow:
+                    for k in mine:
+                        await AioNote(key=k, n=i).async_save(pipeline=uow)
+                        await asyncio.sleep(0)
+                return
+            except BackendRetryableError as exc:
+                failures.append(exc)
+                await asyncio.sleep(rng.uniform(0.0, 0.05))
+        raise AssertionError(f"task {i} never committed")
+
+    results = await asyncio.gather(
+        *(work(i) for i in range(20)), return_exceptions=True
+    )
+    assert results == [None] * 20, [r for r in results if r is not None][:3]
+    kinds = {
+        ("busy" if isinstance(f, BackendBusyError) else type(f.__cause__).__name__)
+        for f in failures
+    }
+    assert kinds <= {"busy", "DeadlockDetected"}, kinds
+    print(f"retryable failures: {len(failures)} of kinds {sorted(kinds)}")
+    assert _registry_empty(pg)
+    assert pg.health.ok and pg.health.dropped_writes == 0
+
+
+@pytest.mark.asyncio
+async def test_a_task_waits_for_another_tasks_transaction_then_succeeds(pg):
+    twin = aio.get_async_backend(AioNote)
+    await AioNote.async_create(key="held")
+    async with twin.transaction() as uow:
+        await AioNote(key="held", n=1).async_save(pipeline=uow)
+        other = asyncio.create_task(AioNote(key="held", n=2).async_save())
+        await asyncio.sleep(0.3)
+        assert not other.done(), "the other task waits on the lock"
+    await asyncio.wait_for(other, 10)
+    assert (await AioNote.query.async_get(key="held")).n == 2
+    assert _registry_empty(pg)
+
+
+@pytest.mark.asyncio
+async def test_a_task_colliding_with_its_own_open_transaction_is_refused_at_once(pg):
+    twin = aio.get_async_backend(AioNote)
+    await AioNote.async_create(key="own")
+    async with twin.transaction() as uow:
+        await AioNote(key="own", n=1).async_save(pipeline=uow)
+        started = time.monotonic()
+        with pytest.raises(BackendCapabilityError, match="this task or thread holds"):
+            await AioNote(key="own", n=2).async_save()
+        async with twin.transaction() as inner:
+            with pytest.raises(
+                BackendCapabilityError, match="this task or thread holds"
+            ):
+                await AioNote(key="own", n=3).async_save(pipeline=inner)
+            await AioNote(key="free", n=3).async_save(pipeline=inner)
+        assert time.monotonic() - started < 1.0
+    assert (await AioNote.query.async_get(key="own")).n == 1
+    assert (await AioNote.query.async_get(key="free")).n == 3
+    assert _registry_empty(pg)
+    assert pg.health.dropped_writes == 0
+
+
+# -- a busy pool is not an outage (#784 review) ---------------------------------------
+
+
+def test_a_busy_async_pool_is_not_an_outage(pg, monkeypatch):
+    monkeypatch.setattr(Defaults, "PG_POOL_MAX_SIZE", 2)
+    monkeypatch.setattr(Defaults, "PG_CONNECT_TIMEOUT_SECONDS", 0.3)
+
+    async def main():
+        twin = aio.get_async_backend(AioNote)
+        await AioNote.async_create(key="x")  # this loop's pool: 2 connections
+        dropped = pg.health.dropped_writes
+        async with twin.transaction(), twin.transaction():
+            with pytest.raises(BackendBusyError) as write:
+                await AioNote(key="y").async_save()
+            with pytest.raises(BackendBusyError):
+                await AioNote.query.async_count()
+        assert isinstance(write.value, BackendRetryableError)
+        assert not isinstance(write.value, BackendUnavailableError)
+        assert "contention, not an outage" in str(write.value)
+        assert pg.health.ok and pg.health.consecutive_failures == 0
+        assert pg.health.dropped_writes == dropped
+        await AioNote(key="y").async_save()  # a slot is free again
+        assert await AioNote.query.async_count() == 2
+
+    asyncio.run(main())
+
+
+def test_a_busy_sync_pool_is_not_an_outage(pg, monkeypatch):
+    from psycopg.conninfo import make_conninfo
+
+    from popoto.backends.postgres import PostgresBackend, _pools
+
+    AioNote.create(key="x")  # the table, through pg
+    monkeypatch.setattr(Defaults, "PG_POOL_MAX_SIZE", 2)
+    monkeypatch.setattr(Defaults, "PG_CONNECT_TIMEOUT_SECONDS", 0.3)
+    backend = PostgresBackend(
+        make_conninfo(pg.dsn, application_name="popoto_test_busy_sync"),
+        schema=pg.schema,
+    )
+    spec = AioNote._meta.spec
+    plan = popoto.backends.QueryPlan()
+    try:
+        assert backend.count(spec, plan) == 1  # this backend's own pool of 2
+        with backend.transaction(), backend.transaction():
+            with pytest.raises(BackendBusyError):
+                backend.count(spec, plan)
+            with pytest.raises(BackendBusyError):
+                backend.save(AioNote(key="y"))
+        assert backend.health.ok and backend.health.consecutive_failures == 0
+        assert backend.health.dropped_writes == 0
+        backend.save(AioNote(key="y"))
+        assert backend.count(spec, plan) == 2
+    finally:
+        pool = _pools.pop((backend.dsn, os.getpid()), None)
+        if pool is not None:
+            pool.close()
+
+
+# -- popoto.batch() from async code -----------------------------------------------------
+
+
+class AioStream(popoto.EventStreamMixin, popoto.Model):
+    name = popoto.KeyField()
+
+    _stream_name = "test_aio_batch_effects"
+
+
+_AIO_STREAM = "stream:test_aio_batch_effects"
+
+
+def test_an_async_save_joins_a_batch_on_the_loop(pg, monkeypatch):
+    """``await obj.async_save(pipeline=popoto.batch())``: the batch's
+    transaction is opened on the loop's async pool, nothing blocks the loop
+    (no sync pool, no time.sleep), the Redis side effects wait for the
+    commit, and the batch is committed with ``await pipe.async_execute()``."""
+    import psycopg_pool
+
+    redis = get_REDIS_DB()
+    redis.delete(_AIO_STREAM)
+
+    def no_sync_pool(*args, **kwargs):
+        raise AssertionError("the sync pool was used on the event loop")
+
+    def no_blocking_sleep(seconds):
+        raise AssertionError("time.sleep on the event loop")
+
+    async def main():
+        await AioStream.async_create(name="warm")
+        redis.delete(_AIO_STREAM)
+        monkeypatch.setattr(psycopg_pool.ConnectionPool, "getconn", no_sync_pool)
+        monkeypatch.setattr(time, "sleep", no_blocking_sleep)
+
+        pipe = popoto.batch()
+        assert await AioStream(name="a").async_save(pipeline=pipe) is pipe
+        await AioStream(name="b").async_save(pipeline=pipe)
+        assert redis.xlen(_AIO_STREAM) == 0  # nothing before the commit
+        assert await AioStream.query.async_get(name="a") is None
+        with pytest.raises(aio.BridgeMisuseError, match="async_execute"):
+            pipe.execute()
+        assert await pipe.async_execute() == []
+        assert redis.xlen(_AIO_STREAM) == 2
+        assert await AioStream.query.async_get(name="b") is not None
+
+        pipe = popoto.batch()
+        await AioStream(name="c").async_save(pipeline=pipe)
+        await pipe.async_reset()
+        assert await AioStream.query.async_get(name="c") is None
+
+        pipe = popoto.batch()
+        with pipe:  # a sync exit schedules the rollback on the loop
+            await AioStream(name="d").async_save(pipeline=pipe)
+        for _ in range(100):
+            if _registry_empty(pg):
+                break
+            await asyncio.sleep(0.01)
+        assert await AioStream.query.async_get(name="d") is None
+        assert redis.xlen(_AIO_STREAM) == 2
+        assert _registry_empty(pg)
+
+    try:
+        asyncio.run(main())
+    finally:
+        redis.delete(_AIO_STREAM)

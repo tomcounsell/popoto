@@ -58,6 +58,7 @@ __all__ = [
     "SaveOutcome",
     "SchemaDriftError",
     "BackendRetryableError",
+    "BackendBusyError",
     "Scored",
     "UnitOfWork",
 ]
@@ -121,6 +122,22 @@ class BackendRetryableError(BackendError):
     ``DeadlockDetected`` / ``SerializationFailure``; code that caught those
     should catch this instead. A statement whose completion is unknown
     (40003) is not this error: it may have committed (#769)."""
+
+
+class BackendBusyError(BackendRetryableError):
+    """No pooled connection became free in time: every connection the
+    backend's pool may open is checked out by other callers (#759 M5).
+
+    Raised when a caller waited ``Defaults.PG_CONNECT_TIMEOUT_SECONDS`` for a
+    connection and none was returned -- many concurrent ``async_*`` calls or
+    ``transaction()`` blocks on one event loop, or more threads than
+    ``Defaults.PG_POOL_MAX_SIZE`` on the sync pool. The server is reachable,
+    so this is **not** an outage: :class:`BackendUnavailableError` is not
+    raised, the backend's ``health`` record is not touched and no dropped
+    write is counted. Nothing was sent, so running the call again is safe,
+    which is why it is a :class:`BackendRetryableError`. A connection that
+    cannot be *opened* (the server is down or unreachable) is still
+    :class:`BackendUnavailableError`."""
 
 
 # -- identity -----------------------------------------------------------------

@@ -859,6 +859,33 @@ The outage is logged at ERROR once per `Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS`
 (60 s), however many calls fail within that window. After a successful call
 the record resets, and a recovery is logged at WARNING.
 
+**A busy pool is not an outage.** When every connection the pool may hold
+(`Defaults.PG_POOL_MAX_SIZE`) is checked out by other callers -- more
+concurrent `async with transaction()` blocks or `async_*` calls on one event
+loop than that, or more threads -- a caller waits up to
+`Defaults.PG_CONNECT_TIMEOUT_SECONDS` for one to come back, and then raises
+**`popoto.backends.BackendBusyError`**, a subclass of
+`BackendRetryableError`. The server is reachable, so the health record is
+not touched and no dropped write is counted; the call sent nothing, so
+running it again is safe:
+
+```python
+from popoto.backends import BackendBusyError
+
+try:
+    await note.async_save()
+except BackendBusyError:
+    ...  # back off and retry, or bound your concurrency below PG_POOL_MAX_SIZE
+```
+
+A connection that cannot be *opened* is still `BackendUnavailableError` and
+an outage. The sync `psycopg_pool` reports both cases as one `PoolTimeout`,
+so on the sync path popoto calls a timeout busy only when every connection
+of the pool is checked out to a caller at that moment; the async pool opens
+connections itself, so its only timeout is the wait for a free one. Pinned
+by `tests/postgres/test_postgres_async.py::test_a_busy_async_pool_is_not_an_outage`
+and `test_a_busy_sync_pool_is_not_an_outage`.
+
 ## Transactions
 
 ```python
@@ -960,16 +987,31 @@ commits the rest, as on Redis. `batch(transaction=False)` is still one
 transaction on Postgres. A deadlock inside the batch raises
 `BackendRetryableError`, as inside any `transaction()`.
 
-**A lock this thread already holds.** Until it commits, a batch holds each
-record it wrote. A write from the same thread that would wait for one of
-those records outside the batch -- a second, nested `batch()` or
-`transaction()` that writes the same record, or a plain `save()` of it --
-could never be granted, because the only thread that can release it is the
-one waiting. Popoto refuses that write with `BackendCapabilityError` before
-sending it, instead of hanging until `PG_STATEMENT_TIMEOUT_MS`; the batch
-that holds the record is unharmed. Write through that batch, or `execute()`
-it first. Another thread's write simply waits for the commit. Nested batches
-that write different records work as on Redis.
+**A record lock this thread or task already holds.** Until it commits, a
+batch holds the record-key lock of each record it wrote. A write from the
+same thread that would wait for one of those locks outside the batch -- a
+second, nested `batch()` or `transaction()` that writes the same record, or
+a plain `save()` of it -- could never be granted, because the only thread
+that can release it is the one waiting. Popoto refuses that write with
+`BackendCapabilityError` before sending it, instead of hanging until
+`PG_STATEMENT_TIMEOUT_MS`; the batch that holds the record is unharmed.
+Write through that batch, or `execute()` it first. Another thread's write
+simply waits for the commit. Nested batches that write different records
+work as on Redis.
+
+Under asyncio the unit is the **task**, not the thread: every task's
+Postgres I/O runs on the event-loop thread ([Async](#async-m5)), but one
+task waiting on a record another task's `async with transaction()` holds is
+an ordinary wait -- the other task commits as soon as the waiter yields to
+the loop -- so it is never refused. A task that collides with a transaction
+*it* still has open is refused at once, as a thread is.
+
+The check covers **record-key locks only** (the locks `save`, `delete`,
+`increment` and the other record writes take first). A nested write that
+would wait on any other lock an outer unit holds -- the `(model, field)`
+lock a `ValidityField` write takes, a `UNIQUE` value the outer unit wrote
+and has not committed -- is not detected, and waits until
+`PG_STATEMENT_TIMEOUT_MS`.
 
 **One batch, one backend.** A batch holding a Postgres transaction refuses a
 Redis command, and a batch with Redis commands queued refuses a Postgres
@@ -1126,6 +1168,34 @@ DDL checks are the sync backend's, by construction. `greenlet` comes with the
 thread and log one warning. A unit of work from the async `transaction()` is
 for the `async_*` methods: handing it to a sync `save(pipeline=uow)` raises
 `BridgeMisuseError`.
+
+**`popoto.batch()` from async code.** An `async_*` write handed a batch
+joins it as a sync write does ([`popoto.batch()`](#popotobatch-m5)), but
+the batch's transaction is then opened on the loop's async pool, so commit
+it from the coroutine:
+
+```python
+pipe = popoto.batch()
+await Note(owner="a", slug="1").async_save(pipeline=pipe)
+await Note(owner="a", slug="2").async_save(pipeline=pipe)
+await pipe.async_execute()     # COMMIT on the loop; then the XADDs, in order
+```
+
+`pipe.execute()` on such a batch raises `BridgeMisuseError` naming
+`async_execute()`; `await pipe.async_reset()` rolls it back. A plain
+`reset()` or leaving a `with` block schedules the rollback on the running
+loop as a task. The Redis side effects wait for the commit exactly as in a
+sync batch. `async_execute()` on any other batch (Redis commands, or a
+transaction a sync call opened) runs `execute()` in a worker thread.
+Pinned by `test_postgres_async.py::test_an_async_save_joins_a_batch_on_the_loop`.
+
+**Concurrent transactions are per task.** Two tasks' `async with
+transaction()` blocks that write the same records wait on each other's
+record locks like two threads do; the refusal of a write that waits on a
+lock its *own* open transaction holds ([`popoto.batch()`](#popotobatch-m5))
+is per task. More concurrent transactions than `PG_POOL_MAX_SIZE` queue for
+a connection, and one that waits longer than `PG_CONNECT_TIMEOUT_SECONDS`
+raises `BackendBusyError`, not an outage ([Topology](#topology-and-the-outage-contract)).
 
 **What still leaves the loop.** An embedding provider is a sync API: its call,
 and the backfill's wait on it, run in a worker thread so they never block the

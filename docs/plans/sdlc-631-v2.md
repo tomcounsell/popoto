@@ -1106,6 +1106,23 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     `async_rebuild_indexes` stay on a worker thread on every backend, because
     their bodies scan Redis index keys (Postgres `maintain` is its own M5
     item); routing them would block the loop on Redis I/O.
+  - **Merged with the TTL/`batch()` PR: three seams fixed.** (1) #783's
+    held-record-lock registry was per thread; under the bridge every task
+    shares the loop thread, so 18 of 20 concurrent async transactions on
+    overlapping records were refused as self-waits. It is keyed by
+    `asyncio.current_task()` (a bridge greenlet runs inside its driving
+    task's step), falling back to the thread; not a `ContextVar`, because
+    `_spawn` copies the context per call. (2) A pool checkout timeout under
+    contention was reported as an outage (health flipped, dropped writes
+    counted). It is now `BackendBusyError(BackendRetryableError)`, health
+    untouched; the async pool marks its own semaphore timeout, and on the
+    sync `psycopg_pool` (which reports "all in use" and "cannot connect"
+    as one `PoolTimeout`) a timeout is busy only when every connection is
+    checked out to a caller. (3) `await obj.async_save(pipeline=batch)`
+    opened the batch's transaction on the loop, which the sync `execute()`
+    cannot drive: `Batch.async_execute()`/`async_reset()` commit and roll
+    back through the bridge, and a sync `reset()` schedules the rollback on
+    the loop.
 
 ## 6. Carried forward from the POC
 

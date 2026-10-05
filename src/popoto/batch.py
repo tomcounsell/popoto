@@ -45,10 +45,16 @@ command, with :class:`~popoto.backends.BackendCapabilityError`, before either
 is sent. Two stores cannot commit atomically together, and a batch that
 looked atomic but was not would be worse than a refusal. Open one batch per
 backend.
+
+**From async code.** When the first Postgres write to join a batch is an
+``async_*`` call, the batch's transaction lives on the event loop's async
+pool: commit it with ``await pipe.async_execute()`` (``execute()`` raises
+``BridgeMisuseError``) and roll it back with ``await pipe.async_reset()``.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -64,6 +70,19 @@ _MIXED = (
     "and a Postgres transaction cannot commit atomically together, so the "
     "batch would only look atomic. Open one batch per backend."
 )
+
+
+# Rollbacks of async-opened batches scheduled by a sync reset(): held so the
+# loop does not drop a running task.
+_pending: set[Any] = set()
+
+
+def _in_bridge() -> bool:
+    try:
+        from .backends.postgres.aio import _in_bridge as in_bridge
+    except ImportError:  # pragma: no cover - the postgres extra is absent
+        return False
+    return in_bridge()
 
 
 class Batch(GuardedPipeline):
@@ -122,6 +141,75 @@ class Batch(GuardedPipeline):
 
     # -- the pipeline API --------------------------------------------------
 
+    def _popoto_async_unit(self) -> bool:
+        """Whether this batch's Postgres transaction was opened by an
+        ``async_*`` call: its connection belongs to an event loop, so only
+        the async bridge can commit or roll it back."""
+        pg = self._pg
+        return pg is not None and hasattr(pg[2].conn, "async_connection")
+
+    def _popoto_discard_later(self) -> None:
+        """``reset()`` of an async-opened batch from sync code (a ``with``
+        block's exit, ``reset()`` on the loop): roll the transaction back on
+        its loop, as a task. Without a running loop nothing can drive the
+        connection; the loop's pool closes it at the socket when the loop
+        goes, and the server rolls it back."""
+        pg = self._pg
+        if pg is None:
+            return
+        self._pg = None
+        backend, stack, uow = pg
+        uow.reap.clear()
+        uow._after_commit.clear()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        import psycopg
+
+        from .backends.postgres.aio import async_backend
+
+        twin = async_backend(backend)
+        if twin is None:  # pragma: no cover - an async unit implies greenlet
+            return
+        task = loop.create_task(
+            twin.run(stack.__exit__, psycopg.Rollback, psycopg.Rollback(), None)
+        )
+        _pending.add(task)
+        task.add_done_callback(_pending.discard)
+
+    async def async_execute(self, raise_on_error: bool = True) -> Any:
+        """``await pipe.async_execute()``: :meth:`execute` from a coroutine.
+
+        A batch whose Postgres transaction an ``async_*`` call opened
+        (``await obj.async_save(pipeline=pipe)``) commits on the event loop,
+        through the async backend; :meth:`execute` cannot drive that
+        connection and raises ``BridgeMisuseError``. Any other batch -- Redis
+        commands, or a transaction a sync call opened -- runs :meth:`execute`
+        in a worker thread, so the loop never blocks on it."""
+        pg = self._pg
+        if pg is not None and self._popoto_async_unit():
+            from .backends.postgres.aio import async_backend
+
+            twin = async_backend(pg[0])
+            assert twin is not None  # an async unit implies greenlet
+            return await twin.run(self.execute, raise_on_error)
+        return await asyncio.to_thread(self.execute, raise_on_error)
+
+    async def async_reset(self) -> None:
+        """``await pipe.async_reset()``: :meth:`reset` from a coroutine,
+        rolling an async-opened Postgres transaction back before it
+        returns."""
+        pg = self._pg
+        if pg is not None and self._popoto_async_unit():
+            from .backends.postgres.aio import async_backend
+
+            twin = async_backend(pg[0])
+            assert twin is not None
+            await twin.run(self.reset)
+            return
+        self.reset()
+
     def pipeline_execute_command(self, *args: Any, **options: Any) -> Any:
         self._popoto_refuse_redis()
         return super().pipeline_execute_command(*args, **options)
@@ -135,6 +223,15 @@ class Batch(GuardedPipeline):
         if pg is None:
             return super().execute(raise_on_error)
         _backend, stack, uow = pg
+        if self._popoto_async_unit() and not _in_bridge():
+            from .backends.postgres.aio import BridgeMisuseError
+
+            raise BridgeMisuseError(
+                "this popoto.batch() holds a Postgres transaction an async_* call "
+                "opened, whose connection belongs to the event loop: commit it "
+                "with `await pipe.async_execute()` (or roll it back with "
+                "`await pipe.async_reset()`)"
+            )
         from psycopg.pq import TransactionStatus
 
         if uow.conn.info.transaction_status == TransactionStatus.INERROR:
@@ -151,7 +248,10 @@ class Batch(GuardedPipeline):
         return []
 
     def reset(self) -> None:  # type: ignore[override]
-        self._popoto_discard()
+        if self._popoto_async_unit() and not _in_bridge():
+            self._popoto_discard_later()
+        else:
+            self._popoto_discard()
         super().reset()
 
 

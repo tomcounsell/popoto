@@ -76,6 +76,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 from ...fields.constants import Defaults
 from ..types import (
     And,
+    BackendBusyError,
     BackendCapabilityError,
     BackendRetryableError,
     Cond,
@@ -1157,6 +1158,8 @@ class PostgresMemoryOps(PostgresValidityOps):
             try:
                 with self.transaction() as tx:
                     return work(tx)
+            except BackendBusyError:
+                raise  # no connection was free: nothing ran, nothing to retry here
             except BackendRetryableError as exc:
                 # ``transaction()`` turns a rollback anywhere in its block --
                 # ``_run``, a raw one from ``work`` itself, or the COMMIT --

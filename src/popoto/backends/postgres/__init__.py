@@ -36,6 +36,7 @@ the outage is logged at ERROR once per ``Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS``
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import datetime
 import logging
@@ -43,11 +44,13 @@ import os
 import random
 import threading
 import time
+import weakref
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Optional, Sequence, Union
 
 from ...fields.constants import Defaults
 from ..types import (
+    BackendBusyError,
     BackendCapabilityError,
     BackendRetryableError,
     BackendUnavailableError,
@@ -278,6 +281,67 @@ def _pool_for(dsn: str) -> Any:
     return pool
 
 
+# Connections each sync pool has checked out to a caller right now, by
+# ``id(pool)``: what tells a checkout timeout under contention (every
+# connection is out) from one under an outage (#784 review).
+_checked_out: dict[int, int] = {}
+_checked_out_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def _checkout(pool: Any, timeout: Optional[float] = None) -> Iterator[Any]:
+    """``pool.connection(timeout=...)``, marking a checkout timeout that is
+    contention rather than an outage (``exc.popoto_busy = True``, then
+    :func:`_busy` maps it to :class:`BackendBusyError`).
+
+    The async bridge's pool marks its own timeouts: it opens connections
+    inline, so its only timeout is the wait for a free slot. The sync
+    ``psycopg_pool`` raises the same ``PoolTimeout`` for "every connection is
+    in use" and for "the server is down and no connection could be made",
+    so here a timeout is busy only when every connection the pool may hold
+    is checked out to a caller at that moment; otherwise it stays an
+    outage."""
+    if _bridged() is not None:
+        with pool.connection(timeout=timeout) as conn:
+            yield conn
+        return
+    key = id(pool)
+    with contextlib.ExitStack() as stack:
+        try:
+            conn = stack.enter_context(pool.connection(timeout=timeout))
+        except Exception as exc:
+            if type(exc).__name__ == "PoolTimeout":
+                with _checked_out_lock:
+                    out = _checked_out.get(key, 0)
+                if out >= int(getattr(pool, "max_size", out + 1)):
+                    exc.popoto_busy = True  # type: ignore[attr-defined]
+            raise
+        with _checked_out_lock:
+            _checked_out[key] = _checked_out.get(key, 0) + 1
+        try:
+            yield conn
+        finally:
+            with _checked_out_lock:
+                left = _checked_out.get(key, 1) - 1
+                if left > 0:
+                    _checked_out[key] = left
+                else:
+                    _checked_out.pop(key, None)
+
+
+def _busy(exc: BaseException) -> Optional[BackendBusyError]:
+    """The :class:`BackendBusyError` for a checkout timeout that found every
+    connection in use, else ``None``."""
+    if not getattr(exc, "popoto_busy", False):
+        return None
+    return BackendBusyError(
+        f"no pooled Postgres connection became free in time ({exc}): every "
+        f"connection (Defaults.PG_POOL_MAX_SIZE = {int(Defaults.PG_POOL_MAX_SIZE)}) "
+        "is in use. The server is reachable -- this is contention, not an "
+        "outage -- and nothing was sent, so retry it"
+    )
+
+
 def close_pools() -> None:
     """Close every pool this process opened (tests, interpreter shutdown),
     the async bridge's per-loop pools included."""
@@ -430,7 +494,11 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         self._lock = threading.RLock()
         self._intent = threading.local()
         self._reaper = Reaper()
-        self._open = threading.local()
+        # The held-record-lock registry (#783), keyed by the asyncio task
+        # when there is one, else the thread (see _lock_scope).
+        self._open: weakref.WeakKeyDictionary[Any, list[PostgresUnitOfWork]] = (
+            weakref.WeakKeyDictionary()
+        )
 
     def __repr__(self) -> str:
         return f"<PostgresBackend schema={self.schema!r}>"
@@ -487,7 +555,7 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         psycopg = _import_psycopg()
         try:
             pool = _pool_for(self.dsn)
-            with pool.connection() as conn:
+            with _checkout(pool) as conn:
                 yield conn
         except _rollback_errors(psycopg) as exc:
             # Raised by the block (a caller-owned ``transaction()``, including
@@ -495,6 +563,9 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             # outage. Not retried here -- the caller owns the transaction.
             raise _retryable(exc) from exc
         except psycopg.OperationalError as exc:
+            busy = _busy(exc)
+            if busy is not None:  # contention: health untouched (#784 review)
+                raise busy from exc
             raise self._fail(exc, write=write) from exc
 
     def _record_locked(
@@ -514,37 +585,68 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
         lock_sql, lock_params = record_lock_sql(ts, pks)
         return lock_sql + sql, list(lock_params) + list(params)
 
+    @staticmethod
+    def _lock_scope() -> Any:
+        """Who waits when a statement waits: the running asyncio task, else
+        the thread (#784 review of #783).
+
+        Under the async backend every task's sync code runs in a bridge
+        greenlet on the event-loop thread, so a per-thread registry put every
+        task's ``transaction()`` in one list and refused task B's wait on a
+        lock task A holds -- a wait A releases as soon as B yields to the
+        loop. A bridge greenlet runs inside its driving task's step, so
+        ``asyncio.current_task()`` is that task for ``transaction()``'s
+        enter, every ``async_*`` call in it, and its exit alike. (Not a
+        ``ContextVar``: the bridge runs each call in a fresh copy of the
+        context, so a value ``__enter__`` set would be gone by the next
+        call.) Off the loop -- a sync caller, a worker thread -- there is no
+        running task and the scope is the thread, as before."""
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:  # no running event loop on this thread
+            task = None
+        return task if task is not None else threading.current_thread()
+
     def _open_units(self) -> list[PostgresUnitOfWork]:
-        """The ``transaction()`` units open on this thread, outermost first."""
-        units = getattr(self._open, "units", None)
-        if units is None:
-            units = self._open.units = []
-        return units
+        """The ``transaction()`` units open in this task (or, off the event
+        loop, on this thread), outermost first."""
+        scope = self._lock_scope()
+        with self._lock:
+            units = self._open.get(scope)
+            if units is None:
+                units = self._open[scope] = []
+            return units
 
     def _refuse_self_wait(
         self, pg: Optional[PostgresUnitOfWork], keys: Sequence[str]
     ) -> None:
         """Refuse, before it is sent, a statement that would wait on a
-        record-key lock another open unit of work *on this thread* holds
-        (#783 review). That lock is released only when the other unit
-        commits or rolls back, which this thread cannot do while it waits:
-        the statement would hang to ``PG_STATEMENT_TIMEOUT_MS`` and then be
-        misreported as an outage. Two nested ``popoto.batch()``es or
+        record-key lock another open unit of work *in this task or thread*
+        holds (#783 review). That lock is released only when the other unit
+        commits or rolls back, which this task or thread cannot do while it
+        waits: the statement would hang to ``PG_STATEMENT_TIMEOUT_MS`` and
+        then be misreported as an outage. Two nested ``popoto.batch()``es or
         ``transaction()``s that write one record, or a write outside a batch
         to a record saved in it, are the shapes. On Redis each is fine (a
         queued command holds no lock); here it is
-        :class:`~popoto.backends.BackendCapabilityError`, at once."""
+        :class:`~popoto.backends.BackendCapabilityError`, at once.
+
+        Only record-key locks (``_record_locked``) are tracked: a wait on
+        another lock a unit holds -- a ``(model, field)`` validity lock, an
+        uncommitted ``UNIQUE`` entry -- is not detected here and still runs
+        to ``PG_STATEMENT_TIMEOUT_MS``. A unit of another task or thread is
+        never a reason to refuse: that one can commit while this one waits."""
         wanted = set(keys)
         for unit in self._open_units():
             if unit is not pg and not unit.locked.isdisjoint(wanted):
                 held = sorted(unit.locked & wanted)[0]
                 raise BackendCapabilityError(
                     f"this write would wait on the record lock {held!r}, which "
-                    "another open Postgres transaction on this thread holds (a "
-                    "nested popoto.batch() or transaction() that wrote the same "
-                    "record, or a write outside the batch it was saved in): it "
-                    "could never be granted. Write through the batch that holds "
-                    "the record, or execute() it first"
+                    "another open Postgres transaction of this task or thread "
+                    "holds (a nested popoto.batch() or transaction() that wrote "
+                    "the same record, or a write outside the batch it was saved "
+                    "in): it could never be granted. Write through the batch "
+                    "that holds the record, or execute() it first"
                 )
 
     def _statement_prefix(self) -> str:
@@ -597,7 +699,7 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
             conn: Any = None
             try:
                 pool = _pool_for(self.dsn)
-                with pool.connection() as conn:
+                with _checkout(pool) as conn:
                     cur = conn.execute(prefix + sql, params)
                     while cur.nextset():
                         pass
@@ -611,6 +713,9 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps, GraphMixin, RecipeOpsMixin
                     raise _retryable(exc, attempt) from exc
                 _sleep(random.uniform(0.005, 0.05) * attempt)
             except psycopg.OperationalError as exc:
+                busy = _busy(exc)
+                if busy is not None:  # contention, not an outage
+                    raise busy from exc
                 if not reconnected and self._may_retry_broken(conn, exc, write):
                     reconnected = True
                     logger.warning(
