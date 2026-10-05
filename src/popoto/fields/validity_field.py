@@ -1268,9 +1268,10 @@ class ValidityField(Field):
         ``EVAL`` returns the pipeline), and an error is typed at once. A
         Redis pipeline cannot carry the write: it runs now, and the pipeline
         comes back untouched."""
-        from ..backends import UnitOfWork
+        from ..batch import unit_of
 
-        uow = pipeline if isinstance(pipeline, UnitOfWork) else None
+        # A transaction() unit of work, or a popoto.batch()'s (#759 M5).
+        uow = unit_of(pipeline, backend)
         closed = backend.supersede(
             model._meta.spec,
             field_name,

@@ -32,7 +32,9 @@ Usage -- trace a base tree and the working tree, then compare::
 ``assemble()`` in every mode with scopes, tags, budgets and the gate,
 ``assess()``, the score proxy and ``on_context_used()``. They are off by
 default, so the default trace (and the hash earlier milestones recorded) is
-unchanged.
+unchanged. ``--with-batch`` likewise appends the #759 M5 scenarios: TTL saves
+(``Meta.ttl``, ``_ttl``, ``_expire_at``) inside and outside ``popoto.batch()``,
+and batched deletes, increments, resets and ``transaction=False``.
 
 The script refuses to run unless ``REDIS_URL`` names a non-zero database
 (CLAUDE.md, #577), and it clears only the keys its own models own.
@@ -852,6 +854,73 @@ def m2b_embeddings():
         EmbeddingField.sweep_stale_tempfiles(TrEmb),
         TrEmb.query.get(name="e2").delete(),
     ]
+
+
+# -- TTL and popoto.batch() (#759 M5), behind --with-batch -----------------------
+#
+# M5 makes popoto.batch() a pipeline subclass a Postgres-bound model's writes
+# can join, and routes save/delete/atomic_increment/touch's pipeline through a
+# check for it. These scenarios pin that Redis-bound TTL saves and batched
+# saves, deletes, increments, resets and transaction=False batches send what
+# they sent. Results never print the batch object itself (its class name is
+# new); behind the flag, so the default trace and its hash are unchanged.
+
+WITH_BATCH = "--with-batch" in sys.argv
+
+if WITH_BATCH:
+
+    @scenario
+    def m5_batch_ttl_saves():
+        pipe = popoto.batch()
+        a = TrTtl(name="b1", email="b1@x").save(pipeline=pipe)
+        rec = TrTtl(name="b2", email="b2@x")
+        rec._ttl = 30
+        b = rec.save(pipeline=pipe)
+        rec3 = TrTtl(name="b3", email="b3@x")
+        rec3._ttl = None
+        rec3._expire_at = datetime(2100, 1, 1, 12, 0, 30, 500000)
+        c = rec3.save(pipeline=pipe)
+        out = pipe.execute()
+        return [a is pipe, b is pipe, c is pipe, out] + [
+            get_REDIS_DB().ttl(f"TrTtl:{n}") >= 0 for n in ("b1", "b2", "b3")
+        ]
+
+    @scenario
+    def m5_expire_at_internal():
+        rec = TrTtl(name="b4", email="b4@x")
+        rec._ttl = None
+        rec._expire_at = datetime(2100, 1, 2)
+        return [rec.save(), get_REDIS_DB().ttl("TrTtl:b4") >= 0]
+
+    @scenario
+    def m5_batch_delete_increment():
+        user = TrUser(name="inc", org="beta", rank=40, hits=1)
+        user.save()
+        TrUser(name="del", org="beta", rank=41).save()
+        pipe = popoto.batch()
+        r1 = user.atomic_increment("hits", 3, pipeline=pipe)
+        r2 = TrUser.query.get(name="del", org="beta").delete(pipeline=pipe)
+        out = pipe.execute()
+        return [r1 is pipe, r2 is pipe, out, TrUser.query.get(name="inc", org="beta")]
+
+    @scenario
+    def m5_batch_reset_and_reuse():
+        pipe = popoto.batch()
+        TrUser(name="rst", org="acme", rank=31).save(pipeline=pipe)
+        pipe.reset()
+        TrUser(name="rs2", org="acme", rank=32).save(pipeline=pipe)
+        out = pipe.execute()
+        return [
+            out,
+            TrUser.query.get(name="rst", org="acme"),
+            TrUser.query.get(name="rs2", org="acme") is not None,
+        ]
+
+    @scenario
+    def m5_batch_transaction_false():
+        pipe = popoto.batch(transaction=False)
+        TrUser(name="ntx", org="beta", rank=33).save(pipeline=pipe)
+        return [pipe.transaction, pipe.execute()]
 
 
 # -- ContextAssembler (#759 M2c), behind --with-assembler ------------------------

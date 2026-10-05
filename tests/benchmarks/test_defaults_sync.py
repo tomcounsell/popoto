@@ -232,6 +232,12 @@ class TestDefaultsSync:
             "PG_RECALL_ARM_DEPTH",
             "PG_BACKFILL_BATCH",
             "PG_BACKFILL_BUDGET_SECONDS",
+            # Postgres TTL reaper (#759 M5): read from Defaults when a write
+            # on a Meta.ttl model commits (the TTL tests monkeypatch them),
+            # and they bound a maintenance statement's cost, not a score.
+            "PG_REAPER_BATCH",
+            "PG_REAPER_INTERVAL_SECONDS",
+            "PG_REAPER_LOCK_TIMEOUT_MS",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

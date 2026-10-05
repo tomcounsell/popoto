@@ -963,6 +963,46 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
   `test_prediction_ledger.py`, `test_td_value_field.py`,
   `test_content_field.py`, `test_check_indexes.py`, `test_clean_indexes.py`,
   `test_transfer_roundtrip.py`, `test_transfer_key_regeneration.py`.
+- **M5 TTL and `batch()` as shipped: departures, recorded.** The first M5
+  PR is record expiry and `popoto.batch()`; the rest of M5 follows.
+  - **The surface is `Meta.ttl` and the instance's `_ttl`/`_expire_at`.**
+    `main` has no `save(ttl=)`, `save(expire_at=)` or `set_expiry`; the
+    protocol's `save(expiry=)` is implemented on Postgres (Redis still
+    refuses it: no new Redis feature). `_expires_at` is `double precision`
+    epoch seconds, M2a's clock decision, and *now* is the server's
+    `statement_timestamp()` (one clock for the central database).
+  - **Only a `Meta.ttl` model has the column**, so TTL-free models keep
+    TTL-free plans (§3). An instance TTL on a model without `Meta.ttl`
+    raises `BackendCapabilityError` before writing -- the one place Postgres
+    asks more of the model than Redis does.
+  - **The read filter is one predicate, applied where the record table is
+    scoped** (`render_where`, which every select, count, ranking, search and
+    `recall` statement already went through), plus `load`/`exists`, the
+    single-record state reads, an anti-join on the side tables (postings,
+    lengths, vectors, tokens) for statistics and membership, and the
+    validity reads. The narrow-vector-table scope shortcut is off on a TTL
+    model, since it would bypass the record table.
+  - **The reaper is throttled, not per write.** Running it after every
+    write cost ~0.3 ms p50 with nothing to reap (a pool checkout and a
+    statement); once per second per table and process, plus immediately
+    after a run that found a full batch, keeps an idle TTL model within
+    ~0.04 ms of a TTL-free one. Batch 20, not 100: a save that reaps 20 rows
+    costs ~1.1 ms p50, 100 rows 2.2-3.5 ms. It never waits: try-locks on the
+    record keys, `SKIP LOCKED` rows, and `lock_timeout` below
+    `deadlock_timeout`.
+  - **A save over an expired key deletes the row first** (same statement
+    list, after the record-key lock), so it writes a fresh record as `HSET`
+    on an expired key does, rather than reviving the expired row's side rows
+    and confidence state. `delete` reports an expired record as not
+    existing; `increment`, a capped push, `touch` and `update_confidence`
+    treat it as missing.
+  - **`batch()` is one object for both backends**: it still returns a
+    `redis.client.Pipeline` (a subclass assigned like `GuardedRedis`'s), and
+    a Postgres-bound model's write joins a `transaction()` it opens on first
+    use; `execute()` commits. Mixed batches are refused, not split: two
+    stores cannot commit atomically together.
+  - **Exit criterion:** `tests/postgres/test_postgres_ttl.py::
+    test_an_expired_row_is_invisible_before_the_reaper_and_gone_after_a_write`.
 
 ## 6. Carried forward from the POC
 

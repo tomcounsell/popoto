@@ -643,9 +643,11 @@ class ConfidenceField(Field):
         is returned and the attribute synced, and a missing record is skipped
         (``None``) as the queued Lua skips it.
         """
-        from ..backends import UnitOfWork, record_id
+        from ..backends import record_id
+        from ..batch import unit_of
 
-        uow = pipeline if isinstance(pipeline, UnitOfWork) else None
+        # A transaction() unit of work, or a popoto.batch()'s (#759 M5).
+        uow = unit_of(pipeline, backend)
         state = backend.update_confidence(
             model_instance._meta.spec,
             record_id(model_instance, key=member_key),

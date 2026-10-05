@@ -543,13 +543,24 @@ def _pred_sql(
 
 
 def render_where(
-    ts: TableSpec, kinds: dict[str, str], where: Optional[Predicate]
+    ts: TableSpec,
+    kinds: dict[str, str],
+    where: Optional[Predicate],
+    *,
+    live: bool = True,
 ) -> tuple[str, list[Any]]:
-    """``(" WHERE …", params)``, or ``("", [])`` for no predicate."""
-    if where is None:
-        return "", []
+    """``(" WHERE …", params)``, or ``("", [])`` for no predicate.
+
+    On a ``Meta.ttl`` model the TTL read filter is ANDed on (M5, ``.ttl``):
+    every reader that scopes the record table through this -- ``select``,
+    ``count``, ranking, search, ``recall`` -- sees only rows that have not
+    expired. ``live=False`` leaves it off. A model without ``Meta.ttl``
+    renders exactly as before."""
+    from .ttl import and_live
+
     params: list[Any] = []
-    return " WHERE " + _pred_sql(ts, kinds, where, params), params
+    sql = "" if where is None else " WHERE " + _pred_sql(ts, kinds, where, params)
+    return (and_live(ts, sql) if live else sql), params
 
 
 def _collection_order_error(field_name: str) -> Exception:
