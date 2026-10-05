@@ -83,7 +83,9 @@ QQ_FIELD = "_qq"
 NEVER_RECORD_FIELD = "_never_record"
 EMBED_CACHE_FIELD = "_embed_cache"
 
-SORTED_KINDS = frozenset({"SortedField", "SortedKeyField", "DecayingSortedField"})
+SORTED_KINDS = frozenset(
+    {"SortedField", "SortedKeyField", "DecayingSortedField", "CyclicDecayField"}
+)
 
 #: Engine tables (name -> column DDL), created on first use per process.
 ENGINE_TABLES: dict[str, str] = {

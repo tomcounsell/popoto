@@ -227,10 +227,9 @@ ALL_MODELS = [
     ObservedMemory,
 ]
 
-#: Models the Postgres leg cannot store yet: ``CyclicDecayField`` (M5). A
-#: test that uses one is ``redis_only``. (``Meta.ttl`` -- ``TTLFact`` -- is
-#: stored since #759 M5.)
-REDIS_ONLY_MODELS = (ObservedFact, PlainObservedFact, ObservedMemory)
+#: Models the Postgres leg cannot store. Empty since #759 M5: ``Meta.ttl``
+#: (``TTLFact``) and the ``CyclicDecayField`` models are both stored now.
+REDIS_ONLY_MODELS: tuple = ()
 NEEDS_CYCLIC = "uses a CyclicDecayField, which Postgres stores from #759 M5"
 LUA_ONLY = "evaluates or inspects a Redis Lua script; Postgres runs no Lua"
 REDIS_PIPELINE = (
@@ -517,6 +516,17 @@ def _cycle_amplitudes(instance, field_name="relevance"):
     The observable trace of ``weaken_cycle`` / ``strengthen_cycle``, i.e. of a
     pre-#580 ``contradicted`` effect.
     """
+    backend = non_redis_backend(instance)
+    if backend is not None:
+        from src.popoto.backends import RecordId
+
+        state = backend.field_call(
+            instance._meta.spec,
+            field_name,
+            "state",
+            RecordId.from_key(instance._meta.model_name, instance.db_key.redis_key),
+        )
+        return [cycle[1] for cycle in ((state or {}).get("cycles") or [])]
     field = instance._meta.fields[field_name]
     raw = get_REDIS_DB().hget(
         field.get_cycles_hash_key(instance, field_name),
@@ -2713,7 +2723,6 @@ class TestContradictedSupersessionWiring:
     takes.
     """
 
-    @pytest.mark.redis_only(reason=NEEDS_CYCLIC)
     def test_contradicted_with_a_successor_closes_and_chains(self):
         old = _save(ObservedFact, name="old")
         new = _save(ObservedFact, name="new")
@@ -2734,7 +2743,6 @@ class TestContradictedSupersessionWiring:
         assert SupersessionProtocol.supersedes(new).name == "old"
         assert _names(ObservedFact.query.filter(validity__current=True)) == ["new"]
 
-    @pytest.mark.redis_only(reason=NEEDS_CYCLIC)
     def test_contradicted_leaves_the_successor_open(self):
         """The correction must not be closed by its own arrival."""
         old = _save(ObservedFact, name="old")
@@ -2742,7 +2750,6 @@ class TestContradictedSupersessionWiring:
         _report_contradicted(old, superseded_by=new)
         assert _interval(ObservedFact, "validity", new)[1] == float("inf")
 
-    @pytest.mark.redis_only(reason=NEEDS_CYCLIC)
     def test_no_validity_field_is_a_strict_no_op(self):
         """The case every shipped model takes today: nothing new is written.
 
@@ -2771,7 +2778,6 @@ class TestContradictedSupersessionWiring:
         assert _cycle_amplitudes(signalled) == _cycle_amplitudes(control)
         assert _cycle_amplitudes(signalled) < [c[1] for c in OBSERVED_CYCLES]
 
-    @pytest.mark.redis_only(reason=NEEDS_CYCLIC)
     def test_no_successor_signalled_is_a_no_op(self):
         """A ValidityField alone is not enough — the correction must be known."""
         old = _save(ObservedFact, name="old")
@@ -2787,7 +2793,6 @@ class TestContradictedSupersessionWiring:
         # The scalar effects still ran.
         assert ConfidenceField.get_confidence(old, "certainty") < 0.5
 
-    @pytest.mark.redis_only(reason=NEEDS_CYCLIC)
     def test_unsaved_successor_degrades_with_no_partial_state(self):
         """An unsaved correction must not close the incumbent into a dangling
         chain: the whole supersession degrades, incumbent left open."""
@@ -2802,7 +2807,6 @@ class TestContradictedSupersessionWiring:
         assert _store().hlen(keys["chain_rev"]) == 0
         assert _names(ObservedFact.query.filter(validity__current=True)) == ["old"]
 
-    @pytest.mark.redis_only(reason=NEEDS_CYCLIC)
     def test_the_degradation_is_logged_rather_than_merely_silent(self, caplog):
         """#588 D7: "silently degraded" is observable, not asserted-by-absence.
 
@@ -2852,7 +2856,6 @@ class TestContradictedSupersessionWiring:
         assert _validity_keyspace() == before_keys
         assert SupersessionProtocol.chain(unsaved) == []
 
-    @pytest.mark.redis_only(reason=NEEDS_CYCLIC)
     def test_a_non_contradicted_outcome_never_supersedes(self):
         """Only ``contradicted`` routes to ``_apply_supersession``."""
         old = _save(ObservedFact, name="old")
@@ -2871,7 +2874,6 @@ class TestContradictedSupersessionWiring:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(reason=NEEDS_CYCLIC)
 class TestCyclicDecayGatingGap:
     """PINS A DOCUMENTED GAP, NOT A DESIRED BEHAVIOR.
 

@@ -504,15 +504,26 @@ STATIC_FIELD_KINDS["postgres"] = (
     | SEARCH_FIELD_KINDS
     # M4: the edge table (popoto.backends.postgres.graph).
     | frozenset({"CoOccurrenceField"})
+    # M5, the long tail (popoto.backends.postgres.longtail): the cyclic
+    # decay field's cycles and pressure are columns beside its clock; a
+    # TDValueField is a numeric column with a one-statement TD update.
+    | frozenset({"CyclicDecayField", "TDValueField"})
 )
 #: Popoto mixins a Postgres model may not declare yet, with the milestone that
-#: brings each. ``PredictionLedgerMixin`` keeps its ledger in Redis structures
-#: (``RESOLVE_PREDICTION_LUA``); on a Postgres model ``record_prediction`` and
-#: ``auto_resolve`` would issue Redis commands for a record Redis does not
-#: hold, so it is refused at bind rather than silently doing nothing
-#: (#773 review). Its companion table arrives in M5 (plan §5).
-_POSTGRES_REFUSED_MIXINS: dict[str, str] = {
-    "PredictionLedgerMixin": "M5",
+#: brings each. Empty since M5: ``PredictionLedgerMixin``, refused from M2a
+#: until its ledger had a Postgres home (#773 review), keeps it in two engine
+#: tables (``popoto.backends.postgres.longtail``).
+_POSTGRES_REFUSED_MIXINS: dict[str, str] = {}
+
+#: Field kinds Postgres refuses for good in v2, with the reason (plan §5 M5:
+#: "a documented ``bind()`` refusal").
+_POSTGRES_REFUSED_KINDS: dict[str, str] = {
+    "DataFrameField": (
+        "a pandas DataFrame is not stored on Postgres in v2: the field needs the "
+        "optional 'dataframe' extra, which no CI job installs, so a bytea column "
+        "for it would ship untested (#759 M5). Store the frame's JSON in a "
+        "DictField or a BytesField instead"
+    ),
 }
 
 #: ``type=`` values an ``IndexedField`` / ``UniqueField`` may carry on
@@ -654,7 +665,11 @@ def validate_spec(spec: ModelSpec, backend_name: str) -> None:
         return
     problems: list[str] = []
     for fs in spec.fields.values():
-        if fs.kind not in kinds:
+        if fs.kind in _POSTGRES_REFUSED_KINDS and backend_name == "postgres":
+            problems.append(
+                f"{fs.name} ({fs.kind}): {_POSTGRES_REFUSED_KINDS[fs.kind]}"
+            )
+        elif fs.kind not in kinds:
             problems.append(f"{fs.name} ({fs.kind}) is not supported yet")
         elif fs.options.get("overrides_hooks"):
             hooks = ", ".join(fs.options["overrides_hooks"])

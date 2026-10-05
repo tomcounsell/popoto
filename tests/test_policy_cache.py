@@ -41,6 +41,13 @@ from src.popoto.recipes.policy_cache import (  # noqa: E402
 )
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -578,26 +585,63 @@ class TestPolicyCache:
         # Create and save a member with weight=0 (so decayed = 0 * ... = 0).
         member = _SweepModel.create(name="swept", weight=0.0)
 
-        # Install the discovered cycle directly on the cycles companion hash.
-        field = _SweepModel._meta.fields["relevance"]
-        cycles_hash_key = field.get_cycles_hash_key(member, "relevance")
-        _RDB.hset(
-            cycles_hash_key,
-            member.db_key.redis_key,
-            msgpack.packb([[period, amplitude, phase]]),
-        )
+        from src.popoto.backends import RecordId
+        from src.popoto.backends.routing import non_redis_backend
 
-        # Backdate the member's last_updated in the sorted set so the Lua
-        # ZRANGE finds it.  base_score=0 makes the actual value irrelevant
-        # to the score, but a timestamp is required for membership.
-        ss_key = field.get_partitioned_sortedset_db_key(member, "relevance")
-        _RDB.zadd(ss_key.redis_key, {member.db_key.redis_key: 0.0})
+        # On a Postgres leg (#759 M5) the cycle is the row's cycle columns,
+        # the clock its column, and the score the backend's rank_decayed --
+        # CYCLIC_DECAY_LUA's expression in SQL -- at each swept `now`.
+        backend = non_redis_backend(_SweepModel)
+        field = _SweepModel._meta.fields["relevance"]
+        if backend is not None:
+            rid = RecordId.from_key("_SweepModel", member.db_key.redis_key)
+            backend.field_call(
+                _SweepModel._meta.spec,
+                "relevance",
+                "import",
+                rid,
+                [[period, amplitude, phase]],
+                None,
+            )
+            table = backend._table(_SweepModel._meta.spec).qualified
+            backend._run(
+                f'UPDATE {table} SET "relevance" = 0.0 WHERE "_pk" = %s',
+                [member.db_key.redis_key],
+                write=True,
+            )
+        else:
+            # Install the discovered cycle directly on the cycles companion
+            # hash.
+            cycles_hash_key = field.get_cycles_hash_key(member, "relevance")
+            _RDB.hset(
+                cycles_hash_key,
+                member.db_key.redis_key,
+                msgpack.packb([[period, amplitude, phase]]),
+            )
+
+            # Backdate the member's last_updated in the sorted set so the Lua
+            # ZRANGE finds it.  base_score=0 makes the actual value irrelevant
+            # to the score, but a timestamp is required for membership.
+            ss_key = field.get_partitioned_sortedset_db_key(member, "relevance")
+            _RDB.zadd(ss_key.redis_key, {member.db_key.redis_key: 0.0})
 
         # --- 3. Sweep now across one full weekly period at <=3600s resolution ---
         step = 3600  # seconds; 168 steps over 604800s
         now_values = list(range(0, 604800, step))
         scores = []
         for now in now_values:
+            if backend is not None:
+                ranked = backend.rank_decayed(
+                    _SweepModel._meta.spec,
+                    "relevance",
+                    now=float(now),
+                    n=10,
+                    decay_rate=0.5,
+                    base_score_field="weight",
+                )
+                assert ranked, f"no score at now={now}"
+                scores.append(float(ranked[0][1]))
+                continue
             result = _RDB.eval(
                 CYCLIC_DECAY_LUA,
                 3,

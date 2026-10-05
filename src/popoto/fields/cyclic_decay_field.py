@@ -45,11 +45,55 @@ from typing import Any, Optional
 import msgpack
 import redis
 
+from ..backends.routing import non_redis_backend
 from ..exceptions import ModelException
 from ..redis_db import get_REDIS_DB, run_lua
 from .decaying_sorted_field import MODULATION_DISABLED, DecayingSortedField
 
 logger = logging.getLogger("POPOTO.CyclicDecayField")
+
+
+def log_declared_amplitude_reset(
+    model_name: str,
+    field_name: str,
+    member_key: str,
+    period: Any,
+    old_baseline: Any,
+    declared_amplitude: Any,
+    learned_amplitude: Any,
+) -> None:
+    """``on_save``'s #698 reset line: the developer edited the declared
+    amplitude, so the declaration won and the learned amplitude was
+    discarded. Shared by the Redis merge (``CYCLES_MERGE_LUA``'s report) and
+    the Postgres one (#759 M5), so both legs log the same text.
+
+    ``cmsgpack`` packs an integral Lua number as a msgpack integer (Lua 5.1
+    has one number type), so a whole-number amplitude or baseline arrives as
+    ``int``; it is coerced back to ``float`` so the line matches the pre-#699
+    Python-float formatting. ``period`` is left alone, since it may
+    legitimately be a non-numeric string. Coercion is display-only and
+    defensive: a hand-written/migrated payload can carry a non-numeric value
+    that still decodes as valid msgpack, and the pre-#699 code logged such
+    values fine -- never raise out of ``save()`` here.
+    """
+    try:
+        old_baseline = float(old_baseline)
+        declared_amplitude = float(declared_amplitude)
+        learned_amplitude = float(learned_amplitude)
+    except (TypeError, ValueError):
+        pass
+    # The developer edited the declared amplitude — the declaration wins.
+    # The learned amplitude is discarded by design (#698); this destroys real
+    # state, so it is logged loudly.
+    logger.info(
+        f"CyclicDecayField declared amplitude changed for "
+        f"{model_name}.{field_name} "
+        f"member={member_key} period={period!r}: "
+        f"declared baseline {old_baseline!r} -> "
+        f"{declared_amplitude!r}; discarded learned "
+        f"amplitude {learned_amplitude!r}"
+    )
+
 
 # Extended Lua script: computes decay + cyclic resonance + pressure atomically.
 #
@@ -501,6 +545,9 @@ class CyclicDecayField(DecayingSortedField):
             return None
 
         member_key = model_instance.db_key.redis_key
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            return _export_on_backend(backend, model_instance, field_name, member_key)
         state = {}
 
         cycles_raw = get_REDIS_DB().hget(
@@ -609,6 +656,40 @@ class CyclicDecayField(DecayingSortedField):
             return None
 
         member_key = model_instance.db_key.redis_key
+
+        backend = non_redis_backend(model_instance)
+        if backend is not None:
+            # #759 M5: the same two raw writes, as one UPDATE of the row's
+            # cycles and pressure columns.
+            from ..backends import RecordId
+
+            cycles_in = state.get("cycles") or None
+            pressure_in = state.get("pressure") or None
+            backend.field_call(
+                model_instance._meta.spec,
+                field_name,
+                "import",
+                RecordId.from_key(model_instance._meta.model_name, member_key),
+                (
+                    None
+                    if cycles_in is None
+                    else [
+                        [c[0], c[1], c[2] if len(c) > 2 else 0]
+                        for c in (list(c) for c in cycles_in)
+                    ]
+                ),
+                (
+                    None
+                    if pressure_in is None
+                    else {
+                        "rate": float(pressure_in.get("rate", 0.0) or 0.0),
+                        "last_resolved": float(
+                            pressure_in.get("last_resolved", 0.0) or 0.0
+                        ),
+                    }
+                ),
+            )
+            return None
 
         cycles = state.get("cycles")
         if cycles:
@@ -731,6 +812,7 @@ class CyclicDecayField(DecayingSortedField):
         Args and return value are otherwise as
         :meth:`DecayingSortedField.rank_decayed`.
         """
+        self._refuse_off_redis()
         conf_hash_key, conf_s, conf_c0 = (
             MODULATION_DISABLED if confidence is None else confidence
         )
@@ -891,31 +973,14 @@ class CyclicDecayField(DecayingSortedField):
             )
 
         for period, old_baseline, declared_amplitude, learned_amplitude in resets:
-            # cmsgpack packs an integral Lua number as a msgpack integer
-            # (Lua 5.1 has one number type), so a whole-number amplitude or
-            # baseline round-trips as int rather than float. Coerce back to
-            # float here so the log line matches the pre-#699 Python-float
-            # formatting; period is left alone since it may legitimately be
-            # a non-numeric string. Coercion is display-only and defensive:
-            # a hand-written/migrated payload can carry a non-numeric value
-            # that still decodes as valid msgpack, and the pre-#699 code
-            # logged such values fine — never raise out of save() here.
-            try:
-                old_baseline = float(old_baseline)
-                declared_amplitude = float(declared_amplitude)
-                learned_amplitude = float(learned_amplitude)
-            except (TypeError, ValueError):
-                pass
-            # The developer edited the declared amplitude — the declaration
-            # wins. The learned amplitude is discarded by design (#698); this
-            # destroys real state, so it is logged loudly.
-            logger.info(
-                f"CyclicDecayField declared amplitude changed for "
-                f"{model_instance.__class__.__name__}.{field_name} "
-                f"member={member_key} period={period!r}: "
-                f"declared baseline {old_baseline!r} -> "
-                f"{declared_amplitude!r}; discarded learned "
-                f"amplitude {learned_amplitude!r}"
+            log_declared_amplitude_reset(
+                model_instance.__class__.__name__,
+                field_name,
+                member_key,
+                period,
+                old_baseline,
+                declared_amplitude,
+                learned_amplitude,
             )
 
         return result
@@ -946,3 +1011,36 @@ class CyclicDecayField(DecayingSortedField):
         return super().on_delete(
             model_instance, field_name, field_value, pipeline=pipeline, **kwargs
         )
+
+
+def _export_on_backend(
+    backend: Any, model_instance: Any, field_name: str, member_key: str
+) -> Optional[dict[str, Any]]:
+    """``export_state`` on a non-Redis backend (#759 M5): the row's cycles
+    and pressure, shaped as the Redis export: each stored entry as
+    ``cmsgpack`` left it (an integral number an ``int``), amplitude and
+    phase coerced back to ``float``, and the #698 baseline slot kept when
+    the entry has one (``import_state`` drops it)."""
+    from ..backends import RecordId
+
+    stored = backend.field_call(
+        model_instance._meta.spec,
+        field_name,
+        "state",
+        RecordId.from_key(model_instance._meta.model_name, member_key),
+    )
+    if stored is None:
+        return None
+    state: dict[str, Any] = {}
+    if stored["cycles"] is not None:
+        cycles = []
+        for cycle in stored["cycles"]:
+            cycle = list(cycle)
+            for slot in (1, 2):
+                if len(cycle) > slot and isinstance(cycle[slot], int):
+                    cycle[slot] = float(cycle[slot])
+            cycles.append(cycle)
+        state["cycles"] = cycles
+    if stored["pressure"] is not None:
+        state["pressure"] = dict(stored["pressure"])
+    return state or None

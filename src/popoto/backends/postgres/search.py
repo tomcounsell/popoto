@@ -106,7 +106,12 @@ PLAIN_MAX_DIMENSIONS = 1900
 #: path (``BM25Field.search``) hands back the same representation.
 LUA_NUMBER_FORMAT = "%.14g"
 
-_SCOPE_KINDS = ("DecayingSortedField", "SortedField", "SortedKeyField")
+_SCOPE_KINDS = (
+    "DecayingSortedField",
+    "CyclicDecayField",
+    "SortedField",
+    "SortedKeyField",
+)
 _FILTER_KINDS = frozenset(
     {
         "KeyField",

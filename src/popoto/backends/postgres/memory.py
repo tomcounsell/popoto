@@ -117,6 +117,10 @@ __all__ = [
 logger = logging.getLogger("POPOTO.postgres")
 
 DECAY_KIND = "DecayingSortedField"
+#: ``CyclicDecayField`` (#759 M5) keeps the same clock column; its score adds
+#: the cycles and the pressure (:mod:`.longtail`).
+CYCLIC_KIND = "CyclicDecayField"
+DECAY_KINDS = frozenset({DECAY_KIND, CYCLIC_KIND})
 CONFIDENCE_KIND = "ConfidenceField"
 SORTED_ARM_KINDS = frozenset({"SortedField", "SortedKeyField"})
 
@@ -249,6 +253,10 @@ def memory_columns(spec: ModelSpec) -> list[Column]:
         out.extend(Column(c, t, None, "state") for c, t in ACCESS_COLUMNS)
     # M3: a ValidityField's interval and chain-link columns (.validity).
     out.extend(validity_columns(spec))
+    # M5: a CyclicDecayField's cycles and pressure (.longtail).
+    from .longtail import cyclic_columns
+
+    out.extend(cyclic_columns(spec))
     return out
 
 
@@ -260,7 +268,7 @@ def memory_indexes(
     ranking scan and a range query on the clock."""
     out = []
     for name, fs in sorted(spec.fields.items()):
-        if fs.kind != DECAY_KIND:
+        if fs.kind not in DECAY_KINDS:
             continue
         partition = tuple(fs.options.get("partition_by", ()) or ())
         cols = ", ".join(quote_ident(c) for c in partition + (name,))
@@ -442,6 +450,16 @@ def decay_score_sql(
     return f"(CASE WHEN {' AND '.join(guards)} THEN {plain} ELSE {clamped_sql} END)"
 
 
+def _score_sql(kind: str) -> Callable[..., str]:
+    """The ranking expression of a decay-clock field: ``DECAY_SCORE_LUA``'s,
+    or ``CYCLIC_DECAY_LUA``'s for a ``CyclicDecayField`` (#759 M5)."""
+    if kind == CYCLIC_KIND:
+        from .longtail import cyclic_score_sql
+
+        return cyclic_score_sql
+    return decay_score_sql
+
+
 # -- the backend half -----------------------------------------------------------
 
 
@@ -550,7 +568,7 @@ class PostgresMemoryOps(PostgresValidityOps):
 
     def _decay_field(self, spec: ModelSpec, field: str) -> Any:
         fs = spec.fields.get(field)
-        if fs is None or fs.kind != DECAY_KIND:
+        if fs is None or fs.kind not in DECAY_KINDS:
             raise BackendCapabilityError(
                 f"{spec.name}.{field} is not a DecayingSortedField"
             )
@@ -584,6 +602,11 @@ class PostgresMemoryOps(PostgresValidityOps):
         fs = self._decay_field(spec, field)
         if validity_field:
             self._validity_field(spec, validity_field)
+        if fs.kind == CYCLIC_KIND:
+            # CYCLIC_DECAY_LUA has no validity gate (its KEYS are all taken):
+            # a deliberate No-Go on Redis, pinned by TestCyclicDecayGatingGap,
+            # so a cyclic ranking ignores the gate here too (#759 M5).
+            validity_field = None
         if n is not None and n <= 0:
             return []
         ts = self._table(spec)
@@ -592,7 +615,7 @@ class PostgresMemoryOps(PostgresValidityOps):
             if decay_rate is not None
             else fs.options.get("decay_rate", Defaults.DECAY_RATE)
         )
-        expr = decay_score_sql(
+        expr = _score_sql(fs.kind)(
             ts,
             spec,
             field,
@@ -651,7 +674,7 @@ class PostgresMemoryOps(PostgresValidityOps):
         if term.kind == "decay":
             assert term.field is not None
             fs = self._decay_field(spec, term.field)
-            score = decay_score_sql(
+            score = _score_sql(fs.kind)(
                 ts,
                 spec,
                 term.field,
@@ -855,7 +878,7 @@ class PostgresMemoryOps(PostgresValidityOps):
                 return self._atomically(*args, uow=uow)
         fs = spec.fields.get(field)
         if fs is not None and fs.kind == CONFIDENCE_KIND and op == "state":
-            return self._confidence_state(spec, field, *args)
+            return self._confidence_state(spec, field, *args, uow=uow)
         if fs is not None and fs.kind == VALIDITY_KIND:
             result = self._validity_field_call(spec, field, op, args, kwargs, uow)
             if result is not _VALIDITY_NOT_HANDLED:
@@ -865,10 +888,18 @@ class PostgresMemoryOps(PostgresValidityOps):
         return _NOT_HANDLED
 
     def _confidence_state(
-        self, spec: ModelSpec, field: str, id: RecordId
+        self,
+        spec: ModelSpec,
+        field: str,
+        id: RecordId,
+        *,
+        uow: Optional[UnitOfWork] = None,
     ) -> Optional[dict[str, Any]]:
         """The stored state, or ``None`` when the record does not exist.
-        ``NULL`` state is the seed: ``initial_confidence`` and three zeros."""
+        ``NULL`` state is the seed: ``initial_confidence`` and three zeros.
+        Inside ``uow`` it reads that transaction's own writes (#759 M5: the
+        observation batch's auto-discharge reads the confidence it just
+        updated)."""
         ts = self._table(spec)
         fs = spec.fields[field]
         ic = float(fs.options.get("initial_confidence", 0.5))
@@ -876,6 +907,7 @@ class PostgresMemoryOps(PostgresValidityOps):
         rows, _ = self._run(
             f'SELECT {cols} FROM {ts.qualified} WHERE "_pk" = %s' + _and_live(ts),
             [id.canonical],
+            uow=uow,
         )
         if not rows:
             return None

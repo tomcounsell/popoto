@@ -86,9 +86,29 @@ class ConfidenceLowPrior(popoto.Model):
 def _seed_confidence_data(
     item, field_name, confidence, evidence_count, corroborations=0, contradictions=0
 ):
-    """Write companion-hash state directly (bypasses the update rule)."""
+    """Write companion-hash state directly (bypasses the update rule): the
+    state columns on a Postgres leg (#759 M5)."""
     import msgpack
 
+    from src.popoto.backends.routing import non_redis_backend
+
+    backend = non_redis_backend(item)
+    if backend is not None:
+        table = backend._table(item._meta.spec).qualified
+        backend._run(
+            f'UPDATE {table} SET "{field_name}__conf" = %s, "{field_name}__n" = %s, '
+            f'"{field_name}__corr" = %s, "{field_name}__contra" = %s '
+            'WHERE "_pk" = %s',
+            [
+                confidence,
+                evidence_count,
+                corroborations,
+                contradictions,
+                item.db_key.redis_key,
+            ],
+            write=True,
+        )
+        return
     field = item._meta.fields[field_name]
     data_hash_key = field.get_data_hash_key(item, field_name)
     member_key = item.db_key.redis_key
@@ -664,9 +684,6 @@ class TestConfidenceFieldErrors:
 
 
 class TestEntrainment:
-    @pytest.mark.redis_only(
-        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
-    )
     def test_acted_corroborates_confidence(self):
         """ObservationProtocol 'acted' outcome increases confidence."""
         item = ConfidenceWithCyclic.create(name="ent1", content="test")
@@ -678,9 +695,6 @@ class TestEntrainment:
         new_conf = ConfidenceField.get_confidence(item, "certainty")
         assert new_conf > initial_conf
 
-    @pytest.mark.redis_only(
-        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
-    )
     def test_contradicted_decreases_confidence(self):
         """ObservationProtocol 'contradicted' outcome decreases confidence."""
         item = ConfidenceWithCyclic.create(name="ent2", content="test")
@@ -692,9 +706,6 @@ class TestEntrainment:
         new_conf = ConfidenceField.get_confidence(item, "certainty")
         assert new_conf < initial_conf
 
-    @pytest.mark.redis_only(
-        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
-    )
     def test_dismissed_does_not_change_confidence(self):
         """ObservationProtocol 'dismissed' outcome does NOT change confidence."""
         item = ConfidenceWithCyclic.create(name="ent3", content="test")
@@ -706,9 +717,6 @@ class TestEntrainment:
         new_conf = ConfidenceField.get_confidence(item, "certainty")
         assert new_conf == initial_conf
 
-    @pytest.mark.redis_only(
-        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
-    )
     def test_deferred_does_not_change_confidence(self):
         """ObservationProtocol 'deferred' outcome does NOT change confidence."""
         item = ConfidenceWithCyclic.create(name="ent4", content="test")
@@ -721,9 +729,26 @@ class TestEntrainment:
         assert new_conf == initial_conf
 
     def _seed_pressure(self, item, last_resolved):
-        """Seed pressure state on the relevance CyclicDecayField."""
+        """Seed pressure state on the relevance CyclicDecayField (its pressure
+        columns on a Postgres leg, #759 M5). Returns what
+        :meth:`_read_pressure` needs."""
         import msgpack
 
+        from src.popoto.backends import RecordId
+        from src.popoto.backends.routing import non_redis_backend
+
+        backend = non_redis_backend(item)
+        if backend is not None:
+            rid = RecordId.from_key(item._meta.model_name, item.db_key.redis_key)
+            backend.field_call(
+                item._meta.spec,
+                "relevance",
+                "import",
+                rid,
+                None,
+                {"rate": 0.1, "last_resolved": last_resolved},
+            )
+            return backend, rid
         rel_field = item._meta.fields["relevance"]
         pressure_hash_key = rel_field.get_pressure_hash_key(item, "relevance")
         member_key = item.db_key.redis_key
@@ -733,9 +758,19 @@ class TestEntrainment:
         )
         return pressure_hash_key, member_key
 
-    @pytest.mark.redis_only(
-        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
-    )
+    @staticmethod
+    def _read_pressure(item, pressure_hash_key, member_key):
+        """The pressure entry ``_seed_pressure`` seeded, as stored now."""
+        import msgpack
+
+        if not isinstance(pressure_hash_key, str):
+            backend, rid = pressure_hash_key, member_key
+            state = backend.field_call(item._meta.spec, "relevance", "state", rid)
+            return state["pressure"]
+        raw = POPOTO_REDIS_DB.hget(pressure_hash_key, member_key)
+        assert raw is not None
+        return msgpack.unpackb(raw, raw=False)
+
     def test_auto_discharge_on_low_confidence(self):
         """Confidence clearly below threshold - epsilon auto-discharges pressure."""
         import msgpack
@@ -770,15 +805,11 @@ class TestEntrainment:
         )
 
         # Verify pressure was resolved (last_resolved should be recent)
-        raw = POPOTO_REDIS_DB.hget(pressure_hash_key, member_key)
-        assert raw is not None
-        pdata = msgpack.unpackb(raw, raw=False)
+        pdata = self._read_pressure(item, pressure_hash_key, member_key)
+        assert pdata is not None
         # last_resolved should be within the last minute (was 30 days ago)
         assert time.time() - pdata["last_resolved"] < 60
 
-    @pytest.mark.redis_only(
-        reason="uses a CyclicDecayField, which Postgres stores from #759 M5"
-    )
     def test_no_auto_discharge_within_epsilon_of_threshold(self):
         """The float predecessor of 0.1 does NOT trigger auto-discharge.
 
@@ -813,9 +844,8 @@ class TestEntrainment:
         popoto.ObservationProtocol.on_context_used([item], outcome_map)
 
         # Pressure must NOT have been resolved — last_resolved unchanged
-        raw = POPOTO_REDIS_DB.hget(pressure_hash_key, member_key)
-        assert raw is not None
-        pdata = msgpack.unpackb(raw, raw=False)
+        pdata = self._read_pressure(item, pressure_hash_key, member_key)
+        assert pdata is not None
         assert abs(pdata["last_resolved"] - thirty_days_ago) < 1.0
 
     def test_entrainment_without_cyclic_field_is_safe(self):

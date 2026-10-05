@@ -24,6 +24,13 @@ from src.popoto.fields.shortcuts import DecimalField  # noqa: E402
 from src.popoto.fields.td_value_field import TDValueField  # noqa: E402
 from src.popoto.recipes import policy_cache  # noqa: E402
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 
 class Bandit(popoto.Model):
     """A model that is not PolicyEntry, to prove the field is a primitive."""
@@ -91,6 +98,11 @@ def test_underivable_key_raises_value_error_and_issues_no_commands(monkeypatch):
     assert commands == []
 
 
+@pytest.mark.redis_only(
+    reason="pins redis-py pipeline queue-then-execute; a Postgres model runs the "
+    "update at once when handed a Redis pipeline (and inside the transaction "
+    "when handed its own unit of work: tests/test_backend_parity_longtail.py)"
+)
 def test_td_update_queues_on_a_pipeline_and_applies_on_execute():
     bandit = Bandit(arm_id=f"arm-{uuid.uuid4().hex[:8]}")
     bandit.save()

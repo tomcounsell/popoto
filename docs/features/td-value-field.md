@@ -68,6 +68,13 @@ The value is written as the `__Decimal__` tagged dict that every `DecimalField` 
 
 This matters beyond tidiness. `DecayingSortedField` reads a `base_score_field` straight out of the member's hash in its own Lua and falls back to `1.0` for any encoding it does not recognize. A `PolicyEntry` declares `expected_value = DecayingSortedField(base_score_field="q_value")`, so if `TDValueField` wrote any other encoding, the decay clock would silently fall back to a magnitude of 1.0 rather than error. Keeping `TDValueField` a `DecimalField` subclass — `type is Decimal` — is what keeps that contract.
 
+## On Postgres
+
+On a Postgres-bound model (#759 M5) the field is a `numeric` column and
+`td_update` is one `UPDATE` with the script's arithmetic in the same order,
+storing the script's `tostring` of the new value and replying its `tostring`
+of the TD error. See [Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+
 ## Valkey compatibility
 
 Core commands only — `HGET`, `HSET`, and `cmsgpack` inside the script. No Redis-module commands (`BF.`, `CMS.`, `TOPK.`, `TS.`, `JSON.`), so this field behaves identically on Redis and Valkey.

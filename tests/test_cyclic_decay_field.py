@@ -36,6 +36,13 @@ from src.popoto.fields.decaying_sorted_field import (
 from src.popoto.fields.constants import TemporalPeriod
 from src.popoto.models.query import QueryException
 
+# Backend conformance (#759 M5, plan §5 M5 gate (b)): every test in this
+# module runs once per configured backend, and the `backend` fixture binds
+# that leg's backend for the test, so the module-level models below run on
+# Redis and on Postgres from the same test code. A test whose assertion only
+# holds on Redis carries `redis_only` with the reason.
+pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
+
 # --- Test Models ---
 
 
@@ -169,6 +176,158 @@ def teardown_module():
         model.delete_all()
 
 
+# --- Leg-neutral state helpers (#759 M5) ---
+#
+# On the Redis leg these read and write the structures the field keeps there,
+# through the raw client, exactly as these tests always did; on the Postgres
+# leg the record's own columns (the clock, the cycle arrays and the pressure
+# pair), through the backend. A test that plants something a typed column
+# cannot hold (a corrupt or mis-shaped msgpack entry) stays redis_only.
+
+CYCLE_COLUMNS = ("__cycle_period", "__cycle_amp", "__cycle_phase", "__cycle_base")
+PRESSURE_COLUMNS = ("__pressure_rate", "__pressure_at")
+
+
+def _pg(model):
+    from src.popoto.backends.routing import non_redis_backend
+
+    return non_redis_backend(model)
+
+
+def _rid(item):
+    from src.popoto.backends import RecordId
+
+    return RecordId.from_key(item._meta.model_name, item.db_key.redis_key)
+
+
+def _pg_update(model, item, sets, params):
+    backend = _pg(model)
+    table = backend._table(model._meta.spec).qualified
+    backend._run(
+        f'UPDATE {table} SET {sets} WHERE "_pk" = %s',
+        list(params) + [item.db_key.redis_key],
+        write=True,
+    )
+
+
+def _backdate(model, timestamps, field_name="relevance"):
+    """Set decay clocks: ``{redis_key: epoch seconds}`` (a ``ZADD`` on
+    Redis; the clock column on Postgres)."""
+    backend = _pg(model)
+    if backend is None:
+        ss_key = model._meta.fields[field_name].__class__.get_sortedset_db_key(
+            model, field_name
+        )
+        popoto.POPOTO_REDIS_DB.zadd(ss_key.redis_key, timestamps)
+        return
+    table = backend._table(model._meta.spec).qualified
+    for key, ts in timestamps.items():
+        backend._run(
+            f'UPDATE {table} SET "{field_name}" = %s WHERE "_pk" = %s',
+            [float(ts), key],
+            write=True,
+        )
+
+
+def _write_cycles(model, item, cycles, field_name="relevance"):
+    """Store ``cycles`` (``[period, amplitude, phase(, baseline)]`` lists) as
+    the member's cycles entry, bypassing the merge."""
+    if _pg(model) is None:
+        field = model._meta.fields[field_name]
+        popoto.POPOTO_REDIS_DB.hset(
+            field.get_cycles_hash_key(item, field_name),
+            item.db_key.redis_key,
+            msgpack.packb(cycles),
+        )
+        return
+    columns = [[], [], [], []]
+    for cycle in cycles:
+        columns[0].append(float(cycle[0]))
+        columns[1].append(float(cycle[1]))
+        columns[2].append(float(cycle[2]) if len(cycle) > 2 else 0.0)
+        columns[3].append(float(cycle[3]) if len(cycle) > 3 else None)
+    sets = ", ".join(f'"{field_name}{c}" = %s::float8[]' for c in CYCLE_COLUMNS)
+    _pg_update(model, item, sets, columns)
+
+
+def _delete_cycles(model, item, field_name="relevance"):
+    """Remove the member's cycles entry (``HDEL``; ``NULL`` columns)."""
+    if _pg(model) is None:
+        field = model._meta.fields[field_name]
+        popoto.POPOTO_REDIS_DB.hdel(
+            field.get_cycles_hash_key(item, field_name), item.db_key.redis_key
+        )
+        return
+    sets = ", ".join(f'"{field_name}{c}" = NULL' for c in CYCLE_COLUMNS)
+    _pg_update(model, item, sets, [])
+
+
+def _write_pressure(model, item, pressure, field_name="relevance"):
+    """Store ``{"rate", "last_resolved"}`` as the member's pressure entry."""
+    if _pg(model) is None:
+        field = model._meta.fields[field_name]
+        popoto.POPOTO_REDIS_DB.hset(
+            field.get_pressure_hash_key(item, field_name),
+            item.db_key.redis_key,
+            msgpack.packb(pressure),
+        )
+        return
+    sets = ", ".join(f'"{field_name}{c}" = %s' for c in PRESSURE_COLUMNS)
+    _pg_update(
+        model,
+        item,
+        sets,
+        [float(pressure["rate"]), float(pressure["last_resolved"])],
+    )
+
+
+def _read_pressure(model, item, field_name="relevance"):
+    """The member's pressure entry, or ``None``."""
+    backend = _pg(model)
+    if backend is None:
+        field = model._meta.fields[field_name]
+        raw = popoto.POPOTO_REDIS_DB.hget(
+            field.get_pressure_hash_key(item, field_name), item.db_key.redis_key
+        )
+        return msgpack.unpackb(raw, raw=False) if raw else None
+    state = backend.field_call(model._meta.spec, field_name, "state", _rid(item))
+    return None if state is None else state["pressure"]
+
+
+def _scores(model, now, n=50, decay_rate=None, base_score_field=None):
+    """``{member: score string}`` of the field's ranking at ``now``: the Lua's
+    raw ``tostring`` reply on Redis (no confidence modulation, three KEYS, as
+    these tests have always evaluated it), the backend's ``rank_decayed`` on
+    Postgres, rendered the same ``%.14g`` way."""
+    field = model._meta.fields["relevance"]
+    rate = field.decay_rate if decay_rate is None else decay_rate
+    base = field.base_score_field if base_score_field is None else base_score_field
+    backend = _pg(model)
+    if backend is not None:
+        ranked = backend.rank_decayed(
+            model._meta.spec,
+            "relevance",
+            now=now,
+            n=n,
+            decay_rate=rate,
+            base_score_field=base or None,
+        )
+        return {rid.canonical: "%.14g" % score for rid, score in ranked}
+    ss_key = field.__class__.get_sortedset_db_key(model, "relevance").redis_key
+    raw = popoto.POPOTO_REDIS_DB.eval(
+        CYCLIC_DECAY_LUA,
+        3,
+        ss_key,
+        CyclicDecayField.get_cycles_hash_key_from_parts(model, "relevance"),
+        CyclicDecayField.get_pressure_hash_key_from_parts(model, "relevance"),
+        str(now),
+        str(rate),
+        str(n),
+        base or "",
+    )
+    return _decode_scores(raw)
+
+
 # --- Confidence-modulation helpers (#491) ---
 
 
@@ -179,6 +338,15 @@ def _decode_scores(raw):
 
 
 def _plant_confidence(record, confidence, evidence_count=10):
+    if _pg(type(record)) is not None:
+        _pg_update(
+            type(record),
+            record,
+            '"certainty__conf" = %s, "certainty__n" = %s, '
+            '"certainty__corr" = %s, "certainty__contra" = 0',
+            [confidence, evidence_count, evidence_count],
+        )
+        return
     field = type(record)._meta.fields["certainty"]
     popoto.POPOTO_REDIS_DB.hset(
         field.get_data_hash_key(record, "certainty"),
@@ -204,6 +372,42 @@ def _modulated_eval(model_class, now, n=50, disable=False, cycles_key=None):
     reproduces the pre-#491 call shape as a byte-exact oracle.
     """
     field = model_class._meta.fields["relevance"]
+    backend = _pg(model_class)
+    if backend is not None:
+        # The Postgres leg: the backend's ranking with the same switches --
+        # modulated by the auto-detected ConfidenceField unless ``disable``,
+        # and with no cycles when ``cycles_key`` names a missing hash (the
+        # rows' cycles set aside for the call, then put back).
+        from src.popoto.fields.decaying_sorted_field import (
+            resolve_confidence_modulation_field,
+        )
+
+        conf_name = None
+        if not disable:
+            conf_name, _ = resolve_confidence_modulation_field(
+                model_class, field, "relevance"
+            )
+        saved = {}
+        if cycles_key is not None and isinstance(field, CyclicDecayField):
+            for rec in model_class.query.all():
+                state = backend.field_call(
+                    model_class._meta.spec, "relevance", "state", _rid(rec)
+                )
+                saved[rec.db_key.redis_key] = (rec, state["cycles"])
+                _delete_cycles(model_class, rec)
+        try:
+            ranked = backend.rank_decayed(
+                model_class._meta.spec,
+                "relevance",
+                now=now,
+                n=n,
+                confidence_field=conf_name,
+            )
+        finally:
+            for rec, cycles in saved.values():
+                if cycles is not None:
+                    _write_cycles(model_class, rec, cycles)
+        return {rid.canonical: "%.14g" % score for rid, score in ranked}
     ss_key = field.__class__.get_sortedset_db_key(model_class, "relevance").redis_key
     conf_key, s, c0 = confidence_modulation_args(
         model_class, field, "relevance", filters={}
@@ -367,48 +571,34 @@ class TestCyclicDecayFieldSave:
 
     def test_save_stores_cycles_hash(self):
         item = CyclicWithCycles.create(name="cycles_test")
-        field = CyclicWithCycles._meta.fields["relevance"]
-        cycles_key = field.get_cycles_hash_key(item, "relevance")
-        raw = popoto.POPOTO_REDIS_DB.hget(cycles_key, item.db_key.redis_key)
-        assert raw is not None
-        decoded = msgpack.unpackb(raw, raw=False)
+        decoded = _read_cycles(CyclicWithCycles, item)
+        assert decoded is not None
         assert len(decoded) == 1
         assert decoded[0][0] == TemporalPeriod.YEARLY
         assert decoded[0][1] == 5.0
 
     def test_save_stores_pressure_hash(self):
         item = CyclicWithPressure.create(name="pressure_test")
-        field = CyclicWithPressure._meta.fields["relevance"]
-        pressure_key = field.get_pressure_hash_key(item, "relevance")
-        raw = popoto.POPOTO_REDIS_DB.hget(pressure_key, item.db_key.redis_key)
-        assert raw is not None
-        decoded = msgpack.unpackb(raw, raw=False)
+        decoded = _read_pressure(CyclicWithPressure, item)
+        assert decoded is not None
         assert decoded["rate"] == 0.1
         assert "last_resolved" in decoded
 
     def test_save_preserves_last_resolved(self):
         """Re-saving does not overwrite last_resolved."""
         item = CyclicWithPressure.create(name="preserve_lr")
-        field = CyclicWithPressure._meta.fields["relevance"]
-        pressure_key = field.get_pressure_hash_key(item, "relevance")
-
-        raw1 = popoto.POPOTO_REDIS_DB.hget(pressure_key, item.db_key.redis_key)
-        lr1 = msgpack.unpackb(raw1, raw=False)["last_resolved"]
+        lr1 = _read_pressure(CyclicWithPressure, item)["last_resolved"]
 
         time.sleep(0.05)
         item.save()
 
-        raw2 = popoto.POPOTO_REDIS_DB.hget(pressure_key, item.db_key.redis_key)
-        lr2 = msgpack.unpackb(raw2, raw=False)["last_resolved"]
+        lr2 = _read_pressure(CyclicWithPressure, item)["last_resolved"]
         assert lr1 == lr2
 
     def test_save_no_cycles_no_hash(self):
         """CyclicDecayField with empty cycles removes stale cycle data."""
         item = CyclicItem.create(name="no_cycles")
-        field = CyclicItem._meta.fields["relevance"]
-        cycles_key = field.get_cycles_hash_key(item, "relevance")
-        raw = popoto.POPOTO_REDIS_DB.hget(cycles_key, item.db_key.redis_key)
-        assert raw is None
+        assert _read_cycles(CyclicItem, item) is None
 
 
 # --- Delete behavior tests ---
@@ -425,26 +615,20 @@ class TestCyclicDecayFieldDelete:
 
     def test_delete_cleans_cycles_hash(self):
         item = CyclicFull.create(name="del_cycles")
-        field = CyclicFull._meta.fields["relevance"]
-        cycles_key = field.get_cycles_hash_key(item, "relevance")
-        member_key = item.db_key.redis_key
 
         # Verify data exists
-        assert popoto.POPOTO_REDIS_DB.hget(cycles_key, member_key) is not None
+        assert _read_cycles(CyclicFull, item) is not None
 
         item.delete()
-        assert popoto.POPOTO_REDIS_DB.hget(cycles_key, member_key) is None
+        assert _read_cycles(CyclicFull, item) is None
 
     def test_delete_cleans_pressure_hash(self):
         item = CyclicFull.create(name="del_pressure")
-        field = CyclicFull._meta.fields["relevance"]
-        pressure_key = field.get_pressure_hash_key(item, "relevance")
-        member_key = item.db_key.redis_key
 
-        assert popoto.POPOTO_REDIS_DB.hget(pressure_key, member_key) is not None
+        assert _read_pressure(CyclicFull, item) is not None
 
         item.delete()
-        assert popoto.POPOTO_REDIS_DB.hget(pressure_key, member_key) is None
+        assert _read_pressure(CyclicFull, item) is None
 
 
 # --- top_by_decay() with cyclic resonance ---
@@ -462,17 +646,15 @@ class TestTopByDecayCyclic:
     def test_yearly_cycle_peak(self):
         """A yearly cycle should peak at the phase time and trough 6 months later."""
         now = time.time()
-        field = CyclicWithCycles._meta.fields["relevance"]
 
         # Create two items at the same decay age
         peak_item = CyclicWithCycles.create(name="peak")
         trough_item = CyclicWithCycles.create(name="trough")
 
         # Set both to same timestamp (1 day ago)
-        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicWithCycles, "relevance")
         one_day_ago = now - 86400
-        popoto.POPOTO_REDIS_DB.zadd(
-            ss_key.redis_key,
+        _backdate(
+            CyclicWithCycles,
             {
                 peak_item.db_key.redis_key: one_day_ago,
                 trough_item.db_key.redis_key: one_day_ago,
@@ -481,7 +663,6 @@ class TestTopByDecayCyclic:
 
         # Set peak_item cycles with phase = now (peak now)
         # Set trough_item cycles with phase = now - half_year (trough now)
-        cycles_key = field.get_cycles_hash_key(peak_item, "relevance")
         half_year = TemporalPeriod.YEARLY / 2
 
         # Peak cycle: phase aligns so cos(2*pi*(now-phase)/period) = 1
@@ -489,12 +670,8 @@ class TestTopByDecayCyclic:
         # Trough cycle: phase shifted so cos = -1
         trough_cycles = [[TemporalPeriod.YEARLY, 5.0, now - half_year]]
 
-        popoto.POPOTO_REDIS_DB.hset(
-            cycles_key, peak_item.db_key.redis_key, msgpack.packb(peak_cycles)
-        )
-        popoto.POPOTO_REDIS_DB.hset(
-            cycles_key, trough_item.db_key.redis_key, msgpack.packb(trough_cycles)
-        )
+        _write_cycles(CyclicWithCycles, peak_item, peak_cycles)
+        _write_cycles(CyclicWithCycles, trough_item, trough_cycles)
 
         results = CyclicWithCycles.query.top_by_decay("relevance", n=10)
         assert len(results) == 2
@@ -520,16 +697,14 @@ class TestTopByDecayPressure:
     def test_pressure_increases_over_time(self):
         """Item with longer unresolved time ranks higher due to pressure."""
         now = time.time()
-        field = CyclicWithPressure._meta.fields["relevance"]
 
         old_item = CyclicWithPressure.create(name="old_pressure")
         new_item = CyclicWithPressure.create(name="new_pressure")
 
         # Set both to same decay timestamp (1 day ago)
-        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicWithPressure, "relevance")
         one_day_ago = now - 86400
-        popoto.POPOTO_REDIS_DB.zadd(
-            ss_key.redis_key,
+        _backdate(
+            CyclicWithPressure,
             {
                 old_item.db_key.redis_key: one_day_ago,
                 new_item.db_key.redis_key: one_day_ago,
@@ -537,20 +712,11 @@ class TestTopByDecayPressure:
         )
 
         # Set old_item pressure to have been unresolved for 30 days
-        pressure_key = field.get_pressure_hash_key(old_item, "relevance")
         old_pressure = {"rate": 0.1, "last_resolved": now - 86400 * 30}
         new_pressure = {"rate": 0.1, "last_resolved": now}
 
-        popoto.POPOTO_REDIS_DB.hset(
-            pressure_key,
-            old_item.db_key.redis_key,
-            msgpack.packb(old_pressure),
-        )
-        popoto.POPOTO_REDIS_DB.hset(
-            pressure_key,
-            new_item.db_key.redis_key,
-            msgpack.packb(new_pressure),
-        )
+        _write_pressure(CyclicWithPressure, old_item, old_pressure)
+        _write_pressure(CyclicWithPressure, new_item, new_pressure)
 
         results = CyclicWithPressure.query.top_by_decay("relevance", n=10)
         assert len(results) == 2
@@ -560,25 +726,18 @@ class TestTopByDecayPressure:
     def test_pressure_resets_after_resolve(self):
         """resolve_pressure() discharges accumulated urgency."""
         now = time.time()
-        field = CyclicWithPressure._meta.fields["relevance"]
 
         item = CyclicWithPressure.create(name="resolve_test")
-        pressure_key = field.get_pressure_hash_key(item, "relevance")
 
         # Set old last_resolved
         old_pressure = {"rate": 0.1, "last_resolved": now - 86400 * 30}
-        popoto.POPOTO_REDIS_DB.hset(
-            pressure_key,
-            item.db_key.redis_key,
-            msgpack.packb(old_pressure),
-        )
+        _write_pressure(CyclicWithPressure, item, old_pressure)
 
         # Resolve pressure
         item.resolve_pressure("relevance")
 
         # Verify last_resolved was updated
-        raw = popoto.POPOTO_REDIS_DB.hget(pressure_key, item.db_key.redis_key)
-        decoded = msgpack.unpackb(raw, raw=False)
+        decoded = _read_pressure(CyclicWithPressure, item)
         assert abs(decoded["last_resolved"] - time.time()) < 2.0
 
 
@@ -604,55 +763,26 @@ class TestThreeForcesSuperposition:
         - Expected effective_score = 1.0 + 5.0 + 1.0 = 7.0
         """
         now = time.time()
-        field = CyclicFull._meta.fields["relevance"]
 
         item = CyclicFull.create(name="three_force")
 
         # Set decay timestamp to 1 day ago
-        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicFull, "relevance")
-        popoto.POPOTO_REDIS_DB.zadd(
-            ss_key.redis_key,
-            {item.db_key.redis_key: now - 86400},
-        )
+        _backdate(CyclicFull, {item.db_key.redis_key: now - 86400})
 
         # Set cycles: yearly, amplitude 5.0, phase=now (cos(0)=1)
-        cycles_key = field.get_cycles_hash_key(item, "relevance")
-        popoto.POPOTO_REDIS_DB.hset(
-            cycles_key,
-            item.db_key.redis_key,
-            msgpack.packb([[TemporalPeriod.YEARLY, 5.0, now]]),
-        )
+        _write_cycles(CyclicFull, item, [[TemporalPeriod.YEARLY, 5.0, now]])
 
         # Set pressure: rate=0.1, 10 days unresolved
-        pressure_key = field.get_pressure_hash_key(item, "relevance")
-        popoto.POPOTO_REDIS_DB.hset(
-            pressure_key,
-            item.db_key.redis_key,
-            msgpack.packb({"rate": 0.1, "last_resolved": now - 86400 * 10}),
+        _write_pressure(
+            CyclicFull, item, {"rate": 0.1, "last_resolved": now - 86400 * 10}
         )
 
-        # Run the Lua script directly to get the raw score
-        cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
-            CyclicFull, "relevance"
-        )
-        pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
-            CyclicFull, "relevance"
-        )
+        # The raw score: CYCLIC_DECAY_LUA itself on Redis, the backend's SQL
+        # transcription of it on Postgres.
+        result = _scores(CyclicFull, now, n=10, base_score_field="")
 
-        result = popoto.POPOTO_REDIS_DB.eval(
-            CYCLIC_DECAY_LUA,
-            3,
-            ss_key.redis_key,
-            cycles_hash_key,
-            pressure_hash_key,
-            str(now),
-            "0.5",
-            "10",
-            "",
-        )
-
-        assert len(result) == 2
-        score = float(result[1])
+        assert len(result) == 1
+        score = float(result[item.db_key.redis_key])
         # Expected: 1.0 (decay) + 5.0 (cyclic) + 1.0 (pressure) = 7.0
         assert abs(score - 7.0) < 0.1, f"Expected ~7.0, got {score}"
 
@@ -681,19 +811,16 @@ class TestEquivalenceWithDecaySortedField:
         plain_a = PlainDecayItem.create(name="a")
         plain_b = PlainDecayItem.create(name="b")
 
-        # Backdate identically — use actual field class for correct key prefix
-        cyclic_ss = CyclicDecayField.get_sortedset_db_key(CyclicItem, "relevance")
-        plain_ss = DecayingSortedField.get_sortedset_db_key(PlainDecayItem, "relevance")
-
-        popoto.POPOTO_REDIS_DB.zadd(
-            cyclic_ss.redis_key,
+        # Backdate identically — the actual field class picks the key prefix
+        _backdate(
+            CyclicItem,
             {
                 cyclic_a.db_key.redis_key: now - 86400 * 10,
                 cyclic_b.db_key.redis_key: now - 86400 * 1,
             },
         )
-        popoto.POPOTO_REDIS_DB.zadd(
-            plain_ss.redis_key,
+        _backdate(
+            PlainDecayItem,
             {
                 plain_a.db_key.redis_key: now - 86400 * 10,
                 plain_b.db_key.redis_key: now - 86400 * 1,
@@ -730,24 +857,8 @@ class TestEquivalenceWithDecaySortedField:
                 rec = model.create(name=name)
                 records[(model, name)] = rec
                 zscores[rec.db_key.redis_key] = now - 86400 * 10
-                conf_field = model._meta.fields["certainty"]
-                popoto.POPOTO_REDIS_DB.hset(
-                    conf_field.get_data_hash_key(rec, "certainty"),
-                    rec.db_key.redis_key,
-                    msgpack.packb(
-                        {
-                            "confidence": confidence,
-                            "evidence_count": 10,
-                            "corroborations": 10,
-                            "contradictions": 0,
-                        },
-                        use_bin_type=True,
-                    ),
-                )
-            ss = model._meta.fields["relevance"].__class__.get_sortedset_db_key(
-                model, "relevance"
-            )
-            popoto.POPOTO_REDIS_DB.zadd(ss.redis_key, zscores)
+                _plant_confidence(rec, confidence)
+            _backdate(model, zscores)
 
         cyclic_results = CyclicConfItem.query.top_by_decay("relevance", n=10)
         plain_results = PlainConfItem.query.top_by_decay("relevance", n=10)
@@ -838,10 +949,7 @@ class TestResolvePressure:
         assert result is pipe
         pipe.execute()
 
-        field = CyclicWithPressure._meta.fields["relevance"]
-        pressure_key = field.get_pressure_hash_key(item, "relevance")
-        raw = popoto.POPOTO_REDIS_DB.hget(pressure_key, item.db_key.redis_key)
-        decoded = msgpack.unpackb(raw, raw=False)
+        decoded = _read_pressure(CyclicWithPressure, item)
         assert abs(decoded["last_resolved"] - time.time()) < 2.0
 
 
@@ -860,47 +968,34 @@ class TestNilCompanionHash:
     def test_members_without_companion_data(self):
         """Members saved before CyclicDecayField migration rank by pure decay."""
         now = time.time()
-        field = CyclicWithCycles._meta.fields["relevance"]
 
         # Create item normally (which stores companion data)
         item = CyclicWithCycles.create(name="has_data")
 
-        # Manually add a member to sorted set without companion hashes
-        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicWithCycles, "relevance")
-        fake_key = "CyclicWithCycles:orphan_member"
-        popoto.POPOTO_REDIS_DB.zadd(ss_key.redis_key, {fake_key: now - 86400})
+        # A member without companion data: on Redis a sorted-set member with
+        # no hash entries; on Postgres a row whose cycle and pressure columns
+        # are NULL.
+        orphan = CyclicWithCycles.create(name="orphan_member")
+        _delete_cycles(CyclicWithCycles, orphan)
+        _backdate(CyclicWithCycles, {orphan.db_key.redis_key: now - 86400})
 
-        # Should not crash — orphan member gets pure decay score
-        cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
-            CyclicWithCycles, "relevance"
-        )
-        pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
-            CyclicWithCycles, "relevance"
-        )
-
-        result = popoto.POPOTO_REDIS_DB.eval(
-            CYCLIC_DECAY_LUA,
-            3,
-            ss_key.redis_key,
-            cycles_hash_key,
-            pressure_hash_key,
-            str(now),
-            "0.5",
-            "10",
-            "",
-        )
+        # Should not crash — the orphan gets the pure decay score
+        result = _scores(CyclicWithCycles, now, n=10, base_score_field="")
         # Should return both members without error
-        assert len(result) == 4  # 2 members * 2 (key + score)
-
-        # Cleanup fake key
-        popoto.POPOTO_REDIS_DB.zrem(ss_key.redis_key, fake_key)
+        assert set(result) == {item.db_key.redis_key, orphan.db_key.redis_key}
+        assert float(result[orphan.db_key.redis_key]) == pytest.approx(1.0)
 
 
 # --- Performance benchmarks ---
 
 
 class TestCyclicBenchmarks:
-    """Benchmark top_by_decay on larger sorted sets with cyclic+pressure."""
+    """Benchmark the cyclic ranking on larger sets with cycle+pressure data.
+
+    On Redis the members are planted straight into the sorted set and the two
+    companion hashes and ``CYCLIC_DECAY_LUA`` is evaluated; on Postgres the
+    rows are inserted in one statement and the backend's ``rank_decayed``
+    evaluates the same expression in SQL."""
 
     def setup_method(self):
         CyclicFull.delete_all()
@@ -908,8 +1003,34 @@ class TestCyclicBenchmarks:
     def teardown_method(self):
         CyclicFull.delete_all()
 
-    def test_1k_members(self):
-        """Extended Lua handles 1K members with cycle+pressure data."""
+    def _plant(self, count, prefix, age_step, last_resolved):
+        now = time.time()
+        backend = _pg(CyclicFull)
+        if backend is not None:
+            table = backend._table(CyclicFull._meta.spec).qualified
+            backend._run(
+                f'INSERT INTO {table} ("_pk", "name", "weight", "relevance", '
+                '"relevance__cycle_period", "relevance__cycle_amp", '
+                '"relevance__cycle_phase", "relevance__cycle_base", '
+                '"relevance__pressure_rate", "relevance__pressure_at") '
+                "SELECT 'CyclicFull:' || %s || i, %s || i, 1.0, %s - i * %s, "
+                "ARRAY[%s::float8], ARRAY[5.0::float8], ARRAY[0.0::float8], "
+                "ARRAY[5.0::float8], 0.1, %s - i * %s "
+                "FROM generate_series(0, %s - 1) AS i",
+                [
+                    prefix,
+                    prefix,
+                    now,
+                    float(age_step),
+                    float(TemporalPeriod.YEARLY),
+                    now,
+                    float(last_resolved),
+                    count,
+                ],
+                write=True,
+            )
+            backend._run(f"ANALYZE {table}", write=True)
+            return now, None
         ss_key = CyclicDecayField.get_sortedset_db_key(CyclicFull, "relevance")
         cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
             CyclicFull, "relevance"
@@ -917,13 +1038,11 @@ class TestCyclicBenchmarks:
         pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
             CyclicFull, "relevance"
         )
-        now = time.time()
-
         pipe = popoto.POPOTO_REDIS_DB.pipeline()
         members = {}
-        for i in range(1000):
-            redis_key = f"CyclicFull:bench1k_{i}"
-            members[redis_key] = now - (i * 3600)
+        for i in range(count):
+            redis_key = f"CyclicFull:{prefix}{i}"
+            members[redis_key] = now - (i * age_step)
             pipe.hset(
                 cycles_hash_key,
                 redis_key,
@@ -932,83 +1051,57 @@ class TestCyclicBenchmarks:
             pipe.hset(
                 pressure_hash_key,
                 redis_key,
-                msgpack.packb({"rate": 0.1, "last_resolved": now - 86400 * i}),
+                msgpack.packb({"rate": 0.1, "last_resolved": now - last_resolved * i}),
             )
         pipe.zadd(ss_key.redis_key, members)
         pipe.execute()
+        return now, (ss_key, cycles_hash_key, pressure_hash_key)
 
-        start = time.time()
-        result = popoto.POPOTO_REDIS_DB.eval(
-            CYCLIC_DECAY_LUA,
-            3,
-            ss_key.redis_key,
-            cycles_hash_key,
-            pressure_hash_key,
-            str(now),
-            "0.5",
-            "10",
-            "",
+    def _rank(self, now, keys):
+        if keys is None:
+            return _scores(CyclicFull, now, n=10, base_score_field="")
+        ss_key, cycles_hash_key, pressure_hash_key = keys
+        return _decode_scores(
+            popoto.POPOTO_REDIS_DB.eval(
+                CYCLIC_DECAY_LUA,
+                3,
+                ss_key.redis_key,
+                cycles_hash_key,
+                pressure_hash_key,
+                str(now),
+                "0.5",
+                "10",
+                "",
+            )
         )
-        elapsed = time.time() - start
 
-        assert len(result) == 20  # 10 items * 2
+    def _cleanup(self, keys):
+        if keys is None:
+            return
+        for key in (keys[0].redis_key, keys[1], keys[2]):
+            popoto.POPOTO_REDIS_DB.delete(key)
+
+    def test_1k_members(self):
+        """The cyclic ranking handles 1K members with cycle+pressure data."""
+        now, keys = self._plant(1000, "bench1k_", 3600, 86400)
+        start = time.time()
+        result = self._rank(now, keys)
+        elapsed = time.time() - start
+        self._cleanup(keys)
+
+        assert len(result) == 10
         assert elapsed < 2.0, f"1K members took {elapsed:.3f}s (expected < 2s)"
 
-        # Cleanup
-        popoto.POPOTO_REDIS_DB.delete(ss_key.redis_key)
-        popoto.POPOTO_REDIS_DB.delete(cycles_hash_key)
-        popoto.POPOTO_REDIS_DB.delete(pressure_hash_key)
-
     def test_10k_members(self):
-        """Extended Lua handles 10K members with cycle+pressure data."""
-        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicFull, "relevance")
-        cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
-            CyclicFull, "relevance"
-        )
-        pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
-            CyclicFull, "relevance"
-        )
-        now = time.time()
-
-        pipe = popoto.POPOTO_REDIS_DB.pipeline()
-        members = {}
-        for i in range(10000):
-            redis_key = f"CyclicFull:bench10k_{i}"
-            members[redis_key] = now - (i * 360)
-            pipe.hset(
-                cycles_hash_key,
-                redis_key,
-                msgpack.packb([[TemporalPeriod.YEARLY, 5.0, 0]]),
-            )
-            pipe.hset(
-                pressure_hash_key,
-                redis_key,
-                msgpack.packb({"rate": 0.1, "last_resolved": now - 86400}),
-            )
-        pipe.zadd(ss_key.redis_key, members)
-        pipe.execute()
-
+        """The cyclic ranking handles 10K members with cycle+pressure data."""
+        now, keys = self._plant(10000, "bench10k_", 360, 0)
         start = time.time()
-        result = popoto.POPOTO_REDIS_DB.eval(
-            CYCLIC_DECAY_LUA,
-            3,
-            ss_key.redis_key,
-            cycles_hash_key,
-            pressure_hash_key,
-            str(now),
-            "0.5",
-            "10",
-            "",
-        )
+        result = self._rank(now, keys)
         elapsed = time.time() - start
+        self._cleanup(keys)
 
-        assert len(result) == 20
+        assert len(result) == 10
         assert elapsed < 10.0, f"10K members took {elapsed:.3f}s (expected < 10s)"
-
-        # Cleanup
-        popoto.POPOTO_REDIS_DB.delete(ss_key.redis_key)
-        popoto.POPOTO_REDIS_DB.delete(cycles_hash_key)
-        popoto.POPOTO_REDIS_DB.delete(pressure_hash_key)
 
 
 # --- Deterministic tie-ordering (issue #448) ---
@@ -1041,35 +1134,14 @@ class TestCyclicTieOrdering:
         keys = {}
         for name in reversed(names):
             keys[name] = CyclicItem.create(name=name).db_key.redis_key
-        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicItem, "relevance")
         shared_ts = time.time() - 86400  # 1 day ago, identical for every member
-        popoto.POPOTO_REDIS_DB.zadd(
-            ss_key.redis_key, {keys[name]: shared_ts for name in names}
-        )
+        _backdate(CyclicItem, {keys[name]: shared_ts for name in names})
         return sorted(keys.values())  # byte-wise ascending == expected order
 
     def _scores_via_lua(self, n=10):
-        """Return the raw effective score strings the Lua script emits."""
-        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicItem, "relevance")
-        cycles_key = CyclicDecayField.get_cycles_hash_key_from_parts(
-            CyclicItem, "relevance"
-        )
-        pressure_key = CyclicDecayField.get_pressure_hash_key_from_parts(
-            CyclicItem, "relevance"
-        )
-        raw = popoto.POPOTO_REDIS_DB.eval(
-            CYCLIC_DECAY_LUA,
-            3,
-            ss_key.redis_key,
-            cycles_key,
-            pressure_key,
-            str(time.time()),
-            "0.5",
-            str(n),
-            "",
-        )
-        decoded = [x.decode() if isinstance(x, bytes) else x for x in raw]
-        return [decoded[i + 1] for i in range(0, len(decoded), 2)]
+        """Return the raw effective score strings the ranking emits (the
+        Lua's on Redis, the backend's on Postgres)."""
+        return list(_scores(CyclicItem, time.time(), n=n, base_score_field="").values())
 
     def test_scores_are_actually_tied(self):
         """All planted members share exactly one score (tie path exercised)."""
@@ -1143,18 +1215,14 @@ class TestCyclicConfidenceKeysRegression:
             records[name] = rec
             _plant_confidence(rec, confidence)
             zscores[rec.db_key.redis_key] = now - 86400 * self.AGED_DAYS
-        ss_key = CyclicDecayField.get_sortedset_db_key(model_class, "relevance")
-        popoto.POPOTO_REDIS_DB.zadd(ss_key.redis_key, zscores)
+        _backdate(model_class, zscores)
         return now, records
 
     def test_cycles_data_is_actually_present(self):
         """Guard the guard: without cycles on disk this suite proves nothing."""
         now, records = self._corpus(CyclicConfWithCycles)
-        cycles_key = CyclicDecayField.get_cycles_hash_key_from_parts(
-            CyclicConfWithCycles, "relevance"
-        )
         for rec in records.values():
-            assert popoto.POPOTO_REDIS_DB.hget(cycles_key, rec.db_key.redis_key)
+            assert _read_cycles(CyclicConfWithCycles, rec)
 
         # And the cycle term genuinely moves the score. Compared against the
         # same EVAL with an empty cycles hash rather than a hand-computed
@@ -1232,10 +1300,9 @@ class TestCyclicTieOrderingWithConfidence:
         records = {}
         for name in reversed(self.NAMES):
             records[name] = CyclicConfItem.create(name=name)
-        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicConfItem, "relevance")
         shared_ts = time.time() - 86400 * self.AGED_DAYS
-        popoto.POPOTO_REDIS_DB.zadd(
-            ss_key.redis_key,
+        _backdate(
+            CyclicConfItem,
             {records[n].db_key.redis_key: shared_ts for n in self.NAMES},
         )
         return records
@@ -1308,15 +1375,28 @@ class CyclicLearnedDup(popoto.Model):
 
 
 def _read_cycles(model_class, item):
-    """Decode the stored cycles entry for one member, or None."""
+    """Decode the stored cycles entry for one member, or None (the cycle
+    columns on Postgres, shaped as the Redis entry decodes)."""
+    backend = _pg(model_class)
+    if backend is not None:
+        state = backend.field_call(
+            model_class._meta.spec, "relevance", "state", _rid(item)
+        )
+        return None if state is None else state["cycles"]
     field = model_class._meta.fields["relevance"]
     key = field.get_cycles_hash_key(item, "relevance")
     raw = popoto.get_redis().hget(key, item.db_key.redis_key)
     return msgpack.unpackb(raw, raw=False) if raw else None
 
 
+MALFORMED_ENTRY = (
+    "plants a malformed msgpack cycles entry in the Redis companion hash (the "
+    "merge's decode-failure path); typed Postgres columns cannot hold one"
+)
+
+
 def _write_cycles_raw(model_class, item, payload):
-    """Write raw bytes into the member's cycles entry."""
+    """Write raw bytes into the member's cycles entry (Redis only)."""
     field = model_class._meta.fields["relevance"]
     key = field.get_cycles_hash_key(item, "relevance")
     popoto.get_redis().hset(key, item.db_key.redis_key, payload)
@@ -1474,17 +1554,14 @@ class TestLearnedAmplitudePreservedOnSave:
     # TC6 — the empty-cycles branch is unchanged.
     def test_empty_cycles_still_deletes_stale_entry(self):
         item = CyclicItem.create(name="tc6")
-        field = CyclicItem._meta.fields["relevance"]
-        key = field.get_cycles_hash_key(item, "relevance")
-        popoto.get_redis().hset(
-            key, item.db_key.redis_key, msgpack.packb([[86400, 5.0, 0]])
-        )
+        _write_cycles(CyclicItem, item, [[86400, 5.0, 0]])
 
         item.save()
 
-        assert popoto.get_redis().hget(key, item.db_key.redis_key) is None
+        assert _read_cycles(CyclicItem, item) is None
 
     # TC7 — corrupt stored state degrades to declared defaults, loudly.
+    @pytest.mark.redis_only(reason=MALFORMED_ENTRY)
     def test_corrupt_stored_entry_falls_back_to_declared(self, caplog):
         item = CyclicLearned.create(name="tc7")
         _write_cycles_raw(CyclicLearned, item, b"\xff\xfe not msgpack \x00")
@@ -1500,6 +1577,7 @@ class TestLearnedAmplitudePreservedOnSave:
         assert stored[0][3] == 2.0
         assert any("Could not decode cycles" in r.message for r in caplog.records)
 
+    @pytest.mark.redis_only(reason=MALFORMED_ENTRY)
     def test_stored_entry_of_wrong_shape_falls_back_to_declared(self):
         item = CyclicLearned.create(name="tc7b")
         # Valid msgpack, wrong shape — a dict where a list of cycles belongs.
@@ -1509,6 +1587,7 @@ class TestLearnedAmplitudePreservedOnSave:
 
         assert _read_cycles(CyclicLearned, item)[0][1] == 2.0
 
+    @pytest.mark.redis_only(reason=MALFORMED_ENTRY)
     def test_unhashable_period_falls_back_instead_of_raising(self, caplog):
         """A payload can decode cleanly and still be unusable.
 
@@ -1531,6 +1610,7 @@ class TestLearnedAmplitudePreservedOnSave:
         assert _read_cycles(CyclicLearned, item)[0][1] == 2.0
         assert any("Could not decode cycles" in r.message for r in caplog.records)
 
+    @pytest.mark.redis_only(reason=MALFORMED_ENTRY)
     def test_partial_merge_discarded_when_a_later_entry_is_malformed(self):
         """A half-read payload contributes nothing, not something.
 
@@ -1685,9 +1765,7 @@ class TestLearnedAmplitudePreservedOnSave:
         assert _read_cycles(CyclicLearned, item)[0][1] == 0.0
 
         # The documented recovery path: drop the member, then re-save.
-        field = CyclicLearned._meta.fields["relevance"]
-        key = field.get_cycles_hash_key(item, "relevance")
-        popoto.get_redis().hdel(key, item.db_key.redis_key)
+        _delete_cycles(CyclicLearned, item)
 
         item.save()
 
@@ -1800,10 +1878,9 @@ class TestDeclaredAmplitudeOverridesLearned:
         self,
     ):
         item = CyclicLearned.create(name="legacy1")
-        # Overwrite with a pre-#698 3-element entry carrying a "learned" 9.0.
-        _write_cycles_raw(
-            CyclicLearned, item, msgpack.packb([[TemporalPeriod.DAILY, 9.0, 0]])
-        )
+        # Overwrite with a pre-#698 3-element entry carrying a "learned" 9.0
+        # (on Postgres: a NULL baseline element).
+        _write_cycles(CyclicLearned, item, [[TemporalPeriod.DAILY, 9.0, 0]])
 
         item.save()  # declaration unchanged (2.0) -- but baseline is unknown
 
@@ -1816,6 +1893,7 @@ class TestDeclaredAmplitudeOverridesLearned:
         ), "this save must record a baseline from the current declaration"
 
     # 6. A non-numeric slot 3 is treated as absent, without raising.
+    @pytest.mark.redis_only(reason=MALFORMED_ENTRY)
     def test_non_numeric_baseline_treated_as_absent(self):
         item = CyclicLearned.create(name="badbaseline")
         _write_cycles_raw(
@@ -1992,18 +2070,14 @@ class TestDeclaredAmplitudeOverridesLearned:
     # this case -- an unconditional cmsgpack.unpack(nil) would crash instead.
     def test_strengthen_cycle_with_no_stored_cycles_returns_empty_list(self):
         item = CyclicLearned.create(name="noentry-strengthen")
-        field = item._meta.fields["relevance"]
-        cycles_hash_key = field.get_cycles_hash_key(item, "relevance")
-        popoto.get_redis().hdel(cycles_hash_key, item.db_key.redis_key)
+        _delete_cycles(CyclicLearned, item)
 
         result = item.strengthen_cycle("relevance", factor=1.2)
         assert result == []
 
     def test_weaken_cycle_with_no_stored_cycles_returns_empty_list(self):
         item = CyclicLearned.create(name="noentry-weaken")
-        field = item._meta.fields["relevance"]
-        cycles_hash_key = field.get_cycles_hash_key(item, "relevance")
-        popoto.get_redis().hdel(cycles_hash_key, item.db_key.redis_key)
+        _delete_cycles(CyclicLearned, item)
 
         result = item.weaken_cycle("relevance", factor=0.8)
         assert result == []
