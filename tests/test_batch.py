@@ -157,3 +157,140 @@ def test_a_delete_in_a_batch_applies_on_execute():
     assert Gadget.query.get(name="d") is not None
     pipe.execute()
     assert Gadget.query.get(name="d") is None
+
+
+# -- #759 M5 patch: post-save Redis effects follow the batch -------------------
+#
+# A save's EventStreamMixin XADD and WriteFilterMixin priority tag are Redis
+# writes. On Redis they queue on the batch with the save. A Postgres save that
+# joined the batch must send them only when the batch commits, and never after
+# a rollback: a stream entry for a row that does not exist, or one a consumer
+# reads before the row is visible, is the bug (#783 review, blocker 1).
+
+STREAM = "stream:test_batch_effects"
+
+
+class StreamGadget(popoto.EventStreamMixin, popoto.Model):
+    name = popoto.KeyField()
+    code = popoto.UniqueField(type=str)
+
+    _stream_name = "test_batch_effects"
+
+
+class TaggedGadget(popoto.WriteFilterMixin, popoto.Model):
+    name = popoto.KeyField()
+
+    def compute_filter_score(self):
+        return 0.9  # above the priority threshold: every save is tagged
+
+
+def _effects_clean():
+    for model in (StreamGadget, TaggedGadget):
+        for rec in model.query.all():
+            rec.delete()
+    get_REDIS_DB().delete(STREAM, TaggedGadget(name="x")._wf_key("priority"))
+
+
+def _stream_len():
+    return get_REDIS_DB().xlen(STREAM)
+
+
+def _tags():
+    return get_REDIS_DB().zcard(TaggedGadget(name="x")._wf_key("priority"))
+
+
+@pytest.fixture
+def effects():
+    """Clean stream, tags and rows; and roll back any batch a failing
+    assertion left open, so its row locks never outlive the test."""
+    opened = []
+    _effects_clean()
+
+    def open_batch():
+        opened.append(popoto.batch())
+        return opened[-1]
+
+    yield open_batch
+    for pipe in opened:
+        pipe.reset()
+    _effects_clean()
+
+
+def test_a_reset_batch_sends_no_stream_entry(effects):
+    pipe = effects()
+    StreamGadget(name="s1", code="s1").save(pipeline=pipe)
+    assert _stream_len() == 0  # nothing before the commit
+    pipe.reset()
+    assert _stream_len() == 0
+    assert StreamGadget.query.get(name="s1") is None
+
+
+def test_leaving_a_with_block_sends_no_stream_entry(effects):
+    with effects() as pipe:
+        StreamGadget(name="s1", code="s1").save(pipeline=pipe)
+    assert _stream_len() == 0
+    assert StreamGadget.query.get(name="s1") is None
+
+
+def test_an_executed_batch_sends_one_stream_entry_per_save(effects):
+    pipe = effects()
+    StreamGadget(name="s1", code="s1").save(pipeline=pipe)
+    StreamGadget(name="s2", code="s2").save(pipeline=pipe)
+    assert _stream_len() == 0
+    pipe.execute()
+    assert _stream_len() == 2
+    ops = [e[1][b"op"] for e in get_REDIS_DB().xrange(STREAM)]
+    assert ops == [b"create", b"create"]
+
+
+def test_a_failed_batch_sends_no_stream_entry_on_postgres(backend, effects):
+    pipe = effects()
+    StreamGadget(name="a", code="x").save(pipeline=pipe)
+    if backend.is_redis:
+        # Both saves queue (nothing is committed for pre_save to see); EXEC
+        # applies "a" and its XADD and reports the conflict of "b" -- the
+        # documented MULTI/EXEC divergence.
+        StreamGadget(name="b", code="x").save(pipeline=pipe)
+        with pytest.raises(Exception):
+            pipe.execute()
+        assert StreamGadget.query.get(name="a") is not None
+    else:
+        # The UNIQUE index refuses "b" inside the transaction, which aborts
+        # it: execute() rolls the whole batch back, stream entries included.
+        with pytest.raises(popoto.exceptions.ModelException):
+            StreamGadget(name="b", code="x").save(pipeline=pipe)
+        with pytest.raises(popoto.backends.BackendError):
+            pipe.execute()
+        assert StreamGadget.query.get(name="a") is None
+        assert _stream_len() == 0
+
+
+def test_a_caught_validation_error_lets_the_rest_of_the_batch_commit(effects):
+    # A conflict with a *committed* row is refused before anything is sent,
+    # on both legs: the batch stays healthy and execute() commits the rest,
+    # stream entry included. Only a statement that fails inside the
+    # Postgres transaction aborts the batch (the test above).
+    StreamGadget(name="held", code="x").save()
+    get_REDIS_DB().delete(STREAM)
+    pipe = effects()
+    StreamGadget(name="a", code="a").save(pipeline=pipe)
+    with pytest.raises(popoto.exceptions.ModelException, match="Unique"):
+        StreamGadget(name="b", code="x").save(pipeline=pipe)
+    pipe.execute()
+    assert StreamGadget.query.get(name="a") is not None
+    assert StreamGadget.query.get(name="b") is None
+    assert _stream_len() == 1
+
+
+def test_write_filter_tags_follow_the_batch(backend, effects):
+    pipe = effects()
+    TaggedGadget(name="t1").save(pipeline=pipe)
+    assert _tags() == 0
+    pipe.reset()
+    assert _tags() == 0
+    pipe = effects()
+    TaggedGadget(name="t2").save(pipeline=pipe)
+    assert _tags() == 0
+    pipe.execute()
+    # The priority tier is Redis-only (a no-op off Redis, plan §5 M2).
+    assert _tags() == (1 if backend.is_redis else 0)

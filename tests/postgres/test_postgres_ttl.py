@@ -786,6 +786,82 @@ def test_concurrent_batches_do_not_see_each_other(pg):
     assert seen["count"] == 0 and TtlNote.query.count() == 1
 
 
+# -- a lock this thread already holds (#783 review) ---------------------------------
+#
+# A Postgres batch holds each record's key lock until it commits. A second
+# open transaction on the *same* thread that asks for it would wait on its own
+# thread: before the patch, a 30 s hang (PG_STATEMENT_TIMEOUT_MS) reported as
+# an outage. Now it is refused at once; another thread still simply waits.
+
+
+def test_nested_batches_writing_one_record_are_refused_at_once(pg):
+    outer = popoto.batch()
+    inner = popoto.batch()
+    try:
+        TtlNote(name="same", hits=1).save(pipeline=outer)
+        started = time.monotonic()
+        with pytest.raises(BackendCapabilityError, match="this thread holds"):
+            TtlNote(name="same", hits=2).save(pipeline=inner)
+        assert time.monotonic() - started < 1.0
+        # The inner batch's transaction is unharmed (nothing was sent), and
+        # the outer one still commits.
+        TtlNote(name="other").save(pipeline=inner)
+        inner.execute()
+        outer.execute()
+    finally:
+        inner.reset()
+        outer.reset()
+    assert TtlNote.query.get(name="same").hits == 1
+    assert TtlNote.query.get(name="other") is not None
+    assert pg.health.dropped_writes == 0
+
+
+def test_nested_batches_on_different_records_both_commit(pg):
+    outer = popoto.batch()
+    TtlNote(name="a").save(pipeline=outer)
+    inner = popoto.batch()
+    TtlNote(name="b").save(pipeline=inner)
+    inner.execute()
+    assert TtlNote.query.get(name="b") is not None
+    assert TtlNote.query.get(name="a") is None
+    outer.execute()
+    assert TtlNote.query.get(name="a") is not None
+
+
+def test_a_write_outside_the_batch_to_a_record_in_it_is_refused(pg):
+    pipe = popoto.batch()
+    try:
+        TtlNote(name="held").save(pipeline=pipe)
+        with pytest.raises(BackendCapabilityError, match="this thread holds"):
+            TtlNote(name="held", hits=5).save()
+        TtlNote(name="free").save()  # another record is not held
+    finally:
+        pipe.execute()
+    assert TtlNote.query.get(name="held").hits == 0
+
+
+def test_another_thread_still_waits_for_the_batch(pg):
+    pipe = popoto.batch()
+    TtlNote(name="held", hits=1).save(pipeline=pipe)
+    done = threading.Event()
+    errors = []
+
+    def other():
+        try:
+            TtlNote(name="held", hits=2).save()
+        except Exception as exc:  # pragma: no cover - the failure shape
+            errors.append(exc)
+        done.set()
+
+    worker = threading.Thread(target=other)
+    worker.start()
+    assert not done.wait(0.3), "the other thread waits on the batch's lock"
+    pipe.execute()
+    worker.join(10)
+    assert errors == [] and done.is_set()
+    assert TtlNote.query.get(name="held").hits == 2
+
+
 # -- the seeded probe (slice) --------------------------------------------------------
 
 

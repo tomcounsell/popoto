@@ -15,8 +15,8 @@ import pytest
 import redis
 
 import popoto
-from popoto import DecayingSortedField
-from popoto.backends import BackendError
+from popoto import ConfidenceField, DecayingSortedField
+from popoto.backends import BackendCapabilityError, BackendError, SchemaDriftError
 from popoto.exceptions import ModelException
 from popoto.fields.existence_filter import ExistenceFilter
 
@@ -44,6 +44,18 @@ class ParityTtlRanked(popoto.Model):
 
     class Meta:
         ttl = 3600
+
+
+class ParityTtlConfidence(popoto.Model):
+    name = popoto.KeyField()
+    confidence = ConfidenceField()
+
+    class Meta:
+        ttl = 3600
+
+
+class ParityNoTtl(popoto.Model):
+    name = popoto.KeyField()
 
 
 class ParityUnique(popoto.Model):
@@ -134,3 +146,88 @@ def test_a_failed_batch_is_a_documented_divergence(backend):
         with pytest.raises(BackendError, match="rolled back"):
             pipe.execute()
         assert ParityUnique.query.get(name="a") is None
+
+
+def test_an_instance_ttl_without_meta_ttl_is_a_documented_divergence(backend):
+    rec = ParityNoTtl(name="n")
+    rec._ttl = 60
+    if backend.is_redis:
+        rec.save()
+        assert 0 < popoto.get_redis().ttl(rec.db_key.redis_key) <= 60
+    else:
+        # Only a Meta.ttl model has _expires_at and the read filter.
+        with pytest.raises(BackendCapabilityError, match="Meta.ttl"):
+            rec.save()
+        assert ParityNoTtl.query.get(name="n") is None
+
+
+def test_state_keyed_by_an_expired_record_is_a_documented_divergence(backend):
+    rec = _short(ParityTtlConfidence(name="c"))
+    rec.save()
+    assert ConfidenceField.update_confidence(rec, "confidence", 1.0) == 0.75
+    time.sleep(PAST)
+    # Both legs refuse a signal to a record that expired.
+    with pytest.raises(TypeError, match="saved model instance"):
+        ConfidenceField.update_confidence(rec, "confidence", 1.0)
+    # Redis keeps the companion entry until something cleans it; on Postgres
+    # it went with the row, so the read is the seed.
+    held = ConfidenceField.get_confidence(rec, "confidence")
+    assert held == (0.75 if backend.is_redis else 0.5)
+
+
+def test_a_save_over_an_expired_key_is_a_documented_divergence(backend):
+    rec = _short(ParityTtlConfidence(name="s"))
+    rec.save()
+    ConfidenceField.update_confidence(rec, "confidence", 1.0)
+    time.sleep(PAST)
+    again = _forever(ParityTtlConfidence(name="s"))
+    again.save()
+    # HSET makes a new hash that inherits the old companion entry; Postgres
+    # deleted the expired row's state first, so the new record is fresh.
+    held = ConfidenceField.get_confidence(again, "confidence")
+    assert held == (0.75 if backend.is_redis else 0.5)
+
+
+def test_a_batch_of_raw_commands_and_model_writes_is_a_documented_divergence(
+    backend,
+):
+    key = "$test:parity:batch_mixed"
+    pipe = popoto.batch()
+    try:
+        pipe.set(key, "1")
+        if backend.is_redis:
+            # One store: the raw command and the save share one MULTI/EXEC.
+            ParityTtl(group="g", name="mixed").save(pipeline=pipe)
+            pipe.execute()
+            assert ParityTtl.query.get(group="g", name="mixed") is not None
+            assert popoto.get_redis().get(key) == b"1"
+        else:
+            with pytest.raises(BackendCapabilityError, match="cannot mix"):
+                ParityTtl(group="g", name="mixed").save(pipeline=pipe)
+            assert ParityTtl.query.get(group="g", name="mixed") is None
+    finally:
+        pipe.reset()
+        popoto.get_redis().delete(key)
+
+
+def test_removing_meta_ttl_is_a_documented_divergence(backend):
+    def declare(module, ttl):
+        attrs = {"__module__": module, "name": popoto.KeyField()}
+        if ttl:
+            attrs["Meta"] = type("Meta", (), {"ttl": ttl})
+        return type("ParityDroppedTtl", (popoto.Model,), attrs)
+
+    first = declare("parity.first", 3600)
+    first(name="d").save()
+    second = declare("parity.second", None)
+    rec = second(name="d")
+    if backend.is_redis:
+        # The next save simply stops issuing EXPIRE; HSET keeps the TTL.
+        rec.save()
+        assert popoto.get_redis().ttl(rec.db_key.redis_key) > 0
+    else:
+        # The table has an _expires_at column the model no longer declares.
+        with pytest.raises(SchemaDriftError, match="_expires_at"):
+            rec.save()
+    for obj in first.query.all():
+        obj.delete()

@@ -29,9 +29,12 @@ Because it is an ordinary pipeline, it is also an ordinary context manager:
 holds byte for byte on Redis. A write from a model bound to Postgres that is
 handed the batch *joins* it: the batch opens one Postgres ``transaction()``
 on that model's backend at the first such write, the write runs inside it,
-and ``execute()`` commits it. It is atomic: if any statement in it fails,
-nothing in the batch is written (``execute()`` then raises), where a Redis
-``MULTI``/``EXEC`` applies the other queued commands. ``reset()``, leaving a
+and ``execute()`` commits it. It is atomic: if a statement fails inside the
+transaction, nothing in the batch is written (``execute()`` then raises),
+where a Redis ``MULTI``/``EXEC`` applies the other queued commands. A save
+refused before it sends anything (``pre_save``'s unique check against a
+committed record, a validation error) raises at the call and leaves the
+batch healthy, as on Redis. ``reset()``, leaving a
 ``with`` block, or dropping the batch without ``execute()`` rolls it back,
 as a Redis pipeline that is never executed sends nothing. Until ``execute()``
 other connections do not see the batch's writes, as with queued commands.

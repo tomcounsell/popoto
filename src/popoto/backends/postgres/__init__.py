@@ -78,7 +78,13 @@ from .schema import (
     ensure_table,
     quote_ident,
 )
-from .search import SearchMixin, prepare_save, record_lock_sql, require_extensions
+from .search import (
+    SearchMixin,
+    prepare_save,
+    record_lock_keys,
+    record_lock_sql,
+    require_extensions,
+)
 from .ttl import (
     Reaper,
     expiry_sql,
@@ -269,13 +275,17 @@ class PostgresUnitOfWork(UnitOfWork):
     ``bool(uow)`` is always ``True`` (TD-10).
     """
 
-    __slots__ = ("conn", "reap")
+    __slots__ = ("conn", "reap", "locked")
 
     def __init__(self, conn: Any) -> None:
         super().__init__(None, backend="postgres")
         self.conn = conn
         # Meta.ttl tables written in this unit (M5): reaped after it commits.
         self.reap: dict[str, TableSpec] = {}
+        # Record-key locks this unit holds (#783): another open unit -- or an
+        # autocommit statement -- on the same thread that asks for one of
+        # them would wait on its own thread forever.
+        self.locked: set[str] = set()
 
     @property
     def is_redis_pipeline(self) -> bool:
@@ -347,6 +357,7 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
         self._lock = threading.RLock()
         self._intent = threading.local()
         self._reaper = Reaper()
+        self._open = threading.local()
 
     def __repr__(self) -> str:
         return f"<PostgresBackend schema={self.schema!r}>"
@@ -430,6 +441,39 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
         lock_sql, lock_params = record_lock_sql(ts, pks)
         return lock_sql + sql, list(lock_params) + list(params)
 
+    def _open_units(self) -> list[PostgresUnitOfWork]:
+        """The ``transaction()`` units open on this thread, outermost first."""
+        units = getattr(self._open, "units", None)
+        if units is None:
+            units = self._open.units = []
+        return units
+
+    def _refuse_self_wait(
+        self, pg: Optional[PostgresUnitOfWork], keys: Sequence[str]
+    ) -> None:
+        """Refuse, before it is sent, a statement that would wait on a
+        record-key lock another open unit of work *on this thread* holds
+        (#783 review). That lock is released only when the other unit
+        commits or rolls back, which this thread cannot do while it waits:
+        the statement would hang to ``PG_STATEMENT_TIMEOUT_MS`` and then be
+        misreported as an outage. Two nested ``popoto.batch()``es or
+        ``transaction()``s that write one record, or a write outside a batch
+        to a record saved in it, are the shapes. On Redis each is fine (a
+        queued command holds no lock); here it is
+        :class:`~popoto.backends.BackendCapabilityError`, at once."""
+        wanted = set(keys)
+        for unit in self._open_units():
+            if unit is not pg and not unit.locked.isdisjoint(wanted):
+                held = sorted(unit.locked & wanted)[0]
+                raise BackendCapabilityError(
+                    f"this write would wait on the record lock {held!r}, which "
+                    "another open Postgres transaction on this thread holds (a "
+                    "nested popoto.batch() or transaction() that wrote the same "
+                    "record, or a write outside the batch it was saved in): it "
+                    "could never be granted. Write through the batch that holds "
+                    "the record, or execute() it first"
+                )
+
     def _statement_prefix(self) -> str:
         ms = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
         return f"SET LOCAL statement_timeout = {ms}; " if ms > 0 else ""
@@ -453,6 +497,9 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
         """
         psycopg = _import_psycopg()
         pg = _pg_uow(uow)
+        lock_keys = record_lock_keys(sql, params)
+        if lock_keys:
+            self._refuse_self_wait(pg, lock_keys)
         if pg is not None:
             try:
                 cur = pg.conn.execute(sql, params)
@@ -467,6 +514,7 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
             while cur.nextset():
                 pass
             rows = cur.fetchall() if cur.description else []
+            pg.locked.update(lock_keys)
             return rows, cur.rowcount
         attempts = int(Defaults.PG_TRANSACTION_RETRIES) + 1
         prefix = self._statement_prefix()
@@ -625,7 +673,12 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
                 if ms > 0:
                     conn.execute(f"SET LOCAL statement_timeout = {ms}")
                 uow = PostgresUnitOfWork(conn)
-                yield uow
+                units = self._open_units()
+                units.append(uow)
+                try:
+                    yield uow
+                finally:
+                    units.remove(uow)
         for ts in list(uow.reap.values()):
             reap(self, ts)
 

@@ -77,6 +77,7 @@ __all__ = [
     "SavePlan",
     "compile_search",
     "prepare_save",
+    "record_lock_keys",
     "record_lock_sql",
     "require_extensions",
     "scope_text",
@@ -498,12 +499,28 @@ def record_lock_sql(ts: TableSpec, pks: Sequence[str]) -> tuple[str, list[Any]]:
     ordered = sorted(set(pks), key=lambda k: k.encode("utf-8", "surrogateescape"))
     keys = [f"popoto:rec:{ts.qualified}:{pk}" for pk in ordered]
     if len(keys) == 1:
-        return "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0)); ", keys
-    return (
-        "SELECT count(pg_advisory_xact_lock(hashtextextended(u.k, 0))) "
-        "FROM unnest(%s::text[]) WITH ORDINALITY AS u(k, i); ",
-        [keys],
-    )
+        return _LOCK_ONE, keys
+    return _LOCK_MANY, [keys]
+
+
+_LOCK_ONE = "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0)); "
+_LOCK_MANY = (
+    "SELECT count(pg_advisory_xact_lock(hashtextextended(u.k, 0))) "
+    "FROM unnest(%s::text[]) WITH ORDINALITY AS u(k, i); "
+)
+
+
+def record_lock_keys(sql: str, params: Sequence[Any]) -> list[str]:
+    """The record-key lock names a statement built on :func:`record_lock_sql`
+    takes first, or ``[]``. Read back from the statement rather than passed
+    alongside it, so every writer -- whatever builds its statement -- is seen
+    by the one check in ``PostgresBackend._run`` (#783: a lock this thread
+    already holds in another open transaction)."""
+    if sql.startswith(_LOCK_ONE):
+        return [params[0]]
+    if sql.startswith(_LOCK_MANY):
+        return list(params[0])
+    return []
 
 
 #: Column types whose SQL text is exactly ``str()`` of the decoded value, so a

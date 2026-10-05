@@ -610,12 +610,28 @@ confidence, read-tracking and `ObservationProtocol` writes all join it.
 Until `execute()`, no other connection sees the writes, as with queued
 commands.
 
-**Atomic, where Redis is not.** If a statement in the batch fails (a unique
-conflict, say), the call that issued it raises as usual, and `execute()`
-then raises `popoto.backends.BackendError` and writes nothing. A Redis
-`MULTI`/`EXEC` applies the other queued commands. `batch(transaction=False)`
-is still one transaction on Postgres. A deadlock inside the batch raises
+**Atomic, where Redis is not.** If a statement fails *inside the batch's
+transaction* (two saves in the batch that claim one unique value, say), the
+call that issued it raises as usual, the transaction is aborted, and
+`execute()` then raises `popoto.backends.BackendError` and writes nothing. A
+Redis `MULTI`/`EXEC` applies the other queued commands. A save that is
+refused *before* it sends anything -- `pre_save` finding a unique value
+already held by a committed record, a field validation error -- raises at
+the call and leaves the batch healthy, so if you catch it, `execute()`
+commits the rest, as on Redis. `batch(transaction=False)` is still one
+transaction on Postgres. A deadlock inside the batch raises
 `BackendRetryableError`, as inside any `transaction()`.
+
+**A lock this thread already holds.** Until it commits, a batch holds each
+record it wrote. A write from the same thread that would wait for one of
+those records outside the batch -- a second, nested `batch()` or
+`transaction()` that writes the same record, or a plain `save()` of it --
+could never be granted, because the only thread that can release it is the
+one waiting. Popoto refuses that write with `BackendCapabilityError` before
+sending it, instead of hanging until `PG_STATEMENT_TIMEOUT_MS`; the batch
+that holds the record is unharmed. Write through that batch, or `execute()`
+it first. Another thread's write simply waits for the commit. Nested batches
+that write different records work as on Redis.
 
 **One batch, one backend.** A batch holding a Postgres transaction refuses a
 Redis command, and a batch with Redis commands queued refuses a Postgres
@@ -667,7 +683,11 @@ on a key Redis has expired creates a new hash.
 state, the validity reads and `chain`, and `ContextAssembler` through all of
 them. An expired row is gone to every reader the instant it expires, deleted
 or not. *Now* is the server's `statement_timestamp()`, one clock for every
-agent on the central database. `tests/postgres/test_postgres_ttl.py`
+agent on the central database. A `_ttl` is added to that clock, so the app
+machine's clock never moves it; only an `_expire_at`, an absolute instant
+from the app, is exposed to skew between the app and the database server,
+exactly as `EXPIREAT` is judged by the Redis server's clock. (Decay and the
+validity `as_of` stay on the app's clock, as on Redis.) `tests/postgres/test_postgres_ttl.py`
 exercises each of those reads against one expired record. A write addressed
 to one record (`atomic_increment`, a capped `push`, `touch`,
 `update_confidence`) treats an expired row as missing.
@@ -688,7 +708,19 @@ TTL keeps its row), and `lock_timeout` is
 the reaper gives up before a caller could be picked as a deadlock victim. A
 busy pool, a lock it would wait on, or an outage skips the run; it never
 fails the write that triggered it and does not touch the health record.
-Reads never reap.
+
+**Reads never reap, by decision.** A read stays a single read-only
+statement: it takes no row locks, works on a read-only role or a replica,
+and its plan does not change with the backlog's size. Correctness does not
+need the reaper, since every read filters expired rows out. The cost is that
+a workload that stops writing to a `Meta.ttl` table stops draining it: the
+expired rows stay until the next write, and the reads that filter them with
+an anti-join (the BM25 corpus statistics, the membership reads) pay for each
+one. The backlog is therefore bounded by write traffic: at most the rows
+that expired since the table's last write, and each later write drains a
+batch of 20 at once. A table that is read for long stretches without writes
+and holds many short-lived rows can be drained by any write to it, such as
+saving and deleting one record.
 
 Cost, measured as the p50 of 300 saves (Apple M1 Max, PostgreSQL 18.6 on
 localhost, load 5-7, three runs each): a model without `Meta.ttl`
@@ -930,17 +962,18 @@ cast to the column's type.
 | A NaN instant in `supersede` / `invalidate` / `execute_supersede` (M3) | `ResponseError: value is not a valid float script: …`. With only `valid_from` NaN (a real close instant), `SUPERSEDE_LUA`'s validation phase lets it through and the successor's `ZADD` fails in the mutation phase, after the incumbent was closed and chained, with the pointer still naming it: half-written state, issue #778 | `ValueError("value is not a valid float (<instant> is NaN)")`: the same text, a different class, raised before the first write, so nothing is written. Pinned: `TestNanInstants::test_a_nan_at_is_refused_and_writes_nothing` and `::test_a_nan_valid_from_alone_in_execute_supersede` |
 | A NaN `as_of` / `validity__as_of` (M3) | the range reads (`filter`, `resolve_*_keys`, the composite mask) raise `ResponseError: min or max is not a float`; the decay ranking's gate excludes nothing | `QueryException` with the same text (as row (v) of the query table); the decay ranking excludes nothing |
 | `SupersessionProtocol.supersede`/`invalidate` with the backend's `transaction()` as `pipeline` (M3) | (a Redis pipeline queues the script; the closed key is unknown until `execute()`) | runs inside the transaction: the closed key is returned and a typed error raised at the call. A Redis pipeline is refused with `ValueError` by `supersede`, `invalidate` and `save_and_*` alike: it cannot carry a Postgres write. Pinned: `test_a_redis_pipeline_is_refused_by_supersede_and_invalidate` |
-| `_ttl` / `_expire_at` on a model without `Meta.ttl` (M5) | `EXPIRE`/`EXPIREAT` on the hash | `BackendCapabilityError` before anything is written: only a `Meta.ttl` model has `_expires_at` and the read filter, so a model that never expires keeps plans that never check. Declare `Meta.ttl`; an instance can opt out with `_ttl = None`. Pinned: `tests/postgres/test_postgres_ttl.py::test_an_instance_ttl_needs_meta_ttl` |
+| `_ttl` / `_expire_at` on a model without `Meta.ttl` (M5) | `EXPIRE`/`EXPIREAT` on the hash | `BackendCapabilityError` before anything is written: only a `Meta.ttl` model has `_expires_at` and the read filter, so a model that never expires keeps plans that never check. Declare `Meta.ttl`; an instance can opt out with `_ttl = None`. Pinned on both legs: `test_backend_parity_ttl.py::test_an_instance_ttl_without_meta_ttl_is_a_documented_divergence`, and `tests/postgres/test_postgres_ttl.py::test_an_instance_ttl_needs_meta_ttl` |
 | A `_ttl` that is not a whole number (`1.5`) (M5) | `MULTI`/`EXEC` writes the hash, then `EXPIRE` fails: `ResponseError: value is not an integer or out of range`, and the record stays with its old TTL, or none | `ModelException` with the same text, before anything is written. Pinned: `test_backend_parity_ttl.py::test_a_fractional_ttl_is_a_documented_divergence` |
 | `count()` / `keys()` after a record expires (M5) | count the class or index set, which keeps the expired member until a hydrating read (`get`, `filter`, `all`) purges it or `clean_indexes` runs | count live rows only. Probe class `count_orphans`. Pinned: `test_backend_parity_ttl.py::test_count_after_expiry_is_a_documented_divergence` |
 | Rankings, search and membership after a record expires (M5) | the sorted sets, BM25 postings, vector file and bloom keep the member: `top_by_decay(n=…)` can give a slot to it and return fewer than `n` after hydration drops it, BM25's `N`/`avgdl`/`df` count it, and `might_exist` stays `True` | the record is in none of them from the instant it expires: `n` live records, statistics over live documents, `might_exist` `False` once no live record holds the token. Pinned: `test_backend_parity_ttl.py::test_ranking_after_expiry_is_a_documented_divergence`, and each read in `tests/postgres/test_postgres_ttl.py::test_every_public_read_misses_an_expired_record` |
-| State keyed by an expired record (M5): its confidence entry, validity intervals and open-claim pointers, staged reads | kept in their own keys until something cleans them; `ConfidenceField.update_confidence` refuses (its script checks the hash) | gone with the row: reads see the seed / no interval / no pointer, and `chain` stops at it as at a hard delete. Pinned: `tests/postgres/test_postgres_ttl.py::test_validity_reads_miss_an_expired_record` |
-| A save over an expired key (M5) | `HSET` creates a new hash, but the expired record's companion state (confidence entry, BM25 postings, interval) is still there for the new one to inherit | the expired row and its side rows are deleted first: a fresh record, confidence at the seed. Pinned: `tests/postgres/test_postgres_ttl.py::test_a_save_over_an_expired_key_writes_a_fresh_record` |
+| State keyed by an expired record (M5): its confidence entry, validity intervals and open-claim pointers, staged reads | kept in their own keys until something cleans them; `ConfidenceField.update_confidence` refuses (its script checks the hash) | gone with the row: reads see the seed / no interval / no pointer, and `chain` stops at it as at a hard delete. `update_confidence` refuses on both. Pinned on both legs: `test_backend_parity_ttl.py::test_state_keyed_by_an_expired_record_is_a_documented_divergence`; the validity half in `tests/postgres/test_postgres_ttl.py::test_validity_reads_miss_an_expired_record` |
+| A save over an expired key (M5) | `HSET` creates a new hash, but the expired record's companion state (confidence entry, BM25 postings, interval) is still there for the new one to inherit | the expired row and its side rows are deleted first: a fresh record, confidence at the seed. Pinned on both legs: `test_backend_parity_ttl.py::test_a_save_over_an_expired_key_is_a_documented_divergence`; the postings in `tests/postgres/test_postgres_ttl.py::test_a_save_over_an_expired_key_writes_a_fresh_record` |
 | `atomic_increment` through an instance whose record expired (or was deleted) under it (M5) | the script `HSET`s the field onto a fresh key: a one-field hash with no TTL, outside the class set | `ModelException` (`… no longer exists`), as for any missing row. Probe class `increment_after_expiry`. Pinned: `test_backend_parity_ttl.py::test_increment_after_expiry_is_a_documented_divergence` |
 | The instant of expiry (M5) | a key is expired once the server's millisecond clock is *past* its expiry, so it is still there at that exact millisecond | a row is expired once `_expires_at <= now` (microseconds), so `ttl=0` is gone even under a frozen clock. Observable only with the frozen test clock: two real clocks never land on one instant |
-| Removing `Meta.ttl` from a model whose table has `_expires_at` (M5) | the next save simply stops issuing `EXPIRE` | `SchemaDriftError` (a column the model no longer declares): drop the column by hand, or keep `Meta.ttl` and set `_ttl = None` per instance |
+| Removing `Meta.ttl` from a model whose table has `_expires_at` (M5) | the next save simply stops issuing `EXPIRE`; the key keeps the TTL it had | `SchemaDriftError` (a column the model no longer declares): drop the column by hand, or keep `Meta.ttl` and set `_ttl = None` per instance. Pinned: `test_backend_parity_ttl.py::test_removing_meta_ttl_is_a_documented_divergence` |
 | A failed statement inside `popoto.batch()` (M5) | `MULTI`/`EXEC` applies the other queued commands | the whole batch rolls back; `execute()` raises `BackendError`. Pinned: `test_backend_parity_ttl.py::test_a_failed_batch_is_a_documented_divergence` |
-| A `popoto.batch()` used for both Redis and Postgres writes (M5) | (Redis-only: one pipeline) | refused with `BackendCapabilityError` before the second backend's first command, in either order. Pinned: `tests/postgres/test_postgres_ttl.py::test_a_batch_refuses_to_mix_backends` |
+| A `popoto.batch()` used for both Redis and Postgres writes (M5) | one store: a raw command and a model save share one `MULTI`/`EXEC` | refused with `BackendCapabilityError` before the second backend's first command, in either order. Pinned on both legs: `test_backend_parity_ttl.py::test_a_batch_of_raw_commands_and_model_writes_is_a_documented_divergence`; the reverse order in `tests/postgres/test_postgres_ttl.py::test_a_batch_refuses_to_mix_backends` |
+| A write that waits on a record an open batch or `transaction()` on the same thread holds (M5): a nested batch writing the same record, or a plain save of a record saved in an open batch | a queued command holds no lock: both apply, in execution order | `BackendCapabilityError` before anything is sent (it could never be granted); the holding batch is unharmed. Another thread waits for the commit. Pinned: `tests/postgres/test_postgres_ttl.py::test_nested_batches_writing_one_record_are_refused_at_once`, `::test_a_write_outside_the_batch_to_a_record_in_it_is_refused` |
 
 ## Validity and supersession (M3)
 
