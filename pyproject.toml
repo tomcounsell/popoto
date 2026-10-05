@@ -100,11 +100,14 @@ mcp = [
 # with EmbeddingField in M2 but is part of the extra so one install covers it.
 # greenlet (M5) runs the sync backend's code for the async_* methods with its
 # I/O on psycopg.AsyncConnection (popoto/backends/postgres/aio.py); without it
-# those methods fall back to a worker thread.
+# those methods fall back to a worker thread. 3.1.0 is the first greenlet
+# release with CPython 3.13 wheels (3.0.x ships cp37-cp312 only, so 3.13
+# would build from source); 3.1.0 has wheels for cp310-cp313 on macOS,
+# manylinux, musllinux and Windows, covering every Python popoto supports.
 postgres = [
     "psycopg[binary,pool]>=3.2",
     "pgvector>=0.3",
-    "greenlet>=3.0",
+    "greenlet>=3.1",
 ]
 benchmark = [
     "huggingface_hub>=0.23",

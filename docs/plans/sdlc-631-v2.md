@@ -992,7 +992,17 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     `PoolTimeout`), the empty-query checkout check, and a connection that
     comes back not idle is closed. It closes with its loop through
     `shutdown_asyncgens()`; a loop closed without that is swept at the socket
-    by the next lookup.
+    by the next lookup. Review of #784 found a task cancelled during the
+    checkout check left its connection open and unowned (500 cancelled saves:
+    1 session to 22 on a pool of 4); the check and the discard now close the
+    connection on any `BaseException`, every connection is tracked as idle or
+    checked out, and `aclose` closes any that is neither.
+  - **Hooks run on the loop thread.** The bridge runs the whole sync method,
+    so model and field hooks run inside it: a hook calling `asyncio.run()`
+    raises `RuntimeError`, and a blocking hook blocks the loop (documented in
+    the feature doc's Async section). The `_check_table` `RLock` does not
+    separate tasks on one thread; the server's `popoto:ddl:<schema>` advisory
+    lock is what serialises concurrent first use.
   - **Not routed:** `async_check_indexes`/`async_clean_indexes`/
     `async_rebuild_indexes` stay on a worker thread on every backend, because
     their bodies scan Redis index keys (Postgres `maintain` is its own M5

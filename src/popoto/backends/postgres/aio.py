@@ -323,7 +323,14 @@ class _LoopPool:
     server-side prepared statements (PgBouncer transaction mode) and a
     client-side cursor, so one message carries ``SET LOCAL …; <statement>``.
     A connection that comes back closed, broken or not idle (a statement
-    cancelled mid-flight) is closed rather than reused."""
+    cancelled mid-flight) is closed rather than reused.
+
+    Every connection the pool opened is in ``conns`` until it is closed, and
+    is either ``idle`` or checked out (``out``); none is ever neither. A
+    cancellation (``CancelledError`` is a ``BaseException``) while the
+    checkout check or a discard is awaiting closes the connection at the
+    socket before it propagates, so a task cancelled at any point cannot
+    leave an open session that no slot counts and no caller owns."""
 
     __slots__ = (
         "key",
@@ -333,6 +340,7 @@ class _LoopPool:
         "timeout",
         "idle",
         "conns",
+        "out",
         "slots",
         "keeper",
         "opened",
@@ -346,7 +354,8 @@ class _LoopPool:
         self.max_size = max(1, int(Defaults.PG_POOL_MAX_SIZE))
         self.timeout = float(Defaults.PG_CONNECT_TIMEOUT_SECONDS)
         self.idle: collections.deque[Any] = collections.deque()
-        self.conns: set[Any] = set()
+        self.conns: set[Any] = set()  # every open connection this pool made
+        self.out: set[Any] = set()  # the checked-out subset of ``conns``
         self.slots = asyncio.Semaphore(self.max_size)
         self.keeper: Any = None
         self.opened = False
@@ -382,7 +391,16 @@ class _LoopPool:
         try:
             while self.idle:
                 conn = self.idle.pop()  # most recently used first
-                if await self._usable(conn):
+                try:
+                    usable = await self._usable(conn)
+                except BaseException:
+                    # Cancelled mid-check (the empty query is in flight):
+                    # the connection is in no state to reuse, and nobody
+                    # owns it once this raises. Close it here.
+                    self._finish(conn)
+                    raise
+                if usable:
+                    self.out.add(conn)
                     return conn
                 await self._discard(conn)
             conn = await psycopg.AsyncConnection.connect(
@@ -392,7 +410,9 @@ class _LoopPool:
                 cursor_factory=psycopg.AsyncClientCursor,
                 connect_timeout=max(1, int(round(self.timeout))),
             )
+            # No await from here to the return: tracked and owned at once.
             self.conns.add(conn)
+            self.out.add(conn)
             return conn
         except BaseException:
             self.slots.release()
@@ -401,6 +421,7 @@ class _LoopPool:
     async def putconn(self, conn: Any) -> None:
         from psycopg.pq import TransactionStatus
 
+        self.out.discard(conn)
         try:
             if (
                 self.closed
@@ -426,23 +447,41 @@ class _LoopPool:
         return True
 
     async def _discard(self, conn: Any) -> None:
-        self.conns.discard(conn)
+        """Close and untrack. Untracked only after the close: a cancel
+        during ``await conn.close()`` finishes the socket in ``_finish``
+        rather than leaving an open connection the pool no longer knows."""
         try:
             await conn.close()
         except Exception:  # noqa: BLE001 - already dead
+            pass
+        finally:
+            self._finish(conn)
+
+    def _finish(self, conn: Any) -> None:
+        """Close ``conn`` at the socket, without awaiting (safe while a
+        cancellation is propagating), and forget it. Idempotent."""
+        self.conns.discard(conn)
+        self.out.discard(conn)
+        try:
+            if not conn.closed:
+                conn.pgconn.finish()
+        except Exception:  # noqa: BLE001 - best effort, already dead
             pass
 
     # -- teardown ------------------------------------------------------------
 
     async def aclose(self) -> None:
-        """Close on the loop: every idle connection, and every checked-out
-        one when it comes back."""
+        """Close on the loop: every idle connection, every tracked one that
+        is neither idle nor checked out (none should exist; closed at the
+        socket if one does), and every checked-out one when it comes back."""
         if self.closed:
             return
         self.closed = True
         _forget(self)
         while self.idle:
             await self._discard(self.idle.pop())
+        for conn in [c for c in self.conns if c not in self.out]:
+            self._finish(conn)
 
     def hard_close(self) -> None:
         """Close every connection at the socket, without the loop (it is
@@ -450,6 +489,7 @@ class _LoopPool:
         forked child must never terminate its parent's sessions."""
         self.closed = True
         self.idle.clear()
+        self.out.clear()
         conns, self.conns = list(self.conns), set()
         if self.key[1] != os.getpid():
             return

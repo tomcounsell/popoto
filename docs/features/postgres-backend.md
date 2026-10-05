@@ -629,6 +629,33 @@ loop. Redis I/O that a Postgres model's sync path makes (an
 `async_check_indexes`/`async_clean_indexes`/`async_rebuild_indexes` stay on a
 worker thread on every backend: their bodies scan Redis index keys.
 
+**Model hooks run on the event-loop thread.** The bridge runs the whole sync
+method, so a model's overrides of `save()`, `pre_save()` and `delete()`, and
+its fields' `pre_save_validate`/`on_save`/`on_delete` hooks, run inside it, on
+the loop thread, with the loop running. Before M5 they ran in a worker thread.
+Two consequences:
+
+- A hook that calls `asyncio.run()` (or `loop.run_until_complete()`) now
+  raises `RuntimeError: asyncio.run() cannot be called from a running event
+  loop`. It worked under the thread shim. `asyncio.get_running_loop()` now
+  succeeds inside a hook, so a hook that branches on it sees a loop.
+- A hook that blocks (`time.sleep`, `requests`, a sync client of another
+  service) blocks the whole loop for that long, not one worker thread.
+
+Keep hooks to in-memory work on the instance. Do blocking or async work
+outside the save: `await` it before or after `async_save()`, or hand it to
+`asyncio.to_thread()` / a task from the calling coroutine. A hook that must
+stay blocking can be reached through the sync `save()` in
+`asyncio.to_thread(instance.save)`.
+
+**First use of a model from concurrent tasks.** The backend's first-use table
+check holds a `threading.RLock`, which separates threads, not tasks: every
+bridge greenlet runs on the loop thread, so for them the lock is re-entrant
+and concurrent first uses all pass it. What serialises them is the server:
+`ensure_table` takes a transaction-scoped advisory lock
+(`pg_advisory_xact_lock` on `popoto:ddl:<schema>`), so one task creates or
+checks the table and the others wait, then find it made.
+
 **Event loops.** Pools are per (DSN, process, event loop), lazy, each at most
 `Defaults.PG_POOL_MAX_SIZE` connections, validated on checkout like the sync
 pool's. A model used from two loops -- `asyncio.run()` twice, pytest-asyncio's
@@ -637,7 +664,11 @@ loop: `loop.shutdown_asyncgens()`, which `asyncio.run`, `asyncio.Runner` and
 pytest-asyncio call, finalizes it. A loop closed without that call is swept,
 at the socket, by the next pool lookup from any loop, so `pg_stat_activity`
 does not grow with the number of loops a process has used
-(`tests/postgres/test_postgres_async.py`). The pool is popoto's own, not
+(`tests/postgres/test_postgres_async.py`). A task cancelled at any point --
+`task.cancel()`, an `asyncio.wait_for` timeout -- including while its
+connection's checkout check is in flight, closes that connection rather than
+leaving it open and unowned, so the server's session count for a pool stays
+at or below `PG_POOL_MAX_SIZE` however often callers cancel. The pool is popoto's own, not
 `psycopg_pool.AsyncConnectionPool`: that pool's maintenance workers catch
 `CancelledError`, so one still open when its loop shuts down hangs
 `asyncio.run()`'s task cancellation whenever a worker is mid-task.
@@ -829,6 +860,7 @@ cast to the column's type.
 | `push()` on a capped `ListField` whose record was deleted (M1.1) | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
 | `load_raw_hash`, `idle_seconds`, `Query.keys(catchall=/clean=)` | Redis debug and inspection APIs | raise `BackendCapabilityError` (`idle_seconds` arrives in M4) |
 | `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` (reads); a worker thread (writes) | the async backend: the sync call's Postgres I/O on `psycopg.AsyncConnection`, on the running loop, no thread (M5, [Async](#async-m5)) |
+| `async_load(db_key=<str>)` (the type its signature names) | raises `AttributeError: 'str' object has no attribute 'redis_key'`: the native path reads `db_key.redis_key` (pre-existing, before M5). The sync `load(db_key=<str>)` works | runs the sync `load`: the record, or `None` when there is none. Pinned on both legs: `tests/test_async_parity.py::test_async_load_with_a_string_db_key_is_a_documented_divergence` |
 | `async_all` on an `AccessTrackerMixin` model | stages a read per record (its native path hydrates through `_async_get_many_objects`), although `all()` is non-tracking by design | does not stage, as `all()` does not (before M5 too) |
 | `ExistenceFilter.might_exist` (M2b) | a bloom filter: false positives are possible, and a deleted record stays "seen" | exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: `test_existence_filter.py::TestMembershipExactness` |
 | `FrequencySketch.get_frequency` (M2b) | a count-min sketch: never under, may be over | the exact count of saves (never decremented, like the sketch). Pinned: same class |

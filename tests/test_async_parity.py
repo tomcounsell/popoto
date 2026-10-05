@@ -140,6 +140,28 @@ async def test_async_load_matches_load():
 
 
 @pytest.mark.asyncio
+async def test_async_load_with_a_string_db_key_is_a_documented_divergence(backend):
+    """``async_load(db_key=<str>)``, as its signature types it. Redis's native
+    path reads ``db_key.redis_key``, so a string raises ``AttributeError``
+    (pre-existing, before M5); Postgres runs the sync ``load``, which takes
+    the string: the record, or ``None`` when there is none. The sync ``load``
+    accepts it on both legs."""
+    _seed()
+    key = AsyncParityItem.load(name="a", group="g").db_key.redis_key
+    missing = key.replace(":a", ":zz")
+    assert AsyncParityItem.load(db_key=key) is not None
+    if backend.is_redis:
+        with pytest.raises(AttributeError, match="redis_key"):
+            await AsyncParityItem.async_load(db_key=key)
+        with pytest.raises(AttributeError, match="redis_key"):
+            await AsyncParityItem.async_load(db_key=missing)
+    else:
+        loaded = await AsyncParityItem.async_load(db_key=key)
+        assert _state(loaded) == _state(AsyncParityItem.load(db_key=key))
+        assert await AsyncParityItem.async_load(db_key=missing) is None
+
+
+@pytest.mark.asyncio
 async def test_async_get_or_create_matches_get_or_create():
     first, created = await AsyncParityItem.async_get_or_create(
         name="goc", group="g", defaults={"n": 4}

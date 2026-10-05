@@ -270,6 +270,177 @@ async def test_a_cancelled_statement_frees_its_slot_and_connection(pg):
     assert time.monotonic() - started < 1.0
 
 
+# -- cancellation never leaks a session (#784 review, blocker 1) ----------------
+#
+# A task cancelled while the pool's checkout check (one empty query) was in
+# flight used to release its slot but leave the connection open, owned by no
+# caller and counted by no slot: 500 cancelled saves took the server from 1
+# session to 22 with a pool of 4. These tests count sessions by an
+# application_name of their own, so other clients of the server never move
+# the number.
+
+_LEAK_APP = "popoto_test_cancel_leak"
+
+
+@pytest.fixture
+def leak_pg(pg, admin):
+    """``pg`` with every pooled connection tagged ``_LEAK_APP``."""
+    from psycopg.conninfo import make_conninfo
+
+    from popoto.backends.postgres import PostgresBackend
+
+    backend = PostgresBackend(
+        make_conninfo(pg.dsn, application_name=_LEAK_APP), schema=pg.schema
+    )
+    previous = set_backend(backend)
+    previous_instance = _swap_instance("postgres", backend)
+    try:
+        yield backend
+    finally:
+        _swap_instance("postgres", previous_instance)
+        set_backend(previous)
+        aio.close_async_pools()
+        admin.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE application_name = %s",
+            (_LEAK_APP,),
+        )
+
+
+def _app_sessions(admin):
+    admin.execute("SELECT pg_stat_clear_snapshot()")
+    (n,) = admin.execute(
+        "SELECT count(*) FROM pg_stat_activity WHERE application_name = %s",
+        (_LEAK_APP,),
+    ).fetchone()
+    return n
+
+
+def _this_loops_pool():
+    loop = asyncio.get_running_loop()
+    return next(e for e in aio._apools.values() if e.loop_ref() is loop)
+
+
+def _assert_accounted(entry):
+    """Every tracked connection is idle or checked out, never neither."""
+    assert len(entry.conns) <= entry.max_size
+    assert entry.conns <= set(entry.idle) | entry.out
+
+
+def _cancel_storm(admin, attempt, n):
+    import random
+
+    async def main():
+        await AioNote.async_create(key="w")
+        rnd = random.Random(784)
+        for i in range(n):
+            await attempt(i, rnd)
+            if i % 50 == 49:
+                entry = _this_loops_pool()
+                assert _app_sessions(admin) <= entry.max_size
+                assert len(entry.conns) <= entry.max_size
+        entry = _this_loops_pool()
+        assert _app_sessions(admin) <= entry.max_size
+        # Every task has finished, so nothing is checked out: a tracked
+        # connection that is not idle is an orphan.
+        assert len(entry.conns) == len(entry.idle)
+        _assert_accounted(entry)
+        assert await AioNote.query.async_get(key="w") is not None
+        await entry.aclose()
+        assert not entry.conns
+        assert _settle_app(admin, 0) == 0
+
+    asyncio.run(main())
+    assert _settle_app(admin, 0) == 0
+
+
+def _settle_app(admin, want_at_most, timeout=3.0):
+    deadline = time.monotonic() + timeout
+    n = _app_sessions(admin)
+    while n > want_at_most and time.monotonic() < deadline:
+        time.sleep(0.02)
+        n = _app_sessions(admin)
+    return n
+
+
+def test_cancelled_saves_leak_no_sessions(leak_pg, admin):
+    """500 ``async_save`` tasks cancelled at a random point within 0-4 ms."""
+
+    async def attempt(i, rnd):
+        task = asyncio.ensure_future(AioNote(key=f"s{i % 7}", n=i).async_save())
+        await asyncio.sleep(rnd.uniform(0, 0.004))
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    _cancel_storm(admin, attempt, 500)
+
+
+def test_wait_for_timeouts_leak_no_sessions(leak_pg, admin):
+    """``asyncio.wait_for`` timeouts, the shape real callers write."""
+
+    async def attempt(i, rnd):
+        try:
+            await asyncio.wait_for(
+                AioNote(key=f"w{i % 7}", n=i).async_save(), rnd.uniform(0.0002, 0.003)
+            )
+        except (asyncio.TimeoutError, TimeoutError):
+            pass
+
+    _cancel_storm(admin, attempt, 300)
+
+
+def test_a_cancel_during_the_checkout_check_closes_the_connection(
+    leak_pg, admin, monkeypatch
+):
+    """Deterministic: cancel exactly while ``_usable`` is awaiting. The
+    connection it was checking is closed and untracked, and the slot freed."""
+    original = aio._LoopPool._usable
+    checking = []
+
+    async def held_usable(conn):
+        checking.append(conn)
+        await asyncio.sleep(10)
+        return await original(conn)
+
+    async def main():
+        await AioNote.async_create(key="k")  # leaves one idle connection
+        entry = _this_loops_pool()
+        assert len(entry.idle) == 1 and _app_sessions(admin) == 1
+        monkeypatch.setattr(aio._LoopPool, "_usable", staticmethod(held_usable))
+        task = asyncio.ensure_future(AioNote.query.async_get(key="k"))
+        while not checking:
+            await asyncio.sleep(0.001)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        (conn,) = checking
+        assert conn.closed
+        assert conn not in entry.conns and not entry.out and not entry.idle
+        assert entry.slots._value == entry.max_size
+        assert _settle_app(admin, 0) == 0
+        monkeypatch.setattr(aio._LoopPool, "_usable", original)
+        assert await AioNote.query.async_get(key="k") is not None
+
+    asyncio.run(main())
+
+
+def test_aclose_closes_a_tracked_connection_nobody_holds(leak_pg, admin):
+    """``aclose`` closes idle connections and any tracked one that is neither
+    idle nor checked out, not only the idle ones."""
+
+    async def main():
+        await AioNote.async_create(key="k")
+        entry = _this_loops_pool()
+        conn = await entry.getconn()
+        entry.out.discard(conn)  # an owner that vanished without putconn
+        entry.slots.release()
+        await entry.aclose()
+        assert conn.closed and not entry.conns
+        assert _settle_app(admin, 0) == 0
+
+    asyncio.run(main())
+
+
 # -- concurrency -------------------------------------------------------------------
 
 

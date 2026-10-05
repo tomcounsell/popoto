@@ -588,6 +588,11 @@ class PostgresBackend(SearchMixin, PostgresMemoryOps):
             return self._check_table(spec)
 
     def _check_table(self, spec: ModelSpec) -> TableSpec:
+        # The RLock separates threads, not async tasks: every bridge greenlet
+        # runs on the loop thread, so for them it is re-entrant and concurrent
+        # first uses all pass it (M5). What serialises first use is the
+        # server-side DDL lock `ensure_table` takes (pg_advisory_xact_lock on
+        # "popoto:ddl:<schema>"); a second caller then finds the table made.
         with self._lock:
             cached = self._tables.get(spec.name)
             if cached is not None and cached[0] is spec:
