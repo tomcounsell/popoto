@@ -151,17 +151,11 @@ class TestCompositeScoreErrors:
         with pytest.raises(QueryException, match="non-empty indexes"):
             CompositeMemory.query.composite_score(indexes={})
 
-    @pytest.mark.redis_only(
-        reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
-    )
     def test_invalid_field_name_raises(self):
         """Field name not on model raises QueryException."""
         with pytest.raises(QueryException, match="has no field"):
             CompositeMemory.query.composite_score(indexes={"nonexistent_field": 1.0})
 
-    @pytest.mark.redis_only(
-        reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
-    )
     def test_plain_field_raises(self):
         """Field without sorted set index raises QueryException."""
         with pytest.raises(QueryException, match="does not have a sorted set"):
@@ -196,9 +190,6 @@ class TestCompositeScoreErrors:
 class TestCompositeScoreEmpty:
     """Test empty result handling."""
 
-    @pytest.mark.redis_only(
-        reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
-    )
     def test_no_instances_returns_empty(self):
         """Query on model with no instances returns empty list."""
         result = CompositeMemory.query.composite_score(indexes={"relevance": 1.0})
@@ -248,9 +239,6 @@ class TestCompositeScoreSingleIndex:
 # --- Two-index synergy tests ---
 
 
-@pytest.mark.redis_only(
-    reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
-)
 class TestCompositeScoreTwoIndex:
     """Test decay + confidence synergy."""
 
@@ -280,9 +268,6 @@ class TestCompositeScoreTwoIndex:
 # --- Three-index synergy tests ---
 
 
-@pytest.mark.redis_only(
-    reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
-)
 class TestCompositeScoreThreeIndex:
     """Test decay + confidence + access frequency synergy."""
 
@@ -321,7 +306,11 @@ class TestCompositeScoreThreeIndex:
 
 
 @pytest.mark.redis_only(
-    reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
+    reason=(
+        "ranks by the WriteFilter priority set; composite_score({'priority': ...}) "
+        "raises BackendCapabilityError on Postgres, where the priority tier is not "
+        "stored (a documented divergence, docs/features/postgres-backend.md)"
+    )
 )
 class TestCompositeScoreFourIndex:
     """Test decay + confidence + access + write filter priority."""
@@ -361,9 +350,6 @@ class TestCompositeScoreFourIndex:
 # --- CoOccurrence boost tests ---
 
 
-@pytest.mark.redis_only(
-    reason="CompositeMemory declares a CoOccurrenceField, which Postgres stores from #759 M4"
-)
 class TestCompositeScoreCoOccurrence:
     """Test CoOccurrence boost injection."""
 

@@ -7,16 +7,17 @@ table with native indexes, and it is where new capabilities land.
 
 This page covers the first Postgres milestones: **plain models** (M1),
 **plain-field breadth** (M1.1), the **ranking and memory-state half of
-Valor's slice** (M2a), **search** (M2b), **`ContextAssembler`** (M2c) and
-the **validity axis** (M3).
+Valor's slice** (M2a), **search** (M2b), **`ContextAssembler`** (M2c), the
+**validity axis** (M3) and the **co-occurrence graph** (M4).
 That means records, queries, `Q` objects, ordering, counting and atomic
 increments for the field types listed below, including indexed, unique, tag,
 relationship and collection fields, plus decay ranking, confidence
 (partitioned too), read tracking, the write filter, `ObservationProtocol` and
 `composite_score`, BM25 keyword search, pgvector embeddings, exact membership
 filters, fusion and `recall()`, the assembler over all of them, and
-`ValidityField` with `SupersessionProtocol`. Models that use other fields stay
-on Redis until their milestone. Popoto refuses them when you declare them, so
+`ValidityField` with `SupersessionProtocol`, and `CoOccurrenceField` with
+its graph expansion. Models that use other fields stay on Redis until their
+milestone. Popoto refuses them when you declare them, so
 they never fail halfway through.
 
 ## Selecting the backend
@@ -68,7 +69,7 @@ spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.
 
-## Supported fields (M1, M1.1, M2a, M2b, M3)
+## Supported fields (M1, M1.1, M2a, M2b, M3, M4)
 
 | popoto field | Column | Index |
 |---|---|---|
@@ -92,6 +93,7 @@ first query does not.
 | `ExistenceFilter` / `FrequencySketch` (M2b) | no column: `<table>__<f>__tok (token, _pk)` / `<table>__<f>__cnt (token, count)` | `PRIMARY KEY (token, _pk)` / `PRIMARY KEY (token)` |
 | `ContentField` (M2b, pulled forward from M5) | `text` holding the content itself (no `$CF:` reference, no file) | — |
 | `ValidityField` (M3) | `double precision` for the declared value, plus `<f>__valid_from`, `<f>__invalid_at`, `<f>__ingested_at` (`double precision`; `'Infinity'` = open) and `<f>__supersedes`, `<f>__superseded_by` (`text`); companion `<table>__<f>__open (digest, member)` | B-tree on `<f>__valid_from` and on `<f>__invalid_at`; the companion's `member` references `_pk` `ON DELETE CASCADE` |
+| `CoOccurrenceField(symmetric=…, max_edges=…)` (M4) | no column: the edge table `<table>__<f>__edge (src, dst, weight)` | `PRIMARY KEY (src, dst)` |
 
 Every table also has:
 
@@ -158,8 +160,7 @@ partition change that keeps the key keeps the state.
 Postgres model too, rather than issuing Redis commands for a record Redis does
 not hold.
 
-Fields that arrive later: the remaining memory fields (validity,
-co-occurrence; M3–M4); `GeoField`, `Meta.ttl` and the rest (M5); an `IndexedField` on a collection type is refused. A model
+Fields that arrive later: `GeoField`, `Meta.ttl` and the rest (M5); an `IndexedField` on a collection type is refused. A model
 that uses one of them raises
 `BackendCapabilityError` when you declare it with `Meta.backend =
 "postgres"`, or on first use when it takes the process default.
@@ -288,6 +289,16 @@ deadlocking with it. Transactions that each take several records in
 different orders can still deadlock; that surfaces as
 `BackendRetryableError`. Pinned by
 `test_a_confidence_update_then_save_cannot_deadlock_a_save` and its control.
+A record delete on a model with a symmetric `CoOccurrenceField` (M4) writes
+rows in its *partners'* edge sets too (the reverse edges), so it takes the
+partners' record-key locks with the deleted keys', in one sorted sequence,
+before it touches a row. The lock statement runs twice: the first takes the
+locks in order with the partners its snapshot saw, the second picks up a
+partner linked while the first waited (none, normally; once the deleted keys
+are held no new partner can appear, since a `link` takes both keys' locks).
+Pinned by `tests/postgres/test_postgres_graph.py::test_a_delete_cannot_deadlock_a_transaction_holding_a_partner_set`
+and its control, where a transaction holding a partner's set and then linking
+into the deleted record deadlocks a delete that skips the partners' locks.
 
 ### BM25
 
@@ -444,8 +455,9 @@ with a `ValidityField` the validity mask applies to it as to every arm (M3;
 pinned two-leg by `tests/test_semantic_search.py::TestSemanticSearchWithIndexes`). The order is the
 same on both backends; with three or more summed arms a score can differ by
 up to 2 ulp, because `ZUNIONSTORE` adds the smallest input set first while
-Postgres adds the arms in order. `co_occurrence_boost` waits for
-`CoOccurrenceField` (M4).
+Postgres adds the arms in order. `co_occurrence_boost=` is an arm too (M4):
+weight 1.0, after the indexes and before `similarity_boost`, the position its
+temporary set takes in the `ZUNIONSTORE`.
 
 ## ContextAssembler (M2c)
 
@@ -479,8 +491,10 @@ decision 3).
 **The parity evidence.** The retrieval-quality fixture (200 records, 20
 queries, `retrieval_mode="auto"`) returns the same keys in the same order,
 the same formatted output and the same token count on both legs, through the
-lexical path and through the hybrid path partitioned by `agent_id`
-(`test_postgres_assembler.py`). `scripts/probe_assembler_parity.py` builds
+lexical path, and through the hybrid path partitioned by `agent_id` with each
+record's text suffixed `(memory N)` (`test_postgres_assembler.py`): with the
+fixture's texts as written, several records share a text and so a vector, and
+the hybrid path's parity then holds only up to the vector-arm tie row below. `scripts/probe_assembler_parity.py` builds
 random corpora on both legs and compares `assemble()` (keys, formatted output
 and token count, metadata, trace, quality, and the post-effects' confidence and
 staged-read state), `on_context_used()` and `assess()`; its classes are in the
@@ -503,7 +517,169 @@ returns in file-listing order and Postgres by key).
 
 An outage raises `BackendUnavailableError` from `assemble()`, as a Redis
 outage raises `ConnectionError`; it is in
-`popoto.recipes.context_assembler.OUTAGE_ERRORS`.
+`popoto.recipes.context_assembler.OUTAGE_ERRORS`. That is the retrieval
+path's rule, not every helper's: the quality helpers behind
+`assess_quality` and `assess()` (score spread, feeling-of-knowing,
+staleness) catch every exception and degrade, on both backends (unchanged
+from Redis), so `assess()` during a `rank_decayed` outage returns a degraded
+quality rather than raising.
+
+**Post-effects fail differently.** On Postgres the post-effects are one
+transaction (above), so they are all-or-nothing: a statement that fails drops
+the staged reads and every suppression signal of the call, with one warning.
+On Redis a `TypeError` or `ValueError` is swallowed per candidate and the
+pipeline carries on with the rest. And Postgres stages reads only for a model
+with `AccessTrackerMixin` (the `_at_member` check), where Redis calls each
+record's `on_read`: a user-defined `on_read` on a model without the mixin runs
+on Redis but not on Postgres. Neither is reachable with the shipped models.
+
+## Co-occurrence graph (M4)
+
+`CoOccurrenceField` keeps, on Redis, one sorted set per source key; on
+Postgres each field has one edge table, a row per directed edge:
+
+```sql
+CREATE TABLE "popoto"."memory__associations__edge" (
+  "src" text NOT NULL, "dst" text NOT NULL,
+  "weight" double precision NOT NULL, PRIMARY KEY ("src", "dst"));
+```
+
+A symmetric field writes both directions, as the Lua writes both sets, so the
+two weights of a pair can differ exactly as they can on Redis (a prune or a
+`weaken_all` touches one side). There is no foreign key: Redis links any two
+key strings, records or not. Deleting a record removes its own edges and,
+for a symmetric field, the reverse edge in every set it linked to, as CTEs of
+the record's `DELETE`, behind those partners' record-key locks as well as its own (see "One lock order for every writer"). Every tie-break is `COLLATE "C"`, the sorted set's
+member order. Pinned: `tests/postgres/test_postgres_graph.py::test_the_edge_table_ddl_is_pinned`.
+
+**Writes.** Each one is a statement behind the record-key advisory locks of
+the sets it writes (`src`, and `dst` when symmetric), sorted: the backend's
+one lock order. That lock is what makes a link's count-then-prune atomic, as
+the script is: no committed state of a set ever holds more than `max_edges`
+edges (`test_concurrent_links_to_one_set_never_exceed_max_edges`, and its
+deterministic interleaving with a control that overflows without the lock).
+
+| Call | Lua | Postgres |
+|---|---|---|
+| `link` | `LINK_WITH_PRUNE_LUA` per direction: an existing edge keeps its weight; a new one is added and, past `max_edges`, the lowest `count - max_edges` by `(weight, member)` are removed | the same, in one statement: the prune is decided over the set as it would be after the insert, so a new edge that ranks lowest is never inserted |
+| `strengthen` | `min(old + delta, cap)`, a missing edge as `0`, no prune | `INSERT … ON CONFLICT DO UPDATE` with the same `CASE` |
+| `unlink` | `ZREM` | `DELETE` |
+| `weaken_all` | every edge times `factor`; below `0.001`, removed | one statement: `DELETE` the pruned, `UPDATE` the rest |
+
+The arithmetic is the Lua's, in `double precision`, and the replies are the
+Redis ones: `link` returns the script's number reply, which Redis sends as an
+integer (the weight truncated toward zero, so `link(…, 0.5)` returns `0.0` on
+both); `strengthen` returns `tostring(new)` (`%.14g`). Where Postgres would
+raise on a float overflow or underflow and C saturates, the statement guards
+the one product that can (an underflow in `weaken_all`, whose edge is removed
+either way), and an input past `1e300`, infinite or NaN takes an exact path:
+the same steps in Python floats, which are C doubles, in one transaction.
+
+**`propagate`** is `PROPAGATE_BFS_LUA`. The Lua runs a FIFO queue with a
+visited map; an entry expands through the node's top `max_edges` neighbours
+by `(weight, member)` descending unless an earlier entry for the node was at
+least as heavy, and a neighbour is reached with `w * decay * min(edge, cap)`,
+kept when that is at least the threshold. With a positive threshold every
+weight is positive and the step is monotone, so a skipped entry is dominated
+by an earlier, no-deeper one: each result is the heaviest walk of at most
+`depth` hops whose weights stay at or above the threshold. That is one
+`WITH RECURSIVE` statement, a layer per iteration:
+
+```sql
+WITH RECURSIVE
+  "_seed" AS (SELECT DISTINCT u AS pk FROM unnest($seeds::text[]) AS u),
+  "_walk" (pk, w, d) AS (
+    SELECT pk, 1::float8, 0 FROM "_seed"
+    UNION ALL
+    SELECT pk, w, d FROM (                     -- each node's heaviest arrival
+      SELECT pk, w, d, row_number() OVER (PARTITION BY pk ORDER BY w DESC) AS rk
+      FROM (SELECT n.dst AS pk, safe_mul(k.w * $decay, least(n.weight, $cap)) AS w,
+                   k.d + 1 AS d
+            FROM "_walk" AS k
+            CROSS JOIN LATERAL (               -- the top max_edges neighbours
+              SELECT dst, weight FROM <edges> WHERE src = k.pk
+              ORDER BY weight DESC, dst COLLATE "C" DESC LIMIT $max_edges) AS n
+            WHERE k.d < $depth) AS h
+      WHERE w >= $threshold AND w <> 'NaN') AS r
+    WHERE rk = 1)
+SELECT pk, max(w) FROM "_walk"
+ WHERE d >= 1 AND pk NOT IN (SELECT pk FROM "_seed")
+ GROUP BY pk ORDER BY max(w) DESC, pk COLLATE "C"
+```
+
+`safe_mul` is the saturating product of the decay SQL (M2a).
+
+That statement only runs while it expands at most
+`Defaults.PG_GRAPH_RECURSIVE_MAX_LAYERS` (2) layers, i.e. `ceil(depth) <= 2`
+(the default `depth=2`). A recursive CTE sees only the previous layer, so it
+cannot apply the visited map: it re-expands every reached node on every layer
+until `depth` runs out or the weights drop under the threshold. Up to two
+layers that is exactly the pruned work (layer one expands the seeds, layer two
+every first arrival); past that it grows with depth × fan-out where the Lua
+stops. The #781 review measured a 400-node clique at `depth=50, decay=0.99` at
+24.9 s against Redis's 0.10 s, and at larger depths (or a decay near 1) the
+statement ran into `statement_timeout`, which the outage contract reports as
+`BackendUnavailableError`. A deeper call therefore runs one statement per
+layer instead: each frontier node's top `max_edges` neighbours, the same
+product and threshold, each node's heaviest arrival (`GROUP BY`), and
+between layers the Lua's visited rule -- a node goes on only when it arrived
+strictly heavier than at any earlier layer. A pruned arrival is dominated by
+the earlier one, so the answer is the recursive statement's; the work is at
+most the Lua's, and the loop stops after the last layer that improved a node
+whatever `depth` is (the contraction guard keeps `decay * cap < 1`, so an
+improving walk is a simple path: at most one layer per node reached). A
+statement timeout is never what bounds a graph read. Measured on the review's
+graphs (macOS arm64, PostgreSQL 18.6, Redis 8.10, load average 4.2-4.9,
+median of 5 runs; 7 for the probe shapes):
+
+| graph, call | Redis | Postgres |
+|---|---|---|
+| 400-node clique, `depth=50, decay=0.99, threshold=0.01` | 77 ms | 300 ms |
+| same, `depth=1000, threshold=1e-6` | 86 ms | 295 ms |
+| same, `depth=1e6, decay=0.999` | 81 ms | 290 ms |
+| same, `depth=1e6, decay=0.5, threshold=1e-280` | 84 ms | 288 ms |
+| same, `depth=inf, decay=0.99` | 82 ms | 289 ms |
+| the review probe's five ≤12-node shapes at `depth=1e9, decay=0.999999` | 0.21-0.32 ms | 1.15-1.55 ms |
+| 50k edges, fan-out 10, `depth=2` / `3` / `5`, `threshold=0.01` | 2.7 / 11 / 35 ms | 1.8 / 10 / 61 ms |
+
+The deep calls run their layers on one pooled connection in one read
+transaction, so a layer costs one round trip. Every answer is identical to Redis's. Pinned:
+`test_a_dense_clique_at_any_depth_answers_inside_the_statement_timeout`
+(a 40-node clique at `depth=1e9` with the timeout lowered to 3 s; the health
+record sees no failure), `test_a_deep_propagate_prunes_as_the_visited_map_does`
+and `test_the_three_bfs_paths_agree`.
+
+Outside that domain -- a threshold at or below `0` (or under `1e-290`), a negative or
+infinite `decay_per_hop` -- the step is not monotone and the visited map's
+order decides the answer, so the backend replays the Lua's queue exactly in
+Python, over the same neighbour lists fetched one layer per statement.
+Scores come back through `%.14g`, as the script's `tostring` sends them.
+`get_linked` is `ZREVRANGEBYSCORE +inf <min> LIMIT 0 <limit>`: one indexed
+read of the source's rows, the stored weights unclamped (`graph_expand` at
+depth 1), with `(` for an exclusive minimum, `limit=0` empty and a negative
+limit everything.
+
+`recipes/graph_traversal.traverse` runs unchanged on top: `propagate`, the
+relationship walk (M1.1's `sample_related_keys`), and the confidence and
+decay modulation (M2a/M2c). `ContextAssembler`'s graph arm and
+`composite_score(co_occurrence_boost=)` work on a Postgres model as on Redis.
+
+**The seeded probe.** `scripts/probe_graph_parity.py` replays the same random
+sequence of writes on both legs -- weights from typical to `-inf`, ties and the
+cap; deltas from `1e-12` past the cap; factors `0`, tiny and `1`; record
+deletes and `import_state` (NaN weights included) -- comparing every return,
+then each key's full edge set, `get_linked` (`limit=None` and a NaN bound
+included), `propagate` (depths up to `1e9` and `inf`, decays up to `0.999999`)
+on all three Postgres paths, `export_state`, `composite_score` with the boost
+and `traverse()`. Its classes are in its docstring and the PR that introduced
+M4; the documented ones are the M4 rows of the table above.
+`tests/postgres/test_postgres_graph.py` runs a 25-shape slice in CI.
+
+```bash
+REDIS_URL=redis://localhost:6379/13 \
+POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
+    python scripts/probe_graph_parity.py --seeds 1 2 3 --shapes 200
+```
 
 ## Topology and the outage contract
 
@@ -783,12 +959,19 @@ cast to the column's type.
 | A reload after `touch()` (M2a) | `touch` moves only the sorted-set score, so the hash, and a reload, keep the save-time value | the clock is the field's column, so a reload sees the touched time. Pinned: `test_a_reload_after_touch_is_a_documented_divergence` |
 | `DecayingSortedField.rank_decayed(zset_key, …)` (M2a, TD-40) | ranks that sorted set | raises `BackendCapabilityError` naming `top_by_decay`, the backend-neutral call |
 | `composite_score({"priority": …})` (M2a) | ranks by the WriteFilter priority set | raises `BackendCapabilityError`: the priority tier is a no-op on Postgres (plan §5 M2) |
-| `composite_score(co_occurrence_boost=)` (M2a) | injects the boost as an arm | raises `BackendCapabilityError` until `CoOccurrenceField` (M4) arrives. `similarity_boost=` is an arm on both since M2b; a key with no record cannot take a top-K slot on Postgres, where on Redis it takes one and is then dropped at hydration |
+| `composite_score(similarity_boost=…, co_occurrence_boost=…)` (M2b, M4) | injects each boost as an arm | an arm on both. A key with no record cannot take a top-K slot on Postgres, where on Redis it takes one and is then dropped at hydration, so Redis can return fewer records (never in another order). Pinned: `test_backend_parity_memory.py::test_composite_co_occurrence_boost_is_an_arm_on_both_backends`; the graph probe's `composite_orphan_slot` class |
+| A NaN edge weight (`link(…, initial_weight=nan)` on a new edge, a NaN `strengthen` or `weaken_all` result) (M4) | `ZADD` refuses it: `ResponseError: value is not a valid float`. A symmetric write whose *second* script fails keeps the first script's write | `ValueError` with the same text, and the whole write rolls back. Pinned: `test_postgres_graph.py::test_a_nan_weight_raises_value_error` |
+| A NaN weight in `CoOccurrenceField.import_state` (one that survives the `max_edges` truncation) (M4) | `DELETE` runs, then `ZADD` refuses the NaN: `ResponseError: value is not a valid float`, and the record's edge set is left **empty** | refused before any write: `ValueError` with the same text, and the edge set is unchanged. No NaN edge is stored on either (stored, Postgres would rank it above every weight and `least(NaN, cap)` is the cap). Pinned on both legs: `test_co_occurrence_field.py::TestImportStateAndErrorParity::test_a_nan_import_is_refused_a_documented_divergence`; the graph probe's `nan_import_keeps_set` class |
+| `CoOccurrenceField.get_linked(…, limit=None)` (M4) | redis-py refuses it client-side: `DataError: ``start`` and ``num`` must both be specified` (before any NaN-bound check) | `ValueError` with the same text, in the same order. Pinned on both legs: `test_get_linked_limit_none_a_documented_divergence`; the graph probe's `limit_none_error_type` class |
+| A NaN `min_weight` in `CoOccurrenceField.get_linked` (M4) | `ResponseError: min or max is not a float` | `ValueError` with the same text. Pinned on both legs: `test_get_linked_nan_min_weight_a_documented_divergence`; the probe's `nan_error_type` class |
+| The order of `propagate()`'s dict, and so of equal weights in `graph_traversal.traverse()` (M4) | Lua table iteration order | weight descending, then key bytewise. The dict and its weights are equal on both; `traverse()` sorts by weight, so only ties can be listed in another order (the graph probe's `traverse_tie_order` class) |
+| `link()`'s reply for a weight at or past `2**63` in magnitude (M4) | the server's C `(long long)` cast of the Lua number: `-inf` and anything under `-2**63` reply `-2**63` on arm64 and x86-64; above `2**63` (only with a cap past it) arm64 saturates to `2**63 - 1`, x86-64 replies `-2**63` | the arm64 values |
+| `CoOccurrenceField.strengthen()` on a model with `EventStreamMixin` (M4) | appends a `strengthen` entry to the model's Redis stream | no entry: the event stream is Redis-only until M5 |
 | Where a NaN decay score ranks (M2a) | NaN (`0 * inf`: a `-inf` clock with above-prior confidence) makes the script's comparator inconsistent (`x > nan` is always false), so `table.sort` places it arbitrarily and can misorder real scores around it | real scores sorted, NaN last; every member's score is the same on both. Pinned: `test_where_a_nan_score_ranks_is_a_documented_divergence` |
 | A NaN decay score in `composite_score` (M2a) | `rank_decayed` replies `nan` (`0 * inf`: a `-inf` clock with above-prior confidence) and the composite's `ZADD` refuses it: `ResponseError: value is not a valid float` | that arm scores 0 for the record, the value `ZUNIONSTORE` gives a NaN product. Pinned: `test_a_nan_decay_score_in_composite_is_a_documented_divergence` |
 | The confirmed access log (M2a) | a capped list of read timestamps (`$AT:…:access_log`) | not kept: `access_count` and `last_accessed` are. It is read only by `export_state`, which arrives with `transfer/` in M5 |
 | `update_confidence(…, pipeline=uow)` with a Postgres `transaction()` (M2a) | (a Redis pipeline queues the update and returns `None`) | the update runs inside the transaction, so its value is returned and the attribute synced |
-| A model with a `CyclicDecayField`, `CoOccurrenceField` or `PredictionLedgerMixin` (M2a) | supported | refused at declaration until M5, M4 and M5 respectively, so `ObservationProtocol`'s cycle, auto-discharge and ledger-resolution effects have no Postgres model to act on yet (its supersession effect runs from M3) |
+| A model with a `CyclicDecayField` or `PredictionLedgerMixin` (M2a) | supported | refused at declaration until M5, so `ObservationProtocol`'s cycle, auto-discharge and ledger-resolution effects have no Postgres model to act on yet (its supersession effect runs from M3; `CoOccurrenceField` is stored from M4) |
 | `execute_supersede(mode="open")` naming a member with no record (M3) | `ZADD NX` indexes the member anyway | writes nothing: the interval is the record's row. Only a direct `execute_supersede` call can ask for it. Pinned: `tests/postgres/test_postgres_validity.py::test_mode_open_on_a_member_with_no_record_writes_nothing` |
 | An open-claim pointer naming a record that does not exist (M3) | storable (a manual `SET`, or a partial `import_state`); `supersede` reads it as "no incumbent" | unrepresentable: the pointer table's foreign key refuses it, and deleting a record cascades to its pointers. `import_state` for a record that is not stored raises `ValidityMemberAbsentError` (a `ValidityError`, so a `ValueError`) chained from the driver's `ForeignKeyViolation`; Redis's `import_state` never raises there. Pinned: `test_a_pointer_cannot_name_a_record_that_does_not_exist` |
 | `save_and_supersede` / `save_and_invalidate` whose close fails (M3) | `MULTI`/`EXEC` keeps the successor's save, and the typed error's text carries redis-py's `Command # N (...) of pipeline caused error:` prefix | the whole unit rolls back, so the successor is not saved either; same exception type, and the text is the bare reply line |

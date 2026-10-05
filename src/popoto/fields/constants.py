@@ -775,6 +775,18 @@ class Defaults:
     # cannot push save() past it.
     PG_BACKFILL_BUDGET_SECONDS = 1.0
 
+    # -- Postgres graph (#759 M4) ----------------------------------------------
+    # CoOccurrenceField.propagate() on Postgres answers with one WITH RECURSIVE
+    # statement while it expands at most this many BFS layers (ceil(depth)),
+    # and otherwise one visited-pruned statement per layer. The recursive
+    # statement cannot see earlier layers, so it re-expands every reached node
+    # on every layer; up to two layers that is exactly the pruned work (layer
+    # one expands the seeds, layer two every first arrival), past it the work
+    # grows with depth x fan-out where PROPAGATE_BFS_LUA's visited map stops
+    # (#781 review: a 400-node clique at depth 50 took 24.9 s against Redis's
+    # 0.10 s). Lowering it to 0 sends every call down the pruned path.
+    PG_GRAPH_RECURSIVE_MAX_LAYERS = 2
+
 
 class TemporalPeriod:
     """Named constants for common temporal cycle periods in seconds.
