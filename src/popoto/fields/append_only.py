@@ -116,17 +116,30 @@ def _record_exists(model_class: Any, redis_key: str, pipeline: Any) -> bool:
     refused (the intra-pipeline shape below stays open on Redis only)."""
     from ..backends.routing import non_redis_backend
     from ..backends.types import RecordId, UnitOfWork
+    from ..batch import unit_of
 
     backend = non_redis_backend(model_class)
     if backend is None:
         return bool(get_REDIS_DB().exists(redis_key))
     rid = RecordId.from_key(model_class._meta.model_name, redis_key)
-    if isinstance(pipeline, UnitOfWork) and not pipeline.is_redis_pipeline:
+    # The caller's transaction() -- or a popoto.batch()'s, which the save
+    # will join (#759 M5, #783 review) -- so a second save of the key in the
+    # same batch sees the first.
+    uow = (
+        None
+        if isinstance(pipeline, UnitOfWork) and pipeline.is_redis_pipeline
+        else unit_of(pipeline, backend)
+    )
+    if uow is not None:
+        from ..backends.postgres.ttl import live_sql
+
         ts = backend._table(model_class._meta.spec)
+        live = live_sql(ts)  # M5: an expired record is no record
         rows, _ = backend._run(
-            f'SELECT 1 FROM {ts.qualified} WHERE "_pk" = %s',
+            f'SELECT 1 FROM {ts.qualified} WHERE "_pk" = %s'
+            + (f" AND {live}" if live else ""),
             [rid.canonical],
-            uow=pipeline,
+            uow=uow,
         )
         return bool(rows)
     (found,) = backend.exists(model_class._meta.spec, [rid])

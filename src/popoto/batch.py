@@ -109,7 +109,11 @@ class Batch(GuardedPipeline):
             return
         self._pg = None
         _backend, stack, uow = pg
-        uow.reap.clear()  # nothing committed, so nothing to reap
+        # Nothing committed, so nothing to reap and no Redis side effect to
+        # send: psycopg swallows the Rollback signal below, so the
+        # transaction() context runs its after-commit step on this path too.
+        uow.reap.clear()
+        uow._after_commit.clear()
         import psycopg
 
         # psycopg's transaction block swallows its own Rollback signal, so

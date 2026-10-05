@@ -708,7 +708,7 @@ tables created on first use, like `popoto_recall_proposal`:
 
 | Method | Redis | Postgres |
 |---|---|---|
-| `Model.idle_seconds` | `OBJECT IDLETIME`: whole seconds since the key was last read or written | whole seconds since the later of the row's last write (`_updated_at`) and, with `AccessTrackerMixin`, its last *confirmed* read (`_last_accessed`); `None` with no row |
+| `Model.idle_seconds` | `OBJECT IDLETIME`: whole seconds since the key was last read or written | whole seconds since the later of the row's last write (`_updated_at`) and, with `AccessTrackerMixin`, its last *confirmed* read (`_last_accessed`); `None` with no row, or an expired one (M5) |
 | `SortedFieldMixin.count` / `members` / `score` | `ZCARD` / `ZRANGE` / `ZSCORE` on the partition's sorted set | the partition's rows, in `(value, _pk COLLATE "C")` order, with `ZRANGE`'s inclusive and negative ranks; `score` converts the stored value as the sorted set scores it |
 | `counters.increment` / `read` (`model=`) | `INCRBY` / `GET` on a string | `popoto_counter (key, value)`: `INSERT … ON CONFLICT DO UPDATE … RETURNING` |
 | `TombstoneStore` (`MemoryLifecycle`'s archive) | `$TOMB:{Model}:data` hash + `:index` sorted set | `popoto_tombstone (model, member, entry, ts)` |
@@ -793,8 +793,8 @@ member, vector)`, beside the entries, and `erase_entry` drops it there.
 until M5: a Postgres-bound journal still `XADD`s its mutation log to Redis,
 and the reconciler's `StreamConsumer` trigger reads it there. The `XADD` is
 sent after the write commits: right after the save's own commit, or, inside a
-caller's `transaction()`, after that transaction's `COMMIT`
-(`PostgresUnitOfWork.after_commit`). A rolled-back write sends none. Sending
+caller's `transaction()` or a `popoto.batch()`, after that transaction's
+`COMMIT` (`PostgresUnitOfWork.after_commit`). A rolled-back write sends none. Sending
 is best-effort: with Redis unreachable the committed row stays and the
 failure is logged. Pinned by `tests/postgres/test_postgres_journal.py`.
 
@@ -928,9 +928,25 @@ that model's backend, and that write and every later one runs inside it.
 `execute()` commits it and returns `[]`. `reset()`, leaving a `with` block,
 or dropping the batch without `execute()` rolls it back, as an unexecuted
 Redis pipeline sends nothing. Saves, deletes, increments, `touch`, the
-confidence, read-tracking and `ObservationProtocol` writes all join it.
-Until `execute()`, no other connection sees the writes, as with queued
-commands.
+confidence, read-tracking and `ObservationProtocol` writes, the
+`CoOccurrenceField` edge writes (`link`, `strengthen`, `unlink`,
+`weaken_all`), the `AppendOnlyMixin` guard and `ProvenanceJournal`'s
+`append`/`supersede`/`retract` all join it. Until `execute()`, no other
+connection sees the writes, as with queued commands. A graph write handed
+the batch runs in the batch's transaction, so it reuses the lock the batch
+already holds on a record it saved; a second save of an append-only key in
+one batch sees the first and is refused, as in a `transaction()`.
+
+**Redis side effects follow the commit.** A save's `EventStreamMixin` `XADD`
+(and `WriteFilterMixin` priority tag, a no-op off Redis) is registered on
+the batch's transaction with the after-commit hook ([Transactions](#transactions)): it
+is sent once `execute()` has committed, one entry per save, in save order,
+and never for a batch that `reset()`, a `with` block or a failed
+`execute()` rolled back. On Redis the same effects queue on the pipeline,
+so both backends send them exactly when the writes land. These are the only
+Redis bytes a Postgres batch causes, and they are sent outside it, after
+the commit, so "one batch, one backend" below still holds. Pinned on both
+legs by `tests/test_batch.py`.
 
 **Atomic, where Redis is not.** If a statement fails *inside the batch's
 transaction* (two saves in the batch that claim one unique value, say), the
@@ -963,7 +979,8 @@ and a batch that only looked atomic would be worse than a refusal. A batch is
 also bound to the one Postgres backend it opened on. Use one batch per
 backend. `SupersessionProtocol`'s mutators refuse a batch on a Postgres
 model, as they refuse any Redis pipeline; pass `backend.transaction()`'s
-unit of work there.
+unit of work there. (`ProvenanceJournal`, which calls them, accepts a batch:
+it hands them the batch's unit of work.)
 
 ## Record expiry (M5)
 
@@ -1002,8 +1019,8 @@ on a key Redis has expired creates a new hash.
 `composite_score`, `top_by_relevance`, `BM25Field.search`,
 `keyword_search`, `semantic_search`, `load_embeddings`, `recall`,
 `might_exist`, the BM25 corpus statistics, confidence and read-tracking
-state, the validity reads and `chain`, and `ContextAssembler` through all of
-them. An expired row is gone to every reader the instant it expires, deleted
+state, the validity reads and `chain`, `idle_seconds`, the `AppendOnlyMixin`
+guard, and `ContextAssembler` through all of them. An expired row is gone to every reader the instant it expires, deleted
 or not. *Now* is the server's `statement_timestamp()`, one clock for every
 agent on the central database. A `_ttl` is added to that clock, so the app
 machine's clock never moves it; only an `_expire_at`, an absolute instant
