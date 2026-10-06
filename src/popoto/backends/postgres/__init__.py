@@ -1014,18 +1014,23 @@ class PostgresBackend(
         outage: health is untouched -- and nothing is memoised, so the next
         use runs the check again. A lock the open unit itself holds is
         refused before any DDL by :meth:`_refuse_ddl_under_own_lock`."""
-        if not self._unit_open_here():
-            with self._connection() as conn:
-                yield conn
-            return
         psycopg = _import_psycopg()
         lock_ms = max(1, int(Defaults.PG_DDL_LOCK_TIMEOUT_MS))
         statement_ms = max(1, int(Defaults.PG_DDL_STATEMENT_TIMEOUT_MS))
         try:
-            with self._dedicated_connection(client_binding=True) as conn:
-                conn.execute(f"SET lock_timeout = {lock_ms}")
-                conn.execute(f"SET statement_timeout = {statement_ms}")
-                yield conn
+            if not self._unit_open_here():
+                # Pooled. The timeouts are SET LOCAL inside each DDL
+                # transaction (schema.ddl_timeout_sql), so this connection
+                # goes back to the pool unmodified.
+                self._guard_second_checkout("a transaction or DDL connection")
+                pool = _pool_for(self.dsn)
+                with _checkout(pool) as conn:
+                    yield conn
+            else:
+                with self._dedicated_connection(client_binding=True) as conn:
+                    conn.execute(f"SET lock_timeout = {lock_ms}")
+                    conn.execute(f"SET statement_timeout = {statement_ms}")
+                    yield conn
         except _rollback_errors(psycopg) as exc:
             raise _retryable(exc) from exc
         except (psycopg.errors.LockNotAvailable, psycopg.errors.QueryCanceled) as exc:
@@ -1037,6 +1042,9 @@ class PostgresBackend(
                 "nothing was changed, so retry it once that transaction ends"
             ) from exc
         except psycopg.OperationalError as exc:
+            busy = _busy(exc)
+            if busy is not None:
+                raise busy from exc
             raise self._fail(exc, write=False) from exc
 
     def _own_unit(self) -> Optional[PostgresUnitOfWork]:
@@ -1060,7 +1068,8 @@ class PostgresBackend(
         Neither takes a pooled connection while a unit of work is open here
         (#776): the probe is a read, so it runs on the unit's own connection;
         the DDL must commit on its own, so it runs on :meth:`_ddl_connection`.
-        With no unit open both are autocommit statements, as before.
+        With no unit open the DDL runs on a pooled one; either way it carries
+        its own ``SET LOCAL`` lock and statement timeouts.
         ``missing`` describes the table for the ``POPOTO_SCHEMA_AUTO=0``
         error."""
         rows, _ = self._run(probe, params, uow=self._own_unit())
@@ -1071,9 +1080,9 @@ class PostgresBackend(
 
             raise SchemaDriftError(f"{missing} and POPOTO_SCHEMA_AUTO=0")
         sql, ddl_params = ddl()
-        if not self._unit_open_here():
-            self._run(sql, ddl_params, write=True)
-            return
+        # The DDL (which carries its own SET LOCAL timeouts) always runs on
+        # _ddl_connection, so a wait on another session's lock ends in
+        # BackendRetryableError whether or not a unit is open here.
         with self._write_intent(True), self._ddl_connection() as conn:
             cur = conn.execute(sql, ddl_params)
             while cur.nextset():

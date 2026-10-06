@@ -1631,9 +1631,15 @@ model whose table a query bound before its first instance existed (the first
 instance adds `_auto_key`) after the unit read it. Let the schema change
 happen outside the unit -- use the model once before opening the
 transaction -- or commit the unit first. A lock held by *another* session
-cannot be refused up front, so the dedicated connection sets `lock_timeout =
-Defaults.PG_DDL_LOCK_TIMEOUT_MS` (5 s) and `statement_timeout =
-Defaults.PG_DDL_STATEMENT_TIMEOUT_MS` (5 min): a wait past either raises
+cannot be refused up front, so every DDL statement popoto issues -- on a
+pooled or a dedicated connection, for model tables, validity pointer tables
+and the engine side tables alike, sync and async -- runs under `SET LOCAL
+lock_timeout = Defaults.PG_DDL_LOCK_TIMEOUT_MS` (5 s) and `SET LOCAL
+statement_timeout = Defaults.PG_DDL_STATEMENT_TIMEOUT_MS` (5 min) (`SET
+LOCAL`, so a pooled connection is never left modified). Without it, a thread
+with no unit open could wait on another thread's open unit while holding
+the first-use lock, and that thread's next first use would then wait on the
+lock: a deadlock the server cannot see. A wait past either timeout raises
 `BackendRetryableError` (contention, not an outage: health is untouched),
 the backend's first-use lock is released for every other thread, and nothing
 is memoised, so the next use runs the check again. What you issue

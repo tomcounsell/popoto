@@ -238,13 +238,14 @@ def ensure_validity_tables(conn: Any, ts: TableSpec, spec: ModelSpec) -> None:
     holds the model table's locks. ``CREATE … IF NOT EXISTS`` is idempotent,
     so a process that finds the table does nothing."""
     from . import _schema_auto
-    from .schema import _bounded, table_lock_key
+    from .schema import _bounded, set_ddl_timeouts, table_lock_key
 
     for field in validity_field_names(spec):
         qualified = pointer_table(ts, field)
         name = _bounded(f"{ts.table}__{field}__open")
         with conn.transaction():
             cur = conn.cursor()
+            set_ddl_timeouts(cur)
             exists = cur.execute(
                 "SELECT to_regclass(%s) IS NOT NULL", (qualified,)
             ).fetchone()[0]

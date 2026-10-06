@@ -468,6 +468,33 @@ def table_lock_key(schema: str, table: str) -> str:
     return f"popoto:ddl:{schema}.{table}"
 
 
+def ddl_timeout_sql() -> str:
+    """``SET LOCAL lock_timeout`` and ``statement_timeout`` for one DDL
+    transaction, from ``Defaults.PG_DDL_LOCK_TIMEOUT_MS`` /
+    ``PG_DDL_STATEMENT_TIMEOUT_MS`` (#776, PR #793 review).
+
+    Every DDL statement popoto issues runs under these, on any connection:
+    ``SET LOCAL`` ends with the transaction, so a pooled connection is never
+    left modified, and a DDL that waits on another session's lock (a unit of
+    work holding the table, or the schema's DDL advisory lock) gives up
+    instead of hanging with the backend's first-use lock held."""
+    from ...fields.constants import Defaults
+
+    lock_ms = max(1, int(Defaults.PG_DDL_LOCK_TIMEOUT_MS))
+    statement_ms = max(1, int(Defaults.PG_DDL_STATEMENT_TIMEOUT_MS))
+    return (
+        f"SET LOCAL lock_timeout = {lock_ms}; "
+        f"SET LOCAL statement_timeout = {statement_ms}; "
+    )
+
+
+def set_ddl_timeouts(cur: Any) -> None:
+    """Run :func:`ddl_timeout_sql` on ``cur``, inside its transaction."""
+    for stmt in ddl_timeout_sql().split("; "):
+        if stmt.strip():
+            cur.execute(stmt.strip().rstrip(";"))
+
+
 def engine_table_ddl(schema: str, table: str, body: str) -> tuple[str, list[str]]:
     """One message that creates an engine-owned side table on first use.
 
@@ -478,7 +505,7 @@ def engine_table_ddl(schema: str, table: str, body: str) -> tuple[str, list[str]
     and its parameters for ``PostgresBackend._run(..., write=True)``.
     """
     return (
-        "SELECT pg_advisory_xact_lock(hashtext(%s)); "
+        ddl_timeout_sql() + "SELECT pg_advisory_xact_lock(hashtext(%s)); "
         "SELECT pg_advisory_xact_lock(hashtext(%s)); "
         f"CREATE SCHEMA IF NOT EXISTS {quote_ident(schema)}; "
         f"CREATE TABLE IF NOT EXISTS {quote_ident(schema)}.{quote_ident(table)} "
@@ -498,6 +525,7 @@ def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
     registry = f"{schema_q}.{POPOTO_SCHEMA_TABLE}"
     with conn.transaction():
         cur = conn.cursor()
+        set_ddl_timeouts(cur)
         cur.execute(
             "SELECT pg_advisory_xact_lock(hashtext(%s))", (schema_lock_key(ts.schema),)
         )

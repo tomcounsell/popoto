@@ -517,3 +517,163 @@ def test_a_database_error_from_the_tombstone_is_a_popoto_error(pg, admin):
         UnitPrivate(name="c", content=SECRET).save()
     assert isinstance(caught.value.__cause__, psycopg.errors.UndefinedTable)
     assert UnitPrivate.query.get(name="b") is None
+
+
+# -- every DDL statement runs under timeouts, on any connection (PR #793) -------
+
+
+def _session_settings(pg):
+    """The pooled connections' session ``lock_timeout`` / ``statement_timeout``
+    as the server reports them."""
+    with pg._connection() as conn:
+        return (
+            conn.execute("SHOW lock_timeout").fetchone()[0],
+            conn.execute("SHOW statement_timeout").fetchone()[0],
+        )
+
+
+def test_pooled_ddl_waiting_on_an_open_unit_cannot_deadlock_the_first_use_lock(
+    pg, monkeypatch
+):
+    """The cross-thread shape. Thread B has a unit open that saved to model M
+    (so it holds a lock on M's table). Thread A, with no unit of its own,
+    triggers M's schema change: pooled-connection DDL that waits on B's lock
+    *while holding the backend's first-use lock*. B then needs that lock for
+    a fresh model N. Without a ``lock_timeout`` on the pooled connection A
+    waits on B and B on A forever; with it A gives up with
+    ``BackendRetryableError`` and B proceeds."""
+    from popoto.backends.types import BackendRetryableError
+
+    monkeypatch.setattr(Defaults, "PG_DDL_LOCK_TIMEOUT_MS", 400)
+    Old = _redefined("DdlCross", extra=False)
+    Old(name="warm").save()
+    New = _redefined("DdlCross", extra=True)
+    Fresh = _redefined("DdlCrossFresh", extra=False)
+    settings = _session_settings(pg)
+
+    b_saved = threading.Event()
+    out: dict = {}
+
+    def thread_b():
+        try:
+            with pg.transaction() as uow:
+                Old(name="b").save(pipeline=uow)  # RowExclusiveLock on M
+                b_saved.set()
+                time.sleep(0.2)  # let A reach its DDL and block on that lock
+                Fresh(name="n").save(pipeline=uow)  # needs the first-use lock
+            out["b"] = None
+        except BaseException as exc:  # noqa: BLE001
+            out["b"] = exc
+
+    def thread_a():
+        b_saved.wait(10)
+        t0 = time.monotonic()
+        try:
+            New(name="a", extra="x").save()
+        except BaseException as exc:  # noqa: BLE001
+            out["a"] = exc
+        out["a_elapsed"] = time.monotonic() - t0
+
+    ta = threading.Thread(target=thread_a, daemon=True)
+    tb = threading.Thread(target=thread_b, daemon=True)
+    ta.start()
+    tb.start()
+    ta.join(30)
+    tb.join(30)
+    assert not ta.is_alive() and not tb.is_alive(), "deadlocked"
+    assert isinstance(out.get("a"), BackendRetryableError), out
+    assert "PG_DDL_LOCK_TIMEOUT_MS" in str(out["a"])
+    assert out["a_elapsed"] < 5
+    assert out["b"] is None, out["b"]  # B got the first-use lock and committed
+    assert Fresh.query.get(name="n").name == "n"
+    assert pg.health.ok and pg.health.dropped_writes == 0
+    # The pooled connection A used was not left modified (SET LOCAL).
+    assert _session_settings(pg) == settings
+    # Nothing was cached for M: the next use rechecks, and migrates.
+    New(name="a", extra="x").save()
+    assert New.query.get(name="a").extra == "x"
+    assert _session_settings(pg) == settings
+
+
+@pytest.mark.asyncio
+async def test_async_pooled_ddl_waiting_on_an_open_unit_times_out(pg, monkeypatch):
+    """Async: task B holds a unit that saved to M; task A, with no unit,
+    triggers M's schema change and waits on B's lock. B commits only after A
+    finishes, so without a timeout on the pooled connection neither ends."""
+    pytest.importorskip("greenlet")
+    from popoto.backends.postgres import aio
+    from popoto.backends.types import BackendRetryableError
+
+    monkeypatch.setattr(Defaults, "PG_DDL_LOCK_TIMEOUT_MS", 400)
+    Old = _redefined("DdlCrossAsync", extra=False)
+    Old(name="warm").save()
+    New = _redefined("DdlCrossAsync", extra=True)
+    twin = aio.get_async_backend(Old)
+    settings = _session_settings(pg)
+    b_saved, a_done = asyncio.Event(), asyncio.Event()
+
+    async def task_b():
+        async with twin.transaction() as uow:
+            await Old(name="b").async_save(pipeline=uow)
+            b_saved.set()
+            await asyncio.wait_for(a_done.wait(), 30)
+
+    async def task_a():
+        await b_saved.wait()
+        t0 = time.monotonic()
+        try:
+            with pytest.raises(BackendRetryableError):
+                await asyncio.wait_for(New(name="a", extra="x").async_save(), 30)
+            assert time.monotonic() - t0 < 5
+        finally:
+            a_done.set()
+
+    await asyncio.wait_for(asyncio.gather(task_b(), task_a()), 60)
+    assert _session_settings(pg) == settings
+
+
+def test_engine_table_ddl_waiting_on_the_schema_lock_times_out(pg, admin, monkeypatch):
+    """Engine side tables (recall, recipes, streams) run their DDL under the
+    same timeouts, with or without a unit open: a session holding the
+    schema's DDL advisory lock turns the wait into
+    ``BackendRetryableError``, nothing is memoised, and the retry works."""
+    from popoto.backends.postgres.events import STREAM_TABLES
+    from popoto.backends.postgres.memory import RECALL_TABLE
+    from popoto.backends.postgres.recipes import ENGINE_TABLES
+    from popoto.backends.postgres.schema import schema_lock_key
+    from popoto.backends.types import BackendRetryableError
+
+    monkeypatch.setattr(Defaults, "PG_DDL_LOCK_TIMEOUT_MS", 300)
+    recipe = next(iter(ENGINE_TABLES))
+    for name in (*STREAM_TABLES, RECALL_TABLE, recipe):
+        admin.execute(f'DROP TABLE IF EXISTS "{pg.schema}"."{name}" CASCADE')
+    pg.forget_tables()
+    settings = _session_settings(pg)
+    calls = {
+        "recall": pg._recall_table,
+        "recipe": lambda: pg._engine(recipe),
+        "events": pg._events_ready,
+    }
+    for in_unit in (False, True):
+        for label, call in calls.items():
+
+            def run():
+                if not in_unit:
+                    return call()
+                with pg.transaction():
+                    return call()
+
+            with admin.transaction():
+                admin.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                    (schema_lock_key(pg.schema),),
+                )
+                _, exc, elapsed = _bounded(run, 30)
+                assert isinstance(exc, BackendRetryableError), (label, in_unit, exc)
+                assert 0.3 <= elapsed < 5
+            assert pg.health.ok and pg.health.dropped_writes == 0
+    assert _session_settings(pg) == settings
+    for call in calls.values():  # nothing cached: the retry creates them
+        _, exc, _ = _bounded(call, 30)
+        assert exc is None, exc
+    assert _session_settings(pg) == settings
