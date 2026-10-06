@@ -2048,13 +2048,20 @@ def test_a_resume_after_another_source_won_its_rows_verifies_them_against_the_wi
         )
     elif plant == "provenance":
         # A recorded winner that should NOT have beaten A under the merge
-        # rule (older than A's copy, and a smaller source id).
+        # rule (older than A's copy), recorded consistently everywhere --
+        # the provenance, the row's _updated_at AND B's own ledger -- so the
+        # row is taken for superseded, and the merge rule (which reads the
+        # ledger's updated_at) says B did not beat A.
         provenance["updated_at"] = 0.0
-        provenance["source"] = "aardvark"
         admin.execute(
-            f'UPDATE "{pg.schema}".mig_memory SET "_migrated_from" = %s::jsonb '
-            'WHERE "_pk" = %s',
+            f'UPDATE "{pg.schema}".mig_memory SET "_migrated_from" = %s::jsonb, '
+            '"_updated_at" = to_timestamp(0) WHERE "_pk" = %s',
             (json.dumps(provenance), won),
+        )
+        admin.execute(
+            f'UPDATE "{pg.schema}".popoto_migration_ledger SET wrote = '
+            "jsonb_set(wrote, '{updated_at}', '0') WHERE run_id = %s AND _pk = %s",
+            (provenance["run_id"], won),
         )
     elif plant == "no_loser":
         provenance["losers"] = []
@@ -2096,9 +2103,354 @@ def test_a_resume_after_another_source_won_its_rows_verifies_them_against_the_wi
     (bad,) = superseded["first_mismatches"]
     assert bad["key"] == won and bad["winner"] == provenance["source"]
     if plant == "content":
-        assert bad["parts"] == [mig.NOT_WINNERS_PAYLOAD], bad
+        # The planted text no longer hashes to the vector's recorded source
+        # either (a tool column, compared for superseded rows since #796).
+        assert bad["parts"] == [mig.NOT_WINNERS_PAYLOAD, "embedding__hash"], bad
     else:
         assert bad["parts"] == [mig.WINNER_DOES_NOT_BEAT], bad
+
+
+DAY = 86400.0
+
+
+def _crash_a_then_merge_b(tmp_path, monkeypatch, pg, b_now_offset=0.0):
+    """Run A (``alpha``) crashes after its ``MigMemory`` batches committed;
+    B (``beta``, variant b) then merges ``MigMemory`` into the schema.
+    Returns ``(rdb_a, content_a, facts_a, merged_report)``."""
+    now = time.time()
+    rdb_a, content_a, facts_a = build_snapshot(tmp_path, monkeypatch, name="a", now=now)
+    rdb_b, content_b, _ = build_snapshot(
+        tmp_path, monkeypatch, variant="b", name="b", now=now + b_now_offset
+    )
+
+    def crash(model, batch):
+        if model == "MigLongTail" and batch == 0:
+            raise RuntimeError("power cut after MigMemory committed")
+
+    mig._crash_hook = crash
+    with pytest.raises(RuntimeError, match="power cut"):
+        run_migration(_config(tmp_path, pg, rdb_a, content_a, source_id="alpha"))
+    mig._crash_hook = None
+    merged = run_migration(
+        _config(
+            tmp_path,
+            pg,
+            rdb_b,
+            content_b,
+            source_id="beta",
+            run_dir=tmp_path / "run-b",
+            mappings=[fx.VALOR_MEMORY_MAPPING],
+            merge=True,
+        )
+    )
+    assert merged.clean, merged.summary()
+    return rdb_a, content_a, facts_a, merged
+
+
+def _resume_alpha(tmp_path, pg, rdb_a, content_a):
+    return run_migration(
+        _config(
+            tmp_path, pg, rdb_a, content_a, source_id="alpha", resume=True, merge=True
+        )
+    )
+
+
+def _set_provenance(admin, schema, key, provenance):
+    admin.execute(
+        f'UPDATE "{schema}".mig_memory SET "_migrated_from" = %s::jsonb '
+        'WHERE "_pk" = %s',
+        (json.dumps(provenance), key),
+    )
+
+
+def _pg_payload_sha(pg, key):
+    with mig._postgres_side([fx.MigMemory], pg):
+        return mig.payload_sha(fx.MigMemory, mig._export_index(fx.MigMemory)[key])
+
+
+def _loser_entry(provenance):
+    return {
+        k: provenance.get(k)
+        for k in ("source", "run_id", "snapshot", "payload_sha", "updated_at")
+    }
+
+
+@pytest.mark.parametrize(
+    "plant,reason",
+    [
+        ("forged_winner_that_lost", "<winner's ledger says done/lost_merge>"),
+        ("unknown_run", "<winner's run is not in popoto_migration_run>"),
+        ("restamped_after_a_win", "<winner's ledger has another payload_sha>"),
+        ("updated_at_column", "<_updated_at is not the winner's>"),
+    ],
+)
+def test_a_superseded_claim_its_winners_run_and_ledger_do_not_back_is_a_mismatch(
+    tmp_path, monkeypatch, pg, admin, plant, reason
+):
+    """#796 review blocker. ``_migrated_from`` cannot vouch for itself: every
+    one of these plants writes a wrong row and a SELF-CONSISTENT provenance
+    naming a winner and listing A's snapshot among its losers, and each was
+    CLEAN while the winner was taken at the provenance's word. The row now
+    counts as superseded only when the claimed run is in
+    ``popoto_migration_run`` and that run's ledger row for the key is a
+    ``done`` write of the same ``payload_sha`` and ``updated_at``, which the
+    row's ``_updated_at`` holds. Otherwise the claim is ``unconfirmed`` and
+    the row is compared with A's snapshot, as before: MISMATCH.
+
+    - ``forged_winner_that_lost``: B is OLDER than A on 0x11, and its own
+      ledger says ``lost_merge``. The row is edited, and the provenance
+      claims B won it with an ``updated_at`` an hour after A's.
+    - ``unknown_run``: an A-only row is edited and stamped with a winner
+      whose run id is in no run table.
+    - ``restamped_after_a_win``: B legitimately won 0x11; the row is then
+      edited and its provenance ``payload_sha`` re-stamped to match.
+    - ``updated_at_column``: B legitimately won 0x11; the row's
+      ``_updated_at`` (a column the tool writes itself) is set to the epoch.
+    """
+    offset = -5 * DAY if plant == "forged_winner_that_lost" else 0.0
+    rdb_a, content_a, facts_a, merged = _crash_a_then_merge_b(
+        tmp_path, monkeypatch, pg, b_now_offset=offset
+    )
+    s = pg.schema
+    key = facts_a["by_id"][1 if plant == "unknown_run" else 0x11]
+    (provenance,) = _rows(admin, s, "mig_memory", "_migrated_from")[key]
+
+    if plant == "updated_at_column":
+        assert provenance["source"] == "beta"
+        admin.execute(
+            f'UPDATE "{s}".mig_memory SET "_updated_at" = \'epoch\' '
+            'WHERE "_pk" = %s',
+            (key,),
+        )
+    else:
+        admin.execute(
+            f'UPDATE "{s}".mig_memory SET importance = 77, confidence__conf = 0.03 '
+            'WHERE "_pk" = %s',
+            (key,),
+        )
+        admin.commit()
+        sha = _pg_payload_sha(pg, key)
+        if plant == "restamped_after_a_win":
+            assert provenance["source"] == "beta"
+            provenance["payload_sha"] = sha
+        elif plant == "unknown_run":
+            assert provenance["source"] == "alpha"
+            provenance = {
+                "source": "zzz",
+                "run_id": "nope",
+                "snapshot": "nope",
+                "payload_sha": sha,
+                "updated_at": 1e12,
+                "losers": [_loser_entry(provenance)],
+            }
+        else:
+            assert provenance["source"] == "alpha"
+            assert merged.data["models"]["MigMemory"]["decisions"]["lost_merge"] >= 1
+            b_run, b_snapshot = admin.execute(
+                f'SELECT run_id, rdb_sha256 FROM "{s}".popoto_migration_run '
+                "WHERE source_id = 'beta'"
+            ).fetchone()
+            (b_decision,) = admin.execute(
+                f'SELECT decision FROM "{s}".popoto_migration_ledger '
+                "WHERE run_id = %s AND _pk = %s",
+                (b_run, key),
+            ).fetchone()
+            assert b_decision == mig.LOST_MERGE
+            provenance = {
+                "source": "beta",
+                "run_id": b_run,
+                "snapshot": b_snapshot,
+                "payload_sha": sha,
+                "updated_at": float(provenance["updated_at"]) + 3600,
+                "duplicates": [],
+                "losers": [_loser_entry(provenance)],
+            }
+        _set_provenance(admin, s, key, provenance)
+    admin.commit()
+
+    resumed = _resume_alpha(tmp_path, pg, rdb_a, content_a)
+    assert not resumed.clean, resumed.summary()
+    checks = resumed.data["verification"]["MigMemory"]
+    superseded = checks["superseded_by_merge"]
+    assert not superseded["ok"]
+    unconfirmed = {u["key"]: u for u in superseded["first_unconfirmed"]}
+    assert reason in unconfirmed[key]["reasons"], unconfirmed
+    # Compared with A's snapshot instead, as any row A wrote.
+    records = checks["records"]
+    assert records["expected"] == records["compared"] + 1, resumed.summary()
+    assert not records["ok"]
+
+
+@pytest.mark.parametrize(
+    "plant,part",
+    [
+        ("staged_reads", mig.NOT_WINNERS_STAGED_READS),
+        ("created_at", "_created_at"),
+        ("estimated_fields", "_estimated_fields"),
+    ],
+)
+def test_a_superseded_row_holds_the_tool_columns_its_winner_wrote(
+    tmp_path, monkeypatch, pg, admin, plant, part
+):
+    """#796 review. A superseded row's payload covers values and carried
+    state, but not the columns the tool writes outside the save path. Those
+    are compared with what the winner's ledger records it wrote (``wrote``):
+    planting ``_staged_reads``/``_staged_at``, ``_created_at`` or
+    ``_estimated_fields`` on a row B won was CLEAN, and is now MISMATCH."""
+    rdb_a, content_a, facts_a, _ = _crash_a_then_merge_b(tmp_path, monkeypatch, pg)
+    s = pg.schema
+    won = facts_a["by_id"][0x11]
+    sets = {
+        "staged_reads": '"_staged_reads" = 9, "_staged_at" = 1',
+        "created_at": "\"_created_at\" = 'epoch'",
+        "estimated_fields": "\"_estimated_fields\" = ARRAY['_updated_at']",
+    }[plant]
+    admin.execute(f'UPDATE "{s}".mig_memory SET {sets} WHERE "_pk" = %s', (won,))
+    admin.commit()
+
+    resumed = _resume_alpha(tmp_path, pg, rdb_a, content_a)
+    assert not resumed.clean, resumed.summary()
+    superseded = resumed.data["verification"]["MigMemory"]["superseded_by_merge"]
+    assert superseded["compared"] == 1 and superseded["unconfirmed"] == 0
+    (bad,) = superseded["first_mismatches"]
+    assert bad["key"] == won and bad["parts"] == [part], bad
+
+
+@pytest.mark.parametrize("case", ["tie", "chain", "rolled_back"])
+def test_a_legitimate_supersession_stays_clean(tmp_path, monkeypatch, pg, admin, case):
+    """The corroboration does not cost a legitimate case its CLEAN verdict.
+
+    - ``tie``: B's copy of 0x11 has exactly A's ``updated_at`` (B's
+      snapshot is two days older, and its 0x11 two days younger), so the
+      greater source id, ``beta``, wins it.
+    - ``chain``: A, then B, then C (``gamma``, newer still) win 0x11 in
+      turn; C's provenance lists both A and B among its losers, and C's own
+      run and ledger back it.
+    - ``rolled_back``: B crashes inside its only batch; the batch rolls
+      back whole, 0x11 stays A's, and nothing is superseded."""
+    offset = -2 * DAY if case == "tie" else 0.0
+    if case == "rolled_back":
+        now = time.time()
+        rdb_a, content_a, facts_a = build_snapshot(
+            tmp_path, monkeypatch, name="a", now=now
+        )
+        rdb_b, content_b, _ = build_snapshot(
+            tmp_path, monkeypatch, variant="b", name="b", now=now
+        )
+
+        def crash_a(model, batch):
+            if model == "MigLongTail" and batch == 0:
+                raise RuntimeError("power cut A")
+
+        mig._crash_hook = crash_a
+        with pytest.raises(RuntimeError):
+            run_migration(_config(tmp_path, pg, rdb_a, content_a, source_id="alpha"))
+
+        def crash_b(model, batch):
+            raise RuntimeError("power cut B")
+
+        mig._crash_hook = crash_b
+        with pytest.raises(RuntimeError):
+            run_migration(
+                _config(
+                    tmp_path,
+                    pg,
+                    rdb_b,
+                    content_b,
+                    source_id="beta",
+                    run_dir=tmp_path / "run-b",
+                    mappings=[fx.VALOR_MEMORY_MAPPING],
+                    merge=True,
+                )
+            )
+        mig._crash_hook = None
+    else:
+        rdb_a, content_a, facts_a, _ = _crash_a_then_merge_b(
+            tmp_path, monkeypatch, pg, b_now_offset=offset
+        )
+    won = facts_a["by_id"][0x11]
+    if case == "chain":
+        rdb_c, content_c, _ = build_snapshot(
+            tmp_path, monkeypatch, variant="b", name="c", now=time.time() + DAY
+        )
+        third = run_migration(
+            _config(
+                tmp_path,
+                pg,
+                rdb_c,
+                content_c,
+                source_id="gamma",
+                run_dir=tmp_path / "run-c",
+                mappings=[fx.VALOR_MEMORY_MAPPING],
+                merge=True,
+            )
+        )
+        assert third.clean, third.summary()
+    (provenance,) = _rows(admin, pg.schema, "mig_memory", "_migrated_from")[won]
+    owner = {"tie": "beta", "chain": "gamma", "rolled_back": "alpha"}[case]
+    assert provenance["source"] == owner
+    if case == "tie":
+        assert provenance["updated_at"] == provenance["losers"][0]["updated_at"]
+    if case == "chain":
+        assert [lo["source"] for lo in provenance["losers"]] == ["alpha", "beta"]
+
+    resumed = _resume_alpha(tmp_path, pg, rdb_a, content_a)
+    assert resumed.clean, resumed.summary()
+    checks = resumed.data["verification"]["MigMemory"]
+    if case == "rolled_back":
+        assert "superseded_by_merge" not in checks
+    else:
+        superseded = checks["superseded_by_merge"]
+        assert superseded["ok"] and superseded["unconfirmed"] == 0
+        assert superseded["compared"] >= 1, superseded
+
+
+def test_a_refused_resume_of_a_merge_run_does_not_say_written_since(
+    tmp_path, monkeypatch, pg
+):
+    """#796 review. B loads first; A starts with ``--merge`` and crashes; a
+    plain ``--resume`` is refused. B's rows were there BEFORE A started, so
+    the refusal must not say they were all written since: it names rows
+    this run did not write, pre-existing ones included. ``--resume
+    --merge`` then reaches CLEAN."""
+    now = time.time()
+    rdb_a, content_a, _ = build_snapshot(tmp_path, monkeypatch, name="a", now=now)
+    rdb_b, content_b, _ = build_snapshot(
+        tmp_path, monkeypatch, variant="b", name="b", now=now
+    )
+    run_migration(
+        _config(
+            tmp_path,
+            pg,
+            rdb_b,
+            content_b,
+            source_id="beta",
+            run_dir=tmp_path / "run-b",
+            mappings=[fx.VALOR_MEMORY_MAPPING],
+        )
+    )
+
+    def crash(model, batch):
+        if model == "MigLongTail" and batch == 0:
+            raise RuntimeError("power cut")
+
+    mig._crash_hook = crash
+    with pytest.raises(RuntimeError, match="power cut"):
+        run_migration(
+            _config(tmp_path, pg, rdb_a, content_a, source_id="alpha", merge=True)
+        )
+    mig._crash_hook = None
+    with pytest.raises(TargetNotEmpty) as refused:
+        run_migration(
+            _config(tmp_path, pg, rdb_a, content_a, source_id="alpha", resume=True)
+        )
+    message = str(refused.value)
+    assert "rows this run did not write" in message, message
+    assert "already there if this run began with --merge" in message, message
+    assert "were written since by someone else" not in message, message
+    assert "--resume --merge" in message, message
+    resumed = _resume_alpha(tmp_path, pg, rdb_a, content_a)
+    assert resumed.clean, resumed.summary()
 
 
 def test_a_resume_refused_after_a_native_save_names_resume_merge(
