@@ -61,10 +61,24 @@ seed, shape and inputs, and the run exits non-zero:
   the same formula gives when each of its five libm results (``sin``,
   ``cos``, ``asin``) is off by at most one ulp. The running Redis's libm is
   not this process's: CI's ``redis:7-alpine`` links musl, CI's Python glibc,
-  and they disagree in the last bit now and then. 0 where both share a libm
-  (a local Redis and Python on one macOS).
+  and they disagree in the last bit now and then.
 * ``libm_boundary`` -- a search or count that differs only by members whose
   libm envelope straddles the radius.
+* ``nan_distance_arm64`` -- a distance that computes to ``NaN`` (``asin`` of
+  a rounding-inflated argument above 1) replies ``0.0`` from an arm64 Redis,
+  where ``llrint(NaN)`` is 0; the port replies what x86-64 Redis does,
+  ``-922337203685477.5808`` (``llrint(NaN)`` is ``LLONG_MIN`` there).
+
+**Which classes are on** is measured, not assumed (#791). Before the first
+seed, :class:`Calibration` stores a fixed battery of points on the running
+Redis and reads back each position and the exact distance Redis measures to
+a center. The ``fma_*`` classes are on only when some of those are the fused
+model's and not the plain one's (a contracting build); the ``libm_*``
+classes only when some distance is neither model's on this host's libm, or
+Redis reports another OS. Against a Redis that shares this process's
+arithmetic every class is off, and any search or count that differs is
+undocumented. ``nan_distance_arm64`` is on only against a Redis whose ``os``
+is not x86-64. ``--libm`` / ``--fma`` force a pair on or off.
 
 The ``fma_*`` classes are not a tolerance. A mismatch joins one only when a
 model of the same C *with* the two contractions (``_fused_decode`` /
@@ -72,15 +86,21 @@ model of the same C *with* the two contractions (``_fused_decode`` /
 running Redis to the bit. The ``libm_*`` classes are a bound, not a model --
 nothing portable reproduces another libm's last bit -- but a tight one:
 one ulp per libm call, propagated through the formula, never a free ulp
-count on the result. Positions call no libm and are never in them. Anything
-else is undocumented. "One ulp" is the
+count on the result. Positions call no libm and are never in them. A search
+or count joins a ``*_boundary`` class member by member: each member the legs
+differ by must be in the class's boundary set, *and* the Postgres leg must
+answer it as the reference plain model does (from the stored score, with
+the probe's own constants, never the port's). A count says how many, not
+which, so a differing count is resolved by reading each leg's rows for the
+same parameters. Anything else is undocumented. "One ulp" is the
 rounding, not always the gap: one rounding of the decode's product (the
 magnitude of the range, up to 180) is several ulps of a latitude near zero,
 and the report prints the widest gap seen.
 
 Safety: Redis is bound from ``REDIS_URL`` *before* importing popoto and
-database 0 is refused (CLAUDE.md, #577); on Postgres the script creates its
-own ``popoto_test_<uuid4().hex>`` schema and drops only that.
+database 0 is refused (CLAUDE.md, #577); the calibration writes only
+``ProbeGeoCal:<n>`` keys there and deletes them. On Postgres the script
+creates its own ``popoto_test_<uuid4().hex>`` schema and drops only that.
 
 Usage::
 
@@ -125,6 +145,9 @@ class ProbeGeo(popoto.Model):
 
 LAT = geo.GEO_LAT_MAX
 UNITS = ("m", "km", "ft", "mi")
+X86_NAN_REPLY = float("-922337203685477.5808")
+"""``WITHDIST`` of a ``NaN`` distance on x86-64: ``fixedpoint_d2string``
+prints ``llrint(NaN * 10000)``, which is ``LLONG_MIN`` there."""
 
 
 def _outcome(fn: Callable[[], Any]) -> Any:
@@ -152,9 +175,23 @@ class Shape:
 
 
 class Probe:
-    def __init__(self, pg: Any, *, verbose: bool = False) -> None:
+    def __init__(
+        self,
+        pg: Any,
+        *,
+        verbose: bool = False,
+        fuses: bool = False,
+        libm_other: bool = False,
+        nan_replies_zero: bool = False,
+    ) -> None:
         self.pg = pg
         self.verbose = verbose
+        # Which documented arithmetic classes the running Redis needs
+        # (``Calibration``): off, a mismatch they would absorb is undocumented.
+        self.fuses = fuses
+        self.libm_other = libm_other
+        self.nan_replies_zero = nan_replies_zero
+        self.calibration: Calibration | None = None
         self.checks: Counter = Counter()
         self.mismatches: Counter = Counter()
         self.documented: Counter = Counter()
@@ -310,18 +347,22 @@ class Probe:
 
     # -- stored state -------------------------------------------------------------
 
-    def flips(self, shape: Shape, params: dict[str, Any]) -> dict[str, set[str]]:
-        """The members an arithmetic difference alone can move across the
-        radius (positions from the Postgres leg's stored scores): ``fma``,
-        where the port's radius test and the fused model's disagree; ``libm``,
-        where the libm envelope of the port's distance straddles the radius.
-        Both empty for a search either leg refuses."""
+    def flips(self, shape: Shape, params: dict[str, Any]) -> dict[str, Any]:
+        """Each indexed member's radius verdict under the reference model,
+        from the stored scores (which ``compare_stored`` checks against
+        ``ZSCORE``) and never from the port's arithmetic: ``plain``, a
+        name -> inside map for plain IEEE on this host's libm, which is what
+        the Postgres leg must answer member by member; ``fma``, the members
+        the fused model puts on the other side; ``libm``, the members whose
+        libm envelope straddles the radius. ``fma`` is empty unless the
+        running Redis contracts, ``libm`` unless it runs another libm
+        (``Calibration``). All empty for a search either leg refuses."""
+        empty: dict[str, Any] = {"fma": set(), "libm": set(), "plain": {}}
         self.leg("postgres")
         ts = self.pg._table(ProbeGeo._meta.spec)
         rows, _ = self.pg._run(
-            f'SELECT "name", "_pk", "place__geohash", "place__geolon", '
-            f'"place__geolat" FROM {ts.qualified} WHERE "shape" = %s '
-            f'AND "place__geohash" IS NOT NULL',
+            f'SELECT "name", "_pk", "place__geohash" FROM {ts.qualified} '
+            f'WHERE "shape" = %s AND "place__geohash" IS NOT NULL',
             [shape.key],
         )
         try:
@@ -333,8 +374,8 @@ class Probe:
                 ).db_key.redis_key
                 found = [r for r in rows if r[1] == pk]
                 if not found:
-                    return {"fma": set(), "libm": set()}
-                center = (found[0][3], found[0][4])
+                    return empty
+                center = _decode(found[0][2])
                 fused_center = _fused_decode(found[0][2])
             else:
                 lat, lon = params.get("place") or (
@@ -343,18 +384,51 @@ class Probe:
                 )
                 center = fused_center = geo.parse_point(lon, lat)
         except Exception:  # noqa: BLE001 - a refused search has no boundary
-            return {"fma": set(), "libm": set()}
+            return empty
         limit = radius * conversion
-        out: dict[str, set[str]] = {"fma": set(), "libm": set()}
-        for name, _pk, score, mlon, mlat in rows:
-            plain = not geo.distance(*center, mlon, mlat) > limit
-            fused = not _fused_distance(*fused_center, *_fused_decode(score)) > limit
-            if plain != fused:
-                out["fma"].add(name)
-            lo, hi = _libm_envelope(*center, mlon, mlat)
-            if lo <= limit < hi:
-                out["libm"].add(name)
+        out: dict[str, Any] = {"fma": set(), "libm": set(), "plain": {}}
+        for name, _pk, score in rows:
+            position = _decode(score)
+            plain = not _plain_distance(*center, *position) > limit
+            out["plain"][name] = plain
+            if self.fuses:
+                fused_d = _fused_distance(*fused_center, *_fused_decode(score))
+                if plain != (not fused_d > limit):
+                    out["fma"].add(name)
+            if self.libm_other:
+                lo, hi = _libm_envelope(*center, *position)
+                if lo <= limit < hi:
+                    out["libm"].add(name)
         return out
+
+    def boundary(
+        self,
+        r_names: set[str],
+        p_names: set[str],
+        edge: dict[str, Any],
+        negated: bool = False,
+    ) -> tuple[str | None, set[str]]:
+        """Classify the members the legs disagree on, one by one.
+
+        Returns ``(class, members)``: the documented class that explains
+        every one of ``members`` (the disagreeing members that are boundary
+        cases), or ``(None, …)`` when one of them is not explained. A member
+        is explained only when the Postgres leg answers it as the reference
+        plain model does (a port that measures wrong is never a boundary
+        case) and it is in ``fma`` (the fused model then answers it as Redis
+        did) or in ``libm``. ``negated``: the result rows are a geo leaf's
+        complement (``~Q(...)``), so a member is inside when it is absent.
+        """
+        members = (r_names ^ p_names) & (edge["fma"] | edge["libm"])
+        if not members:
+            return None, members
+        cls = "fma_boundary"
+        for name in members:
+            if ((name in p_names) != negated) != edge["plain"].get(name):
+                return None, members
+            if name not in edge["fma"]:
+                cls = "libm_boundary"
+        return cls, members
 
     def compare_stored(self, shape: Shape) -> None:
         self.leg("redis")
@@ -387,7 +461,13 @@ class Probe:
                 continue
             rpos = (float(pos[0]), float(pos[1]))
             exact = rpos == (pg[1], pg[2])
-            if not exact and pg[0] is not None and rpos == _fused_decode(pg[0]):
+            if (
+                self.fuses
+                and not exact
+                and pg[0] is not None
+                and (pg[1], pg[2]) == _decode(pg[0])
+                and rpos == _fused_decode(pg[0])
+            ):
                 self.checks["position"] += 1
                 self.documented["fma_position_ulp"] += 1
                 self.spread["position"] = max(
@@ -452,14 +532,26 @@ class Probe:
             self.uncovered += 1
         redis_exact = (at, below) == (want_at, False)
         fd = _fused_distance(lon, lat, float(rpos[0]), float(rpos[1]))
-        if not redis_exact and want_at and fd != d and math.isfinite(fd):
+        if (
+            self.fuses
+            and not redis_exact
+            and want_at
+            and d == _plain_distance(lon, lat, float(rpos[0]), float(rpos[1]))
+            and fd != d
+            and math.isfinite(fd)
+        ):
             # Redis's haversine contracts u*u + c: its distance is the fused
             # model's to the bit, or this is undocumented.
             if inside(fd) and not inside(math.nextafter(fd, 0)):
                 self.documented["fma_position_ulp"] += 1
                 self.spread["distance"] = max(self.spread["distance"], _ulps(d, fd))
                 redis_exact = True
-        if not redis_exact and want_at:
+        if (
+            self.libm_other
+            and not redis_exact
+            and want_at
+            and d == _plain_distance(lon, lat, float(rpos[0]), float(rpos[1]))
+        ):
             # The running Redis's libm is not this process's (CI's
             # redis:7-alpine links musl; CI's Python, glibc). Its distance is
             # in the envelope one-ulp libm results give, or undocumented.
@@ -607,23 +699,25 @@ class Probe:
 
         got = self.both(run)
         r, p = got["redis"], got["postgres"]
-        edge: dict[str, set[str]] | None = None
+        edge: dict[str, Any] | None = None
         if r[0] == "!!" or p[0] == "!!":
             self.compare_errors(r, p, where)
         else:
-            rv, pv = r[1], p[1]
+            rv, pv = r[1], self.nan_replies(r[1], p[1])
             limited = "limit" in extra
             if _same(rv, pv, order, with_distances, limited):
                 self.checks["filter"] += 1
             else:
                 edge = self.flips(shape, params)
-                fma, libm = edge["fma"], edge["fma"] | edge["libm"]
-                if fma and _same(rv, pv, order, with_distances, limited, fma):
+                cls, members = self.boundary(
+                    _geo_in(rv, use_q, with_distances),
+                    _geo_in(pv, use_q, with_distances),
+                    edge,
+                    negated=use_q is not None and use_q[0] == "not",
+                )
+                if cls and _same(rv, pv, order, with_distances, limited, members):
                     self.checks["filter"] += 1
-                    self.documented["fma_boundary"] += 1
-                elif libm and _same(rv, pv, order, with_distances, limited, libm):
-                    self.checks["filter"] += 1
-                    self.documented["libm_boundary"] += 1
+                    self.documented[cls] += 1
                 else:
                     self.check(
                         "filter",
@@ -645,19 +739,53 @@ class Probe:
         elif r == p:
             self.checks["count"] += 1
         else:
-            if edge is None:
-                edge = self.flips(shape, params)
-            gap = abs(r[1] - p[1])
-            if edge["fma"] and gap <= len(edge["fma"]):
+            # A count says how many, not which: read which off each leg's
+            # rows for the same parameters, require each count to be its own
+            # leg's row count, and classify the members that differ.
+            def names(leg: str) -> Any:
+                if "place_member" in params:
+                    params["place_member"] = ProbeGeo(
+                        shape=shape.key, name=params["place_member"].name
+                    )
+                rows = ProbeGeo.query.filter(shape=shape.key, **params)
+                return {row.name for row in rows}
+
+            sets = self.both(names)
+            rs, ps = sets["redis"], sets["postgres"]
+            cls: str | None = None
+            members: set[str] = set()
+            if rs[0] == ps[0] == "ok" and (len(rs[1]), len(ps[1])) == (r[1], p[1]):
+                if edge is None:
+                    edge = self.flips(shape, params)
+                cls, members = self.boundary(rs[1], ps[1], edge)
+                if members != rs[1] ^ ps[1]:
+                    cls = None
+            if cls:
                 self.checks["count"] += 1
-                self.documented["fma_boundary"] += 1
-            elif gap <= len(edge["fma"] | edge["libm"]):
-                self.checks["count"] += 1
-                self.documented["libm_boundary"] += 1
+                self.documented[cls] += 1
             else:
                 self.check(
-                    "count", False, lambda: f"{where} count: {got} boundary={edge}"
+                    "count",
+                    False,
+                    lambda: f"{where} count: {got} rows={sets} boundary={edge}",
                 )
+
+    def nan_replies(self, rv: list, pv: list) -> list:
+        """A distance that computes to ``NaN`` replies ``llrint(NaN)`` scaled:
+        ``LLONG_MIN`` on x86-64, which the port replies
+        (``-922337203685477.5808``), and 0 on arm64. Against an arm64 Redis
+        that replied ``0.0`` for that member, count ``nan_distance_arm64``
+        and compare the row as Redis replied it."""
+        if not self.nan_replies_zero:
+            return pv
+        redis_d = {row[0]: row[1] for row in rv}
+        out = []
+        for row in pv:
+            if row[1] == X86_NAN_REPLY and redis_d.get(row[0]) == 0.0:
+                self.documented["nan_distance_arm64"] += 1
+                row = (row[0], 0.0, row[2])
+            out.append(row)
+        return out
 
     def compare_errors(self, r: Any, p: Any, where: str) -> None:
         if r[0] == "!!" and p[0] == "!!" and r[2] == p[2]:
@@ -711,8 +839,18 @@ class Probe:
             self.run_shape(Shape(seed, i, random.Random(rng.random())))
             self.shapes += 1
 
+    def classes_line(self) -> str:
+        return (
+            f"classes: fma_* {'on' if self.fuses else 'off'}, libm_* "
+            f"{'on' if self.libm_other else 'off'}, nan_distance_arm64 "
+            f"{'on' if self.nan_replies_zero else 'off'}"
+        )
+
     def report(self) -> str:
         lines = [
+            *([self.calibration.summary()] if self.calibration else []),
+            *self.calibration_examples(),
+            self.classes_line(),
             f"shapes: {self.shapes} (radius-edge searches: {self.edge_queries}; "
             f"Q-object searches: {self.q_queries}; distance_bits members no "
             f"box covers, as on Redis: {self.uncovered})",
@@ -734,8 +872,16 @@ class Probe:
             lines.extend(f"  - {e}" for e in examples)
         return "\n".join(lines)
 
+    def calibration_examples(self) -> list[str]:
+        if not self.calibration:
+            return []
+        return [f"  - {e}" for e in self.calibration.examples]
+
     def as_dict(self) -> dict[str, Any]:
         return {
+            "fma": self.fuses,
+            "libm": self.libm_other,
+            "calibration": self.calibration.summary() if self.calibration else None,
             "shapes": self.shapes,
             "checks": dict(self.checks),
             "documented": dict(self.documented),
@@ -744,12 +890,23 @@ class Probe:
         }
 
 
-# -- the fused model: Redis's C as a contracting compiler builds it -------------
+# -- the reference model: Redis's C, plain and as a contracting compiler builds it
 #
 # Classification only. The port (``geo``) is plain IEEE arithmetic; a Redis
 # built by clang on arm64 contracts two ``a*b + c`` into one rounding. A
 # mismatch is ``fma_*`` only when this model reproduces the running Redis to
-# the bit, so nothing else can hide in the class.
+# the bit, so nothing else can hide in the class. The model restates Redis's
+# constants and bit layout itself rather than reading them off the port: a
+# classification that borrowed the port's earth radius or decode would move
+# with a bug in them and wave it through.
+
+R_EARTH = 6372797.560856
+"""``EARTH_RADIUS_IN_METERS`` (geohash_helper.c)."""
+R_D_R = math.pi / 180.0
+"""``D_R`` (geohash_helper.c)."""
+R_LAT_MIN, R_LAT_MAX = -85.05112878, 85.05112878
+R_LON_MIN, R_LON_MAX = -180.0, 180.0
+R_STEP = 26
 
 
 def _fma(a: float, b: float, c: float) -> float:
@@ -761,25 +918,41 @@ def _fma(a: float, b: float, c: float) -> float:
     return (an * bn * cd + cn * ad * bd) / (ad * bd * cd)
 
 
-def _fused_decode(score: int) -> tuple[float, float]:
-    """``geo.decode_point`` with the decode's ``min + t * scale`` fused."""
-    sep = geo._deinterleave64(score)
-    ilat, ilon = sep & 0xFFFFFFFF, (sep >> 32) & 0xFFFFFFFF
-    div = float(1 << geo.GEO_STEP_MAX)
-    lat_scale = geo.GEO_LAT_MAX - geo.GEO_LAT_MIN
-    lon_scale = geo.GEO_LONG_MAX - geo.GEO_LONG_MIN
+def _mad(a: float, b: float, c: float) -> float:
+    """``a*b + c`` rounded twice, as a compiler that does not contract
+    evaluates it."""
+    return a * b + c
+
+
+def _decode(score: int, *, fused: bool = False) -> tuple[float, float]:
+    """``(lon, lat)`` of a score: ``geohashDecodeToLongLatWGS84`` at step 26
+    (latitude in the even bits, longitude in the odd), with the decode's
+    ``min + t * scale`` fused or not."""
+    ilat = ilon = 0
+    for i in range(32):
+        ilat |= ((score >> (2 * i)) & 1) << i
+        ilon |= ((score >> (2 * i + 1)) & 1) << i
+    mad = _fma if fused else _mad
+    div = float(1 << R_STEP)
+    lat_scale = R_LAT_MAX - R_LAT_MIN
+    lon_scale = R_LON_MAX - R_LON_MIN
     lat = (
-        _fma(ilat * 1.0 / div, lat_scale, geo.GEO_LAT_MIN)
-        + _fma((ilat + 1) * 1.0 / div, lat_scale, geo.GEO_LAT_MIN)
+        mad(ilat * 1.0 / div, lat_scale, R_LAT_MIN)
+        + mad((ilat + 1) * 1.0 / div, lat_scale, R_LAT_MIN)
     ) / 2
     lon = (
-        _fma(ilon * 1.0 / div, lon_scale, geo.GEO_LONG_MIN)
-        + _fma((ilon + 1) * 1.0 / div, lon_scale, geo.GEO_LONG_MIN)
+        mad(ilon * 1.0 / div, lon_scale, R_LON_MIN)
+        + mad((ilon + 1) * 1.0 / div, lon_scale, R_LON_MIN)
     ) / 2
     return (
-        min(max(lon, geo.GEO_LONG_MIN), geo.GEO_LONG_MAX),
-        min(max(lat, geo.GEO_LAT_MIN), geo.GEO_LAT_MAX),
+        min(max(lon, R_LON_MIN), R_LON_MAX),
+        min(max(lat, R_LAT_MIN), R_LAT_MAX),
     )
+
+
+def _fused_decode(score: int) -> tuple[float, float]:
+    """The decode with ``min + t * scale`` fused."""
+    return _decode(score, fused=True)
 
 
 def _haversine(
@@ -791,32 +964,38 @@ def _haversine(
     fused: bool = False,
     nudge: tuple[int, ...] = (0, 0, 0, 0, 0),
 ) -> float:
-    """``geo.distance``, optionally with ``u*u + c`` fused, and with each libm
-    result (``sin`` v, ``sin`` u, the two ``cos``, ``asin``) moved by
-    ``nudge[i]`` ulps. ``sqrt`` is IEEE, correctly rounded everywhere."""
+    """``geohashGetDistance``, optionally with ``u*u + c`` fused, and with
+    each libm result (``sin`` v, ``sin`` u, the two ``cos``, ``asin``) moved
+    by ``nudge[i]`` ulps. ``sqrt`` is IEEE, correctly rounded everywhere.
+    ``asin`` of an argument above 1 is ``NaN`` in C."""
 
     def off(x: float, n: int) -> float:
         for _ in range(abs(n)):
             x = math.nextafter(x, math.inf if n > 0 else -math.inf)
         return x
 
-    lon1r, lon2r = lon1d * geo.D_R, lon2d * geo.D_R
+    lon1r, lon2r = lon1d * R_D_R, lon2d * R_D_R
     v = math.sin((lon2r - lon1r) / 2)
     if v == 0.0:
-        return geo.EARTH_RADIUS_IN_METERS * abs(lat2d * geo.D_R - lat1d * geo.D_R)
+        return R_EARTH * abs(lat2d * R_D_R - lat1d * R_D_R)
     v = off(v, nudge[0])
-    lat1r, lat2r = lat1d * geo.D_R, lat2d * geo.D_R
+    lat1r, lat2r = lat1d * R_D_R, lat2d * R_D_R
     u = off(math.sin((lat2r - lat1r) / 2), nudge[1])
     c = off(math.cos(lat1r), nudge[2]) * off(math.cos(lat2r), nudge[3]) * v * v
     a = _fma(u, u, c) if fused else u * u + c
     root = math.sqrt(a)
     if root > 1.0:
         return math.nan
-    return 2.0 * geo.EARTH_RADIUS_IN_METERS * off(math.asin(root), nudge[4])
+    return 2.0 * R_EARTH * off(math.asin(root), nudge[4])
+
+
+def _plain_distance(lon1d: float, lat1d: float, lon2d: float, lat2d: float) -> float:
+    """The reference haversine, plain IEEE: what the port must compute."""
+    return _haversine(lon1d, lat1d, lon2d, lat2d)
 
 
 def _fused_distance(lon1d: float, lat1d: float, lon2d: float, lat2d: float) -> float:
-    """``geo.distance`` with the haversine's ``u*u + c`` fused."""
+    """The reference haversine with ``u*u + c`` fused."""
     return _haversine(lon1d, lat1d, lon2d, lat2d, fused=True)
 
 
@@ -838,6 +1017,156 @@ def _libm_envelope(
     if not values:
         return math.nan, math.nan
     return min(values), max(values)
+
+
+# -- calibration: which arithmetic does the running Redis do? -------------------
+#
+# The fma_* and libm_* classes describe a Redis whose arithmetic is not the
+# probe's. Against a Redis whose arithmetic *is* the probe's they are slack
+# with nothing to absorb but bugs (#791: under a planted radius bug,
+# libm_boundary took 718 search/count mismatches on a Mac whose Redis shares
+# Python's libm). So the run starts by measuring the running Redis on a fixed
+# battery of points and switches each pair of classes on only when the
+# measurement needs it.
+
+CALIBRATION_PAIRS = 2000
+_MACHINES = {"aarch64": "arm64", "amd64": "x86_64"}
+
+
+def _platform_tag(system: str, machine: str) -> tuple[str, str]:
+    machine = machine.lower()
+    return system.lower(), _MACHINES.get(machine, machine)
+
+
+class Calibration:
+    """What a battery of ``GEOADD``/``GEOPOS``/``GEORADIUS`` calls says about
+    the running Redis, against the reference model on this host.
+
+    Each pair stores one point under its own key and reads back its
+    position (``GEOPOS``, no libm) and the exact distance Redis measures to a
+    center (inside at ``d``, outside one ulp below, as ``distance_bits``
+    reads it). A position is the plain or the fused decode; a distance is the
+    plain or the fused haversine *on this host's libm*, or neither.
+
+    * ``fuses``: some position or distance is the fused model's and not the
+      plain one's -- a contracting build (clang, arm64). Turns ``fma_*`` on.
+    * ``libm_other``: some distance is neither model's, so the running Redis
+      computes ``sin``/``cos``/``asin`` with another libm; or Redis reports an
+      ``os`` other than this host's (another libc can hide behind a battery
+      that happens to agree, never behind one OS). Turns ``libm_*`` on.
+
+    A Redis on this host's OS that reproduces every distance of the battery
+    to the bit runs this host's libm, and the ``libm_*`` classes stay off:
+    any search or count that differs is then undocumented.
+    """
+
+    def __init__(self, client: Any, pairs: int = CALIBRATION_PAIRS) -> None:
+        import platform
+
+        info = client.info("server")
+        self.redis_os = str(info.get("os", ""))
+        parts = self.redis_os.split()
+        redis_tag = _platform_tag(parts[0], parts[-1]) if parts else ("?", "?")
+        host_tag = _platform_tag(platform.system(), platform.machine())
+        self.host_os = f"{platform.system()} {platform.release()} {platform.machine()}"
+        self.same_os = redis_tag == host_tag
+        self.pairs = 0
+        self.positions: Counter = Counter()
+        self.distances: Counter = Counter()
+        self.examples: list[str] = []
+        self._measure(client, pairs)
+
+    @property
+    def fuses(self) -> bool:
+        return bool(self.positions["fused"] or self.distances["fused"])
+
+    @property
+    def libm_other(self) -> bool:
+        return bool(self.distances["other"]) or not self.same_os
+
+    def _measure(self, client: Any, pairs: int) -> None:
+        rng = random.Random(791)
+        battery = []
+        for i in range(pairs):
+            lat, lon = rng.uniform(-80, 80), rng.uniform(-179, 179)
+            roll = rng.random()
+            if roll < 0.35:  # near the antipode, where asin amplifies a last bit
+                jitter = 10 ** rng.uniform(-6, 0)
+                clat = -lat + rng.uniform(-jitter, jitter)
+                clon = lon - 180.0 if lon > 0 else lon + 180.0
+                clon += rng.uniform(-jitter, jitter)
+            elif roll < 0.65:  # nearby
+                jitter = 10 ** rng.uniform(-4, 1)
+                clat = lat + rng.uniform(-jitter, jitter)
+                clon = lon + rng.uniform(-jitter, jitter)
+            else:
+                clat, clon = rng.uniform(-80, 80), rng.uniform(-179, 179)
+            clat = max(-80.0, min(80.0, clat))
+            clon = max(-179.0, min(179.0, clon))
+            battery.append((f"ProbeGeoCal:{i}", lat, lon, clat, clon))
+        pipe = client.pipeline(transaction=False)
+        for key, lat, lon, _clat, _clon in battery:
+            pipe.delete(key)
+            pipe.execute_command("GEOADD", key, repr(lon), repr(lat), "m")
+            pipe.zscore(key, "m")
+            pipe.execute_command("GEOPOS", key, "m")
+        replies = pipe.execute()
+        tests: list[tuple[str, float, float, float, float]] = []
+        for n, (key, _lat, _lon, clat, clon) in enumerate(battery):
+            score, (pos,) = replies[4 * n + 2], replies[4 * n + 3]
+            rpos = (float(pos[0]), float(pos[1]))
+            plain, fused = _decode(int(score)), _decode(int(score), fused=True)
+            kind = "plain" if rpos == plain else "fused" if rpos == fused else "other"
+            self.positions[kind] += 1
+            d = _plain_distance(clon, clat, *rpos)
+            fd = _fused_distance(clon, clat, *rpos)
+            if d > 0 and fd > 0 and math.isfinite(d) and math.isfinite(fd):
+                tests.append((key, clon, clat, d, fd))
+        pipe = client.pipeline(transaction=False)
+        for key, clon, clat, d, fd in tests:
+            for radius in (d, math.nextafter(d, 0), fd, math.nextafter(fd, 0)):
+                pipe.execute_command(
+                    "GEORADIUS", key, repr(clon), repr(clat), repr(radius), "m"
+                )
+            pipe.execute_command(
+                "GEORADIUS", key, repr(clon), repr(clat), repr(d * 1.000001), "m"
+            )
+        replies = [bool(r) for r in pipe.execute()]
+        for n, (key, clon, clat, d, fd) in enumerate(tests):
+            at, below, f_at, f_below, wide = replies[5 * n : 5 * n + 5]
+            if not wide:
+                continue  # no box Redis scans holds it: not arithmetic
+            self.pairs += 1
+            if at and not below:
+                self.distances["plain"] += 1
+            elif f_at and not f_below:
+                self.distances["fused"] += 1
+            else:
+                self.distances["other"] += 1
+                if len(self.examples) < 5:
+                    self.examples.append(
+                        f"center=({clat!r}, {clon!r}) {key}: plain d={d!r} "
+                        f"in at d={at}, d-ulp={below}; fused d={fd!r}"
+                    )
+        client.delete(*[key for key, *_ in battery])
+
+    def summary(self) -> str:
+        libm = "another libm" if self.libm_other else "this host's libm"
+        why = (
+            f"{self.distances['other']} distances neither model's"
+            if self.same_os
+            else "another OS"
+        )
+        return (
+            f"calibration: Redis os {self.redis_os!r}, host {self.host_os!r}; "
+            f"{self.pairs} distances (plain {self.distances['plain']}, fused "
+            f"{self.distances['fused']}, other {self.distances['other']}), "
+            f"positions (plain {self.positions['plain']}, fused "
+            f"{self.positions['fused']}, other {self.positions['other']}): "
+            f"{'contracting' if self.fuses else 'no contraction'} (fma_* "
+            f"{'on' if self.fuses else 'off'}), {libm} ({why}; libm_* "
+            f"{'on' if self.libm_other else 'off'})"
+        )
 
 
 def _ulps(a: float, b: float) -> int:
@@ -873,6 +1202,18 @@ def _same(
     return sorted(rv) == sorted(pv)
 
 
+def _geo_in(rows: list, use_q: Any, with_distances: bool) -> set[str]:
+    """The names a search's rows show the geo leaf matched. Under
+    ``Q(geo) | Q(name=…)`` a row the other branch alone matched carries no
+    distance, so with distances a row is the leaf's only when it has one
+    (without, the other branch's row is on both legs and never differs).
+    Under ``~Q(geo)`` these are the names the leaf did *not* match (the
+    caller passes ``negated``)."""
+    if use_q is not None and use_q[0] == "or" and with_distances:
+        return {row[0] for row in rows if row[1] is not None}
+    return {row[0] for row in rows}
+
+
 def _by_distance(item: Any) -> Any:
     return (item[1] if item[1] is not None else math.inf, item[0])
 
@@ -882,10 +1223,32 @@ def _ascending(rows: list) -> bool:
     return all(a <= b for a, b in zip(values, values[1:]))
 
 
-def run(pg: Any, seeds: list[int], shapes: int, *, verbose: bool = False) -> dict:
+def run(
+    pg: Any,
+    seeds: list[int],
+    shapes: int,
+    *,
+    verbose: bool = False,
+    libm: str = "auto",
+    fma: str = "auto",
+) -> dict:
     """Run ``shapes`` shapes per seed; returns :meth:`Probe.as_dict` plus the
-    printable ``report``."""
-    probe = Probe(pg, verbose=verbose)
+    printable ``report``.
+
+    ``libm`` / ``fma``: ``"auto"`` switches the ``libm_*`` / ``fma_*``
+    classes on only when the calibration measures that the running Redis
+    needs them; ``"on"`` / ``"off"`` force them."""
+    set_backend("redis")
+    calibration = Calibration(popoto.get_redis())
+    machine = calibration.redis_os.split()[-1:] or ["?"]
+    probe = Probe(
+        pg,
+        verbose=verbose,
+        fuses=calibration.fuses if fma == "auto" else fma == "on",
+        libm_other=calibration.libm_other if libm == "auto" else libm == "on",
+        nan_replies_zero=_platform_tag("", machine[0])[1] != "x86_64",
+    )
+    probe.calibration = calibration
     probe.wipe()
     try:
         for seed in seeds:
@@ -907,6 +1270,13 @@ def main() -> None:
     ap.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3])
     ap.add_argument("--shapes", type=int, default=500)
     ap.add_argument("--verbose", action="store_true")
+    for name in ("libm", "fma"):
+        ap.add_argument(
+            f"--{name}",
+            choices=("auto", "on", "off"),
+            default="auto",
+            help=f"the {name}_* classes: as calibrated (auto), or forced",
+        )
     args = ap.parse_args()
     url = os.environ["POPOTO_POSTGRES_URL"]
     schema = f"popoto_test_{uuid.uuid4().hex}"
@@ -915,7 +1285,14 @@ def main() -> None:
     pg = PostgresBackend(dsn=url, schema=schema)
     started = time.perf_counter()
     try:
-        result = run(pg, args.seeds, args.shapes, verbose=args.verbose)
+        result = run(
+            pg,
+            args.seeds,
+            args.shapes,
+            verbose=args.verbose,
+            libm=args.libm,
+            fma=args.fma,
+        )
     finally:
         pg.close()
         admin.execute(f'DROP SCHEMA "{schema}" CASCADE')

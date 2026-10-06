@@ -86,6 +86,7 @@ from .schema import Column, TableSpec, quote_ident
 __all__ = [
     "GEO_KIND",
     "GeoResolved",
+    "NAN_DISTANCE_REPLY",
     "decode_point",
     "distance",
     "as_score",
@@ -387,14 +388,25 @@ def distance(lon1d: float, lat1d: float, lon2d: float, lat2d: float) -> float:
     return 2.0 * EARTH_RADIUS_IN_METERS * arc
 
 
+NAN_DISTANCE_REPLY = float("-922337203685477.5808")
+"""What ``WITHDIST`` replies for a distance that computes to ``NaN``, as an
+x86-64 Redis replies it (CI's ``redis:7-alpine``, the reference build):
+``fixedpoint_d2string`` prints ``llrint(NaN * 10000)``, and x86-64's
+``llrint`` (``cvtsd2si``) returns ``LLONG_MIN`` for ``NaN``, which prints as
+``-922337203685477.5808``. An arm64 Redis's ``llrint(NaN)`` is 0 and it
+replies ``0.0000`` instead: a documented divergence."""
+
+
 def reply_distance(meters: float, conversion: float) -> float:
     """The distance as ``WITHDIST`` replies it and redis-py reads it:
     ``meters / conversion`` printed with four decimals
     (``fixedpoint_d2string``: ``llrint(d * 10000)``, ties to even), parsed
-    back with ``float``. ``llrint(NaN)`` is 0 on arm64, so a ``NaN`` distance
-    replies ``0.0000`` there."""
+    back with ``float``. A ``NaN`` distance (``asin`` of a rounding-inflated
+    argument above 1) replies :data:`NAN_DISTANCE_REPLY`, as on x86-64."""
     value = meters / conversion
-    if value == 0 or value != value:
+    if value != value:
+        return NAN_DISTANCE_REPLY
+    if value == 0:
         return 0.0
     return round(value * 10000.0) / 10000
 
@@ -640,10 +652,18 @@ def _search(
         _wire_text(query.latitude)
     _wire_text(query.radius)
     if member_key is not None:
+        # The center and the "is anything indexed" check ignore expiry, as
+        # the geo set does on Redis: an expired record's hash is gone there
+        # but its member stays (no read purges it), so GEORADIUSBYMEMBER
+        # still decodes it and searches around it. An expired row stays
+        # here until the reaper deletes it; after that it is a missing
+        # member, as on Redis after ``clean_indexes`` or a delete. The
+        # candidates below are live rows only, which is what the Redis
+        # path's hydration leaves of its reply.
         rows, _ = backend._run(
             f"SELECT (SELECT ARRAY[{lon_col}, {lat_col}] FROM {ts.qualified} "
-            f'WHERE "_pk" = %s AND {gh} IS NOT NULL{live_and}), '
-            f"EXISTS (SELECT 1 FROM {ts.qualified} WHERE {gh} IS NOT NULL{live_and})",
+            f'WHERE "_pk" = %s AND {gh} IS NOT NULL), '
+            f"EXISTS (SELECT 1 FROM {ts.qualified} WHERE {gh} IS NOT NULL)",
             [member_key],
         )
         center, indexed = rows[0]
