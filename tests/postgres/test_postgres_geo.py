@@ -19,6 +19,7 @@ import math
 from pathlib import Path
 
 import pytest
+from redis.exceptions import ResponseError
 
 import popoto
 from popoto.backends import BackendCapabilityError, QueryCall
@@ -94,7 +95,42 @@ def test_reply_distance_is_withdist_four_decimals():
     assert geo.reply_distance(meters, 1000.0) == 3.4621  # GEORADIUS … WITHDIST
     assert geo.reply_distance(0.0, 1609.34) == 0.0
     assert geo.reply_distance(1234.56789, 1.0) == 1234.5679
-    assert geo.reply_distance(math.nan, 1.0) == 0.0  # llrint(NaN) on arm64
+
+
+def test_a_nan_distance_replies_as_x86_64_redis_does():
+    """``asin`` of a rounding-inflated argument above 1 is ``NaN`` in C, and
+    ``WITHDIST`` prints ``llrint(NaN * 10000)``. x86-64 (CI's
+    ``redis:7-alpine``, the reference) returns ``LLONG_MIN`` there, printed
+    ``-922337203685477.5808`` whatever the unit; arm64 returns 0 and replies
+    ``0.0000`` (the probe's ``nan_distance_arm64``)."""
+    assert geo.NAN_DISTANCE_REPLY == float("-922337203685477.5808")
+    assert geo.NAN_DISTANCE_REPLY == -(2**63) / 10000
+    for conversion in geo.UNIT_TO_METERS.values():
+        assert geo.reply_distance(math.nan, conversion) == geo.NAN_DISTANCE_REPLY
+
+
+def test_a_nan_distance_keeps_the_member_and_sorts_it_first(pg, monkeypatch):
+    """``NaN > radius`` is false, so the member is in (``count`` too), and its
+    reply sorts it ahead of every real distance, as the Redis path's sort of
+    hydrated rows does with x86-64's reply."""
+    GeoPlace.create(name="rome", place=ROME)
+    GeoPlace.create(name="vatican", place=VATICAN)
+    vatican = geo.decode_point(geo.score_of(VATICAN[1], VATICAN[0]))
+    original = geo.distance
+
+    def nan_at_vatican(lon1, lat1, lon2, lat2):
+        if (lon2, lat2) == vatican:
+            return math.nan
+        return original(lon1, lat1, lon2, lat2)
+
+    monkeypatch.setattr(geo, "distance", nan_at_vatican)
+    near = dict(place=ROME, place_radius=5, place_radius_unit="km")
+    rows = GeoPlace.query.filter(place_with_distances=True, **near)
+    assert [(r.name, r._geo_distance) for r in rows] == [
+        ("vatican", geo.NAN_DISTANCE_REPLY),
+        ("rome", 0.0),
+    ]
+    assert GeoPlace.query.count(**near) == 2
 
 
 def test_the_arithmetic_is_plain_ieee_never_fused():
@@ -336,8 +372,84 @@ def test_an_expired_record_is_out_of_every_search(pg):
     with frozen_clock(T0 + 61):
         assert GeoTtlPlace.query.count(**near) == 0
         assert list(GeoTtlPlace.query.filter(**near)) == []
-        # The member's own record has expired: nothing is indexed any more.
+        # Around the expired member itself: no live row is left to return.
         assert list(GeoTtlPlace.query.filter(place_member=rome, place_radius=1)) == []
+
+
+EXPIRED_CENTER = dict(place_radius=10, place_radius_unit="km")
+
+
+def _around(member):
+    rows = GeoTtlPlace.query.filter(
+        place_member=member, place_with_distances=True, **EXPIRED_CENTER
+    )
+    return [(r.name, r._geo_distance) for r in rows]
+
+
+def test_a_search_around_an_expired_member_on_redis():
+    """The Redis leg of the next test, pinned. ``EXPIRE`` drops the hash; the
+    geo-set member stays (no read purges a ``GeoField`` index), so
+    ``GEORADIUSBYMEMBER`` decodes it and searches around its last position.
+    ``filter()`` drops the expired rows at hydration; ``count()`` counts the
+    reply, stale members included."""
+    from popoto.backends import set_backend
+
+    previous = set_backend("redis")
+    client = popoto.get_redis()
+    try:
+        rome = GeoTtlPlace.create(name="rome", place=ROME)
+        vatican = GeoTtlPlace.create(name="vatican", place=VATICAN)
+        GeoTtlPlace.create(name="far", place=(10.0, 10.0))
+        client.pexpireat(rome.db_key.redis_key, 1)  # expired
+        assert _around(rome) == [("vatican", 3.4623)]
+        assert GeoTtlPlace.query.count(place_member=rome, **EXPIRED_CENTER) == 2
+        client.pexpireat(vatican.db_key.redis_key, 1)
+        assert _around(rome) == []
+        assert GeoTtlPlace.query.count(place_member=rome, **EXPIRED_CENTER) == 2
+        # A member that was never saved: the key exists (stale members), the
+        # member does not.
+        with pytest.raises(
+            ResponseError, match="^could not decode requested zset member$"
+        ):
+            _around(GeoTtlPlace(name="ghost"))
+    finally:
+        set_backend(previous)
+
+
+def test_a_search_around_an_expired_member_runs_around_its_last_position(pg):
+    """#791: as on Redis (above), until the reaper deletes the row. The
+    center and the "is anything indexed" check read the row whether or not
+    it has expired, the candidates are live rows only -- what Redis's reply
+    is after ``filter()`` hydrates it. ``count()`` counts live rows (the
+    documented ``Meta.ttl`` divergence), and a refusal is ``QueryException``
+    with Redis's text. Once the reaper has deleted the row, the member is
+    gone, as on Redis after ``clean_indexes`` or a delete."""
+    from popoto.backends.postgres.ttl import reap
+
+    with frozen_clock(T0):
+        rome = GeoTtlPlace.create(name="rome", place=ROME)
+    with frozen_clock(T0 + 30):
+        vatican = GeoTtlPlace.create(name="vatican", place=VATICAN)
+        GeoTtlPlace.create(name="far", place=(10.0, 10.0))
+    with frozen_clock(T0 + 61):
+        assert _around(rome) == [("vatican", 3.4623)]
+        assert GeoTtlPlace.query.count(place_member=rome, **EXPIRED_CENTER) == 1
+    with frozen_clock(T0 + 200):
+        assert _around(rome) == []
+        assert _around(vatican) == []
+        assert GeoTtlPlace.query.count(place_member=rome, **EXPIRED_CENTER) == 0
+        with pytest.raises(
+            QueryException, match="^could not decode requested zset member$"
+        ):
+            _around(GeoTtlPlace(name="ghost"))
+    with frozen_clock(T0 + 61):
+        ts = pg._table(GeoTtlPlace._meta.spec)
+        assert reap(pg, ts, force=True) == [rome.db_key.redis_key]
+        with pytest.raises(
+            QueryException, match="^could not decode requested zset member$"
+        ):
+            _around(rome)
+        assert _around(vatican) == [("vatican", 0.0)]
 
 
 def test_a_batch_commits_the_geo_columns_with_the_row(pg):
@@ -388,3 +500,90 @@ def test_a_slice_of_the_seeded_geo_probe_has_no_undocumented_mismatch(pg):
     report = probe.run(pg, seeds=[11], shapes=40)
     assert report["shapes"] == 40
     assert report["undocumented"] == [], report["undocumented"][:5]
+
+
+def _another_libm(monkeypatch, probe):
+    """Give the probe's reference model a libm that is off by one ulp on
+    about one argument in sixteen: what a Redis on another libm looks like
+    from here."""
+    import struct
+    import types
+
+    def skewed(fn):
+        def call(x):
+            y = fn(x)
+            bits = struct.unpack("<q", struct.pack("<d", x))[0]
+            return math.nextafter(y, math.inf) if bits % 16 == 0 else y
+
+        return call
+
+    shim = types.SimpleNamespace(**{n: getattr(math, n) for n in dir(math)})
+    for name in ("sin", "cos", "asin"):
+        setattr(shim, name, skewed(getattr(math, name)))
+    monkeypatch.setattr(probe, "math", shim)
+
+
+@pytest.mark.skipif(not PROBE.exists(), reason="scripts/probe_geo_parity.py")
+def test_the_probe_calibration_tells_another_libm_apart(monkeypatch):
+    """#791: the ``libm_*`` classes are on only when the running Redis's
+    distances need another libm. Against a model whose libm is skewed, the
+    battery finds distances neither model reproduces."""
+    probe = _probe()
+    _another_libm(monkeypatch, probe)
+    calibration = probe.Calibration(popoto.get_redis(), pairs=400)
+    assert calibration.pairs > 300
+    assert calibration.distances["other"] > 0, calibration.summary()
+    assert calibration.libm_other
+    assert popoto.get_redis().keys("ProbeGeoCal:*") == []
+
+
+@pytest.mark.skipif(not PROBE.exists(), reason="scripts/probe_geo_parity.py")
+def test_the_probe_classifies_each_differing_member():
+    """#791: a search or count that differs is documented only when every
+    member it differs by is a boundary case *and* the Postgres leg answers
+    that member as the reference plain model does -- never because the gap
+    is small."""
+    probe = _probe().Probe(None, fuses=True, libm_other=True)
+    edge = {
+        "fma": {"a"},
+        "libm": {"c"},
+        "plain": {"a": True, "b": True, "c": False, "d": True},
+    }
+    assert probe.boundary({"b"}, {"a", "b"}, edge) == ("fma_boundary", {"a"})
+    # Postgres leaves out a member the reference puts in: a port bug.
+    assert probe.boundary({"a", "b"}, {"b"}, edge)[0] is None
+    assert probe.boundary({"c"}, set(), edge) == ("libm_boundary", {"c"})
+    assert probe.boundary({"c"}, {"a"}, edge)[0] == "libm_boundary"
+    # A member outside every boundary set is never explained.
+    assert probe.boundary({"d"}, set(), edge) == (None, set())
+    # Under ~Q(...) the rows are the complement: present means outside.
+    assert probe.boundary({"a"}, set(), edge, negated=True) == ("fma_boundary", {"a"})
+    assert probe.boundary(set(), {"a"}, edge, negated=True)[0] is None
+
+
+@pytest.mark.skipif(not PROBE.exists(), reason="scripts/probe_geo_parity.py")
+@pytest.mark.parametrize("bug", ["radius", "boundary"])
+def test_the_probe_flags_a_planted_bug_in_search_and_count(pg, monkeypatch, bug):
+    """#791: the #789 review's planted bugs -- the earth radius wrong in its
+    9th digit, ``>=`` for ``>`` at the radius -- reach the search and count
+    stage as undocumented mismatches, not only the exact-distance check.
+    They are planted through the port's ``distance``: scaled by the wrong
+    radius, or one ulp long, which moves a member exactly at the radius out
+    as ``>=`` does."""
+    probe = _probe()
+    original = geo.distance
+    if bug == "radius":
+        scale = 6372797.550856 / geo.EARTH_RADIUS_IN_METERS
+
+        def planted(*args):
+            return original(*args) * scale
+
+    else:
+
+        def planted(*args):
+            return math.nextafter(original(*args), math.inf)
+
+    monkeypatch.setattr(geo, "distance", planted)
+    report = probe.run(pg, seeds=[11], shapes=40)
+    stages = {line.split(":", 1)[0] for line in report["undocumented"]}
+    assert {"filter", "count"} <= stages, stages
