@@ -1048,12 +1048,17 @@ class Calibration:
     reads it). A position is the plain or the fused decode; a distance is the
     plain or the fused haversine *on this host's libm*, or neither.
 
-    * ``fuses``: some position or distance is the fused model's and not the
-      plain one's -- a contracting build (clang, arm64). Turns ``fma_*`` on.
-    * ``libm_other``: some distance is neither model's, so the running Redis
+    * ``fuses``: some position is the fused decode's and not the plain one's
+      -- a contracting build (clang, arm64). Turns ``fma_*`` on. Positions
+      call no libm, so they decide it alone: on another libm a distance can
+      land on the fused model's value by chance (CI's x86-64 musl Redis did,
+      7 times in 2,000, with every position plain).
+    * ``libm_other``: some distance is neither model's (or, against a build
+      that does not contract, the fused model's), so the running Redis
       computes ``sin``/``cos``/``asin`` with another libm; or Redis reports an
       ``os`` other than this host's (another libc can hide behind a battery
-      that happens to agree, never behind one OS). Turns ``libm_*`` on.
+      that happens to agree, never behind one OS). Turns ``libm_*`` on. CI's
+      ``redis:7-alpine`` against its glibc Python: 129 of 2,000.
 
     A Redis on this host's OS that reproduces every distance of the battery
     to the bit runs this host's libm, and the ``libm_*`` classes stay off:
@@ -1078,11 +1083,16 @@ class Calibration:
 
     @property
     def fuses(self) -> bool:
-        return bool(self.positions["fused"] or self.distances["fused"])
+        return bool(self.positions["fused"])
+
+    @property
+    def unexplained(self) -> int:
+        """Distances neither model reproduces on this host's libm."""
+        return self.distances["other"] + (0 if self.fuses else self.distances["fused"])
 
     @property
     def libm_other(self) -> bool:
-        return bool(self.distances["other"]) or not self.same_os
+        return bool(self.unexplained) or not self.same_os
 
     def _measure(self, client: Any, pairs: int) -> None:
         rng = random.Random(791)
@@ -1153,7 +1163,7 @@ class Calibration:
     def summary(self) -> str:
         libm = "another libm" if self.libm_other else "this host's libm"
         why = (
-            f"{self.distances['other']} distances neither model's"
+            f"{self.unexplained} distances neither model's"
             if self.same_os
             else "another OS"
         )

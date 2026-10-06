@@ -1539,14 +1539,17 @@ members whose envelope straddles the radius.
 Which of these classes a run allows is measured, not assumed. Before the
 first seed the probe stores a fixed battery of 2,000 points on the running
 Redis and reads back each position (`GEOPOS`) and the exact distance Redis
-measures to a center. The `fma_*` classes are on only if some of those are
-the fused model's and not the plain one's. The `libm_*` classes are on only
-if some distance is neither model's on the probe's own libm, or if Redis
-reports another OS in `INFO server`. Against a Redis that shares the
-probe's arithmetic both are off, so any search or count that differs is
-undocumented. On arm64 macOS with Homebrew Redis the report reads
-`contracting (fma_* on), this host's libm (libm_* off)`. `--libm` and `--fma`
-force either pair on or off.
+measures to a center. The `fma_*` classes are on only if some position is
+the fused decode's and not the plain one's. Positions call no libm, so they
+alone decide it. The `libm_*` classes are on only if some distance is
+neither model's on the probe's own libm, or if Redis reports another OS in
+`INFO server`. Against a Redis that shares the probe's arithmetic both are
+off, so any search or count that differs is undocumented. On arm64 macOS
+with Homebrew Redis the report reads `contracting (fma_* on), this host's
+libm (libm_* off)`, with 0 of 2,000 distances unexplained. On CI
+(`redis:7-alpine` against the runner's glibc Python) every position is
+plain and 129 distances are unexplained, so the result is `fma_*` off and
+`libm_*` on. `--libm` and `--fma` force either pair on or off.
 
 A search or count that differs is accepted member by member, never by the
 size of the gap. Each member the two legs disagree on must be in the class's
