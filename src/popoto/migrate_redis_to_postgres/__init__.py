@@ -858,6 +858,10 @@ def run_inventory(
     hashes: dict[str, set[str]] = {m.name: set() for m in mappings}
     out_of_scope: dict[str, int] = {}
     ttl_records: dict[str, list[str]] = {m.name: [] for m in mappings}
+    meta_ttl_records: dict[str, list[str]] = {m.name: [] for m in mappings}
+    meta_ttl_ms = {
+        m.name: int(getattr(m.model._meta, "ttl", None) or 0) * 1000 for m in mappings
+    }
     staged: dict[str, dict[str, dict[str, Any]]] = {m.name: {} for m in mappings}
     stream_lengths: dict[str, int] = {}
     nul_fields = 0
@@ -882,8 +886,19 @@ def run_inventory(
                 )
                 continue
             hashes[model].add(key)
-            if int(client.pttl(key)) > 0:
-                ttl_records[model].append(key)
+            remaining = int(client.pttl(key))
+            if remaining > 0:
+                # Meta.ttl expires every record of the model, so a record
+                # with no more than Meta.ttl left is the class TTL ticking
+                # down -- Postgres re-applies Meta.ttl from the import, so
+                # it is not a per-record TTL. Only a TTL on a model without
+                # Meta.ttl, or one longer than Meta.ttl, was set per record.
+                # (A per-record TTL SHORTER than Meta.ttl cannot be told
+                # from the class TTL in a snapshot; it is counted there.)
+                if meta_ttl_ms[model] and remaining <= meta_ttl_ms[model]:
+                    meta_ttl_records[model].append(key)
+                else:
+                    ttl_records[model].append(key)
             for field_name in client.hkeys(key):
                 if b"\x00" in (field_name if isinstance(field_name, bytes) else b""):
                     nul_fields += 1
@@ -937,6 +952,7 @@ def run_inventory(
             "orphan_hashes": orphans,
             "class_members_without_hash": dangling,
             "ttl_records": sorted(ttl_records[name]),
+            "meta_ttl_records": sorted(meta_ttl_records[name]),
             "staged": staged[name],
             "event_stream_entries": stream_lengths.get(name, 0),
             "decay_index": decay,
@@ -1089,10 +1105,28 @@ def _postgres_side(models: Sequence[Any], backend: Any) -> Iterator[None]:
         reset_bindings(list(models))
 
 
-def _atomic_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _atomic_write(path: Path, text: str, *, private: bool = False) -> None:
+    """Write ``path`` through a ``.part`` file and a rename.
+
+    ``private``: the file holds a plaintext copy of the memory (``export/``,
+    ``transform/``), so its directory is ``0700`` and the file is created
+    ``0600`` -- with that mode from the first byte, never chmod-ed after the
+    content is already readable."""
+    if private:
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path.parent, 0o700)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
     part = path.with_name(path.name + ".part")
-    part.write_text(text, encoding="utf-8")
+    if not private:
+        part.write_text(text, encoding="utf-8")
+    else:
+        with contextlib.suppress(FileNotFoundError):
+            part.unlink()
+        fd = os.open(part, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            handle.write(text)
     os.replace(part, path)
 
 
@@ -1222,6 +1256,7 @@ def transform_record(
     Returns ``{"key", "record", "meta"}``. ``meta["reject"]`` is set when the
     record cannot land (it is then counted, never written)."""
     from ..fields.co_occurrence_field import CoOccurrenceField
+    from ..fields.confidence_field import ConfidenceField
     from ..fields.constants import Defaults
     from ..fields.content_field import ContentField
     from ..fields.cyclic_decay_field import CyclicDecayField
@@ -1287,6 +1322,22 @@ def transform_record(
         if want is not None and digest["dims"] != want:
             state.pop(field_name, None)
             count("embedding_dimension_mismatch_reembed")
+
+    # ConfidenceField: a record with no companion-hash entry (never saved
+    # through popoto, or the entry was lost) exports no state. On Redis it
+    # reads as the field's seed; on Postgres it lands with that seed too
+    # (initial confidence, no evidence). Counted, as information, and the
+    # seed is written into the carried state so the verified payload is
+    # what lands -- the same normalization the co-occurrence edges get.
+    for field_name, field in model._meta.fields.items():
+        if isinstance(field, ConfidenceField) and field_name not in state:
+            count("confidence_companion_missing")
+            state[field_name] = {
+                "confidence": float(field.initial_confidence),
+                "evidence_count": 0,
+                "corroborations": 0,
+                "contradictions": 0,
+            }
 
     # Long-tail state Postgres does not keep.
     for field_name, field in model._meta.fields.items():
@@ -1443,6 +1494,13 @@ def _ensure_tool_tables(conn: Any, schema: str) -> None:
         "state text NOT NULL, decision text NOT NULL, payload_sha text NOT NULL, "
         "detail text, at timestamptz NOT NULL DEFAULT now(), "
         "PRIMARY KEY (run_id, model, _pk))"
+    )
+    # When this run first queued the key's write (kept across a resume of
+    # the same run): the start of the window the stream check counts the
+    # key's save events in.
+    conn.execute(
+        f"ALTER TABLE {s}.{_qi(LEDGER_TABLE)} "
+        "ADD COLUMN IF NOT EXISTS write_started_at timestamptz"
     )
     conn.execute(
         f"CREATE INDEX IF NOT EXISTS {_qi(LEDGER_TABLE + '__pending')} ON "
@@ -1647,6 +1705,31 @@ def _provenance(
     }
 
 
+def _adopted_keys(
+    plan: Sequence[tuple[Mapping[str, Any], str]], pending_sha: Mapping[str, str]
+) -> set[str]:
+    """The ``RESUMED`` keys whose row is NOT saved again.
+
+    An adopted row already holds exactly what this run imported:
+    :func:`_native_since_crash` checked its re-export against the ledger's
+    ``payload_sha``, and here that is also this record's payload. Its save
+    committed together with everything the save derives -- the
+    ``EventStreamMixin`` entry and its ``pg_notify``, BM25 postings, vector
+    rows, membership tokens -- and its carried state was restored after it.
+    Saving it again would append a second stream event and fire every other
+    per-save side effect twice (#756 review: 1600 events for 1500 records),
+    so only its provenance is written; every derived table stays exactly
+    what a clean load leaves. A pending row whose payload differs from this
+    record (the transform changed under the same snapshot) is imported
+    again, like any other write."""
+    return {
+        str(row["key"])
+        for row, decision in plan
+        if decision == RESUMED
+        and pending_sha.get(str(row["key"])) == row["meta"]["payload_sha"]
+    }
+
+
 def _native_since_crash(
     mapping: ModelMapping, conn: Any, table: str, ledger: str, run: Mapping[str, Any]
 ) -> set[str]:
@@ -1737,13 +1820,15 @@ def _load_model(
         # if popoto saved it since -- so it is treated as native: never
         # overwritten, reported as conflict_native.
         pending: dict[str, Optional[dict[str, Any]]] = {}
-        for pk, detail in conn.execute(
-            f"SELECT _pk, detail FROM {ledger} WHERE run_id = %s AND model = %s "
-            "AND _pk = ANY(%s) AND state = 'pending'",
+        pending_sha: dict[str, str] = {}
+        for pk, detail, sha in conn.execute(
+            f"SELECT _pk, detail, payload_sha FROM {ledger} WHERE run_id = %s "
+            "AND model = %s AND _pk = ANY(%s) AND state = 'pending'",
             (run["run_id"], mapping.name, keys),
         ).fetchall():
             if pk not in native_since_crash:
                 pending[pk] = json.loads(detail) if detail else None
+                pending_sha[pk] = sha
         conn.commit()
 
         def previous_of(key: str) -> Optional[dict[str, Any]]:
@@ -1770,14 +1855,19 @@ def _load_model(
                 )
             )
 
-        writes = [row for row, d in plan if d in _WRITES]
+        adopted = _adopted_keys(plan, pending_sha)
+        writes = [row for row, d in plan if d in _WRITES and row["key"] not in adopted]
         if writes:
             conn.cursor().executemany(
-                f"INSERT INTO {ledger} (run_id, model, _pk, state, decision, payload_sha, "
-                "detail) VALUES (%s, %s, %s, 'pending', 'write', %s, %s) ON CONFLICT "
-                "(run_id, model, _pk) DO UPDATE SET state = 'pending', decision = "
-                "'write', payload_sha = EXCLUDED.payload_sha, detail = EXCLUDED.detail, "
-                "at = now()",
+                f"INSERT INTO {ledger} AS l (run_id, model, _pk, state, decision, "
+                "payload_sha, detail, write_started_at) VALUES (%s, %s, %s, 'pending', "
+                "'write', %s, %s, now()) ON CONFLICT (run_id, model, _pk) DO UPDATE SET "
+                "state = 'pending', decision = 'write', payload_sha = "
+                "EXCLUDED.payload_sha, detail = EXCLUDED.detail, at = now(), "
+                # A key this run already queued before a crash keeps its
+                # window start: the crashed import's event belongs to it.
+                "write_started_at = CASE WHEN l.state = 'pending' THEN "
+                "coalesce(l.write_started_at, now()) ELSE now() END",
                 [
                     (
                         run["run_id"],
@@ -2034,6 +2124,86 @@ def _verify_tool_columns(
     return len(mine), bad
 
 
+_SAVE_EVENT_OPS = frozenset({"create", "update"})
+
+
+def _like_prefix(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _verify_event_stream(
+    conn: Any, schema: str, mapping: ModelMapping, ts: Any, run: Mapping[str, Any]
+) -> Optional[dict[str, Any]]:
+    """Save events on an ``EventStreamMixin`` model's Postgres stream: every
+    key THIS run wrote (and still owns) must hold exactly one save event
+    (``create``/``update``) appended since this run first queued its write
+    -- what a clean load leaves. A resume that saved an adopted row again
+    shows up here as a key with two (#756 review: 1600 events for 1500
+    records was reported CLEAN). A key with none is a mismatch too, unless
+    the stream was trimmed (``MAXLEN``) or had entries deleted, which can
+    remove the event legitimately. ``None`` for a model without a stream."""
+    from ..fields.event_stream import EventStreamMixin
+
+    model = mapping.model
+    if not (isinstance(model, type) and issubclass(model, EventStreamMixin)):
+        return None
+    s = _qi(schema)
+    written = {
+        pk: int(start_ms)
+        for pk, start_ms in conn.execute(
+            "SELECT l._pk, floor(extract(epoch FROM coalesce(l.write_started_at, "
+            "r.started_at)) * 1000)::bigint "
+            f"FROM {s}.{_qi(LEDGER_TABLE)} l "
+            f"JOIN {s}.{_qi(RUN_TABLE)} r ON r.run_id = l.run_id "
+            f'JOIN {ts.qualified} t ON t."_pk" = l._pk '
+            "WHERE l.run_id = %s AND l.model = %s AND l.state = 'done' "
+            "AND l.decision = ANY(%s) AND t._migrated_from->>'run_id' = %s",
+            (run["run_id"], mapping.name, list(_WRITES), run["run_id"]),
+        ).fetchall()
+    }
+    base = f"stream:{model._stream_name}"
+    counts = {pk: 0 for pk in written}
+    events = 0
+    trimmed = False
+    if written and _table_exists(conn, schema, "popoto_stream_entry"):
+        where = "(stream = %s OR stream LIKE %s ESCAPE '\\')"
+        pattern = _like_prefix(base + ":") + "%"
+        trimmed = bool(
+            conn.execute(
+                f"SELECT coalesce(bool_or(entries_added > length), false) "
+                f"FROM {s}.popoto_stream WHERE {where}",
+                (base, pattern),
+            ).fetchone()[0]
+        )
+        for ms, fields in conn.execute(
+            f"SELECT ms, fields FROM {s}.popoto_stream_entry WHERE {where} "
+            "AND ms >= %s",
+            (base, pattern, min(written.values())),
+        ):
+            flat = [bytes(f) for f in fields]
+            entry = dict(zip(flat[0::2], flat[1::2]))
+            pk = entry.get(b"pk", b"").decode("utf-8", "replace")
+            op = entry.get(b"op", b"").decode("utf-8", "replace")
+            if pk in counts and op in _SAVE_EVENT_OPS and int(ms) >= written[pk]:
+                counts[pk] += 1
+                events += 1
+    conn.commit()
+    doubled = sorted(pk for pk, n in counts.items() if n > 1)
+    missing = sorted(pk for pk, n in counts.items() if n == 0)
+    return {
+        "written": len(written),
+        "save_events": events,
+        "keys_with_more_than_one": len(doubled),
+        "keys_without_one": len(missing),
+        "stream_trimmed": trimmed,
+        "first_mismatches": [
+            {"key": pk, "save_events": counts[pk]}
+            for pk in (doubled + ([] if trimmed else missing))[:VERIFY_MISMATCH_DETAIL]
+        ],
+        "ok": not doubled and (trimmed or not missing),
+    }
+
+
 def verify(
     mappings: Sequence[ModelMapping],
     transformed: Mapping[str, Sequence[dict[str, Any]]],
@@ -2142,6 +2312,9 @@ def verify(
                 ],
                 "ok": not column_bad,
             }
+            stream_check = _verify_event_stream(conn, backend.schema, mapping, ts, run)
+            if stream_check is not None:
+                model_checks["event_stream"] = stream_check
             if staged_cols:
                 model_checks["staged_reads"] = {
                     "mismatched": len(staged_bad),
@@ -2632,7 +2805,9 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
                                 mapping, facts["orphan_hashes"]
                             )
                             _atomic_write(
-                                run_dir / "export" / f"{mapping.name}.jsonl", text
+                                run_dir / "export" / f"{mapping.name}.jsonl",
+                                text,
+                                private=True,
                             )
                             lines = [
                                 json.loads(line)
@@ -2660,6 +2835,7 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
                                 "".join(
                                     json.dumps(r, sort_keys=True) + "\n" for r in rows
                                 ),
+                                private=True,
                             )
                             _count_inventory_lossy(mapping, facts, lossy)
                             if export_facts["errors"]:
@@ -2804,6 +2980,7 @@ def _count_inventory_lossy(
             lossy[name] = lossy.get(name, 0) + n
 
     add("per_record_ttl_not_carried", len(facts["ttl_records"]))
+    add("meta_ttl_restarted", len(facts.get("meta_ttl_records") or ()))
     add("event_stream_entries_not_carried", int(facts["event_stream_entries"]))
     add("orphan_hashes_recovered", len(facts["orphan_hashes"]))
     add("class_members_without_hash", len(facts["class_members_without_hash"]))

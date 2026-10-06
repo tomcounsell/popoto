@@ -307,7 +307,10 @@ EXPECTED_LOSSY = {
     "embedding_file_missing_reembed": 1,
     "embedding_dimension_mismatch_reembed": 1,
     # Gap-list families.
-    "per_record_ttl_not_carried": 2,
+    "per_record_ttl_not_carried": 1,
+    # The other MigTtl record has only Meta.ttl ticking down; Postgres
+    # re-applies Meta.ttl from the import (#756 review: 8 vs 3).
+    "meta_ttl_restarted": 1,
     # Each MigLongTail record's declared cycle carries a baseline slot,
     # which is deployment-local and dropped on import (#698).
     "cycle_baselines_dropped": 2,
@@ -433,6 +436,265 @@ def test_an_interrupted_load_resumes_and_converges(
     rows = _rows(admin, pg.schema, "mig_memory", "_migrated_from")
     assert all(mf is not None for (mf,) in rows.values())
     assert set(rows) == set(facts["memory_keys"])
+
+
+#: Columns whose value is the wall clock at write time, or a stream id
+#: derived from it: they differ between any two loads, crash or not.
+_CLOCK_COLUMNS = frozenset(
+    {
+        "created_at",
+        "applied_at",
+        "_expires_at",
+        "at",
+        "ms",
+        "seq",
+        "last_ms",
+        "last_seq",
+        "max_del_ms",
+        "max_del_seq",
+    }
+)
+
+
+def _derived_state(admin, schema):
+    """Every table popoto keeps in the schema (not the tool's own ledger and
+    run tables), row for row, minus the clocks: what a resume must leave
+    exactly as a clean load does. ``_migrated_from`` keeps everything but
+    the run id and time; a stream entry keeps every field but ``ts``."""
+    tables = [
+        r[0]
+        for r in admin.execute(
+            "SELECT tablename FROM pg_tables WHERE schemaname = %s "
+            "AND tablename NOT LIKE 'popoto_migration_%%' ORDER BY 1",
+            (schema,),
+        ).fetchall()
+    ]
+    state = {}
+    for table in tables:
+        cursor = admin.execute(f'SELECT * FROM "{schema}"."{table}"')
+        names = [d.name for d in cursor.description]
+        rows = []
+        for row in cursor.fetchall():
+            kept = {}
+            for name, value in zip(names, row):
+                if name in _CLOCK_COLUMNS:
+                    continue
+                if name == "_migrated_from" and isinstance(value, dict):
+                    value = {
+                        k: v
+                        for k, v in value.items()
+                        if k not in ("run_id", "migrated_at")
+                    }
+                if name == "fields" and isinstance(value, list):
+                    flat = [bytes(f) for f in value]
+                    value = sorted(
+                        (k, v) for k, v in zip(flat[0::2], flat[1::2]) if k != b"ts"
+                    )
+                if isinstance(value, memoryview):
+                    value = bytes(value)
+                kept[name] = value
+            rows.append(repr(sorted(kept.items())))
+        state[table] = sorted(rows)
+    admin.commit()
+    return state
+
+
+def _stream_events(admin, schema):
+    """``(pk, op)`` of every entry on the fixture's event stream."""
+    rows = admin.execute(
+        f'SELECT fields FROM "{schema}".popoto_stream_entry '
+        "WHERE stream = 'stream:mig_longtail_events'"
+    ).fetchall()
+    admin.commit()
+    out = []
+    for (fields,) in rows:
+        flat = [bytes(f) for f in fields]
+        entry = dict(zip(flat[0::2], flat[1::2]))
+        out.append((entry[b"pk"].decode(), entry[b"op"].decode()))
+    return sorted(out)
+
+
+def _crash_at(monkeypatch, point, model_name, batch):
+    """Arm one crash. ``after_import``: the records of the batch landed,
+    their provenance did not (the pending window). ``mid_import``: the
+    first record of the batch landed, the rest did not. ``before_import``:
+    the pending ledger rows committed, no record landed."""
+    import io
+
+    from popoto.transfer import import_ as import_module
+
+    if point == "after_import":
+
+        def hook(model, number):
+            if model == model_name and number == batch:
+                raise RuntimeError(f"crash {point} {model_name}/{batch}")
+
+        monkeypatch.setattr(mig, "_crash_hook", hook)
+        return
+    real = import_module.import_records
+    calls = {"n": 0}
+
+    def crashing(model, stream, **kwargs):
+        if model.__name__ != model_name:
+            return real(model, stream, **kwargs)
+        calls["n"] += 1
+        if calls["n"] - 1 != batch:
+            return real(model, stream, **kwargs)
+        if point == "mid_import":
+            lines = stream.getvalue().splitlines(keepends=True)
+            real(model, io.StringIO("".join(lines[:2])), **kwargs)
+        raise RuntimeError(f"crash {point} {model_name}/{batch}")
+
+    monkeypatch.setattr(import_module, "import_records", crashing)
+
+
+CRASH_POINTS = [
+    ("after_import", "MigLongTail", 0),
+    ("mid_import", "MigLongTail", 0),
+    ("before_import", "MigLongTail", 0),
+    ("after_import", "MigMemory", 1),
+    ("mid_import", "MigMemory", 2),
+    ("after_import", "MigTtl", 0),
+]
+
+
+@pytest.mark.parametrize("point,model_name,batch", CRASH_POINTS)
+def test_a_resume_leaves_every_derived_table_as_a_clean_load_does(
+    tmp_path, monkeypatch, pg, pg_schema, admin, point, model_name, batch
+):
+    """#756 review blocker: a resume re-saved every adopted row, so an
+    ``EventStreamMixin`` model got a second ``create`` event per adopted
+    record (1600 events for 1500 records) and the verdict was still CLEAN.
+    After a crash at any point and a resume, the stream and every other
+    table popoto keeps must equal a clean load's."""
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    clean = run_migration(_config(tmp_path, pg, rdb, content, run_dir=tmp_path / "c"))
+    assert clean.clean, clean.summary()
+    want = _derived_state(admin, pg.schema)
+    want_events = _stream_events(admin, pg.schema)
+    assert len(want_events) == 2  # one create per MigLongTail record
+
+    pg_schema.drop_tables()
+    pg.forget_tables()
+    with monkeypatch.context() as armed:
+        _crash_at(armed, point, model_name, batch)
+        with pytest.raises(RuntimeError, match="crash"):
+            run_migration(_config(tmp_path, pg, rdb, content))
+    mig._crash_hook = None
+    report = run_migration(_config(tmp_path, pg, rdb, content, resume=True))
+
+    assert report.clean, report.summary()
+    assert _stream_events(admin, pg.schema) == want_events
+    assert _derived_state(admin, pg.schema) == want
+    stream = report.data["verification"]["MigLongTail"]["event_stream"]
+    assert stream["ok"] and stream["keys_with_more_than_one"] == 0
+    assert stream["save_events"] == stream["written"] == 2
+
+
+def test_verification_reports_a_doubled_stream_as_a_mismatch(
+    tmp_path, monkeypatch, pg, admin
+):
+    """Non-vacuity of the stream check: put the old behaviour back (every
+    adopted row saved again) and the resumed run must NOT be clean."""
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    with monkeypatch.context() as armed:
+        _crash_at(armed, "after_import", "MigLongTail", 0)
+        with pytest.raises(RuntimeError, match="crash"):
+            run_migration(_config(tmp_path, pg, rdb, content))
+    mig._crash_hook = None
+    monkeypatch.setattr(mig, "_adopted_keys", lambda plan, pending_sha: set())
+    report = run_migration(_config(tmp_path, pg, rdb, content, resume=True))
+
+    assert len(_stream_events(admin, pg.schema)) == 4  # the bug: 2 per record
+    assert report.verdict == "mismatch"
+    stream = report.data["verification"]["MigLongTail"]["event_stream"]
+    assert not stream["ok"]
+    assert stream["keys_with_more_than_one"] == 2
+    assert {m["save_events"] for m in stream["first_mismatches"]} == {2}
+    assert "MigLongTail event_stream: MISMATCH" in report.summary()
+
+
+def test_the_stream_check_counts_only_this_runs_window(
+    tmp_path, monkeypatch, pg, admin
+):
+    """A re-run that writes nothing appends nothing: each run counts only
+    the events since it queued its own writes, never an earlier run's."""
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    first = run_migration(_config(tmp_path, pg, rdb, content))
+    again = run_migration(
+        _config(tmp_path, pg, rdb, content, run_dir=tmp_path / "again", merge=True)
+    )
+    assert first.clean and again.clean, again.summary()
+    assert first.data["verification"]["MigLongTail"]["event_stream"]["written"] == 2
+    stream = again.data["verification"]["MigLongTail"]["event_stream"]
+    assert stream["written"] == 0 and stream["ok"]
+    assert len(_stream_events(admin, pg.schema)) == 2
+
+
+def test_the_run_directory_copy_of_memory_is_private(tmp_path, monkeypatch, pg):
+    """``export/`` and ``transform/`` hold a plaintext copy of the memory:
+    directories ``0700``, files ``0600``, whatever the umask."""
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    previous = os.umask(0o022)
+    try:
+        run_migration(_config(tmp_path, pg, rdb, content, dry_run=True))
+    finally:
+        os.umask(previous)
+    run_dir = tmp_path / "run"
+    for sub in ("export", "transform"):
+        directory = run_dir / sub
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700, sub
+        files = sorted(directory.iterdir())
+        assert {f.name for f in files} == {
+            "MigMemory.jsonl",
+            "MigLongTail.jsonl",
+            "MigTtl.jsonl",
+        }
+        for path in files:
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600, path
+
+
+def test_ttl_counts_tell_a_per_record_ttl_from_meta_ttl(tmp_path, monkeypatch, pg):
+    """#756 review: 5 ``Meta.ttl``-only records and 3 with a per-record TTL
+    were reported as 8 per-record TTLs. Now 3, and the 5 are counted as
+    ``meta_ttl_restarted`` (Postgres re-applies ``Meta.ttl`` from import)."""
+    real_seed = fx.seed_source
+
+    def seed(**kwargs):
+        facts = real_seed(**kwargs)
+        for i in range(4):  # with the fixture's "short": 5 Meta.ttl-only
+            fx.MigTtl.create(name=f"meta-{i}")
+        client = _scratch_client()
+        for key in facts["memory_keys"][:2]:  # with "long": 3 per-record
+            client.expire(key, 9999)
+        return facts
+
+    monkeypatch.setattr(fx, "seed_source", seed)
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    report = run_migration(_config(tmp_path, pg, rdb, content, dry_run=True))
+    assert report.lossy["per_record_ttl_not_carried"] == 3
+    assert report.lossy["meta_ttl_restarted"] == 5
+
+
+def test_a_record_without_a_confidence_companion_is_counted(tmp_path, monkeypatch, pg):
+    """#757 L15: a record with no confidence companion entry lands with the
+    initial confidence; the report says how many."""
+
+    def drop_companion(client, facts):
+        key = facts["by_id"][4]
+        hashes = [
+            k
+            for k in client.scan_iter(match="$ConfidencF:MigMemory*")
+            if client.type(k) == b"hash" and client.hexists(k, key)
+        ]
+        assert hashes
+        for companion in hashes:
+            client.hdel(companion, key)
+
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch, mutate=drop_companion)
+    report = run_migration(_config(tmp_path, pg, rdb, content))
+    assert report.lossy["confidence_companion_missing"] == 1
+    assert report.clean, report.summary()
 
 
 def test_two_stores_merge_by_the_reconciliation_rule(

@@ -145,8 +145,14 @@ into a scratch Postgres database, without freezing anything. Read the report
    take a second snapshot and run again with the same `--source-id`, a new
    `--run-dir` and `--merge`. The merge rule replaces this source's own
    changed rows and never touches a row popoto has written natively since.
-9. **Archive.** Keep the run directory, the RDB and the content copy. Leave
-   the Redis keys in place. Deleting them is a separate decision.
+9. **Archive.** Copy `report.json` and `report.txt` out of the run
+   directory, then delete the run directory. Its `export/` and `transform/`
+   hold a plaintext copy of the memory. The tool creates them `0700`, with
+   `0600` files, but they have no use after sign-off. A resume needs the
+   directory only until the run is signed off, and a later `--merge` uses a
+   new one. The RDB and the content copy are the same memory, so keep them
+   only as long as the rollback needs them. Leave the Redis keys in place.
+   Deleting them is a separate decision.
 
 Rollback costs nothing until step 7. After that, memories written on
 Postgres do not exist in Redis.
@@ -157,7 +163,11 @@ Each machine's store is one run, with its own `--source-id` (the machine
 name, say). The first run loads into an empty schema. Every later run passes
 `--merge`. Run the stores one after another. Each run holds a Postgres
 advisory lock on the target schema from preflight to the end. A second run
-started meanwhile is refused (exit `2`) before it reads anything. Per key:
+started meanwhile is refused (exit `2`) before it reads the snapshot or
+writes to Postgres. By then it has already hashed the RDB and claimed its
+`--run-dir` (it wrote `run.json`), so retry it with a **new** `--run-dir`.
+Reusing the claimed one is refused without `--resume`, and a `--resume`
+would continue a run that never started. Per key:
 
 | Situation | Decision | What happens |
 |---|---|---|
@@ -246,7 +256,11 @@ is handled as follows:
 - `ContentField` text is resolved from the copied content directory and
   carried inline. An unreadable file rejects the record.
 - A per-record TTL is not carried. The record gets `Meta.ttl` from its
-  import time.
+  import time. A record of a `Meta.ttl` model whose remaining TTL is no
+  longer than `Meta.ttl` is counted as `meta_ttl_restarted`, not as a
+  per-record TTL: its expiry clock restarts at the import. A per-record TTL
+  *shorter* than `Meta.ttl` looks the same in a snapshot and is counted
+  there too.
 - `FrequencySketch` restarts at one count per record.
 - A cycle's declared baseline is dropped (#698).
 - Co-occurrence edges are truncated to the destination's `max_edges`, keeping
@@ -255,7 +269,8 @@ is handled as follows:
 - Geo coordinates are re-saved and rebuilt.
 - An `EventStreamMixin` stream is not carried. The import's saves append one
   event per record to the Postgres stream, so start consumers after the
-  migration.
+  migration. A resume does not append a second one for a row it adopts
+  (see *Resume and idempotency*), and verification checks the count.
 
 ## What the report counts
 
@@ -271,6 +286,8 @@ omitted.
 | `embedding_file_missing_reembed`, `embedding_dimension_mismatch_reembed` | Vectors left `NULL` for the embedding backfill. |
 | `embedding_files_without_record` | `.npy` files no record names. |
 | `rejected_nul_bytes`, `rejected_id_pattern`, `rejected_content_file_missing` | Records not written. Postgres `text` refuses NUL. |
+| `meta_ttl_restarted` | Records of a `Meta.ttl` model with no more than `Meta.ttl` left. Postgres applies `Meta.ttl` again from the import. |
+| `confidence_companion_missing` | Records with no `ConfidenceField` companion-hash entry. Information only: they read as the field's seed on Redis and land with it (initial confidence, no evidence), and verification compares exactly that. |
 | `per_record_ttl_not_carried`, `frequency_sketch_keys_reset`, `cycle_baselines_dropped`, `co_occurrence_edges_truncated`, `co_occurrence_weights_clamped`, `event_stream_entries_not_carried`, `write_filter_priority_keys_not_stored` | The gap list above. |
 | `orphan_hashes_recovered` | Record hashes missing from the class set. `export_records` alone cannot see them. They are migrated. |
 | `class_members_without_hash` | Class-set entries with no record. There is nothing to migrate. |
@@ -301,6 +318,12 @@ through popoto on Postgres and compares it with the snapshot:
   save path. These are `_created_at`, `_updated_at`, `_estimated_fields`
   and each embedding's `<f>__hash` (`md5` of the source text wherever a
   vector landed). They are compared for every row this run wrote.
+- **event stream**: on an `EventStreamMixin` model, every key this run
+  wrote and still owns holds exactly one save event (`create` or `update`)
+  appended since the run first queued its write. Two events for one key is
+  a mismatch: that is what a resume used to leave when it saved an adopted
+  row again. No event is a mismatch too, unless the stream was trimmed to
+  its `MAXLEN` (the default is 10000 entries) or had entries deleted.
 - **staged reads** match the inventory.
 - **`check_indexes()`** reports no drift.
 
@@ -328,7 +351,8 @@ Lossy and estimated (every non-zero count):
   event_stream_entries_not_carried: 3
   frequency_sketch_keys_reset: 1
   orphan_hashes_recovered: 1
-  per_record_ttl_not_carried: 2
+  meta_ttl_restarted: 1
+  per_record_ttl_not_carried: 1
   staged_reads_carried: 2
   updated_at_estimated: 15
   updated_at_from_snapshot_time: 2
@@ -344,6 +368,7 @@ Verification:
   MigLongTail records: ok {"compared": 2, "expected": 2, "mismatched": 0}
   MigLongTail check_indexes: ok {"total": 0}
   MigLongTail tool_columns: ok {"compared": 2, "mismatched": 0}
+  MigLongTail event_stream: ok {"written": 2, "save_events": 2, "keys_with_more_than_one": 0, "keys_without_one": 0, "stream_trimmed": false}
   MigLongTail decay_order:rhythm: ok {"partitions": 1, "mismatched": 0}
   MigTtl records: ok {"compared": 2, "expected": 2, "mismatched": 0}
   MigTtl check_indexes: ok {"total": 0}
@@ -392,6 +417,15 @@ and the same `--run-dir`: it skips the committed batches, adopts the pending
 rows (`resumed`), and continues. Without `--resume`, those rows make the
 target non-empty, and the run is refused.
 
+An adopted row is **not saved again**. Its save committed together with
+everything the save derives: the `EventStreamMixin` event and its
+notification, BM25 postings, vector rows, membership tokens. Only its
+provenance is written. A second save would append a second `create` event
+per adopted row, and that is what earlier versions did: 1600 events for
+1500 records after a `kill -9` and a resume. Every table popoto keeps is
+left as a clean load leaves it, and the `event_stream` check fails if it is
+not.
+
 Adoption is narrow on purpose:
 
 - **Only the same run adopts its pending rows.** The match is on `run_id`.
@@ -403,6 +437,27 @@ Adoption is narrow on purpose:
   pending row natively after the crash, its re-export no longer hashes to
   the ledger's `payload_sha`. The resume then reports it as
   `conflict_native` and leaves it alone.
+
+Two situations need a manual step after a resume:
+
+- **Another source merged while this run was down.** If source B ran with
+  `--merge` after A crashed and before A resumed, A's half-written rows
+  looked native to B. B reported those keys as `conflict_native` and did
+  not write them, yet its verdict is still `clean`. After A's resume
+  finishes, run B again: the same snapshot, `--merge` and a **new**
+  `--run-dir`. Its rows then go through the merge rule (`won_merge`,
+  `lost_merge` or `deduplicated`). Do this for every source that ran in
+  between and reported `conflict_native`, in the order they first ran.
+- **A `conflict_native` the resume did not expect.** A row also stops
+  hashing to the ledger when the run died after the record's save but
+  before its carried state (confidence evidence, access counters, vector)
+  was restored onto it. The resume cannot tell that from a native save,
+  so it leaves the row alone and reports `conflict_native`. If the writers
+  were frozen, nothing native happened. Delete those records through
+  popoto on the Postgres backend (`delete()`, which keeps the derived
+  tables consistent and, on an `EventStreamMixin` model, appends a `delete`
+  event), then run the same snapshot again with `--merge` and a new
+  `--run-dir`, so they load as `inserted`.
 
 The tool keeps two tables in the target schema: `popoto_migration_run` (one
 row per run, with its status, progress and final report) and
