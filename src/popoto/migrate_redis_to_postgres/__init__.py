@@ -1569,6 +1569,23 @@ def _lock_target_schema(dsn: str, schema: str) -> Any:
     return conn
 
 
+def _release_schema_lock(conn: Any, schema: str) -> None:
+    """Release :func:`_lock_target_schema`'s lock, then close its session.
+
+    Unlocking explicitly makes the release synchronous: closing alone only
+    sends the server a terminate, and the backend drops its advisory locks
+    when it gets round to exiting, so a run started right after this one
+    returned could still be refused (seen as a CI flake)."""
+    try:
+        conn.execute(
+            "SELECT pg_advisory_unlock(%s, hashtext(%s))", (_LOCK_CLASS, schema)
+        )
+    except Exception:  # the session is gone already: so is its lock
+        pass
+    finally:
+        conn.close()
+
+
 def _connect_autocommit(dsn: str) -> Any:
     import psycopg
 
@@ -3443,7 +3460,7 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
         return MigrationReport(run_id=run_id, source_id=config.source_id, data=report)
     finally:
         if lock is not None:
-            lock.close()
+            _release_schema_lock(lock, schema)
 
 
 def _operator() -> str:
