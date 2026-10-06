@@ -644,19 +644,36 @@ class RecipeOpsMixin:
     ) -> None:
         """``HINCRBY counts <reason> 1``, ``LPUSH drops <entry>``, ``LTRIM``
         to the newest ``keep``: one message. The entry is the same
-        content-free JSON the Redis list holds."""
-        counts = self._engine("popoto_never_record_count")
-        log = self._engine("popoto_never_record_log")
-        self._run(
-            f"INSERT INTO {counts} AS c (model, reason, count) VALUES (%s, %s, 1) "
-            "ON CONFLICT (model, reason) DO UPDATE SET count = c.count + 1; "
-            f"INSERT INTO {log} (model, entry) VALUES (%s, %s); "
-            f"DELETE FROM {log} WHERE model = %s AND seq NOT IN ("
-            f"SELECT seq FROM {log} WHERE model = %s ORDER BY seq DESC LIMIT %s)",
-            [spec.name, reason, spec.name, entry, spec.name, spec.name, int(keep)],
-            uow=uow,
-            write=True,
-        )
+        content-free JSON the Redis list holds.
+
+        A database error :meth:`_run` leaves unclassified (an ``UndefinedTable``
+        after the audit tables were dropped under a warm memo, a permission
+        error) is raised as :class:`~popoto.backends.BackendError`, never as
+        raw psycopg (PR #793 review): the refused save's caller sees popoto's
+        error family whether or not a unit of work carried the tombstone."""
+        import psycopg
+
+        from ..types import BackendError
+
+        try:
+            counts = self._engine("popoto_never_record_count")
+            log = self._engine("popoto_never_record_log")
+            self._run(
+                f"INSERT INTO {counts} AS c (model, reason, count) VALUES (%s, %s, 1) "
+                "ON CONFLICT (model, reason) DO UPDATE SET count = c.count + 1; "
+                f"INSERT INTO {log} (model, entry) VALUES (%s, %s); "
+                f"DELETE FROM {log} WHERE model = %s AND seq NOT IN ("
+                f"SELECT seq FROM {log} WHERE model = %s ORDER BY seq DESC LIMIT %s)",
+                [spec.name, reason, spec.name, entry, spec.name, spec.name, int(keep)],
+                uow=uow,
+                write=True,
+            )
+        except psycopg.Error as exc:
+            raise BackendError(
+                f"popoto could not write the never-record tombstone for "
+                f"{spec.name} (SQLSTATE {getattr(exc, 'sqlstate', None)}: "
+                f"{type(exc).__name__}: {exc}); the save was refused regardless"
+            ) from exc
 
     def _nr_counts(
         self, spec: ModelSpec, *, uow: Optional[UnitOfWork] = None

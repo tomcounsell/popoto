@@ -817,6 +817,23 @@ class Defaults:
     # waits only this long and the next rebuild/clean drops them instead.
     PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS = 1000
 
+    # -- Postgres first-use DDL inside a unit of work (#776, PR #793 review) ---
+    # With a unit of work open, first-use DDL (create or additively migrate a
+    # model's table) runs on a dedicated autocommit connection outside the
+    # pool, while the backend's first-use lock is held. A DDL statement that
+    # waits on a lock -- the table lock another session's open transaction
+    # holds, or the schema's DDL advisory lock -- gives up after this long
+    # and the operation raises BackendRetryableError, releasing the
+    # first-use lock for every other thread. Concurrent cold starts hold the
+    # DDL advisory lock for milliseconds, so this bounds only a stuck wait.
+    # (A lock the waiting unit itself holds is refused before any DDL runs:
+    # that wait could never end.)
+    PG_DDL_LOCK_TIMEOUT_MS = 5000
+    # ...and one DDL statement on that connection is cancelled after this
+    # long (also BackendRetryableError). Generous: an additive migration may
+    # build an index on a large table; this bounds a hang, not the work.
+    PG_DDL_STATEMENT_TIMEOUT_MS = 300000
+
     # -- Postgres graph (#759 M4) ----------------------------------------------
     # CoOccurrenceField.propagate() on Postgres answers with one WITH RECURSIVE
     # statement while it expands at most this many BFS layers (ceil(depth)),

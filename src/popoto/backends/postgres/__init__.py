@@ -1003,17 +1003,39 @@ class PostgresBackend(
         run: the common case -- the table exists -- is settled before this by
         a catalog read on the unit's own connection
         (:meth:`_table_if_current`, :meth:`_ensure_engine_table`). Failures
-        are classified as :meth:`_connection` classifies them."""
+        are classified as :meth:`_connection` classifies them.
+
+        The dedicated connection carries a session ``lock_timeout``
+        (``Defaults.PG_DDL_LOCK_TIMEOUT_MS``) and ``statement_timeout``
+        (``Defaults.PG_DDL_STATEMENT_TIMEOUT_MS``), so DDL that waits on
+        another session's lock gives up instead of hanging with the
+        first-use lock held (PR #793 review). Either timeout raises
+        :class:`~popoto.backends.BackendRetryableError` -- contention, not an
+        outage: health is untouched -- and nothing is memoised, so the next
+        use runs the check again. A lock the open unit itself holds is
+        refused before any DDL by :meth:`_refuse_ddl_under_own_lock`."""
         if not self._unit_open_here():
             with self._connection() as conn:
                 yield conn
             return
         psycopg = _import_psycopg()
+        lock_ms = max(1, int(Defaults.PG_DDL_LOCK_TIMEOUT_MS))
+        statement_ms = max(1, int(Defaults.PG_DDL_STATEMENT_TIMEOUT_MS))
         try:
             with self._dedicated_connection(client_binding=True) as conn:
+                conn.execute(f"SET lock_timeout = {lock_ms}")
+                conn.execute(f"SET statement_timeout = {statement_ms}")
                 yield conn
         except _rollback_errors(psycopg) as exc:
             raise _retryable(exc) from exc
+        except (psycopg.errors.LockNotAvailable, psycopg.errors.QueryCanceled) as exc:
+            raise BackendRetryableError(
+                f"first-use DDL gave up waiting (SQLSTATE "
+                f"{getattr(exc, 'sqlstate', None)}: {exc}): another session "
+                f"holds a lock it needs (Defaults.PG_DDL_LOCK_TIMEOUT_MS = "
+                f"{lock_ms}, PG_DDL_STATEMENT_TIMEOUT_MS = {statement_ms}); "
+                "nothing was changed, so retry it once that transaction ends"
+            ) from exc
         except psycopg.OperationalError as exc:
             raise self._fail(exc, write=False) from exc
 
@@ -1247,6 +1269,7 @@ class PostgresBackend(
                 return cached[1]
             ts = compile_table(spec, self.schema)
             with self._ddl_connection() as conn:
+                self._refuse_ddl_under_own_lock(conn, ts, spec)
                 self._check_server(PostgresUnitOfWork(conn))
                 require_extensions(conn, ts)
                 ensure_table(conn, ts, auto=_schema_auto())
@@ -1256,6 +1279,82 @@ class PostgresBackend(
             self._ok()
             self._tables[spec.name] = (spec, ts)
             return ts
+
+    def _units_here(self) -> list[PostgresUnitOfWork]:
+        """Every ``transaction()`` open in this task or thread, or in an
+        ancestor task that awaits this one: the units :meth:`_unit_open_here`
+        reports, as a list."""
+        units = list(self._open_units())
+        ancestors = _ancestor_scopes.get()
+        if ancestors:
+            scope = self._lock_scope()
+            with self._lock:
+                for task in (ref() for ref in ancestors):
+                    if task is not None and task is not scope:
+                        units.extend(self._open.get(task) or ())
+        return units
+
+    def _refuse_ddl_under_own_lock(
+        self, conn: Any, ts: TableSpec, spec: ModelSpec
+    ) -> None:
+        """Refuse first-use DDL for ``ts`` while a unit of work open here
+        already holds a lock on that table (or one of its validity pointer
+        tables), before any DDL is sent (PR #793 review).
+
+        The DDL must commit on its own, so it runs on a connection other than
+        the unit's (:meth:`_ddl_connection`); an ``ALTER TABLE`` there waits
+        for every lock on the table, including the one this unit took when
+        it read or wrote it -- and this unit cannot commit while this task or
+        thread waits. Two shapes reach it: a model redefined with an added
+        field after the unit already used its table, and an auto-key model
+        whose table was bound before its first instance existed (the first
+        instance adds ``_auto_key``) after the unit read it. Without this the
+        wait lasts until ``PG_DDL_LOCK_TIMEOUT_MS``, with the first-use lock
+        held; with it, the caller gets :class:`SchemaDriftError` at once.
+
+        ``pg_locks`` is a cluster-wide view, so it is read on ``conn`` (the
+        DDL connection itself) for the units' backend pids: no statement runs
+        on a unit's connection, which may belong to an ancestor task."""
+        units = self._units_here()
+        if not units:
+            return
+        pids = []
+        for unit in units:
+            pid = getattr(getattr(unit.conn, "info", None), "backend_pid", None)
+            if pid:
+                pids.append(int(pid))
+        if not pids:
+            return
+        names = [ts.qualified]
+        names += [pointer_table(ts, f) for f in validity_field_names(spec)]
+        held = conn.execute(
+            "SELECT DISTINCT l.mode FROM pg_locks l WHERE l.locktype = 'relation' "
+            "AND l.granted AND l.pid = ANY(%s) AND l.database = (SELECT oid FROM "
+            "pg_database WHERE datname = current_database()) AND l.relation = "
+            "ANY(ARRAY(SELECT to_regclass(n)::oid FROM unnest(%s::text[]) AS n "
+            "WHERE to_regclass(n) IS NOT NULL))",
+            (pids, names),
+        ).fetchall()
+        if not held:
+            return
+        # A table that is already current needs no DDL that conflicts with
+        # the unit's lock (the check reached here from an ancestor task's
+        # unit, whose catalog was not read first): let ensure_table say so.
+        if self._table_if_current(spec, PostgresUnitOfWork(conn)) is not None:
+            return
+        from ..types import SchemaDriftError
+
+        modes = ", ".join(sorted(str(row[0]) for row in held))
+        raise SchemaDriftError(
+            f"{ts.qualified} (model {ts.model}) needs a schema change (create "
+            "or additive migration) while a unit of work open in this task or "
+            f"thread already holds a lock on it ({modes}). The change must "
+            "commit on its own connection, which would wait for this unit "
+            "forever. Let the schema change happen outside the unit: use the "
+            "model once -- a save, or a query after its first instance exists "
+            "-- before opening the transaction, or commit the unit first "
+            "(#776)."
+        )
 
     def _table_if_current(
         self, spec: ModelSpec, unit: PostgresUnitOfWork

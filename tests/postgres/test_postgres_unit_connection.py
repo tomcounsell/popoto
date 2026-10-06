@@ -338,3 +338,182 @@ def test_a_missing_table_inside_a_unit_is_created_outside_it(pg):
     assert ColdAccount.query.count() == 0  # the table is there; the row is not
     ColdAccount(name="b", agent="b").save()
     assert ColdAccount.query.count() == 1
+
+
+# -- first-use DDL never waits on its own unit's locks (PR #793 re-review) -----
+
+
+def _redefined(name, *, extra):
+    """A model class named ``name``; ``extra`` adds one field, as a redeploy
+    that grew the model would (a fresh class each call: a fresh spec)."""
+    ns: dict = {}
+    exec(  # noqa: S102 - a test-local class definition
+        "import popoto\n"
+        f"class {name}(popoto.Model):\n"
+        "    name = popoto.KeyField()\n"
+        + ("    extra = popoto.Field(null=True)\n" if extra else ""),
+        ns,
+    )
+    return ns[name]
+
+
+def _bounded(fn, seconds):
+    """Run ``fn`` on a thread; return ``(result, exc, elapsed)``, failing the
+    test (not hanging it) if it outlives ``seconds``."""
+    out: dict = {}
+
+    def target():
+        t0 = time.monotonic()
+        try:
+            out["result"] = fn()
+        except BaseException as exc:  # noqa: BLE001 - handed to the assert
+            out["exc"] = exc
+        out["elapsed"] = time.monotonic() - t0
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    assert not thread.is_alive(), f"hung for {seconds}s"
+    return out.get("result"), out.get("exc"), out["elapsed"]
+
+
+def _other_thread_first_use(pg):
+    """Another thread's first use of a cold model completes promptly: the
+    backend's first-use lock was released."""
+    Fresh = _redefined("DdlBystander", extra=False)
+    pg.forget_tables()
+    _, exc, elapsed = _bounded(lambda: Fresh(name="x").save(), 30)
+    assert exc is None, exc
+    assert elapsed < 5
+
+
+def test_a_field_added_after_the_unit_used_its_table_is_refused_at_once(pg):
+    """Review shape (a): the model gains a field after the unit has saved to
+    its table. The ``ALTER TABLE`` would run on the DDL connection and wait
+    for the unit's own ``RowExclusiveLock`` forever (it hung on main too)."""
+    from popoto.backends.types import SchemaDriftError
+
+    Before = _redefined("DdlGrown", extra=False)
+    Before(name="warm").save()
+
+    def unit():
+        with pg.transaction() as uow:
+            Before(name="a").save(pipeline=uow)
+            After = _redefined("DdlGrown", extra=True)
+            After(name="b", extra="x").save(pipeline=uow)
+
+    _, exc, elapsed = _bounded(unit, 30)
+    assert isinstance(exc, SchemaDriftError), exc
+    assert "outside the unit" in str(exc) and "RowExclusiveLock" in str(exc)
+    assert elapsed < Defaults.PG_DDL_LOCK_TIMEOUT_MS / 1000.0
+    assert pg.health.ok and pg.health.dropped_writes == 0
+    _other_thread_first_use(pg)
+
+    # Outside a unit the same change migrates, and the unit's work can rerun.
+    After = _redefined("DdlGrown", extra=True)
+    After(name="b", extra="x").save()
+    with pg.transaction() as uow:
+        After(name="a").save(pipeline=uow)
+    assert sorted(o.name for o in After.query.all()) == ["a", "b", "warm"]
+
+
+def test_an_auto_key_table_bound_before_its_first_instance_is_refused_at_once(pg):
+    """Review shape (b): an auto-key model's table was created by a query
+    before any instance existed, so it has no ``_auto_key`` column. The unit
+    reads it (``reads_on``: an ``AccessShareLock``), then the first instance
+    changes the spec, which needs ``ADD COLUMN "_auto_key"``."""
+    from popoto.backends.types import SchemaDriftError
+
+    class DdlAutoKeyed(popoto.Model):
+        title = popoto.Field(null=True)
+
+    assert DdlAutoKeyed.query.count() == 0  # binds the key-less spec
+
+    def unit():
+        with pg.transaction() as uow:
+            with pg.reads_on(uow):
+                assert DdlAutoKeyed.query.count() == 0
+            DdlAutoKeyed(title="t").save(pipeline=uow)
+
+    _, exc, elapsed = _bounded(unit, 30)
+    assert isinstance(exc, SchemaDriftError), exc
+    assert "AccessShareLock" in str(exc)
+    assert elapsed < Defaults.PG_DDL_LOCK_TIMEOUT_MS / 1000.0
+    _other_thread_first_use(pg)
+
+    DdlAutoKeyed(title="t").save()  # outside the unit the column is added
+    with pg.transaction() as uow:
+        DdlAutoKeyed(title="u").save(pipeline=uow)
+    assert DdlAutoKeyed.query.count() == 2
+
+
+def test_ddl_waiting_on_another_sessions_lock_times_out(pg, admin, monkeypatch):
+    """A lock held by *another* session cannot be refused up front: the
+    DDL connection's ``lock_timeout`` turns that wait into
+    ``BackendRetryableError`` within ``PG_DDL_LOCK_TIMEOUT_MS`` -- not an
+    outage -- and the first-use lock is released for every other thread."""
+    from popoto.backends.types import BackendRetryableError
+
+    monkeypatch.setattr(Defaults, "PG_DDL_LOCK_TIMEOUT_MS", 300)
+    Before = _redefined("DdlForeign", extra=False)
+    Before(name="warm").save()
+    table = pg._table(Before._meta.spec).qualified
+    After = _redefined("DdlForeign", extra=True)
+
+    def unit():
+        with pg.transaction() as uow:
+            After(name="b", extra="x").save(pipeline=uow)
+
+    with admin.transaction():
+        admin.execute(f"LOCK TABLE {table} IN ACCESS SHARE MODE")
+        _, exc, elapsed = _bounded(unit, 30)
+        assert isinstance(exc, BackendRetryableError), exc
+        assert "PG_DDL_LOCK_TIMEOUT_MS" in str(exc)
+        assert 0.3 <= elapsed < 5
+        assert pg.health.ok and pg.health.dropped_writes == 0
+        _other_thread_first_use(pg)
+    # The foreign transaction ended: the retry migrates and commits.
+    _, exc, _ = _bounded(unit, 30)
+    assert exc is None, exc
+    assert After.query.get(name="b").extra == "x"
+
+
+@pytest.mark.asyncio
+async def test_an_async_unit_is_refused_at_once_too(pg):
+    """The async bridge's units are tracked per task and their connections
+    are bridged ``AsyncConnection``s: the same refusal, no wait."""
+    pytest.importorskip("greenlet")
+    from popoto.backends.postgres import aio
+    from popoto.backends.types import SchemaDriftError
+
+    Before = _redefined("DdlGrownAsync", extra=False)
+    Before(name="warm").save()
+    twin = aio.get_async_backend(Before)
+    t0 = time.monotonic()
+    with pytest.raises(SchemaDriftError, match="outside the unit"):
+        async with twin.transaction() as uow:
+            await Before(name="a").async_save(pipeline=uow)
+            After = _redefined("DdlGrownAsync", extra=True)
+            await asyncio.wait_for(
+                After(name="b", extra="x").async_save(pipeline=uow), 30
+            )
+    assert time.monotonic() - t0 < Defaults.PG_DDL_LOCK_TIMEOUT_MS / 1000.0
+
+
+def test_a_database_error_from_the_tombstone_is_a_popoto_error(pg, admin):
+    """A real database error from the tombstone write -- here the audit log
+    table dropped under a warm memo -- reaches the caller as popoto's
+    ``BackendError`` (the driver error is its ``__cause__``), not as raw
+    psycopg, inside a unit and on an autocommit save alike."""
+    from popoto.backends.types import BackendError
+
+    UnitPrivate(name="a", content=SECRET).save()  # warms the audit tables
+    admin.execute(f'DROP TABLE "{pg.schema}".popoto_never_record_log')
+    with pytest.raises(BackendError) as caught:
+        with pg.transaction() as uow:
+            UnitPrivate(name="b", content=SECRET).save(pipeline=uow)
+    assert isinstance(caught.value.__cause__, psycopg.errors.UndefinedTable)
+    with pytest.raises(BackendError) as caught:
+        UnitPrivate(name="c", content=SECRET).save()
+    assert isinstance(caught.value.__cause__, psycopg.errors.UndefinedTable)
+    assert UnitPrivate.query.get(name="b") is None
