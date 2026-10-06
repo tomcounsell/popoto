@@ -643,7 +643,9 @@ def test_engine_table_ddl_waiting_on_the_schema_lock_times_out(pg, admin, monkey
     from popoto.backends.postgres.schema import schema_lock_key
     from popoto.backends.types import BackendRetryableError
 
-    monkeypatch.setattr(Defaults, "PG_DDL_LOCK_TIMEOUT_MS", 300)
+    # The wait for the schema lock runs under the long backstop, not the DDL
+    # lock timeout (tests/postgres/test_postgres_rolling_deploy.py).
+    monkeypatch.setattr(Defaults, "PG_DDL_SCHEMA_LOCK_TIMEOUT_MS", 300)
     recipe = next(iter(ENGINE_TABLES))
     for name in (*STREAM_TABLES, RECALL_TABLE, recipe):
         admin.execute(f'DROP TABLE IF EXISTS "{pg.schema}"."{name}" CASCADE')

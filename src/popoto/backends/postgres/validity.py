@@ -245,7 +245,7 @@ def ensure_validity_tables(conn: Any, ts: TableSpec, spec: ModelSpec) -> None:
         name = _bounded(f"{ts.table}__{field}__open")
         with conn.transaction():
             cur = conn.cursor()
-            set_ddl_timeouts(cur)
+            set_ddl_timeouts(cur, waiting=True)
             exists = cur.execute(
                 "SELECT to_regclass(%s) IS NOT NULL", (qualified,)
             ).fetchone()[0]
@@ -261,6 +261,7 @@ def ensure_validity_tables(conn: Any, ts: TableSpec, spec: ModelSpec) -> None:
                 "SELECT pg_advisory_xact_lock(hashtext(%s))",
                 (table_lock_key(ts.schema, ts.table),),
             )
+            set_ddl_timeouts(cur)
             cur.execute(
                 f"CREATE TABLE IF NOT EXISTS {qualified} ("
                 "digest text PRIMARY KEY, member text NOT NULL "

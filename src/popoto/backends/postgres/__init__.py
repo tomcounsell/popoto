@@ -1028,6 +1028,8 @@ class PostgresBackend(
                     yield conn
             else:
                 with self._dedicated_connection(client_binding=True) as conn:
+                    # A backstop for any statement outside ensure_table's own
+                    # SET LOCAL phases (which override it per transaction).
                     conn.execute(f"SET lock_timeout = {lock_ms}")
                     conn.execute(f"SET statement_timeout = {statement_ms}")
                     yield conn
@@ -1038,7 +1040,9 @@ class PostgresBackend(
                 f"first-use DDL gave up waiting (SQLSTATE "
                 f"{getattr(exc, 'sqlstate', None)}: {exc}): another session "
                 f"holds a lock it needs (Defaults.PG_DDL_LOCK_TIMEOUT_MS = "
-                f"{lock_ms}, PG_DDL_STATEMENT_TIMEOUT_MS = {statement_ms}); "
+                f"{lock_ms}, PG_DDL_SCHEMA_LOCK_TIMEOUT_MS = "
+                f"{int(Defaults.PG_DDL_SCHEMA_LOCK_TIMEOUT_MS)}, "
+                f"PG_DDL_STATEMENT_TIMEOUT_MS = {statement_ms}); "
                 "nothing was changed, so retry it once that transaction ends"
             ) from exc
         except psycopg.OperationalError as exc:

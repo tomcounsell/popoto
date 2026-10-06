@@ -253,6 +253,7 @@ class TestDefaultsSync:
             # Postgres first-use DDL inside a unit (#776, PR #793 review):
             # read from Defaults each time the dedicated DDL connection opens.
             "PG_DDL_LOCK_TIMEOUT_MS",
+            "PG_DDL_SCHEMA_LOCK_TIMEOUT_MS",
             "PG_DDL_STATEMENT_TIMEOUT_MS",
         }
 

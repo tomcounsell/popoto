@@ -1636,13 +1636,30 @@ pooled or a dedicated connection, for model tables, validity pointer tables
 and the engine side tables alike, sync and async -- runs under `SET LOCAL
 lock_timeout = Defaults.PG_DDL_LOCK_TIMEOUT_MS` (5 s) and `SET LOCAL
 statement_timeout = Defaults.PG_DDL_STATEMENT_TIMEOUT_MS` (5 min) (`SET
-LOCAL`, so a pooled connection is never left modified). Without it, a thread
+LOCAL`, so a pooled connection is never left modified). The 5 s limit bounds
+only the DDL statements themselves. The wait for the schema's DDL advisory
+lock, and the "is this table current?" catalog read after it, run under the
+much longer `Defaults.PG_DDL_SCHEMA_LOCK_TIMEOUT_MS` (5 min, a backstop), so
+during a rolling deploy a new worker whose models are already current waits
+for another worker's long migration and then proceeds, rather than failing
+at 5 s. The wait cannot deadlock: every holder of those locks is itself
+bounded by the 5 s DDL limit. Without it, a thread
 with no unit open could wait on another thread's open unit while holding
 the first-use lock, and that thread's next first use would then wait on the
 lock: a deadlock the server cannot see. A wait past either timeout raises
 `BackendRetryableError` (contention, not an outage: health is untouched),
 the backend's first-use lock is released for every other thread, and nothing
-is memoised, so the next use runs the check again. What you issue
+is memoised, so the next use runs the check again. Three notes. A
+`SchemaDriftError` raised from that up-front refusal leaves the unit usable:
+no statement ran on its connection, so you can catch it inside the
+`transaction()`, keep saving and commit. A lock a unit holds only on a
+companion table (BM25, edges) is not visible to the up-front check; that case
+ends in the lock timeout as `BackendRetryableError`, never in a hang. And a
+single DDL statement that legitimately runs longer than
+`PG_DDL_STATEMENT_TIMEOUT_MS` (a b-tree build on a populated column of very
+roughly 100M rows) is cancelled, and every retry would rebuild it and be
+cancelled again: raise `Defaults.PG_DDL_STATEMENT_TIMEOUT_MS` in the process
+that first uses such a table. What you issue
 yourself outside the unit while it is open -- a query inside `with
 transaction()`, a save without `pipeline=`, a nested batch -- still takes a
 connection of its own and sees committed state, as a Redis read inside a
