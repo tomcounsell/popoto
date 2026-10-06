@@ -16,7 +16,7 @@ import redis
 
 import popoto
 from popoto import ConfidenceField, DecayingSortedField
-from popoto.backends import BackendCapabilityError, BackendError, SchemaDriftError
+from popoto.backends import BackendCapabilityError, SchemaDriftError
 from popoto.exceptions import ModelException
 from popoto.fields.co_occurrence_field import CoOccurrenceField
 from popoto.fields.existence_filter import ExistenceFilter
@@ -140,13 +140,15 @@ def test_a_failed_batch_is_a_documented_divergence(backend):
             pipe.execute()
         assert ParityUnique.query.get(name="a") is not None
     else:
-        # The UNIQUE index refuses "b" inside the transaction; execute() then
-        # rolls the whole batch back.
+        # pre_save's read runs in the batch's transaction (#776), so it sees
+        # "a" and refuses "b" at the call, before sending anything; the batch
+        # stays healthy and execute() commits "a" -- Redis's end state, with
+        # the error raised at the save instead of at EXEC.
         with pytest.raises(ModelException):
             ParityUnique(name="b", code="x").save(pipeline=pipe)
-        with pytest.raises(BackendError, match="rolled back"):
-            pipe.execute()
-        assert ParityUnique.query.get(name="a") is None
+        assert pipe.execute() == []
+        assert ParityUnique.query.get(name="a") is not None
+        assert ParityUnique.query.get(name="b") is None
 
 
 def test_an_instance_ttl_without_meta_ttl_is_a_documented_divergence(backend):

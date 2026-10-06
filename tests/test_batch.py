@@ -14,6 +14,7 @@ the type assertions hold on both. Tests that drive raw Redis commands on a
 scratch key never reach a model's backend and run on the Redis leg only.
 """
 
+import contextlib
 import os
 import sys
 import uuid
@@ -91,7 +92,8 @@ def test_a_model_save_accepts_the_batch():
     pipe = popoto.batch()
     try:
         Gadget(name=name, size=7).save(pipeline=pipe)
-        assert Gadget.exists(name=name) is False  # queued, not applied
+        with _outside(Gadget):
+            assert Gadget.exists(name=name) is False  # queued, not applied
         pipe.execute()
         assert Gadget.exists(name=name) is True
     finally:
@@ -118,7 +120,8 @@ def test_a_batch_of_saves_lands_together_on_execute():
     pipe = popoto.batch()
     for i in range(3):
         Gadget(name=f"b{i}", size=i).save(pipeline=pipe)
-    assert Gadget.query.count() == 0
+    with _outside(Gadget):
+        assert Gadget.query.count() == 0
     pipe.execute()
     assert sorted(g.name for g in Gadget.query.all()) == ["b0", "b1", "b2"]
     _wipe()
@@ -154,7 +157,8 @@ def test_a_delete_in_a_batch_applies_on_execute():
     Gadget.create(name="d", size=1)
     pipe = popoto.batch()
     Gadget.query.get(name="d").delete(pipeline=pipe)
-    assert Gadget.query.get(name="d") is not None
+    with _outside(Gadget):
+        assert Gadget.query.get(name="d") is not None
     pipe.execute()
     assert Gadget.query.get(name="d") is None
 
@@ -194,8 +198,19 @@ def _effects_clean():
     get_REDIS_DB().delete(TaggedGadget(name="x")._wf_key("priority"))
 
 
+def _outside(model):
+    """A block that reads outside the batch the test holds open: on
+    Postgres a second connection on purpose, which the suite's
+    one-connection-per-unit guard otherwise refuses (#776)."""
+    from src.popoto.backends import get_backend
+
+    allow = getattr(get_backend(model), "second_connection_ok", None)
+    return allow() if allow is not None else contextlib.nullcontext()
+
+
 def _stream_len():
-    return StreamGadget.stream_len()
+    with _outside(StreamGadget):
+        return StreamGadget.stream_len()
 
 
 def _tags():
@@ -246,7 +261,9 @@ def test_an_executed_batch_sends_one_stream_entry_per_save(effects):
     assert ops == [b"create", b"create"]
 
 
-def test_a_failed_batch_sends_no_stream_entry_on_postgres(backend, effects):
+def test_a_failed_batch_sends_no_stream_entry_on_postgres(
+    backend, effects, monkeypatch
+):
     pipe = effects()
     StreamGadget(name="a", code="x").save(pipeline=pipe)
     if backend.is_redis:
@@ -258,14 +275,40 @@ def test_a_failed_batch_sends_no_stream_entry_on_postgres(backend, effects):
             pipe.execute()
         assert StreamGadget.query.get(name="a") is not None
     else:
-        # The UNIQUE index refuses "b" inside the transaction, which aborts
-        # it: execute() rolls the whole batch back, stream entries included.
+        # pre_save's read runs in the batch's transaction (#776), so it
+        # would refuse "b" before sending it; skip the read to let a
+        # statement fail *inside* the transaction, as a concurrent unit's
+        # uncommitted claim does. The UNIQUE index refuses "b", which aborts
+        # the transaction: execute() rolls the whole batch back, stream
+        # entries included.
+        monkeypatch.setattr(
+            StreamGadget, "_backend_unique_conflict", lambda self, pipeline=None: None
+        )
         with pytest.raises(popoto.exceptions.ModelException):
             StreamGadget(name="b", code="x").save(pipeline=pipe)
         with pytest.raises(popoto.backends.BackendError):
             pipe.execute()
         assert StreamGadget.query.get(name="a") is None
         assert _stream_len() == 0
+
+
+def test_a_second_claim_in_one_batch_is_refused_and_the_rest_commits(effects):
+    # #776: on Postgres the uniqueness read sees the batch's own claim, so
+    # the second save is refused before it sends anything and execute()
+    # commits the first with its entry -- the outcome Redis's EXEC reaches
+    # (the first applied, the second refused), raised at the call instead.
+    pipe = effects()
+    StreamGadget(name="a", code="x").save(pipeline=pipe)
+    from src.popoto.backends import get_backend
+
+    if get_backend(StreamGadget).name == "redis":
+        pytest.skip("Redis queues both and refuses at EXEC (test above)")
+    with pytest.raises(popoto.exceptions.ModelException):
+        StreamGadget(name="b", code="x").save(pipeline=pipe)
+    pipe.execute()
+    assert StreamGadget.query.get(name="a") is not None
+    assert StreamGadget.query.get(name="b") is None
+    assert _stream_len() == 1
 
 
 def test_a_caught_validation_error_lets_the_rest_of_the_batch_commit(effects):

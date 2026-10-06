@@ -729,11 +729,18 @@ def _apply_supersession(
         key = getattr(getattr(obj, "db_key", None), "redis_key", None)
         backend = non_redis_backend(obj) if key else None
         if backend is not None:
-            # #759 M3: the same probe through the record's own backend.
+            # #759 M3: the same probe through the record's own backend --
+            # on the caller's unit of work when it holds one (#776), so a
+            # successor saved in that unit counts and no second connection
+            # is checked out while the unit holds one.
             from ..backends import RecordId
+            from ..batch import open_unit_of
 
+            unit = open_unit_of(pipeline, backend)
             (found,) = backend.exists(
-                obj._meta.spec, [RecordId.from_key(obj._meta.model_name, key)]
+                obj._meta.spec,
+                [RecordId.from_key(obj._meta.model_name, key)],
+                **({"uow": unit} if unit is not None else {}),
             )
             if found:
                 continue

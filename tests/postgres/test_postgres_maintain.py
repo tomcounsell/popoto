@@ -567,7 +567,7 @@ def test_clean_drops_the_invalid_indexes_a_failed_rebuild_left(
             MaintDoc.rebuild_indexes()
         # Inside a unit of work clean leaves them (the drop would wait on
         # that unit); the orphan work still runs.
-        with pg.transaction():
+        with pg.transaction(), pg.second_connection_ok():  # outside it (#776)
             assert MaintDoc.clean_indexes() == 0
     finally:
         blocker.execute("ROLLBACK")

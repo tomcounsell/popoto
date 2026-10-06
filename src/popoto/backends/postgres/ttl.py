@@ -307,6 +307,7 @@ def reap(backend: Any, ts: TableSpec, *, force: bool = False) -> list[str]:
     wait_ms = max(1, int(Defaults.PG_REAPER_LOCK_TIMEOUT_MS))
     sql, params = _reap_sql(ts, batch)
     prefix = backend._statement_prefix() + f"SET LOCAL lock_timeout = {wait_ms}; "
+    backend._guard_second_checkout("the TTL reaper")  # #776: never swallowed
     try:
         pool = _pool_for(backend.dsn)
         with _checkout(pool, timeout=wait_ms / 1000.0) as conn:

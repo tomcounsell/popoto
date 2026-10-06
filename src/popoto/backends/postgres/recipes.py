@@ -147,21 +147,23 @@ class RecipeOpsMixin:
             return qualified
         from . import _schema_auto
 
-        rows, _ = self._run(
-            "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
-            [self.schema, name],
-        )
-        if not rows:
-            if not _schema_auto():
-                from ..types import SchemaDriftError
+        # First-use DDL commits on its own connection (#776).
+        with self.second_connection_ok():  # type: ignore[attr-defined]
+            rows, _ = self._run(
+                "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
+                [self.schema, name],
+            )
+            if not rows:
+                if not _schema_auto():
+                    from ..types import SchemaDriftError
 
-                raise SchemaDriftError(
-                    f"{self.schema}.{name} does not exist and POPOTO_SCHEMA_AUTO=0"
-                )
-            # The schema lock first, as ensure_table takes it: a per-table
-            # lock alone lets two first uses race on CREATE SCHEMA (B1).
-            sql, params = engine_table_ddl(self.schema, name, ENGINE_TABLES[name])
-            self._run(sql, params, write=True)
+                    raise SchemaDriftError(
+                        f"{self.schema}.{name} does not exist and POPOTO_SCHEMA_AUTO=0"
+                    )
+                # The schema lock first, as ensure_table takes it: a per-table
+                # lock alone lets two first uses race on CREATE SCHEMA (B1).
+                sql, params = engine_table_ddl(self.schema, name, ENGINE_TABLES[name])
+                self._run(sql, params, write=True)
         ready.add(name)
         return qualified
 

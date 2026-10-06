@@ -1035,27 +1035,29 @@ class PostgresMemoryOps(PostgresValidityOps):
             return qualified
         from . import _schema_auto
 
-        rows, _ = self._run(
-            "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
-            [self.schema, RECALL_TABLE],
-        )
-        if not rows:
-            if not _schema_auto():
-                from ..types import SchemaDriftError
-
-                raise SchemaDriftError(
-                    f"{self.schema}.{RECALL_TABLE} does not exist and "
-                    "POPOTO_SCHEMA_AUTO=0"
-                )
-            # The schema lock first, as ensure_table takes it (#759 M4b B1).
-            sql, params = engine_table_ddl(
-                self.schema,
-                RECALL_TABLE,
-                "model text NOT NULL, part text NOT NULL, member text NOT NULL, "
-                "surfaced_at double precision NOT NULL, "
-                "PRIMARY KEY (model, part, member)",
+        # First-use DDL commits on its own connection (#776).
+        with self.second_connection_ok():  # type: ignore[attr-defined]
+            rows, _ = self._run(
+                "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
+                [self.schema, RECALL_TABLE],
             )
-            self._run(sql, params, write=True)
+            if not rows:
+                if not _schema_auto():
+                    from ..types import SchemaDriftError
+
+                    raise SchemaDriftError(
+                        f"{self.schema}.{RECALL_TABLE} does not exist and "
+                        "POPOTO_SCHEMA_AUTO=0"
+                    )
+                # The schema lock first, as ensure_table takes it (#759 M4b B1).
+                sql, params = engine_table_ddl(
+                    self.schema,
+                    RECALL_TABLE,
+                    "model text NOT NULL, part text NOT NULL, member text NOT NULL, "
+                    "surfaced_at double precision NOT NULL, "
+                    "PRIMARY KEY (model, part, member)",
+                )
+                self._run(sql, params, write=True)
         self._recall_ready = True
         return qualified
 

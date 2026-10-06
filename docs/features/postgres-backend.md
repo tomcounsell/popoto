@@ -151,8 +151,35 @@ counts repeat).
 **Uniqueness.** A `UniqueField`, `UniqueKeyField` or unique `Meta.indexes`
 tuple is checked in `pre_save` by a read through the backend, with the same
 `ModelException` text as Redis and before any write. The `UNIQUE` index is the
-authority behind it: a write that races past the read, or two conflicting
-saves inside one `transaction()`, gets the same text from the index.
+authority behind it: a write that races past the read gets the same text from
+the index (SQLSTATE 23505, mapped to the same `ModelException`).
+
+When the save is handed a unit of work that already holds a connection (a
+`transaction()`, or a `popoto.batch()` with a Postgres write in it), the read
+runs **on that unit's connection** (#776). It sees the unit's own writes: a
+holder the unit deleted no longer conflicts, and a value the unit already
+claimed is refused at the call, before anything is sent, leaving the unit
+healthy. A concurrent unit's *uncommitted* claim is invisible to any read
+under `READ COMMITTED`, so there the index decides: the later save waits on
+the earlier unit's index entry and, once that commits, raises the
+`ModelException`. Of N concurrent units claiming one value, exactly one
+commits and the others raise `ModelException`
+(`tests/postgres/test_postgres_unique_race.py`, sync threads and async tasks,
+`transaction()` and `popoto.batch()`). Before #776 the read always took a
+*second* pooled connection: with `PG_POOL_MAX_SIZE` units open it could never
+be served, and every contender failed with `BackendBusyError`.
+
+Two units that claim the same values in **opposite orders** can deadlock on
+those index entries: Postgres breaks it and one unit raises
+`BackendRetryableError`, as for any cross-record deadlock (lock order, §6 of
+the plan). Measured with 4 threads × 40 transactions, each claiming two
+values shared by every thread, half in each order (PostgreSQL 18.6,
+localhost): 80-90 of 160 were deadlock victims at pool size 4 or 16, against
+95 on `main` at pool size 16 (at pool size 4, `main` failed 136 with
+`BackendBusyError` first) -- no new deadlock. Claim shared values in one
+order (sorted) to avoid them. No advisory lock is taken on the value: a
+unit's later statement cannot be ordered before its earlier ones, so a value
+lock would deadlock in the same shapes and remove none.
 
 **Memory state (M2a).** A `ConfidenceField` keeps two things, as it does on
 Redis: the model attribute (the hash value there, its own column here) and
@@ -1565,6 +1592,22 @@ behind **PgBouncer in transaction mode**, which you should put in front once
 you have more than a few dozen clients. Advisory locks are only ever
 `pg_advisory_xact_lock`.
 
+**One connection per unit of work (#776).** A `transaction()` (or a
+`popoto.batch()` holding Postgres writes) holds one pooled connection, and
+every statement popoto issues *for* that unit -- its writes, and the reads a
+write makes first (`pre_save`'s uniqueness read, `ValidityField`'s stored
+`valid_from`, the observation and provenance-journal pre-flights) -- runs on
+it. The one deliberate exception is a model's first-use DDL, which must
+commit on its own and runs once per model per process. What you issue
+yourself outside the unit while it is open -- a query inside `with
+transaction()`, a save without `pipeline=`, a nested batch -- still takes a
+connection of its own and sees committed state, as a Redis read inside a
+batch sees nothing queued. `popoto.backends.postgres.STRICT_UNIT_CONNECTION`
+is a debug guard (off by default; popoto's own test suite turns it on): with
+it set, a pooled checkout while a unit is open in the same task or thread
+raises `SecondConnectionError` unless the block is inside
+`backend.second_connection_ok()`.
+
 **Stale connections.** A server restart, a failover or an idle reaper kills
 the pool's backends while the server stays up. The pool checks each connection
 when it hands it out (`ConnectionPool.check_connection`, one empty-query round
@@ -1742,14 +1785,15 @@ exactly when the writes land, and a Postgres batch sends Redis nothing.
 Pinned on both legs by `tests/test_batch.py` and `tests/test_pubsub.py`.
 
 **Atomic, where Redis is not.** If a statement fails *inside the batch's
-transaction* (two saves in the batch that claim one unique value, say), the
-call that issued it raises as usual, the transaction is aborted, and
-`execute()` then raises `popoto.backends.BackendError` and writes nothing. A
-Redis `MULTI`/`EXEC` applies the other queued commands. A save that is
-refused *before* it sends anything -- `pre_save` finding a unique value
-already held by a committed record, a field validation error -- raises at
-the call and leaves the batch healthy, so if you catch it, `execute()`
-commits the rest, as on Redis. `batch(transaction=False)` is still one
+transaction* (a save that loses a unique value to a concurrent unit at the
+index, say), the call that issued it raises as usual, the transaction is
+aborted, and `execute()` then raises `popoto.backends.BackendError` and
+writes nothing. A Redis `MULTI`/`EXEC` applies the other queued commands. A
+save that is refused *before* it sends anything -- `pre_save` finding a
+unique value already held by a committed record *or claimed earlier in the
+same batch* (#776: the read runs in the batch's transaction), a field
+validation error -- raises at the call and leaves the batch healthy, so if
+you catch it, `execute()` commits the rest, as on Redis. `batch(transaction=False)` is still one
 transaction on Postgres. A deadlock inside the batch raises
 `BackendRetryableError`, as inside any `transaction()`.
 
@@ -2232,7 +2276,8 @@ cast to the column's type.
 | Order of results with no `order_by`, no `Meta.order_by` and no sorted-field filter | set order (arbitrary) | `_pk` in bytewise (`COLLATE "C"`) order |
 | An invalid `order_by=` / `values=` on a query that matches nothing | returns `[]` before validating | raises the same `QueryException` either way |
 | `save(update_fields=…)` on a record that does not exist yet | writes a partial hash that stays out of the class set, so queries do not see it | inserts the row (unlisted columns `NULL`), so queries see it |
-| `UniqueKeyField` / `UniqueField` / unique `Meta.indexes` conflict | checked by a read in `pre_save` before the write | the same read, through the backend, plus a `UNIQUE` index inside the write as the authority (it also catches two conflicting saves in one `transaction()`); same `ModelException` text either way (`tests/postgres/test_postgres_fields.py`) |
+| `UniqueKeyField` / `UniqueField` / unique `Meta.indexes` conflict | checked by a read in `pre_save` before the write | the same read, through the backend -- on the save's unit of work when it holds one, so it sees that unit's own writes (#776) -- plus a `UNIQUE` index inside the write as the authority for a concurrent unit's uncommitted claim; same `ModelException` text either way (`tests/postgres/test_postgres_fields.py`, `test_postgres_unique_race.py`) |
+| Two saves in one batch that claim one unique value | both queue; `EXEC` applies the first and reports the second's conflict | the second is refused at its `save()` call (the read sees the first) and writes nothing; the batch stays healthy and `execute()` commits the first, as `EXEC` applies it on Redis -- the error is raised at the call instead of at `execute()`. Pinned: `tests/test_backend_parity_ttl.py::test_a_failed_batch_is_a_documented_divergence`, `tests/test_batch.py::test_a_second_claim_in_one_batch_is_refused_and_the_rest_commits` |
 | An aware `time` in a `TimeField` / `SortedField(type=time)` (M1.1) | stored with its offset (`isoformat()`) | `ValueError` naming the field: a `time` column holds wall-clock time only. Use a `DatetimeField` when the offset matters. Pinned: `tests/postgres/test_postgres_fields.py::test_an_aware_time_is_refused` |
 | `push()` on a capped `ListField` whose record was deleted (M1.1) | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
 | `load_raw_hash`, `Query.keys(catchall=/clean=)` | Redis debug and inspection APIs | raise `BackendCapabilityError` |

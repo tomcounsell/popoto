@@ -439,11 +439,11 @@ def _record_id(model: Any, member_key: str) -> Any:
 
 
 def _backend_interval(
-    backend: Any, model: Any, field_name: str, member_key: str
+    backend: Any, model: Any, field_name: str, member_key: str, uow: Any = None
 ) -> "Optional[dict[str, Any]]":
     """The member's interval and chain links on a non-Redis backend: the five
     scores and links Redis keeps for it, ``None`` for a record that does not
-    exist."""
+    exist. Read on ``uow``'s connection when one is given (#776)."""
     return cast(
         "Optional[dict[str, Any]]",
         backend.field_call(
@@ -451,6 +451,7 @@ def _backend_interval(
             field_name,
             "interval",
             _record_id(model, member_key),
+            uow=uow,
         ),
     )
 
@@ -1424,7 +1425,15 @@ class ValidityField(Field):
             return
         backend = non_redis_backend(model_instance)
         if backend is not None:
-            state = _backend_interval(backend, model_instance, field_name, member_key)
+            from ..batch import open_unit_of
+
+            state = _backend_interval(
+                backend,
+                model_instance,
+                field_name,
+                member_key,
+                uow=open_unit_of(kwargs.get("pipeline"), backend),
+            )
             stored = None if state is None else state["valid_from"]
         else:
             stored = get_REDIS_DB().zscore(

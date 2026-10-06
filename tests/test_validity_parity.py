@@ -715,11 +715,15 @@ class TestSameTransactionSuccessor:
         assert _links(new) == (None, _key(old))
         assert _names(ParityClaim.query.filter(validity__current=True)) == ["new"]
 
-    def test_a_successor_not_in_the_unit_is_refused_and_nothing_applies(self):
+    def test_a_successor_not_in_the_unit_is_refused_and_nothing_applies(
+        self, outside_unit
+    ):
         old = _save("old")
         with pytest.raises(Exception) as info:
             with _Unit(ParityClaim) as unit:
-                _save("bystander").save(pipeline=unit)
+                with outside_unit(ParityClaim):  # an autocommit save (#776)
+                    bystander = _save("bystander")
+                bystander.save(pipeline=unit)
                 SupersessionProtocol.invalidate(
                     old, superseded_by=ParityClaim(name="ghost"), pipeline=unit
                 )

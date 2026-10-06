@@ -1800,30 +1800,32 @@ class EventsMixin:
         ready: set[str] = self.__dict__.setdefault("_engine_ready", set())
         if "popoto_stream" in ready:
             return names
-        rows, _ = self._run(
-            "SELECT count(*) FROM pg_tables WHERE schemaname = %s AND "
-            "tablename = ANY(%s::text[])",
-            [self.schema, list(STREAM_TABLES)],
-        )
-        if int(rows[0][0]) < len(STREAM_TABLES):
-            if not _schema_auto():
-                from ..types import SchemaDriftError
+        # First-use DDL commits on its own connection (#776).
+        with self.second_connection_ok():  # type: ignore[attr-defined]
+            rows, _ = self._run(
+                "SELECT count(*) FROM pg_tables WHERE schemaname = %s AND "
+                "tablename = ANY(%s::text[])",
+                [self.schema, list(STREAM_TABLES)],
+            )
+            if int(rows[0][0]) < len(STREAM_TABLES):
+                if not _schema_auto():
+                    from ..types import SchemaDriftError
 
-                raise SchemaDriftError(
-                    f"{self.schema}.popoto_stream tables do not exist and "
-                    "POPOTO_SCHEMA_AUTO=0"
+                    raise SchemaDriftError(
+                        f"{self.schema}.popoto_stream tables do not exist and "
+                        "POPOTO_SCHEMA_AUTO=0"
+                    )
+                bodies = _table_bodies(q)
+                sql, params = engine_table_ddl(
+                    self.schema, STREAM_TABLES[0], bodies[STREAM_TABLES[0]]
                 )
-            bodies = _table_bodies(q)
-            sql, params = engine_table_ddl(
-                self.schema, STREAM_TABLES[0], bodies[STREAM_TABLES[0]]
-            )
-            for name in STREAM_TABLES[1:]:
-                sql += f"; CREATE TABLE IF NOT EXISTS {q(name)} ({bodies[name]})"
-            sql += (
-                f"; CREATE INDEX IF NOT EXISTS {quote_ident('popoto_stream_pending_owner')} "
-                f"ON {q('popoto_stream_pending')} (stream, grp, consumer)"
-            )
-            self._run(sql, params, write=True)
+                for name in STREAM_TABLES[1:]:
+                    sql += f"; CREATE TABLE IF NOT EXISTS {q(name)} ({bodies[name]})"
+                sql += (
+                    f"; CREATE INDEX IF NOT EXISTS {quote_ident('popoto_stream_pending_owner')} "
+                    f"ON {q('popoto_stream_pending')} (stream, grp, consumer)"
+                )
+                self._run(sql, params, write=True)
         ready.add("popoto_stream")
         return names
 

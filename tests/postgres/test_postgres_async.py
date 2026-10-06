@@ -44,6 +44,20 @@ pytest.importorskip("greenlet")
 from popoto.backends.postgres import aio  # noqa: E402
 
 
+class _second_ok:
+    """``async with _second_ok(pg)``: ``pg.second_connection_ok()`` as an
+    async context manager, to stack with ``twin.transaction()`` (#776)."""
+
+    def __init__(self, backend):
+        self._cm = backend.second_connection_ok()
+
+    async def __aenter__(self):
+        self._cm.__enter__()
+
+    async def __aexit__(self, *exc):
+        return self._cm.__exit__(*exc)
+
+
 class AioNote(popoto.Model):
     key = popoto.KeyField()
     n = popoto.IntField(default=0)
@@ -479,7 +493,8 @@ async def test_async_transaction_commits_and_rolls_back(pg):
     async with twin.transaction() as uow:
         await AioNote(key="t1").async_save(pipeline=uow)
         await AioNote(key="t2").async_save(pipeline=uow)
-        assert await AioNote.query.async_count() == 0  # not committed yet
+        with pg.second_connection_ok():  # a reader outside the unit (#776)
+            assert await AioNote.query.async_count() == 0  # not committed yet
     assert await AioNote.query.async_count() == 2
     with pytest.raises(RuntimeError, match="boom"):
         async with twin.transaction() as uow:
@@ -753,7 +768,8 @@ async def test_a_task_colliding_with_its_own_open_transaction_is_refused_at_once
         started = time.monotonic()
         with pytest.raises(BackendCapabilityError, match="this task or thread holds"):
             await AioNote(key="own", n=2).async_save()
-        async with twin.transaction() as inner:
+        # A nested unit is a second connection on purpose (#776).
+        async with _second_ok(pg), twin.transaction() as inner:
             with pytest.raises(
                 BackendCapabilityError, match="this task or thread holds"
             ):
@@ -876,7 +892,8 @@ def test_a_busy_async_pool_is_not_an_outage(pg, monkeypatch):
         twin = aio.get_async_backend(AioNote)
         await AioNote.async_create(key="x")  # this loop's pool: 2 connections
         dropped = pg.health.dropped_writes
-        async with twin.transaction(), twin.transaction():
+        # Exhausting the pool from one task is the point (#776's guard off).
+        async with _second_ok(pg), twin.transaction(), twin.transaction():
             with pytest.raises(BackendBusyError) as write:
                 await AioNote(key="y").async_save()
             with pytest.raises(BackendBusyError):
@@ -1130,7 +1147,12 @@ def test_a_busy_sync_pool_is_not_an_outage(pg, monkeypatch):
     plan = popoto.backends.QueryPlan()
     try:
         assert backend.count(spec, plan) == 1  # this backend's own pool of 2
-        with backend.transaction(), backend.transaction():
+        # Exhausting the pool from one thread is the point (#776's guard off).
+        with (
+            backend.second_connection_ok(),
+            backend.transaction(),
+            backend.transaction(),
+        ):
             with pytest.raises(BackendBusyError):
                 backend.count(spec, plan)
             with pytest.raises(BackendBusyError):
@@ -1194,7 +1216,8 @@ def test_an_async_save_joins_a_batch_on_the_loop(pg, admin, monkeypatch):
         assert await AioStream(name="a").async_save(pipeline=pipe) is pipe
         await AioStream(name="b").async_save(pipeline=pipe)
         assert entries() == base  # nothing before the commit
-        assert await AioStream.query.async_get(name="a") is None
+        with pg.second_connection_ok():  # a reader outside the batch (#776)
+            assert await AioStream.query.async_get(name="a") is None
         with pytest.raises(aio.BridgeMisuseError, match="async_execute"):
             pipe.execute()
         assert await pipe.async_execute() == []
