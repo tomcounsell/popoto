@@ -3822,7 +3822,32 @@ through popoto on Postgres and compares it with the snapshot:</p>
   row whose save committed without its carried state therefore fails the
   run instead of hiding behind a native-looking row. A row the run wrote
   and the application then changed before a resume fails it too; inspect
-  it.</li>
+  it. A row another source has won since is left out here and checked by
+  <strong>superseded by merge</strong> instead.</li>
+<li><strong>superseded by merge</strong> (only when there is such a row): a row this run
+  wrote that another source then won under the merge rule. This happens
+  when a run is resumed after another store merged into the schema (see
+  <em>Resume</em>). The row no longer holds this run's snapshot, and it should
+  not. It is checked against the winner instead. A row is a candidate when
+  its <code>_migrated_from</code> names another source and lists this source's
+  snapshot of exactly this payload in <code>losers</code>, which is what the winning
+  run writes. <code>_migrated_from</code> cannot vouch for itself, so the candidate
+  counts as superseded only when the tool's own tables back the claimed
+  winner: its run is in <code>popoto_migration_run</code> with the same source and
+  snapshot, that run's ledger row for the key is <code>done</code> with a write
+  decision and the same <code>payload_sha</code>, the <code>updated_at</code> the ledger
+  recorded is the claimed one, and the row's <code>_updated_at</code> column holds it.
+  A superseded row must then hold exactly the winner's payload (values and
+  carried state), and the winner must beat this run's copy under the merge
+  rule, decided on the ledger's recorded <code>updated_at</code> and the run's source
+  id. Its <code>_created_at</code>, <code>_estimated_fields</code>, embedding hashes and staged
+  reads must be what the winner's ledger says it wrote. A candidate that
+  fails any of these is listed as <code>unconfirmed</code> and is not treated as
+  superseded: the <code>records</code> and <code>carried state</code> checks compare it with this
+  run's snapshot, so the run is a mismatch. So is a row popoto saved
+  natively (<code>_migrated_from</code> is <code>NULL</code>), which is never a candidate. A
+  ledger written before the <code>wrote</code> column existed has no recorded values,
+  so a row won by such a run is <code>unconfirmed</code>; inspect it.</li>
 <li><strong>staged reads</strong> match the inventory.</li>
 <li><strong><code>check_indexes()</code></strong> reports no drift.</li>
 </ul>
@@ -3918,7 +3943,20 @@ Postgres transaction</strong>:</p>
 the batch or all of it. There is no row without its carried state or its
 provenance. Re-run with <code>--resume</code> and the same <code>--run-dir</code>: it skips the
 committed batches and loads the rest. Without <code>--resume</code>, the committed
-batches make the target non-empty, and the run is refused. A deadlock or
+batches make the target non-empty, and the run is refused.</p>
+<p>A plain <code>--resume</code> continues only into a table that holds nothing but this
+run's rows. If it holds rows the run did not write, the resume is refused
+too, and the message says so and names <code>--resume --merge</code>. Those rows can
+have been there before the run started, when the run itself began with
+<code>--merge</code> into a table another store had already loaded. Or they were
+written while the run was down: by popoto saving one of the run's
+committed rows natively, which clears its <code>_migrated_from</code>, or by another
+store's <code>--merge</code>. Either way, re-run with <code>--resume --merge</code> and the same
+<code>--run-dir</code>. The batches still to load
+then go through the merge rule, which never overwrites a natively saved
+row. A row the run wrote and the application then changed is reported by
+<code>records</code> and <code>carried state</code> as a mismatch, so inspect it before you sign
+off. A deadlock or
 serialization failure rolls the batch back and runs it again, up to three
 times.</p>
 <p>Holding a batch's locks to its commit costs little. On a 1500-record store
@@ -3951,17 +3989,29 @@ not.</p>
   the ledger's <code>payload_sha</code>. The resume then reports it as
   <code>conflict_native</code> and leaves it alone.</li>
 </ul>
-<p>One situation needs a manual step after a resume:</p>
+<p><strong>Another source merged while this run was down.</strong> Say run A crashed after
+some of its batches committed, and source B then ran with <code>--merge</code>. B sees
+A's committed rows as ordinary migrated rows, and the merge rule decides
+each shared key. Where B's copy is newer, B wins the row (<code>won_merge</code>) and
+lists A's snapshot in the row's <code>_migrated_from.losers</code>. Resume A with
+<code>--resume --merge</code> and the same <code>--run-dir</code>. Its verification checks the
+rows B won against B's provenance, under <strong>superseded by merge</strong>, rather
+than against A's snapshot, so A reaches <code>clean</code> when the data is what the
+merge rule says. Earlier versions compared those rows with A's snapshot and
+reported a mismatch for every row B had won, although the data was correct.</p>
+<p>One situation, which only a run from before batches were atomic can cause,
+needs a manual step after a resume:</p>
 <ul>
-<li><strong>Another source merged while this run was down.</strong> This applies only to
-  a run from before batches were atomic: an atomic batch leaves no
-  half-written rows. If source B ran with <code>--merge</code> after A crashed and
-  before A resumed, A's half-written rows looked native to B. B reported those keys as <code>conflict_native</code> and did
-  not write them, yet its verdict is still <code>clean</code>. After A's resume
-  finishes, run B again: the same snapshot, <code>--merge</code> and a <strong>new</strong>
-  <code>--run-dir</code>. Its rows then go through the merge rule (<code>won_merge</code>,
-  <code>lost_merge</code> or <code>deduplicated</code>). Do this for every source that ran in
-  between and reported <code>conflict_native</code>, in the order they first ran.</li>
+<li><strong>Half-written rows of an old run.</strong> An atomic batch leaves no
+  half-written rows. If an older run A crashed between import and
+  provenance, and source B then ran with <code>--merge</code> before A resumed, A's
+  half-written rows looked native to B. B reported those keys as
+  <code>conflict_native</code> and did not write them, yet its verdict is still
+  <code>clean</code>. After A's resume finishes, run B again: the same snapshot,
+  <code>--merge</code> and a <strong>new</strong> <code>--run-dir</code>. Its rows then go through the merge
+  rule (<code>won_merge</code>, <code>lost_merge</code> or <code>deduplicated</code>). Do this for every
+  source that ran in between and reported <code>conflict_native</code>, in the order
+  they first ran.</li>
 </ul>
 <p>The tool keeps two tables in the target schema: <code>popoto_migration_run</code> (one
 row per run, with its status, progress and final report) and
@@ -3985,7 +4035,7 @@ row per run, with its status, progress and final report) and
 </tr>
 <tr>
 <td><code>2</code></td>
-<td>Refused before reading. The causes are: a bad RDB; a missing <code>redis-server</code>; a model Postgres cannot store (<code>DataFrameField</code>); a target schema that already holds rows (pass <code>--merge</code> or <code>--resume</code>); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing <code>--report-key</code>; or an empty snapshot (<code>--allow-empty</code>).</td>
+<td>Refused before reading. The causes are: a bad RDB; a missing <code>redis-server</code>; a model Postgres cannot store (<code>DataFrameField</code>); a target schema that already holds rows (pass <code>--merge</code> or <code>--resume</code>, or <code>--resume --merge</code> when a resumed run's table also holds rows it did not write); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing <code>--report-key</code>; or an empty snapshot (<code>--allow-empty</code>).</td>
 </tr>
 <tr>
 <td><code>3</code></td>
