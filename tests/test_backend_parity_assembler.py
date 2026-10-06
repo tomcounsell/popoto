@@ -24,6 +24,7 @@ need both servers in one test, so they live in
 ``tests/postgres/test_postgres_assembler.py``.
 """
 
+import contextlib
 import logging
 import math
 import time
@@ -48,6 +49,7 @@ from popoto.fields.decaying_sorted_field import DecayingSortedField  # noqa: E40
 from popoto.fields.embedding_field import EmbeddingField  # noqa: E402
 from popoto.fields.existence_filter import ExistenceFilter  # noqa: E402
 from popoto.models.query import QueryBuilder  # noqa: E402
+from popoto.recipes import context_assembler as _assembler_module  # noqa: E402
 from popoto.recipes.context_assembler import (  # noqa: E402
     COMPETITIVE_SUPPRESSION_SIGNAL,
     ContextAssembler,
@@ -308,6 +310,34 @@ def _save(model, **kwargs):
     return instance
 
 
+class _FrozenTime:
+    """The ``time`` module with ``time()`` pinned; everything else is real."""
+
+    def __init__(self, at):
+        self._at = float(at)
+
+    def time(self):
+        return self._at
+
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+
+@contextlib.contextmanager
+def assembler_clock(at):
+    """Pin the assembler's *now* to ``at`` (epoch seconds) (#780).
+
+    The score proxy reads ``time.time()`` in ``context_assembler`` and hands
+    it to the decay evaluation on both legs (``rank_decayed(now=...)``), so
+    pinning that one module's clock makes ``backdate(..., at - age)`` mean an
+    age of exactly ``age`` -- no gap between the backdate and the read for
+    load to widen. Only that module is patched: the store, the driver and
+    the pool keep the real clock.
+    """
+    with patch.object(_assembler_module, "time", _FrozenTime(at)):
+        yield
+
+
 # -- ExistenceFilter and feeling-of-knowing ------------------------------------
 
 
@@ -437,12 +467,13 @@ def test_proxy_matches_top_by_decay(backend):
     backdate(backend, recs[0], now - 1 * DAY)
     backdate(backend, recs[1], now - 4 * DAY)
     ranked = PADecay.query.filter(agent_id="a").top_by_decay("relevance", n=10)
-    proxy = _score_proxy_for_records(
-        recs, model_class=PADecay, score_weights={"relevance": 1.0}
-    )
+    with assembler_clock(now):
+        proxy = _score_proxy_for_records(
+            recs, model_class=PADecay, score_weights={"relevance": 1.0}
+        )
     assert ranked[0].db_key.redis_key == max(proxy, key=proxy.get)
     # 4 * 4**-0.5 = 2 beats 1 * 1**-0.5 = 1, to the script's %.14g.
-    assert math.isclose(proxy[recs[1].db_key.redis_key], 2.0, rel_tol=1e-6)
+    assert math.isclose(proxy[recs[1].db_key.redis_key], 2.0, rel_tol=1e-9)
 
 
 def test_a_record_outside_its_partition_scores_none(backend):
@@ -523,14 +554,16 @@ def test_linearity_in_base_score_under_a_neutral_confidence_corpus(backend):
         r = _save(PADecayConf, agent_id="a", content=f"n{i}", strength=w)
         plant_confidence(backend, r, 0.5)
         recs.append(r)
+    now = time.time()
     for r in recs:
-        backdate(backend, r, time.time() - 10 * DAY)
-    proxy = _score_proxy_for_records(
-        recs, model_class=PADecayConf, score_weights={"relevance": 1.0}
-    )
+        backdate(backend, r, now - 10 * DAY)
+    with assembler_clock(now):
+        proxy = _score_proxy_for_records(
+            recs, model_class=PADecayConf, score_weights={"relevance": 1.0}
+        )
     vals = sorted(proxy.values())
     for got, w in zip(vals, (1.0, 3.0, 9.0)):
-        assert math.isclose(got, w * 10 ** (-0.5), rel_tol=1e-6)
+        assert math.isclose(got, w * 10 ** (-0.5), rel_tol=1e-9)
 
 
 def test_proxy_is_neutral_when_no_evidence_has_been_recorded(backend):
@@ -538,16 +571,19 @@ def test_proxy_is_neutral_when_no_evidence_has_been_recorded(backend):
         _save(PADecayConf, agent_id="a", content=f"z{i}", strength=w)
         for i, w in enumerate((1.0, 3.0))
     ]
+    now = time.time()
     for r in recs:
-        backdate(backend, r, time.time() - 10 * DAY)
-    proxy = _score_proxy_for_records(
-        recs, model_class=PADecayConf, score_weights={"relevance": 1.0}
-    )
-    # rel_tol 1e-6, not 1e-9: the decay is ~t^-0.5 at t = 10 days, so each
-    # millisecond between backdate() and the proxy read moves the value by
-    # ~6e-10 relative; a 2.6 ms gap in a full run failed at 1e-9.
+        backdate(backend, r, now - 10 * DAY)
+    # The proxy reads the same pinned `now` the backdate used (#780): the age
+    # is exactly 10 days, so the tight tolerance holds however long the
+    # writes take. (Unpinned, each millisecond between backdate() and the
+    # read moved the value by ~6e-10 relative, and 1e-9 failed under load.)
+    with assembler_clock(now):
+        proxy = _score_proxy_for_records(
+            recs, model_class=PADecayConf, score_weights={"relevance": 1.0}
+        )
     for r, w in zip(recs, (1.0, 3.0)):
-        assert math.isclose(proxy[r.db_key.redis_key], w * 10 ** (-0.5), rel_tol=1e-6)
+        assert math.isclose(proxy[r.db_key.redis_key], w * 10 ** (-0.5), rel_tol=1e-9)
 
 
 def test_emit_trace_scores_are_the_decayed_proxy(backend):

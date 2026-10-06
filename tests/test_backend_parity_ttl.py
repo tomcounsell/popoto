@@ -19,13 +19,11 @@ from popoto import ConfidenceField, DecayingSortedField
 from popoto.backends import BackendCapabilityError, SchemaDriftError
 from popoto.exceptions import ModelException
 from popoto.fields.co_occurrence_field import CoOccurrenceField
+from popoto.fields.constants import Defaults
 from popoto.fields.existence_filter import ExistenceFilter
+from tests.ttl_lapse import SHORT, lapse
 
 pytestmark = [pytest.mark.conformance]
-
-#: Seconds a short-lived record lives, and how long a test waits past it.
-SHORT = 1
-PAST = 1.6
 
 
 class ParityTtl(popoto.Model):
@@ -89,9 +87,10 @@ def test_a_fractional_ttl_is_a_documented_divergence(backend):
 
 
 def test_count_after_expiry_is_a_documented_divergence(backend):
-    _short(ParityTtl(group="g", name="short")).save()
+    short = _short(ParityTtl(group="g", name="short"))
+    short.save()
     _forever(ParityTtl(group="g", name="long")).save()
-    time.sleep(PAST)
+    lapse(backend, short)
     # Redis counts the class set, which keeps the expired member until a
     # hydrating read purges it; Postgres counts live rows.
     assert ParityTtl.query.count() == (2 if backend.is_redis else 1)
@@ -103,8 +102,9 @@ def test_ranking_after_expiry_is_a_documented_divergence(backend):
     _forever(ParityTtlRanked(name="older", text="kept")).save()
     time.sleep(0.05)
     # Saved last, so its decay clock is the newest: it ranks first.
-    _short(ParityTtlRanked(name="newer", text="gone")).save()
-    time.sleep(PAST)
+    newer = _short(ParityTtlRanked(name="newer", text="gone"))
+    newer.save()
+    lapse(backend, newer)
     top = [r.name for r in ParityTtlRanked.query.top_by_decay(n=1)]
     seen = ParityTtlRanked.bloom.might_exist(ParityTtlRanked, "gone")
     if backend.is_redis:
@@ -120,7 +120,7 @@ def test_ranking_after_expiry_is_a_documented_divergence(backend):
 def test_increment_after_expiry_is_a_documented_divergence(backend):
     rec = _short(ParityTtl(group="g", name="i", hits=5))
     rec.save()
-    time.sleep(PAST)
+    lapse(backend, rec)
     if backend.is_redis:
         # The script HSETs the field onto a fresh key: hits = 0 + 1.
         assert rec.atomic_increment("hits", 1) == 1
@@ -168,7 +168,7 @@ def test_state_keyed_by_an_expired_record_is_a_documented_divergence(backend):
     rec = _short(ParityTtlConfidence(name="c"))
     rec.save()
     assert ConfidenceField.update_confidence(rec, "confidence", 1.0) == 0.75
-    time.sleep(PAST)
+    lapse(backend, rec)
     # Both legs refuse a signal to a record that expired.
     with pytest.raises(TypeError, match="saved model instance"):
         ConfidenceField.update_confidence(rec, "confidence", 1.0)
@@ -182,7 +182,7 @@ def test_a_save_over_an_expired_key_is_a_documented_divergence(backend):
     rec = _short(ParityTtlConfidence(name="s"))
     rec.save()
     ConfidenceField.update_confidence(rec, "confidence", 1.0)
-    time.sleep(PAST)
+    lapse(backend, rec)
     again = _forever(ParityTtlConfidence(name="s"))
     again.save()
     # HSET makes a new hash that inherits the old companion entry; Postgres
@@ -280,14 +280,20 @@ def test_edges_to_never_saved_endpoints_survive_maintenance(backend):
         assert dangling == {"dangling": 3}
 
 
-def test_a_ttl_reaped_records_edges_survive_maintenance(backend):
+def test_a_ttl_reaped_records_edges_survive_maintenance(backend, monkeypatch):
+    # reap() never raises: a pool checkout or row lock it cannot get within
+    # PG_REAPER_LOCK_TIMEOUT_MS (50 ms) skips the run and returns []. That is
+    # its contract on a write path, but here it made the assertion below a
+    # race against machine load (#772): give this one forced run time to
+    # check out a connection. What it deletes is unchanged.
+    monkeypatch.setattr(Defaults, "PG_REAPER_LOCK_TIMEOUT_MS", 30_000)
     near = ParityEdges._meta.fields["near"]
     a = ParityEdges.create(name="a")
     b = _short(ParityEdges(name="b"))
     b.save()
     ka, kb = a.db_key.redis_key, b.db_key.redis_key
     near.link(ParityEdges, ka, kb, 0.5)
-    time.sleep(PAST)
+    lapse(backend, b)
     if not backend.is_redis:
         from popoto.backends import get_backend
         from popoto.backends.postgres import ttl as ttl_mod

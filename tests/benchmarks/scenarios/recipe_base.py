@@ -56,8 +56,11 @@ def _build_recipe_model_class(prefix, overrides):
     wf_min = overrides.get("_wf_min_threshold", 0.2)
     wf_priority = overrides.get("_wf_priority_threshold", 0.7)
 
-    # Use a unique class name to avoid Redis key collisions
-    safe_prefix = prefix.replace(":", "").replace("-", "")[:8]
+    # Use a unique class name to avoid Redis key collisions. Keep the whole
+    # sanitized prefix: Scenario's prefix is "bench:<8 hex>:", and the former
+    # [:8] truncation kept "bench" plus only three hex digits, so two
+    # scenarios shared a class (and its whole keyspace) 1 time in 4096 (#772).
+    safe_prefix = prefix.replace(":", "").replace("-", "")
     class_name = f"RecipeMem{safe_prefix}"
 
     def compute_filter_score(self):
