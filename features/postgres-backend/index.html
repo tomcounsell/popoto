@@ -18,7 +18,7 @@
         <link rel="prev" href="../../testing/">
       
       
-        <link rel="next" href="../../reference/">
+        <link rel="next" href="../redis-to-postgres-migration/">
       
       
         
@@ -377,6 +377,25 @@
     
   
   Postgres Backend (v2)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../redis-to-postgres-migration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Redis to Postgres Migration
 
       </a>
     </li>
@@ -3387,6 +3406,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../redis-to-postgres-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Redis to Postgres Migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../reference/" class="md-nav__link">
         
   
@@ -5546,8 +5592,11 @@ the next section.</p>
 </tr>
 </tbody>
 </table>
-<p>Merging several Redis stores into one schema and the <code>_migrated_from</code>
-provenance also remain #756's work.</p>
+<p>The one-off copy itself is
+<a href="../redis-to-postgres-migration/">Redis to Postgres Migration</a>: it serves the
+snapshot from a private <code>redis-server</code>, handles each row of this table,
+writes <code>_migrated_from</code>/<code>_estimated_fields</code>, and merges several machines'
+stores into one schema.</p>
 <h2 id="geo-m5">Geo (M5)<a class="headerlink" href="#geo-m5" title="Permanent link">&para;</a></h2>
 <p>A <code>GeoField</code> needs no extension: plain columns reproduce what Redis does
 with a geo set, from its own C (<code>geohash.c</code>, <code>geohash_helper.c</code>, <code>geo.c</code> at

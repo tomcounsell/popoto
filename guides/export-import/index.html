@@ -391,6 +391,25 @@
   
   
     <li class="md-tabs__item">
+      <a href="../../features/redis-to-postgres-migration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Redis to Postgres Migration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
       <a href="../../reference/" class="md-tabs__link">
         
   
@@ -3214,6 +3233,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../../features/redis-to-postgres-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Redis to Postgres Migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../reference/" class="md-nav__link">
         
   
@@ -3788,7 +3834,12 @@ destination's old record in place, and a naive <code>EXISTS</code>-only check wo
 misreported that as success.</p>
 <h2 id="resuming-an-interrupted-import">Resuming an interrupted import<a class="headerlink" href="#resuming-an-interrupted-import" title="Permanent link">&para;</a></h2>
 <p>Import is not atomic across records — a crash partway through leaves some records
-written and some not. The recovery path is to re-run the same file with
+written and some not. (On a model bound to Postgres you can pass
+<code>uow=backend.transaction()</code>'s unit: every record's save and the restore of its
+carried state then run in your transaction, a savepoint per record, and commit
+when you commit. A record that fails there is rolled back whole and reported
+<code>errored</code>, never <code>partial</code>. The Redis-to-Postgres migration loads each batch this
+way.) The recovery path is to re-run the same file with
 <code>on_conflict="overwrite"</code>: already-landed records overwrite themselves with identical
 values (a no-op in effect), and records that had not yet been written land normally.
 Because keys are always preserved, this converges rather than producing duplicates.</p>

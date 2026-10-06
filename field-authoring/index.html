@@ -391,6 +391,25 @@
   
   
     <li class="md-tabs__item">
+      <a href="../features/redis-to-postgres-migration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Redis to Postgres Migration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
       <a href="../reference/" class="md-tabs__link">
         
   
@@ -3122,6 +3141,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../features/redis-to-postgres-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Redis to Postgres Migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../reference/" class="md-nav__link">
         
   
@@ -3538,7 +3584,10 @@ has been constructed and saved — so any structure <code>on_save</code> already
 and can be overwritten or supplemented. <code>state</code> is whatever <code>export_state</code> returned
 for this field on the exporting side, or <code>None</code> if nothing was carried. The base
 implementation is a no-op, which is correct whenever there is no carried state to
-restore.</p>
+restore. It may receive a <code>uow=</code> keyword: a Postgres unit of work the import
+runs in (<code>import_records(uow=...)</code>). An override whose state lives on a
+non-Redis backend passes it on to the backend call, so the restore commits with
+the record's save; accept <code>**kwargs</code> so it can arrive.</p>
 <p>Both methods resolve their own configuration from
 <code>model_instance._meta.fields[field_name]</code> rather than taking it as an argument,
 mirroring <code>on_save</code>'s existing shape.</p>
