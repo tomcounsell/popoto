@@ -23,11 +23,35 @@ URL, host or port option.
 
 **The tool never connects to a live Redis.** You freeze the writers, take a
 `BGSAVE`, and copy the RDB file and the content directory. The tool copies
-that RDB into a private temporary directory and starts its own
-`redis-server` on a random loopback port, with persistence switched off
-(`--save ""`, `--appendonly no`). It reads only from that process,
-identified by its `run_id`. The process and its directory are removed when
-the run ends, whether it succeeds or fails.
+that RDB into a private temporary directory (mode `0700`) and starts its own
+`redis-server` with persistence switched off (`save ""`, `appendonly no`).
+It reads only from that process, identified by its `run_id`.
+
+**The copy is never reachable from outside the run.** The throwaway server
+listens on no TCP port at all (`port 0`). It listens only on a unix socket
+inside the private directory (`unixsocketperm 700`). It also requires a
+random password (`requirepass`) and runs with `protected-mode yes`. The
+password is written to a `0600` config file, never to the command line,
+where `ps` would show it. A port collision with another server cannot
+happen, so the tool never probes a server it did not start.
+
+**Nothing outlives the run, however it ends.** Before any copy of the store
+exists, the tool starts a small watchdog process in a session of its own.
+The watchdog uses only the standard library and cannot connect to anything.
+It spawns the throwaway server and is told every private directory: the RDB
+copy, the content copy and the socket. When the tool exits, the watchdog
+stops the server and deletes those directories. That holds whether the run
+succeeded, raised, or was killed:
+
+- `SIGTERM`, `SIGHUP` (what a dropped SSH session sends) and `SIGINT`
+  (Ctrl-C) unwind the run normally.
+- `SIGKILL` cannot be caught. The kernel closes the tool's end of the
+  watchdog's pipe, and the watchdog cleans up within a fraction of a second.
+
+The watchdog runs in its own session, so a terminal's `SIGHUP` or `SIGINT`
+never reaches it or the server directly. The tests kill the tool with each
+of the four signals mid-run. Each time they check that no server, watchdog
+or directory is left, and that the server never had a TCP socket.
 
 Two read paths reach the throwaway server, and both are checked:
 
@@ -39,11 +63,11 @@ Two read paths reach the throwaway server, and both are checked:
   `ForbiddenCommand`.
 - **Record export** reuses `popoto.transfer.export_records`, which reads
   through popoto's global client. The tool rebinds that client to the
-  throwaway server and checks the binding. It compares the host and port
-  first, from the connection parameters, so a client still bound to a live
-  server (popoto's default database 0 included) is refused with
-  `LiveRedisRefused` before any command reaches it. It then compares the
-  `run_id`.
+  throwaway server's socket and checks the binding. It compares the
+  connection parameters first. A client with a host and port, such as
+  popoto's default database 0 on a live server, is refused with
+  `LiveRedisRefused` before any command reaches it. So is any other socket.
+  It then compares the `run_id`.
 
 Some popoto read paths write: hydration purges orphan index entries, and
 reads stage access-tracker entries. Those writes land in the disposable
@@ -78,16 +102,32 @@ into a scratch Postgres database, without freezing anything. Read the report
    which holds `.embeddings/<Model>/*.npy` and any `ContentField` files) into
    an archive directory. These are the only commands you send the live
    server, and none of them changes data.
-4. **Dry run.** Run the tool with `--dry-run`. It reads the snapshot,
+4. **Dry run.** Run the tool with `--dry-run` and a run directory of its
+   own, say `--run-dir /archive/laptop-1/dry-run`. It reads the snapshot,
    writes `inventory.json`, `export/`, `transform/` and the report, and
-   writes nothing to Postgres. Read the lossy counts.
-5. **Migrate.** Run it without `--dry-run`. Its exit code is `0` only when
-   verification is clean.
-6. **Verify.** Read `report.txt`. Every check must be `ok`. The verdict is
-   `clean`, and the report is signed (`sign_off.sha256` covers the whole
-   JSON). *No-go rollback: restart the writers on Redis unchanged. The
-   migrated rows can stay, because nothing reads them yet, or be deleted by
-   their `_migrated_from->>'run_id'`.*
+   writes nothing to Postgres. Read the lossy counts. A dry run *claims* its
+   run directory (it writes `run.json`). If step 5 used the same directory,
+   it would be refused unless you passed `--resume`, so give the real run a
+   fresh one.
+5. **Migrate.** Run it without `--dry-run`, with `--run-dir
+   /archive/laptop-1/migration` and, for tamper evidence, `--report-key`
+   (see step 6). Its exit code is `0` only when verification is clean.
+6. **Verify.** Read `report.txt`. Every check must be `ok` and the verdict
+   must be `clean`. The report is sealed two ways:
+   - `sign_off.checksum_sha256` covers the whole JSON, including the
+     operator and time. It catches an accidental edit or a truncated copy.
+     It is **not** tamper evidence, because anyone who edits the report can
+     recompute it.
+   - `sign_off.hmac_sha256` is present only when you pass `--report-key
+     FILE`. The file holds at least 16 secret bytes, for example from
+     `openssl rand -hex 32`. Without the key, nobody can recompute the HMAC
+     after an edit. Keep the key file somewhere other than the archive.
+     Check a report with
+     `popoto.migrate_redis_to_postgres.verify_report(data, key)`.
+
+   *No-go rollback: restart the writers on Redis unchanged. The migrated
+   rows can stay, because nothing reads them yet, or be deleted by their
+   `_migrated_from->>'run_id'`.*
 7. **Repoint.** Set `Meta.backend = "postgres"` on the model (or
    `POPOTO_BACKEND=postgres`) and deploy. Restart the writers.
 8. **Late-write check.** Compare `rdb_changes_since_last_save` with the
@@ -106,7 +146,9 @@ Postgres do not exist in Redis.
 
 Each machine's store is one run, with its own `--source-id` (the machine
 name, say). The first run loads into an empty schema. Every later run passes
-`--merge`. Per key:
+`--merge`. Run the stores one after another. Each run holds a Postgres
+advisory lock on the target schema from preflight to the end. A second run
+started meanwhile is refused (exit `2`) before it reads anything. Per key:
 
 | Situation | Decision | What happens |
 |---|---|---|
@@ -116,12 +158,18 @@ name, say). The first run loads into an empty schema. Every later run passes
 | Differing payload from this source (a newer snapshot) | `updated_delta` | Replaced. This is the delta mechanism. |
 | Differing payload from another source | `won_merge` / `lost_merge` | The later `_updated_at` wins. A tie goes to the greater source id. The loser is logged in the winner's `_migrated_from.losers`. |
 | A row popoto wrote natively (`_migrated_from IS NULL`) | `conflict_native` | Never overwritten. |
+| A row another run left half-written (it crashed between import and provenance) | `conflict_native` | Treated as native. Only the run that wrote it can adopt it (see *Resume*). |
 | A record Postgres cannot store | `rejected` | Not written. Counted, with the reason. |
 
 The payload is the record's normalized export: field values, confidence
 evidence, access counters, validity, edges, cycles and the float32 vector
 digest. The source id appears only in `_migrated_from`. It never becomes part
 of a key, a scope or a partition.
+
+`_migrated_from.duplicates` and `.losers` record each source once. Re-running
+the same snapshot leaves them exactly as they were. A newer snapshot from the
+same source replaces that source's entry. A source that wins drops out of
+`losers`.
 
 Rule order matters only for ties. The final row is the same whichever
 machine loads first, except that the first source of an equal payload is
@@ -192,7 +240,9 @@ is handled as follows:
   import time.
 - `FrequencySketch` restarts at one count per record.
 - A cycle's declared baseline is dropped (#698).
-- Co-occurrence edges are truncated to the destination's `max_edges`.
+- Co-occurrence edges are truncated to the destination's `max_edges`, keeping
+  the highest weights, and weights above the cap are clamped. Both are
+  counted.
 - Geo coordinates are re-saved and rebuilt.
 - An `EventStreamMixin` stream is not carried. The import's saves append one
   event per record to the Postgres stream, so start consumers after the
@@ -212,7 +262,7 @@ omitted.
 | `embedding_file_missing_reembed`, `embedding_dimension_mismatch_reembed` | Vectors left `NULL` for the embedding backfill. |
 | `embedding_files_without_record` | `.npy` files no record names. |
 | `rejected_nul_bytes`, `rejected_id_pattern`, `rejected_content_file_missing` | Records not written. Postgres `text` refuses NUL. |
-| `per_record_ttl_not_carried`, `frequency_sketch_keys_reset`, `cycle_baselines_dropped`, `co_occurrence_edges_truncated`, `event_stream_entries_not_carried`, `write_filter_priority_keys_not_stored` | The gap list above. |
+| `per_record_ttl_not_carried`, `frequency_sketch_keys_reset`, `cycle_baselines_dropped`, `co_occurrence_edges_truncated`, `co_occurrence_weights_clamped`, `event_stream_entries_not_carried`, `write_filter_priority_keys_not_stored` | The gap list above. |
 | `orphan_hashes_recovered` | Record hashes missing from the class set. `export_records` alone cannot see them. They are migrated. |
 | `class_members_without_hash` | Class-set entries with no record. There is nothing to migrate. |
 | `decay_index_score_mismatches` | Decay zset scores that differ from the record's clock. The record's value is the one carried. |
@@ -231,14 +281,22 @@ through popoto on Postgres and compares it with the snapshot:
 - **decay order**: `top_by_decay` (with `no_track()`) per sampled partition,
   on both sides, restricted to this source's keys.
 - **BM25**: `BM25Field.search` on sample queries taken from the records.
-  This check is strict when the two corpora hold the same documents. Once
-  several stores share the table, it reports the mean overlap as
-  information instead.
+  When the two corpora hold the same documents, the ranked top 10 must match
+  exactly. When they differ, because a record was rejected or other stores
+  share the table, scores differ by corpus statistics. Which of this
+  source's records match a query does not differ, because every IDF is
+  positive. The check then compares that set in full on both sides, so it
+  still fails when a record lost its postings. The top-10 overlap is also
+  reported, as information.
+- **tool columns**: the columns the tool writes itself, outside popoto's
+  save path. These are `_created_at`, `_updated_at`, `_estimated_fields`
+  and each embedding's `<f>__hash` (`md5` of the source text wherever a
+  vector landed). They are compared for every row this run wrote.
 - **staged reads** match the inventory.
 - **`check_indexes()`** reports no drift.
 
 Example `report.txt`, from the test fixture (`report.json` holds the same
-data and more detail):
+data and more detail). This run had no `--report-key`:
 
 ```text
 popoto Redis -> Postgres migration (#756): CLEAN
@@ -270,16 +328,21 @@ Lossy and estimated (every non-zero count):
 Verification:
   MigMemory records: ok {"compared": 11, "expected": 11, "mismatched": 0}
   MigMemory check_indexes: ok {"total": 0}
+  MigMemory tool_columns: ok {"compared": 11, "mismatched": 0}
   MigMemory staged_reads: ok {"mismatched": 0}
   MigMemory decay_order:relevance: ok {"partitions": 2, "mismatched": 0}
-  MigMemory bm25:bm25: ok {"queries": 11, "mode": "strict", "mismatched": 0, "mean_overlap": null}
+  MigMemory bm25:bm25: ok {"queries": 11, "mode": "strict", "mismatched": 0, "mean_top_k_overlap": null}
   MigLongTail records: ok {"compared": 2, "expected": 2, "mismatched": 0}
   MigLongTail check_indexes: ok {"total": 0}
+  MigLongTail tool_columns: ok {"compared": 2, "mismatched": 0}
   MigLongTail decay_order:rhythm: ok {"partitions": 1, "mismatched": 0}
   MigTtl records: ok {"compared": 2, "expected": 2, "mismatched": 0}
   MigTtl check_indexes: ok {"total": 0}
+  MigTtl tool_columns: ok {"compared": 2, "mismatched": 0}
 
-Signed off by maintainer at 2026-10-05T22:30:23+00:00; report sha256 9991695a...
+Signed off by maintainer at 2026-10-06T00:18:39+00:00.
+Checksum sha256 f81df632d6180c15... (catches accidental change only: anyone can recompute it).
+No HMAC: the run had no --report-key.
 ```
 
 ## Inventory and stop conditions
@@ -320,6 +383,18 @@ and the same `--run-dir`: it skips the committed batches, adopts the pending
 rows (`resumed`), and continues. Without `--resume`, those rows make the
 target non-empty, and the run is refused.
 
+Adoption is narrow on purpose:
+
+- **Only the same run adopts its pending rows.** The match is on `run_id`.
+  To any other run, including a `--merge` from another machine, a row
+  another run left pending is indistinguishable from a native one, and
+  might have become one. It is treated as native (`conflict_native`) and
+  left alone. Its ledger row stays `pending` for the run that owns it.
+- **Only rows that still hold what the run imported.** If popoto saved a
+  pending row natively after the crash, its re-export no longer hashes to
+  the ledger's `payload_sha`. The resume then reports it as
+  `conflict_native` and leaves it alone.
+
 The tool keeps two tables in the target schema: `popoto_migration_run` (one
 row per run, with its status, progress and final report) and
 `popoto_migration_ledger` (one row per key per run, with its decision).
@@ -330,8 +405,9 @@ row per run, with its status, progress and final report) and
 |---|---|
 | `0` | `clean`, or a finished `--dry-run`. |
 | `1` | The load finished but verification found a mismatch. Read `report.txt`. |
-| `2` | Refused before reading: a bad RDB, a missing `redis-server`, a model Postgres cannot store (`DataFrameField`), a target schema that already holds rows (pass `--merge` or `--resume`), a run directory that belongs to another run, or an empty snapshot (`--allow-empty`). |
+| `2` | Refused before reading. The causes are: a bad RDB; a missing `redis-server`; a model Postgres cannot store (`DataFrameField`); a target schema that already holds rows (pass `--merge` or `--resume`); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing `--report-key`; or an empty snapshot (`--allow-empty`). |
 | `3` | The inventory stopped the run. Nothing was written. |
+| `130` | Interrupted by `SIGTERM`, `SIGHUP` or `SIGINT`. The throwaway server is stopped and its copies are removed. Continue with `--resume` and the same `--run-dir`. |
 
 `redis-server` must be on `PATH` (or passed with `--redis-server`), at the
 same major version as the server that wrote the snapshot.
@@ -355,9 +431,11 @@ safety model and adapts to what shipped:
   `superseded_at` column, so it is not estimated.
 - **Machines.** Several machines merge into one database under the v2 rule
   above, instead of #757's "a primary-key collision aborts".
-- **Packaging.** The tool ships as the module
+- **Packaging.** The tool ships as the package
   `popoto.migrate_redis_to_postgres`, run with `python -m`, instead of a
-  `tools/` directory outside the package. It sits beside `popoto.transfer`,
+  `tools/` directory outside the package. Its `__main__.py` only imports
+  `main` from the package. That way the `ModelMapping` your mapping module
+  imports is the same class the CLI checks. It sits beside `popoto.transfer`,
   not inside it, because `transfer/` is the model-generic driver and is
   pinned never to name a concrete field type
   (`tests/test_transfer_roundtrip.py::TestGenericDriver`). This tool knows

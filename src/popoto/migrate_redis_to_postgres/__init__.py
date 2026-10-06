@@ -15,10 +15,26 @@ erode.
 It has no source-URL, host or port parameter at all. The operator freezes the
 writers, runs ``BGSAVE`` on the live server and copies the RDB file (and the
 content directory that holds ``.npy`` embeddings and ``ContentField`` files);
-the tool then copies that RDB into a private temporary directory, starts its
-own ``redis-server`` on a random loopback port with persistence switched off,
-and reads only from that process, identified by its ``run_id``. The process
-is always stopped and its directory removed, on success and on error alike.
+the tool then copies that RDB into a private (``0700``) temporary directory,
+starts its own ``redis-server`` with persistence switched off, and reads only
+from that process, identified by its ``run_id``. The server listens on **no
+TCP port** (``port 0``): only on a unix socket inside that private directory,
+behind a random ``requirepass`` written to a ``0600`` config file (never the
+command line, where ``ps`` shows it).
+
+**Nothing outlives the run.** Before any copy of the store exists, the tool
+starts a watchdog (``_watchdog.py``, standard library only, in a session of
+its own). The watchdog spawns the server and is told every private directory
+(the RDB copy, the content copy, the socket). When the tool exits for any
+reason -- success, an exception, ``SIGTERM``/``SIGHUP``/``SIGINT`` (all three
+unwind normally), or a ``SIGKILL`` nothing can catch -- its end of the
+watchdog's pipe closes, and the watchdog stops the server and removes the
+directories. A dropped SSH session therefore never leaves the agent's memory
+being served.
+
+**The CLI entry is** ``__main__.py`` **and nothing else.** It imports
+:func:`main` from this package, so the ``ModelMapping`` an operator's
+mapping module imports is the same class the CLI checks against.
 
 **Two read paths, both pinned to the throwaway.** The raw inventory pass goes
 through :class:`ReadOnlyRedis`, whose only constructor takes a
@@ -42,7 +58,11 @@ then writes ``_migrated_from``, ``_estimated_fields``, ``_created_at`` and
 ``_updated_at`` (and the staged-read columns) in a transaction of its own,
 together with its ledger and resume marker. A crash between the two leaves a
 ``pending`` ledger row, which is how a resumed run tells its own half-written
-rows from rows popoto wrote natively.
+rows from rows popoto wrote natively. Only the SAME run (``run_id``) adopts
+its pending rows, and only while each still holds exactly what it imported;
+a row another run left pending, or one popoto saved after the crash, is
+treated as native. A session advisory lock on the target schema keeps two
+runs from loading into it at once.
 
 **Merge rule** (v2 plan, "Reconciliation with #755 / #756 / #758"): several
 per-machine stores load into the one central database, one run per store,
@@ -65,15 +85,17 @@ import dataclasses
 import datetime
 import getpass
 import hashlib
+import hmac
 import importlib
 import io
 import json
 import logging
 import os
 import re
+import secrets
+import select
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import tempfile
@@ -100,7 +122,10 @@ __all__ = [
     "TargetNotEmpty",
     "ThrowawayRedis",
     "main",
+    "read_report_key",
     "run_migration",
+    "seal_report",
+    "verify_report",
 ]
 
 # -- errors --------------------------------------------------------------------
@@ -175,14 +200,11 @@ READ_ONLY_COMMANDS = frozenset(
 
 _STARTUP_TIMEOUT_SECONDS = 60.0
 _STOP_TIMEOUT_SECONDS = 10.0
-_LOOPBACK = "127.0.0.1"
-
-
-def _free_port() -> int:
-    """A random high loopback port nothing is listening on right now."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind((_LOOPBACK, 0))
-        return int(sock.getsockname()[1])
+_SUPERVISOR_REPLY_SECONDS = 30.0
+_WATCHDOG = Path(__file__).with_name("_watchdog.py")
+#: A unix socket path must fit ``sockaddr_un.sun_path`` (104 bytes on macOS,
+#: 108 on Linux), with room for the terminating NUL.
+_MAX_SOCKET_PATH = 100
 
 
 def _rdb_magic_ok(path: Path) -> bool:
@@ -190,14 +212,136 @@ def _rdb_magic_ok(path: Path) -> bool:
         return handle.read(5) == b"REDIS"
 
 
+def _conf_quote(value: str) -> str:
+    """A redis.conf string argument, double-quoted with escapes."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _private_dir(prefix: str, parent: "str | None" = None) -> Path:
+    """A fresh directory only this user can enter (``mkdtemp`` is ``0700``;
+    the ``chmod`` states it rather than trusting the umask-free default)."""
+    path = Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
+    os.chmod(path, 0o700)
+    return path
+
+
+class _Supervisor:
+    """The tool's handle on its watchdog process (``_watchdog.py``).
+
+    Started before any copy of the store exists. It owns the throwaway
+    ``redis-server`` (it is the server's parent) and the run's private
+    directories, and stops and removes them when the tool exits -- normally,
+    on an exception, on a signal, or killed with ``SIGKILL``. It runs in a
+    session of its own, so the signals a terminal sends the tool's process
+    group never reach it or the server."""
+
+    def __init__(self) -> None:
+        self._process: Optional[subprocess.Popen[bytes]] = None
+
+    @property
+    def pid(self) -> Optional[int]:
+        return self._process.pid if self._process is not None else None
+
+    @property
+    def alive(self) -> bool:
+        return self._process is not None and self._process.poll() is None
+
+    def start(self) -> "_Supervisor":
+        self._process = subprocess.Popen(
+            [sys.executable, "-I", str(_WATCHDOG), str(os.getpid())],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+        reply = self._read()
+        if not reply.get("ready"):
+            self.close()
+            raise MigrationRefused(f"the watchdog did not start: {reply}")
+        return self
+
+    def _read(self) -> dict[str, Any]:
+        process = self._process
+        if process is None or process.stdout is None:
+            raise MigrationError("the watchdog is not running")
+        readable, _, _ = select.select(
+            [process.stdout], [], [], _SUPERVISOR_REPLY_SECONDS
+        )
+        line = process.stdout.readline() if readable else b""
+        if not line:
+            raise MigrationError("the watchdog stopped answering")
+        return dict(json.loads(line))
+
+    def _call(self, message: Mapping[str, Any]) -> dict[str, Any]:
+        process = self._process
+        if process is None or process.stdin is None or process.poll() is not None:
+            raise MigrationError("the watchdog is not running")
+        process.stdin.write((json.dumps(dict(message)) + "\n").encode())
+        process.stdin.flush()
+        reply = self._read()
+        if "error" in reply:
+            raise MigrationError(f"watchdog: {reply['error']}")
+        return reply
+
+    def watch(self, path: Path) -> None:
+        """Have ``path`` removed when the run ends, however it ends."""
+        self._call({"op": "watch", "path": str(path)})
+
+    def spawn(self, argv: Sequence[str]) -> int:
+        return int(self._call({"op": "spawn", "argv": list(argv)})["pid"])
+
+    def stop_child(self, pid: int) -> None:
+        self._call({"op": "stop", "pid": pid})
+
+    def close(self) -> None:
+        """End of run: the watchdog stops what it spawned, removes what it
+        watches, and exits."""
+        process = self._process
+        if process is None:
+            return
+        self._process = None
+        with contextlib.suppress(OSError):
+            if process.stdin is not None:
+                process.stdin.close()
+        try:
+            process.wait(timeout=_STOP_TIMEOUT_SECONDS * 3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=_STOP_TIMEOUT_SECONDS)
+        if process.stdout is not None:
+            process.stdout.close()
+
+
+def _pid_alive(pid: Optional[int]) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:  # pragma: no cover - a reused pid of another user
+        return False
+    return True
+
+
 class ThrowawayRedis:
     """A private ``redis-server`` serving a copy of an RDB snapshot.
 
-    Started on a random loopback port, in a fresh temporary directory, with
-    ``--save ""`` and ``--appendonly no`` so it never writes anything back.
-    :meth:`stop` (and leaving the ``with`` block) kills it and removes the
-    directory; :meth:`stop` is idempotent and also registered against
-    ``SIGTERM`` for the duration of a CLI run.
+    Nothing about it is reachable from outside the run:
+
+    * it listens on **no TCP port** (``port 0``) -- only on a unix socket in
+      a fresh ``0700`` directory, ``unixsocketperm 700``;
+    * it requires a random password (``requirepass``), passed in a ``0600``
+      config file rather than on the command line, where ``ps`` would show
+      it; ``protected-mode yes``;
+    * persistence is off (``save ""``, ``appendonly no``), so it never writes
+      anything back.
+
+    It is spawned by the run's watchdog (:class:`_Supervisor`), which stops
+    it and removes its directories when the tool exits for any reason --
+    ``SIGKILL`` included. :meth:`stop` (and leaving the ``with`` block) does
+    the same at once, and is idempotent.
     """
 
     def __init__(
@@ -206,15 +350,19 @@ class ThrowawayRedis:
         *,
         redis_server: str = "redis-server",
         work_parent: "str | os.PathLike[str] | None" = None,
+        supervisor: Optional[_Supervisor] = None,
     ) -> None:
         self.rdb_path = Path(rdb_path)
         self.redis_server = redis_server
         self.work_parent = Path(work_parent) if work_parent is not None else None
-        self.port: int = 0
+        self.socket_path: str = ""
+        self.password: str = ""
         self.pid: Optional[int] = None
         self.run_id: str = ""
         self.directory: Optional[Path] = None
-        self._process: Optional[subprocess.Popen[bytes]] = None
+        self.socket_directory: Optional[Path] = None
+        self._supervisor = supervisor
+        self._owns_supervisor = False
 
     # context manager ------------------------------------------------------
     def __enter__(self) -> "ThrowawayRedis":
@@ -223,6 +371,10 @@ class ThrowawayRedis:
 
     def __exit__(self, *exc: Any) -> None:
         self.stop()
+
+    @property
+    def supervisor(self) -> Optional[_Supervisor]:
+        return self._supervisor
 
     def start(self) -> None:
         binary = shutil.which(self.redis_server)
@@ -235,61 +387,70 @@ class ThrowawayRedis:
             raise MigrationRefused(f"RDB snapshot {self.rdb_path} does not exist")
         if not _rdb_magic_ok(self.rdb_path):
             raise MigrationRefused(f"{self.rdb_path} is not an RDB file")
-        parent = str(self.work_parent) if self.work_parent is not None else None
-        self.directory = Path(tempfile.mkdtemp(prefix="popoto-migrate-", dir=parent))
         try:
+            if self._supervisor is None:
+                self._supervisor = _Supervisor().start()
+                self._owns_supervisor = True
+            supervisor = self._supervisor
+            parent = str(self.work_parent) if self.work_parent is not None else None
+            self.directory = _private_dir("popoto-migrate-", parent)
+            supervisor.watch(self.directory)
+            socket_dir = self.directory
+            if len(str(socket_dir / "redis.sock")) > _MAX_SOCKET_PATH:
+                socket_dir = _private_dir("pmig-")
+                if len(str(socket_dir / "redis.sock")) > _MAX_SOCKET_PATH:
+                    shutil.rmtree(socket_dir, ignore_errors=True)
+                    socket_dir = _private_dir("pmig-", "/tmp")
+                self.socket_directory = socket_dir
+                supervisor.watch(socket_dir)
+            self.socket_path = str(socket_dir / "redis.sock")
+            self.password = secrets.token_hex(32)
             shutil.copyfile(self.rdb_path, self.directory / "dump.rdb")
-            last_error: Optional[str] = None
-            for _attempt in range(5):
-                self.port = _free_port()
-                self._process = subprocess.Popen(
-                    [
-                        binary,
-                        "--port",
-                        str(self.port),
-                        "--bind",
-                        _LOOPBACK,
-                        "--protected-mode",
-                        "yes",
-                        "--dir",
-                        str(self.directory),
-                        "--dbfilename",
-                        "dump.rdb",
-                        "--save",
-                        "",
-                        "--appendonly",
-                        "no",
-                        "--daemonize",
-                        "no",
-                        "--logfile",
-                        str(self.directory / "redis.log"),
-                    ],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+            conf = self.directory / "redis.conf"
+            descriptor = os.open(conf, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(
+                    "\n".join(
+                        [
+                            "port 0",
+                            "bind 127.0.0.1",
+                            "protected-mode yes",
+                            f"unixsocket {_conf_quote(self.socket_path)}",
+                            "unixsocketperm 700",
+                            f"requirepass {_conf_quote(self.password)}",
+                            f"dir {_conf_quote(str(self.directory))}",
+                            "dbfilename dump.rdb",
+                            'save ""',
+                            "appendonly no",
+                            "daemonize no",
+                            f"logfile {_conf_quote(str(self.directory / 'redis.log'))}",
+                        ]
+                    )
+                    + "\n"
                 )
-                self.pid = self._process.pid
-                last_error = self._wait_ready()
-                if last_error is None:
-                    return
-                self._kill()
-            raise MigrationRefused(
-                f"throwaway redis-server did not start: {last_error}; see the log "
-                f"excerpt above"
-            )
+            self.pid = supervisor.spawn([binary, str(conf)])
+            error = self._wait_ready()
+            if error is not None:
+                raise MigrationRefused(f"throwaway redis-server did not start: {error}")
         except BaseException:
             self.stop()
             raise
+
+    def client(self, **kwargs: Any) -> redis.Redis:
+        """A plain client of this server (its socket and password)."""
+        return redis.Redis(
+            unix_socket_path=self.socket_path, password=self.password, **kwargs
+        )
 
     def _wait_ready(self) -> Optional[str]:
         """``None`` once the server answers and has finished loading the
         snapshot, else the reason it never did."""
         deadline = time.monotonic() + _STARTUP_TIMEOUT_SECONDS
-        client = redis.Redis(host=_LOOPBACK, port=self.port, socket_timeout=5)
+        client = self.client(socket_timeout=5)
         try:
             while time.monotonic() < deadline:
-                if self._process is not None and self._process.poll() is not None:
-                    return f"exited with {self._process.returncode}: {self._log_tail()}"
+                if not _pid_alive(self.pid):
+                    return f"exited: {self._log_tail()}"
                 try:
                     info = client.info()
                 except (redis.ConnectionError, redis.BusyLoadingError):
@@ -299,7 +460,9 @@ class ThrowawayRedis:
                     time.sleep(0.05)
                     continue
                 if int(info.get("process_id", -1)) != self.pid:
-                    return "another process answered on the chosen port"
+                    return "another process answered on the private socket"
+                if int(info.get("tcp_port", -1)) != 0:
+                    return f"it listens on TCP port {info.get('tcp_port')}"
                 self.run_id = str(info["run_id"])
                 return None
             return "timed out waiting for the snapshot to load"
@@ -316,26 +479,34 @@ class ThrowawayRedis:
         return " | ".join(text.strip().splitlines()[-5:])
 
     def _kill(self) -> None:
-        process = self._process
-        self._process = None
-        if process is None or process.poll() is not None:
+        pid, self.pid = self.pid, None
+        if not pid:
             return
-        process.terminate()
-        try:
-            process.wait(timeout=_STOP_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=_STOP_TIMEOUT_SECONDS)
+        supervisor = self._supervisor
+        if supervisor is not None and supervisor.alive:
+            with contextlib.suppress(MigrationError, OSError, ValueError):
+                supervisor.stop_child(pid)
+                return
+        # The watchdog is gone (killed on its own): stop the server directly.
+        if _pid_alive(pid):  # pragma: no cover - needs the watchdog killed
+            with contextlib.suppress(OSError):
+                os.kill(pid, signal.SIGTERM)
 
     def stop(self) -> None:
         self._kill()
-        if self.directory is not None:
-            shutil.rmtree(self.directory, ignore_errors=True)
-            self.directory = None
+        for directory in (self.directory, self.socket_directory):
+            if directory is not None:
+                shutil.rmtree(directory, ignore_errors=True)
+        self.directory = None
+        self.socket_directory = None
+        if self._owns_supervisor and self._supervisor is not None:
+            self._supervisor.close()
+            self._supervisor = None
+            self._owns_supervisor = False
 
     @property
     def running(self) -> bool:
-        return self._process is not None and self._process.poll() is None
+        return bool(self.pid) and _pid_alive(self.pid)
 
 
 class _ReadOnlyPipeline(redis.client.Pipeline):
@@ -363,17 +534,22 @@ class ReadOnlyRedis(redis.Redis):
     any command outside :data:`READ_ONLY_COMMANDS`.
 
     There is deliberately no URL, host or port constructor: the only way to
-    build one is from a running throwaway server, and it re-checks that
-    server's ``run_id`` on construction."""
+    build one is from a running throwaway server (its private socket and
+    password), and it re-checks that server's ``run_id`` on construction."""
 
     def __init__(self, server: ThrowawayRedis, db: int = 0) -> None:
         if not server.running or not server.run_id:
             raise LiveRedisRefused("the throwaway redis-server is not running")
-        super().__init__(host=_LOOPBACK, port=server.port, db=db, socket_timeout=30)
+        super().__init__(
+            unix_socket_path=server.socket_path,
+            password=server.password,
+            db=db,
+            socket_timeout=30,
+        )
         info = self.info("server")
         if str(info.get("run_id")) != server.run_id:
             raise LiveRedisRefused(
-                f"port {server.port} is answered by run_id {info.get('run_id')}, "
+                f"{server.socket_path} is answered by run_id {info.get('run_id')}, "
                 f"not the throwaway server's {server.run_id}"
             )
 
@@ -390,25 +566,28 @@ class ReadOnlyRedis(redis.Redis):
 def assert_bound_to_throwaway(client: Any, server: ThrowawayRedis) -> None:
     """Refuse unless ``client`` talks to ``server``.
 
-    The host and port are compared from the connection parameters first, so
-    a client bound anywhere else -- popoto's default ``localhost`` database 0
-    included -- is refused without a command reaching it. Only then is the
-    server's ``run_id`` read and compared."""
+    The connection parameters are compared first: the throwaway listens only
+    on its private unix socket, so a client with a host and port -- popoto's
+    default ``localhost`` database 0 included -- or any other socket is
+    refused without a command reaching it. Only then is the server's
+    ``run_id`` read and compared."""
     kwargs = dict(getattr(client.connection_pool, "connection_kwargs", {}) or {})
-    host = str(kwargs.get("host", ""))
-    port = kwargs.get("port")
-    if kwargs.get("unix_socket_path") or kwargs.get("path"):
-        raise LiveRedisRefused("popoto's client is bound to a unix socket")
-    if host not in (_LOOPBACK, "localhost") or port != server.port:
+    path = kwargs.get("path") or kwargs.get("unix_socket_path")
+    if not server.socket_path or str(path or "") != server.socket_path:
+        where = (
+            f"unix socket {path}"
+            if path
+            else f"{kwargs.get('host')}:{kwargs.get('port')}/db{kwargs.get('db')}"
+        )
         raise LiveRedisRefused(
-            f"popoto's Redis client is bound to {host}:{port}/db{kwargs.get('db')}, "
-            f"not the throwaway snapshot server on {_LOOPBACK}:{server.port}. The "
-            "migration never reads a live store."
+            f"popoto's Redis client is bound to {where}, not the throwaway "
+            f"snapshot server's private socket {server.socket_path or '(none)'}. "
+            "The migration never reads a live store."
         )
     run_id = str(client.info("server").get("run_id"))
     if run_id != server.run_id:
         raise LiveRedisRefused(
-            f"{host}:{port} reports run_id {run_id}, not the throwaway server's "
+            f"{path} reports run_id {run_id}, not the throwaway server's "
             f"{server.run_id}"
         )
 
@@ -539,11 +718,13 @@ class MigrationConfig:
     redis_server: str = "redis-server"
     verify_sample: int = 25
     operator: str = ""
+    report_key: Optional[Path] = None
 
 
 @dataclasses.dataclass
 class MigrationReport:
-    """The signed-off result of a run (``report.json`` / ``report.txt``)."""
+    """The sealed result of a run (``report.json`` / ``report.txt``): a
+    checksum always, an HMAC with an operator key (:func:`seal_report`)."""
 
     run_id: str
     source_id: str
@@ -789,8 +970,8 @@ def _decay_crosscheck(
 ) -> dict[str, Any]:
     """Each decay index's score against the record hash's clock: the two
     independent encodings of the same number (#757 Risk 5)."""
-    from .fields.decaying_sorted_field import DecayingSortedField
-    from .models.encoding import decode_popoto_model_hashmap
+    from ..fields.decaying_sorted_field import DecayingSortedField
+    from ..models.encoding import decode_popoto_model_hashmap
 
     out: dict[str, Any] = {}
     model = mapping.model
@@ -837,7 +1018,7 @@ def _embedding_inventory(
     record_keys: set[str],
     content_dir: Optional[Path],
 ) -> dict[str, Any]:
-    from .fields.embedding_field import EmbeddingField
+    from ..fields.embedding_field import EmbeddingField
 
     out: dict[str, Any] = {}
     model = mapping.model
@@ -874,7 +1055,7 @@ def _embedding_inventory(
 def _redis_side(models: Sequence[Any]) -> Iterator[None]:
     """Bind ``models`` to the Redis backend: the process default, and any
     ``Meta.backend`` a post-cutover model declares, for the block."""
-    from .backends import reset_bindings, set_backend
+    from ..backends import reset_bindings, set_backend
 
     saved = {m: getattr(m._meta, "backend", None) for m in models}
     previous = set_backend("redis")
@@ -892,7 +1073,7 @@ def _redis_side(models: Sequence[Any]) -> Iterator[None]:
 
 @contextlib.contextmanager
 def _postgres_side(models: Sequence[Any], backend: Any) -> Iterator[None]:
-    from .backends import reset_bindings, set_backend
+    from ..backends import reset_bindings, set_backend
 
     saved = {m: getattr(m._meta, "backend", None) for m in models}
     previous = set_backend(backend)
@@ -920,15 +1101,15 @@ def _export_model(
 ) -> tuple[str, dict[str, Any]]:
     """The model's JSONL: ``export_records`` over the class set, then the
     orphan hashes ``SMEMBERS`` cannot see, hydrated the same way."""
-    from .models.query import Query
-    from .transfer.export import (
+    from ..models.query import Query
+    from ..transfer.export import (
         _field_state,
         _model_state,
         _record_values,
         export_records,
     )
-    from .transfer.format import dump_line, to_jsonable
-    from .transfer.results import ExportResult
+    from ..transfer.format import dump_line, to_jsonable
+    from ..transfer.results import ExportResult
 
     model = mapping.model
     buffer = io.StringIO()
@@ -991,8 +1172,8 @@ def normalize_record(model: Any, record: Mapping[str, Any]) -> dict[str, Any]:
     must reproduce. Drops what Postgres does not keep by design (the access
     log, a cycle's declared baseline) and reduces vectors to a float32
     digest."""
-    from .fields.cyclic_decay_field import CyclicDecayField
-    from .fields.embedding_field import EmbeddingField
+    from ..fields.cyclic_decay_field import CyclicDecayField
+    from ..fields.embedding_field import EmbeddingField
 
     values = json.loads(json.dumps(record.get("values") or {}))
     state = json.loads(json.dumps(record.get("state") or {}))
@@ -1019,7 +1200,7 @@ def payload_sha(model: Any, record: Mapping[str, Any]) -> str:
 
 
 def _content_store(field: Any, content_dir: Optional[Path]) -> Any:
-    from .stores.filesystem import FilesystemStore
+    from ..stores.filesystem import FilesystemStore
 
     if getattr(field, "_store", None) is not None:
         return field.store
@@ -1040,13 +1221,14 @@ def transform_record(
 
     Returns ``{"key", "record", "meta"}``. ``meta["reject"]`` is set when the
     record cannot land (it is then counted, never written)."""
-    from .fields.co_occurrence_field import CoOccurrenceField
-    from .fields.content_field import ContentField
-    from .fields.cyclic_decay_field import CyclicDecayField
-    from .fields.datetime_field import DatetimeField
-    from .fields.decaying_sorted_field import DecayingSortedField
-    from .fields.embedding_field import EmbeddingField
-    from .transfer.format import from_jsonable
+    from ..fields.co_occurrence_field import CoOccurrenceField
+    from ..fields.constants import Defaults
+    from ..fields.content_field import ContentField
+    from ..fields.cyclic_decay_field import CyclicDecayField
+    from ..fields.datetime_field import DatetimeField
+    from ..fields.decaying_sorted_field import DecayingSortedField
+    from ..fields.embedding_field import EmbeddingField
+    from ..transfer.format import from_jsonable
 
     model = mapping.model
     key = str(record["key"])
@@ -1113,10 +1295,28 @@ def transform_record(
             for cycle in carried.get("cycles") or []:
                 if isinstance(cycle, list) and len(cycle) >= 4 and cycle[3] is not None:
                     count("cycle_baselines_dropped")
-        if isinstance(field, CoOccurrenceField) and isinstance(carried, list):
-            over = len(carried) - int(field.max_edges)
-            if over > 0:
-                count("co_occurrence_edges_truncated", over)
+        if isinstance(field, CoOccurrenceField) and isinstance(carried, dict):
+            # The carried state is {"edges": {target: weight}, "max_edges"}.
+            # Apply the destination's import normalization here, exactly as
+            # CoOccurrenceField.import_state does, so the counted loss is
+            # the real one and the verified payload is what lands.
+            edges = carried.get("edges")
+            if isinstance(edges, dict) and edges:
+                cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
+                clamped = sum(1 for w in edges.values() if float(w) > cap)
+                ranked = sorted(
+                    ((str(t), min(float(w), cap)) for t, w in edges.items()),
+                    key=lambda pair: pair[1],
+                    reverse=True,
+                )
+                keep = ranked[: max(1, int(field.max_edges))]
+                if clamped:
+                    count("co_occurrence_weights_clamped", clamped)
+                if len(ranked) > len(keep):
+                    count("co_occurrence_edges_truncated", len(ranked) - len(keep))
+                if clamped or len(ranked) > len(keep):
+                    carried["edges"] = dict(keep)
+                    carried["max_edges"] = int(field.max_edges)
     access = model_state.get("AccessTrackerMixin")
     access_log: list[float] = []
     if isinstance(access, dict) and access.get("access_log"):
@@ -1216,7 +1416,7 @@ _WRITES = (INSERTED, RESUMED, UPDATED_DELTA, WON_MERGE)
 
 
 def _qi(name: str) -> str:
-    from .backends.postgres.schema import quote_ident
+    from ..backends.postgres.schema import quote_ident
 
     return str(quote_ident(name))
 
@@ -1260,9 +1460,45 @@ def _table_exists(conn: Any, schema: str, table: str) -> bool:
 
 
 def _table_name(model: Any) -> str:
-    from .backends.postgres.schema import table_name_for
+    from ..backends.postgres.schema import table_name_for
 
     return str(table_name_for(model._meta.model_name))
+
+
+_LOCK_CLASS = 756
+"""First key of the per-schema advisory lock (the issue number); the second
+is ``hashtext`` of the schema name."""
+
+
+def _lock_target_schema(dsn: str, schema: str) -> Any:
+    """Hold a session advisory lock on the target schema for the whole run.
+
+    A second run into the same schema -- another machine's store, or the
+    same command started twice -- is refused here, before preflight, instead
+    of racing the first through ``CREATE SCHEMA`` and the merge decisions.
+    The lock lives as long as the returned connection; closing it (or the
+    process dying) releases it."""
+    conn = _connect_autocommit(dsn)
+    try:
+        held = conn.execute(
+            "SELECT pg_try_advisory_lock(%s, hashtext(%s))", (_LOCK_CLASS, schema)
+        ).fetchone()[0]
+    except BaseException:
+        conn.close()
+        raise
+    if not held:
+        conn.close()
+        raise MigrationRefused(
+            f"another migration run holds the lock on schema {schema!r}; run the "
+            "stores one after another (each later one with --merge)"
+        )
+    return conn
+
+
+def _connect_autocommit(dsn: str) -> Any:
+    import psycopg
+
+    return psycopg.connect(dsn, autocommit=True)
 
 
 def preflight_target(
@@ -1317,7 +1553,7 @@ def _no_embedding(models: Sequence[Any]) -> Iterator[None]:
     """Switch off ``auto_embed`` while records land: the vector is the
     carried one (``import_state``), and a save must never call the provider
     (Valor's is a paid network API)."""
-    from .fields.embedding_field import EmbeddingField
+    from ..fields.embedding_field import EmbeddingField
 
     saved: list[tuple[Any, bool]] = []
     for model in models:
@@ -1356,18 +1592,43 @@ def _decide(
     return WON_MERGE if ours > theirs else LOST_MERGE
 
 
+def _record_once(
+    entries: Any, entry: Mapping[str, Any], identity: Sequence[str]
+) -> list[dict[str, Any]]:
+    """``entries`` with ``entry`` recorded once per source.
+
+    An entry already there with the same identity (source and snapshot, and
+    for a loser the payload) is kept as it is, so re-running the same
+    snapshot leaves ``_migrated_from`` byte for byte unchanged; an older
+    entry of the same source (a superseded snapshot) is replaced."""
+    current = [dict(e) for e in (entries or []) if isinstance(e, Mapping)]
+    for existing in current:
+        if all(existing.get(k) == entry.get(k) for k in identity):
+            return current
+    return [e for e in current if e.get("source") != entry.get("source")] + [
+        dict(entry)
+    ]
+
+
 def _provenance(
     meta: Mapping[str, Any],
     run: Mapping[str, Any],
     previous: Optional[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    losers = list((previous or {}).get("losers") or [])
+    # This source is the winner now: it is no longer one of the losers.
+    losers = [
+        dict(e)
+        for e in ((previous or {}).get("losers") or [])
+        if isinstance(e, Mapping) and e.get("source") != run["source_id"]
+    ]
     if previous is not None and previous.get("source") not in (None, run["source_id"]):
-        losers.append(
+        losers = _record_once(
+            losers,
             {
                 k: previous.get(k)
                 for k in ("source", "run_id", "snapshot", "payload_sha", "updated_at")
-            }
+            },
+            ("source", "snapshot", "payload_sha"),
         )
     return {
         "source": run["source_id"],
@@ -1383,6 +1644,32 @@ def _provenance(
             else []
         ),
         "losers": losers,
+    }
+
+
+def _native_since_crash(
+    mapping: ModelMapping, conn: Any, table: str, ledger: str, run: Mapping[str, Any]
+) -> set[str]:
+    """Keys this run left ``pending`` whose row popoto has saved since.
+
+    A resume adopts its own half-written rows -- but only while each still
+    holds exactly what this run imported (its re-export hashes to the
+    ledger's ``payload_sha``). A row saved natively after the crash no
+    longer does, and is then treated as native: never overwritten."""
+    rows = conn.execute(
+        f"SELECT l._pk, l.payload_sha FROM {ledger} l JOIN {table} t "
+        "ON t._pk = l._pk WHERE l.run_id = %s AND l.model = %s "
+        "AND l.state = 'pending' AND t._migrated_from IS NULL",
+        (run["run_id"], mapping.name),
+    ).fetchall()
+    conn.commit()
+    if not rows:
+        return set()
+    exported = _export_index(mapping.model)
+    return {
+        pk
+        for pk, sha in rows
+        if pk not in exported or payload_sha(mapping.model, exported[pk]) != sha
     }
 
 
@@ -1404,9 +1691,9 @@ def _load_model(
     decisions: dict[str, str],
     errors: list[str],
 ) -> None:
-    from .backends.postgres.search import record_lock_sql
-    from .transfer.format import dump_line
-    from .transfer.import_ import import_records
+    from ..backends.postgres.search import record_lock_sql
+    from ..transfer.format import dump_line
+    from ..transfer.import_ import import_records
 
     model = mapping.model
     schema = backend.schema
@@ -1434,6 +1721,7 @@ def _load_model(
         ).fetchall():
             decisions[pk] = decision
         conn.commit()
+    native_since_crash = _native_since_crash(mapping, conn, table, ledger, run)
 
     for number, start in enumerate(range(0, len(todo), max(1, batch_size))):
         batch = todo[start : start + batch_size]
@@ -1443,13 +1731,19 @@ def _load_model(
             (keys,),
         ).fetchall()
         existing = {pk: mf for pk, mf in found}
+        # Only THIS run's pending rows are adopted. A row another run left
+        # pending (it crashed between its import and its provenance) is
+        # indistinguishable from a native row -- and may have become one,
+        # if popoto saved it since -- so it is treated as native: never
+        # overwritten, reported as conflict_native.
         pending: dict[str, Optional[dict[str, Any]]] = {}
         for pk, detail in conn.execute(
-            f"SELECT _pk, detail FROM {ledger} WHERE model = %s AND _pk = ANY(%s) "
-            "AND state = 'pending' ORDER BY at",
-            (mapping.name, keys),
+            f"SELECT _pk, detail FROM {ledger} WHERE run_id = %s AND model = %s "
+            "AND _pk = ANY(%s) AND state = 'pending'",
+            (run["run_id"], mapping.name, keys),
         ).fetchall():
-            pending[pk] = json.loads(detail) if detail else None
+            if pk not in native_since_crash:
+                pending[pk] = json.loads(detail) if detail else None
         conn.commit()
 
         def previous_of(key: str) -> Optional[dict[str, Any]]:
@@ -1561,40 +1855,36 @@ def _load_model(
                     f'UPDATE {table} SET {", ".join(sets)} WHERE "_pk" = %s',
                     params + [key],
                 )
-            elif decision == DEDUPLICATED and previous is not None:
+            elif decision in (DEDUPLICATED, LOST_MERGE) and previous is not None:
                 merged = dict(previous)
-                duplicates = list(merged.get("duplicates") or [])
-                entry = {
-                    "source": run["source_id"],
-                    "run_id": run["run_id"],
-                    "snapshot": run["rdb_sha256"],
-                }
-                if entry not in duplicates:
-                    duplicates.append(entry)
-                merged["duplicates"] = duplicates
-                conn.execute(
-                    f'UPDATE {table} SET "_migrated_from" = %s::jsonb WHERE "_pk" = %s '
-                    'AND "_migrated_from" IS NOT NULL',
-                    (json.dumps(merged), key),
-                )
-            elif decision == LOST_MERGE and previous is not None:
-                merged = dict(previous)
-                losers = list(merged.get("losers") or [])
-                entry = {
-                    "source": run["source_id"],
-                    "run_id": run["run_id"],
-                    "snapshot": run["rdb_sha256"],
-                    "payload_sha": meta["payload_sha"],
-                    "updated_at": meta["updated_at"],
-                }
-                if entry not in losers:
-                    losers.append(entry)
-                merged["losers"] = losers
-                conn.execute(
-                    f'UPDATE {table} SET "_migrated_from" = %s::jsonb WHERE "_pk" = %s '
-                    'AND "_migrated_from" IS NOT NULL',
-                    (json.dumps(merged), key),
-                )
+                if decision == DEDUPLICATED:
+                    merged["duplicates"] = _record_once(
+                        merged.get("duplicates"),
+                        {
+                            "source": run["source_id"],
+                            "run_id": run["run_id"],
+                            "snapshot": run["rdb_sha256"],
+                        },
+                        ("source", "snapshot"),
+                    )
+                else:
+                    merged["losers"] = _record_once(
+                        merged.get("losers"),
+                        {
+                            "source": run["source_id"],
+                            "run_id": run["run_id"],
+                            "snapshot": run["rdb_sha256"],
+                            "payload_sha": meta["payload_sha"],
+                            "updated_at": meta["updated_at"],
+                        },
+                        ("source", "snapshot", "payload_sha"),
+                    )
+                if merged != previous:
+                    conn.execute(
+                        f'UPDATE {table} SET "_migrated_from" = %s::jsonb '
+                        'WHERE "_pk" = %s AND "_migrated_from" IS NOT NULL',
+                        (json.dumps(merged), key),
+                    )
             decisions[key] = decision
         conn.cursor().executemany(
             f"INSERT INTO {ledger} (run_id, model, _pk, state, decision, payload_sha, detail) "
@@ -1613,13 +1903,14 @@ def _load_model(
                 for r, d in plan
             ],
         )
-        # Rows of other runs left pending on these keys are settled too: this
-        # run has now written or judged each of them.
-        conn.execute(
-            f"UPDATE {ledger} SET state = 'superseded' WHERE model = %s AND "
-            "_pk = ANY(%s) AND state = 'pending' AND run_id <> %s",
-            (mapping.name, keys, run["run_id"]),
-        )
+        # Rows another run left pending are settled only where this run has
+        # actually written the key since (it could not have adopted them).
+        if landed:
+            conn.execute(
+                f"UPDATE {ledger} SET state = 'superseded' WHERE model = %s AND "
+                "_pk = ANY(%s) AND state = 'pending' AND run_id <> %s",
+                (mapping.name, [r["key"] for r in landed], run["run_id"]),
+            )
         conn.execute(
             f"UPDATE {runs} SET progress = jsonb_set(progress, ARRAY[%s], to_jsonb(%s::text)) "
             "WHERE run_id = %s",
@@ -1632,7 +1923,7 @@ def _load_model(
 
 
 def _export_index(model: Any) -> dict[str, dict[str, Any]]:
-    from .transfer.export import export_records
+    from ..transfer.export import export_records
 
     text = export_records(model).data or ""
     lines = [json.loads(line) for line in text.splitlines() if line.strip()]
@@ -1652,7 +1943,7 @@ def _diff_parts(a: Mapping[str, Any], b: Mapping[str, Any]) -> list[str]:
 def _partitions(
     mapping: ModelMapping, field: Any, rows: Sequence[Mapping[str, Any]], limit: int
 ) -> list[dict[str, Any]]:
-    from .transfer.format import from_jsonable
+    from ..transfer.format import from_jsonable
 
     seen: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -1674,7 +1965,7 @@ def _decay_order(
 def _sample_queries(
     mapping: ModelMapping, source: str, rows: Sequence[Mapping[str, Any]], limit: int
 ) -> list[str]:
-    from .transfer.format import from_jsonable
+    from ..transfer.format import from_jsonable
 
     queries: list[str] = []
     for row in sorted(rows, key=lambda r: r["meta"]["payload_sha"]):
@@ -1686,6 +1977,61 @@ def _sample_queries(
         if len(queries) >= limit:
             break
     return queries
+
+
+def _verify_tool_columns(
+    conn: Any,
+    ts: Any,
+    by_key: Mapping[str, Mapping[str, Any]],
+    provenance: Mapping[str, Any],
+    run: Mapping[str, Any],
+) -> tuple[int, dict[str, list[str]]]:
+    """The columns the tool writes itself, outside popoto's save path:
+    ``_created_at``, ``_updated_at``, ``_estimated_fields`` and each
+    embedding's ``<f>__hash`` (``md5`` of its source text wherever a vector
+    landed). Compared for every row THIS run wrote; a row another run wrote
+    carries that run's estimates. Returns ``(compared, {key: parts})``."""
+    mine = sorted(
+        k
+        for k, row in by_key.items()
+        if not row["meta"]["reject"]
+        and (provenance.get(k) or {}).get("run_id") == run["run_id"]
+    )
+    if not mine:
+        return 0, {}
+    layout = ts.search
+    embeddings = [
+        e for e in (layout.embedding.values() if layout is not None else []) if e.source
+    ]
+    columns = [
+        'extract(epoch FROM "_created_at")::float8',
+        'extract(epoch FROM "_updated_at")::float8',
+        '"_estimated_fields"',
+    ] + [
+        f"({_qi(e.vec)} IS NOT NULL AND {_qi(e.hash)} IS DISTINCT FROM "
+        f"md5({_qi(e.source)}::text))"
+        for e in embeddings
+    ]
+    bad: dict[str, list[str]] = {}
+    for pk, created, updated, estimated, *hash_bad in conn.execute(
+        f'SELECT "_pk", {", ".join(columns)} FROM {ts.qualified} WHERE "_pk" = ANY(%s)',
+        (mine,),
+    ).fetchall():
+        meta = by_key[pk]["meta"]
+        parts: list[str] = []
+        if created is None or abs(float(created) - float(meta["created_at"])) > 1e-3:
+            parts.append("_created_at")
+        if updated is None or abs(float(updated) - float(meta["updated_at"])) > 1e-3:
+            parts.append("_updated_at")
+        if list(estimated or []) != list(meta["estimated_fields"]):
+            parts.append("_estimated_fields")
+        for emb, wrong in zip(embeddings, hash_bad):
+            if wrong:
+                parts.append(emb.hash)
+        if parts:
+            bad[pk] = parts
+    conn.commit()
+    return len(mine), bad
 
 
 def verify(
@@ -1700,8 +2046,8 @@ def verify(
 ) -> dict[str, Any]:
     """Read back through popoto on Postgres and compare semantic state with
     the throwaway Redis (which is still running)."""
-    from .fields.bm25_field import BM25Field
-    from .fields.decaying_sorted_field import DecayingSortedField
+    from ..fields.bm25_field import BM25Field
+    from ..fields.decaying_sorted_field import DecayingSortedField
 
     models = [m.model for m in mappings]
     checks: dict[str, Any] = {}
@@ -1767,6 +2113,9 @@ def verify(
                     and abs(float(at or 0) - float(meta["staged_at"])) > 1e-6
                 ):
                     staged_bad.append(key)
+            column_compared, column_bad = _verify_tool_columns(
+                conn, ts, by_key, provenance, run
+            )
             expected_owned = sum(
                 1
                 for k, r in by_key.items()
@@ -1783,6 +2132,15 @@ def verify(
                     "ok": not mismatches and len(owned) == expected_owned,
                 },
                 "check_indexes": {"total": index_total, "ok": index_total == 0},
+            }
+            model_checks["tool_columns"] = {
+                "compared": column_compared,
+                "mismatched": len(column_bad),
+                "first_mismatches": [
+                    {"key": k, "parts": parts}
+                    for k, parts in sorted(column_bad.items())[:VERIFY_MISMATCH_DETAIL]
+                ],
+                "ok": not column_bad,
             }
             if staged_cols:
                 model_checks["staged_reads"] = {
@@ -1848,6 +2206,14 @@ def verify(
                 with _postgres_side(models, backend):
                     pg_docs = {str(o.db_key.redis_key) for o in model.query.all()}
                 strict = redis_docs == pg_docs
+                # With equal corpora the ranked top-k must match exactly.
+                # Otherwise (rejected records, other stores in the table)
+                # scores differ by corpus statistics, but WHICH of this
+                # source's records match a query does not: every IDF is
+                # positive, so a record matches exactly when it holds a
+                # query term. That set is compared, in full, on both sides.
+                width = len(redis_docs | pg_docs) + 1
+                limit = VERIFY_BM25_TOP_K if strict else width
                 bad = []
                 overlap: list[float] = []
                 for text in queries:
@@ -1855,14 +2221,14 @@ def verify(
                         on_redis = [
                             k
                             for k, _ in BM25Field.search(
-                                model, field_name, text, limit=VERIFY_BM25_TOP_K
+                                model, field_name, text, limit=limit
                             )
                         ]
                     with _postgres_side(models, backend):
                         on_pg = [
                             k
                             for k, _ in BM25Field.search(
-                                model, field_name, text, limit=VERIFY_BM25_TOP_K
+                                model, field_name, text, limit=limit
                             )
                         ]
                     if strict:
@@ -1870,18 +2236,34 @@ def verify(
                             bad.append(
                                 {"query": text, "redis": on_redis, "postgres": on_pg}
                             )
-                    else:
-                        a = [k for k in on_redis if k in owned_set]
-                        b = [k for k in on_pg if k in owned_set]
-                        overlap.append(
-                            len(set(a) & set(b)) / max(1, len(set(a) | set(b)))
+                        continue
+                    a = {k for k in on_redis if k in owned_set}
+                    b = {k for k in on_pg if k in owned_set}
+                    if a != b:
+                        bad.append(
+                            {
+                                "query": text,
+                                "only_redis": sorted(a - b)[:10],
+                                "only_postgres": sorted(b - a)[:10],
+                            }
                         )
+                    ranked_a = [k for k in on_redis if k in owned_set]
+                    ranked_b = [k for k in on_pg if k in owned_set]
+                    top_a = set(ranked_a[:VERIFY_BM25_TOP_K])
+                    top_b = set(ranked_b[:VERIFY_BM25_TOP_K])
+                    overlap.append(len(top_a & top_b) / max(1, len(top_a | top_b)))
                 model_checks[f"bm25:{field_name}"] = {
                     "queries": len(queries),
-                    "mode": "strict" if strict else "informational (corpora differ)",
+                    "mode": (
+                        "strict"
+                        if strict
+                        else "accepted subset (corpora differ): match sets compared"
+                    ),
                     "mismatched": len(bad),
                     "first_mismatches": bad[:5],
-                    "mean_overlap": (sum(overlap) / len(overlap)) if overlap else None,
+                    "mean_top_k_overlap": (
+                        (sum(overlap) / len(overlap)) if overlap else None
+                    ),
                     "ok": not bad,
                 }
             checks[mapping.name] = model_checks
@@ -1892,7 +2274,7 @@ def verify(
 
 def _redis_bm25_docs(model: Any, field_name: str) -> list[Any]:
     """The documents a Redis BM25 index scores against (its length set)."""
-    from .redis_db import get_REDIS_DB
+    from ..redis_db import get_REDIS_DB
 
     prefix = f"$BM25:{model.__name__}:{field_name}:dl"
     return list(get_REDIS_DB().zrange(prefix, 0, -1))
@@ -1901,9 +2283,66 @@ def _redis_bm25_docs(model: Any, field_name: str) -> list[Any]:
 # -- report ----------------------------------------------------------------------
 
 
-def _sign(data: dict[str, Any]) -> str:
-    unsigned = {k: v for k, v in data.items() if k != "sign_off"}
-    return _sha(_canonical(unsigned))
+_SEAL_FIELDS = ("checksum_sha256", "hmac_sha256")
+
+
+def _sealed_text(data: Mapping[str, Any]) -> str:
+    """The canonical JSON a seal covers: the whole report, sign-off operator
+    and time included, minus the seal values themselves."""
+    unsealed = dict(data)
+    sign_off = {
+        k: v
+        for k, v in dict(data.get("sign_off") or {}).items()
+        if k not in _SEAL_FIELDS
+    }
+    unsealed["sign_off"] = sign_off
+    return _canonical(json.loads(json.dumps(unsealed, default=str)))
+
+
+def seal_report(data: Mapping[str, Any], key: Optional[bytes] = None) -> dict[str, str]:
+    """The report's seal values.
+
+    ``checksum_sha256`` is a plain checksum: it catches an accidental edit or
+    a truncated copy, but anyone can recompute it after changing the report,
+    so it is NOT evidence against tampering. ``hmac_sha256`` (only with an
+    operator key, ``--report-key``) is: without the key it cannot be
+    recomputed. Keep the key file off the machine that holds the report."""
+    text = _sealed_text(data).encode("utf-8")
+    seal = {"checksum_sha256": hashlib.sha256(text).hexdigest()}
+    if key:
+        seal["hmac_sha256"] = hmac.new(key, text, hashlib.sha256).hexdigest()
+    return seal
+
+
+def verify_report(data: Mapping[str, Any], key: Optional[bytes] = None) -> bool:
+    """``True`` when ``data``'s seal matches its content (and, given ``key``,
+    when its HMAC does too -- a report without one then fails)."""
+    sign_off = dict(data.get("sign_off") or {})
+    expected = seal_report(data, key)
+    if not hmac.compare_digest(
+        str(sign_off.get("checksum_sha256", "")), expected["checksum_sha256"]
+    ):
+        return False
+    if key:
+        return hmac.compare_digest(
+            str(sign_off.get("hmac_sha256", "")), expected["hmac_sha256"]
+        )
+    return True
+
+
+def read_report_key(path: "str | os.PathLike[str]") -> bytes:
+    """The operator's HMAC key: the file's bytes, surrounding whitespace
+    stripped. Refused when missing, empty, or shorter than 16 bytes."""
+    try:
+        key = Path(path).read_bytes().strip()
+    except OSError as exc:
+        raise MigrationRefused(f"--report-key {path}: {exc}") from exc
+    if len(key) < 16:
+        raise MigrationRefused(
+            f"--report-key {path} holds {len(key)} byte(s); use at least 16 "
+            "random bytes (e.g. openssl rand -hex 32 > key)"
+        )
+    return key
 
 
 def render_summary(data: Mapping[str, Any]) -> str:
@@ -1947,8 +2386,17 @@ def render_summary(data: Mapping[str, Any]) -> str:
     sign = data.get("sign_off") or {}
     lines += [
         "",
-        f"Signed off by {sign.get('operator')} at {sign.get('at')}; report sha256 {sign.get('sha256')}",
+        f"Signed off by {sign.get('operator')} at {sign.get('at')}.",
+        f"Checksum sha256 {sign.get('checksum_sha256')} (catches accidental "
+        "change only: anyone can recompute it).",
     ]
+    if sign.get("hmac_sha256"):
+        lines.append(
+            f"HMAC-SHA256 {sign.get('hmac_sha256')} under the operator's "
+            "--report-key (tamper evidence for anyone without the key)."
+        )
+    else:
+        lines.append("No HMAC: the run had no --report-key.")
     return "\n".join(lines) + "\n"
 
 
@@ -1996,10 +2444,15 @@ def _load_run_record(
 def _bound_to(server: ThrowawayRedis, db: int) -> Iterator[None]:
     """Point popoto's global client at the throwaway for the block, then put
     back exactly the client object that was bound before."""
-    from . import redis_db
+    from .. import redis_db
 
     previous = redis_db.POPOTO_REDIS_DB
-    redis_db.set_REDIS_DB_settings(host=_LOOPBACK, port=server.port, db=db)
+    redis_db.set_REDIS_DB_settings(
+        connection_class=redis.UnixDomainSocketConnection,
+        path=server.socket_path,
+        password=server.password,
+        db=db,
+    )
     try:
         assert_bound_to_throwaway(redis_db.get_REDIS_DB(), server)
         yield
@@ -2014,8 +2467,8 @@ def _bound_to(server: ThrowawayRedis, db: int) -> Iterator[None]:
 def _content_root(path: Optional[Path]) -> Iterator[None]:
     """``POPOTO_CONTENT_PATH`` and the default content store pointed at the
     private copy of the operator's content directory."""
-    from .fields import content_field
-    from .stores.filesystem import FilesystemStore
+    from ..fields import content_field
+    from ..stores.filesystem import FilesystemStore
 
     saved_env = os.environ.get("POPOTO_CONTENT_PATH")
     saved_store = content_field._default_content_store
@@ -2033,7 +2486,7 @@ def _content_root(path: Optional[Path]) -> Iterator[None]:
 
 
 def _check_models(mappings: Sequence[ModelMapping]) -> None:
-    from .backends import BackendCapabilityError, validate_spec
+    from ..backends import BackendCapabilityError, validate_spec
 
     if not mappings:
         raise MigrationRefused("no models to migrate; pass --model or --mapping")
@@ -2056,7 +2509,7 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
     :class:`InventoryStop` (the snapshot was read, nothing written), or the
     underlying error of a failed load -- after which ``--resume`` with the
     same run directory continues where the last committed batch ended."""
-    from .backends.postgres import PostgresBackend
+    from ..backends.postgres import PostgresBackend
 
     started = time.time()
     mappings = list(config.mappings)
@@ -2079,228 +2532,261 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
         raise MigrationRefused(f"{rdb} is not a readable RDB snapshot")
     if config.content_dir is not None and not Path(config.content_dir).is_dir():
         raise MigrationRefused(f"--content-dir {config.content_dir} is not a directory")
+    report_key = (
+        read_report_key(config.report_key) if config.report_key is not None else None
+    )
     run_dir = Path(config.run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     rdb_sha = _file_sha(rdb)
     run_record = _load_run_record(run_dir, rdb_sha, config.source_id, config.resume)
     run_id = str(run_record["run_id"])
-    target_facts: dict[str, Any] = {}
-    if not config.dry_run:
-        target_facts = preflight_target(
-            dsn,
-            schema,
-            mappings,
-            run_id=run_id,
-            merge=config.merge,
-            resume=config.resume,
-        )
-    snapshot_time = os.path.getmtime(rdb)
-
-    report: dict[str, Any] = {
-        "tool": "popoto.migrate_redis_to_postgres",
-        "issue": 756,
-        "run_id": run_id,
-        "source_id": config.source_id,
-        "mode": "dry-run" if config.dry_run else ("merge" if config.merge else "load"),
-        "snapshot": {
-            "rdb_path": str(rdb),
-            "rdb_sha256": rdb_sha,
-            "rdb_mtime": snapshot_time,
-        },
-        "target": {"schema": schema, "preflight": target_facts},
-        "models": {},
-        "lossy": {},
-    }
-    lossy: dict[str, int] = {}
-    work = Path(tempfile.mkdtemp(prefix="popoto-migrate-work-"))
+    lock = _lock_target_schema(dsn, schema) if not config.dry_run else None
     try:
-        content_copy: Optional[Path] = None
-        if config.content_dir is not None:
-            content_copy = work / "content"
-            shutil.copytree(config.content_dir, content_copy, symlinks=False)
-        with (
-            ThrowawayRedis(
-                rdb, redis_server=config.redis_server, work_parent=work
-            ) as server,
-            _bound_to(server, config.source_db),
-            _content_root(content_copy),
-        ):
-            report["snapshot"]["throwaway"] = {
-                "port": server.port,
-                "run_id": server.run_id,
-            }
-            client = ReadOnlyRedis(server, db=config.source_db)
-            try:
-                with _redis_side(models):
-                    inventory = run_inventory(client, mappings, content_copy)
-            finally:
-                client.close()
-            _atomic_write(
-                run_dir / "inventory.json",
-                json.dumps(inventory, indent=2, default=str) + "\n",
+        target_facts: dict[str, Any] = {}
+        if not config.dry_run:
+            target_facts = preflight_target(
+                dsn,
+                schema,
+                mappings,
+                run_id=run_id,
+                merge=config.merge,
+                resume=config.resume,
             )
-            report["inventory"] = {
-                "dbsize": inventory["dbsize"],
-                "out_of_scope_families": len(inventory["out_of_scope"]),
-                "stops": inventory["stops"],
-            }
-            stops = [
-                s
-                for s in inventory["stops"]
-                if not (config.accept_unclassified and "unclassified" in s)
-            ]
-            if stops:
-                raise InventoryStop(
-                    "the inventory found state the tool cannot account for: "
-                    + "; ".join(stops),
-                    stops,
-                )
+        snapshot_time = os.path.getmtime(rdb)
 
-            transformed: dict[str, list[dict[str, Any]]] = {}
-            manifests: dict[str, dict[str, Any]] = {}
-            with _redis_side(models):
-                for mapping in mappings:
-                    facts = inventory["models"][mapping.name]
-                    text, export_facts = _export_model(mapping, facts["orphan_hashes"])
-                    _atomic_write(run_dir / "export" / f"{mapping.name}.jsonl", text)
-                    lines = [
-                        json.loads(line) for line in text.splitlines() if line.strip()
-                    ]
-                    manifests[mapping.name] = lines[0]
-                    info: dict[str, Any] = {}
-                    rows = [
-                        transform_record(
-                            mapping,
-                            record,
-                            staged=facts["staged"],
-                            snapshot_time=snapshot_time,
-                            content_dir=content_copy,
-                            lossy=lossy,
-                            info=info,
-                        )
-                        for record in lines[1:]
-                    ]
-                    rows.sort(key=lambda r: r["key"])
-                    transformed[mapping.name] = rows
-                    _atomic_write(
-                        run_dir / "transform" / f"{mapping.name}.jsonl",
-                        "".join(json.dumps(r, sort_keys=True) + "\n" for r in rows),
-                    )
-                    _count_inventory_lossy(mapping, facts, lossy)
-                    if export_facts["errors"]:
-                        lossy["export_errors"] = lossy.get("export_errors", 0) + len(
-                            export_facts["errors"]
-                        )
-                    report["models"][mapping.name] = {
-                        "exported": len(rows),
-                        "export": export_facts,
-                        "rejected": sum(1 for r in rows if r["meta"]["reject"]),
-                        "rejects": [
-                            {"key": r["key"], "reason": r["meta"]["reject"]}
-                            for r in rows
-                            if r["meta"]["reject"]
-                        ][:VERIFY_MISMATCH_DETAIL],
-                        "sentinels": info.get("sentinels", {}),
-                        "orphan_hashes_recovered": export_facts["orphans_recovered"],
-                    }
-            total = sum(len(r) for r in transformed.values())
-            if total == 0 and not config.allow_empty:
-                raise MigrationRefused(
-                    "the snapshot holds no records for the listed models; on a "
-                    "production machine that almost always means the wrong RDB or "
-                    "--source-db. Pass --allow-empty if it really is empty."
-                )
-            for name, value in list(lossy.items()):
-                if not value:
-                    del lossy[name]
-            report["lossy"] = dict(sorted(lossy.items()))
-
-            if config.dry_run:
-                report["verdict"] = "dry-run"
-            else:
-                backend = PostgresBackend(dsn=dsn, schema=schema)
-                run = {
-                    "run_id": run_id,
-                    "source_id": config.source_id,
-                    "rdb_sha256": rdb_sha,
-                    "now": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                }
-                decisions: dict[str, dict[str, str]] = {m.name: {} for m in mappings}
-                errors: list[str] = []
-                conn = _connect(dsn)
-                try:
-                    _ensure_tool_tables(conn, schema)
-                    conn.execute(
-                        f"INSERT INTO {_qi(schema)}.{_qi(RUN_TABLE)} (run_id, source_id, "
-                        "rdb_sha256, status) VALUES (%s, %s, %s, 'loading') ON CONFLICT "
-                        "(run_id) DO UPDATE SET status = 'loading'",
-                        (run_id, config.source_id, rdb_sha),
-                    )
-                    conn.commit()
-                    with _postgres_side(models, backend), _no_embedding(models):
-                        for mapping in mappings:
-                            _load_model(
-                                mapping,
-                                transformed[mapping.name],
-                                manifests[mapping.name],
-                                backend=backend,
-                                conn=conn,
-                                run=run,
-                                batch_size=config.batch_size,
-                                decisions=decisions[mapping.name],
-                                errors=errors,
-                            )
-                finally:
-                    conn.close()
-                for mapping in mappings:
-                    tally: dict[str, int] = {}
-                    for decision in decisions[mapping.name].values():
-                        tally[decision] = tally.get(decision, 0) + 1
-                    report["models"][mapping.name]["decisions"] = dict(
-                        sorted(tally.items())
-                    )
-                report["load_errors"] = errors
-                checks = verify(
-                    mappings,
-                    transformed,
-                    decisions,
-                    backend=backend,
-                    dsn=dsn,
-                    run=run,
-                    sample=config.verify_sample,
-                )
-                report["verification"] = checks
-                clean = not errors and all(
-                    result.get("ok")
-                    for model_checks in checks.values()
-                    for result in model_checks.values()
-                )
-                report["verdict"] = "clean" if clean else "mismatch"
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-
-    report["duration_seconds"] = round(time.time() - started, 3)
-    report["sign_off"] = {
-        "operator": config.operator or _operator(),
-        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    }
-    report["sign_off"]["sha256"] = _sign(report)
-    _atomic_write(
-        run_dir / "report.json", json.dumps(report, indent=2, default=str) + "\n"
-    )
-    _atomic_write(run_dir / "report.txt", render_summary(report))
-    if not config.dry_run:
-        conn = _connect(dsn)
+        report: dict[str, Any] = {
+            "tool": "popoto.migrate_redis_to_postgres",
+            "issue": 756,
+            "run_id": run_id,
+            "source_id": config.source_id,
+            "mode": (
+                "dry-run" if config.dry_run else ("merge" if config.merge else "load")
+            ),
+            "snapshot": {
+                "rdb_path": str(rdb),
+                "rdb_sha256": rdb_sha,
+                "rdb_mtime": snapshot_time,
+            },
+            "target": {"schema": schema, "preflight": target_facts},
+            "models": {},
+            "lossy": {},
+        }
+        lossy: dict[str, int] = {}
+        supervisor = _Supervisor().start()
         try:
-            conn.execute(
-                f"UPDATE {_qi(schema)}.{_qi(RUN_TABLE)} SET status = %s, finished_at = now(), "
-                "report = %s::jsonb WHERE run_id = %s",
-                (report["verdict"], json.dumps(report, default=str), run_id),
-            )
-            conn.commit()
+            work = _private_dir("popoto-migrate-work-")
+            supervisor.watch(work)
+            try:
+                content_copy: Optional[Path] = None
+                if config.content_dir is not None:
+                    content_copy = work / "content"
+                    shutil.copytree(config.content_dir, content_copy, symlinks=False)
+                with (
+                    ThrowawayRedis(
+                        rdb,
+                        redis_server=config.redis_server,
+                        work_parent=work,
+                        supervisor=supervisor,
+                    ) as server,
+                    _bound_to(server, config.source_db),
+                    _content_root(content_copy),
+                ):
+                    report["snapshot"]["throwaway"] = {
+                        "tcp_port": 0,
+                        "unix_socket": True,
+                        "run_id": server.run_id,
+                    }
+                    client = ReadOnlyRedis(server, db=config.source_db)
+                    try:
+                        with _redis_side(models):
+                            inventory = run_inventory(client, mappings, content_copy)
+                    finally:
+                        client.close()
+                    _atomic_write(
+                        run_dir / "inventory.json",
+                        json.dumps(inventory, indent=2, default=str) + "\n",
+                    )
+                    report["inventory"] = {
+                        "dbsize": inventory["dbsize"],
+                        "out_of_scope_families": len(inventory["out_of_scope"]),
+                        "stops": inventory["stops"],
+                    }
+                    stops = [
+                        s
+                        for s in inventory["stops"]
+                        if not (config.accept_unclassified and "unclassified" in s)
+                    ]
+                    if stops:
+                        raise InventoryStop(
+                            "the inventory found state the tool cannot account for: "
+                            + "; ".join(stops),
+                            stops,
+                        )
+
+                    transformed: dict[str, list[dict[str, Any]]] = {}
+                    manifests: dict[str, dict[str, Any]] = {}
+                    with _redis_side(models):
+                        for mapping in mappings:
+                            facts = inventory["models"][mapping.name]
+                            text, export_facts = _export_model(
+                                mapping, facts["orphan_hashes"]
+                            )
+                            _atomic_write(
+                                run_dir / "export" / f"{mapping.name}.jsonl", text
+                            )
+                            lines = [
+                                json.loads(line)
+                                for line in text.splitlines()
+                                if line.strip()
+                            ]
+                            manifests[mapping.name] = lines[0]
+                            info: dict[str, Any] = {}
+                            rows = [
+                                transform_record(
+                                    mapping,
+                                    record,
+                                    staged=facts["staged"],
+                                    snapshot_time=snapshot_time,
+                                    content_dir=content_copy,
+                                    lossy=lossy,
+                                    info=info,
+                                )
+                                for record in lines[1:]
+                            ]
+                            rows.sort(key=lambda r: r["key"])
+                            transformed[mapping.name] = rows
+                            _atomic_write(
+                                run_dir / "transform" / f"{mapping.name}.jsonl",
+                                "".join(
+                                    json.dumps(r, sort_keys=True) + "\n" for r in rows
+                                ),
+                            )
+                            _count_inventory_lossy(mapping, facts, lossy)
+                            if export_facts["errors"]:
+                                lossy["export_errors"] = lossy.get(
+                                    "export_errors", 0
+                                ) + len(export_facts["errors"])
+                            report["models"][mapping.name] = {
+                                "exported": len(rows),
+                                "export": export_facts,
+                                "rejected": sum(1 for r in rows if r["meta"]["reject"]),
+                                "rejects": [
+                                    {"key": r["key"], "reason": r["meta"]["reject"]}
+                                    for r in rows
+                                    if r["meta"]["reject"]
+                                ][:VERIFY_MISMATCH_DETAIL],
+                                "sentinels": info.get("sentinels", {}),
+                                "orphan_hashes_recovered": export_facts[
+                                    "orphans_recovered"
+                                ],
+                            }
+                    total = sum(len(r) for r in transformed.values())
+                    if total == 0 and not config.allow_empty:
+                        raise MigrationRefused(
+                            "the snapshot holds no records for the listed models; on a "
+                            "production machine that almost always means the wrong RDB or "
+                            "--source-db. Pass --allow-empty if it really is empty."
+                        )
+                    for name, value in list(lossy.items()):
+                        if not value:
+                            del lossy[name]
+                    report["lossy"] = dict(sorted(lossy.items()))
+
+                    if config.dry_run:
+                        report["verdict"] = "dry-run"
+                    else:
+                        backend = PostgresBackend(dsn=dsn, schema=schema)
+                        run = {
+                            "run_id": run_id,
+                            "source_id": config.source_id,
+                            "rdb_sha256": rdb_sha,
+                            "now": datetime.datetime.now(
+                                datetime.timezone.utc
+                            ).isoformat(),
+                        }
+                        decisions: dict[str, dict[str, str]] = {
+                            m.name: {} for m in mappings
+                        }
+                        errors: list[str] = []
+                        conn = _connect(dsn)
+                        try:
+                            _ensure_tool_tables(conn, schema)
+                            conn.execute(
+                                f"INSERT INTO {_qi(schema)}.{_qi(RUN_TABLE)} (run_id, source_id, "
+                                "rdb_sha256, status) VALUES (%s, %s, %s, 'loading') ON CONFLICT "
+                                "(run_id) DO UPDATE SET status = 'loading'",
+                                (run_id, config.source_id, rdb_sha),
+                            )
+                            conn.commit()
+                            with _postgres_side(models, backend), _no_embedding(models):
+                                for mapping in mappings:
+                                    _load_model(
+                                        mapping,
+                                        transformed[mapping.name],
+                                        manifests[mapping.name],
+                                        backend=backend,
+                                        conn=conn,
+                                        run=run,
+                                        batch_size=config.batch_size,
+                                        decisions=decisions[mapping.name],
+                                        errors=errors,
+                                    )
+                        finally:
+                            conn.close()
+                        for mapping in mappings:
+                            tally: dict[str, int] = {}
+                            for decision in decisions[mapping.name].values():
+                                tally[decision] = tally.get(decision, 0) + 1
+                            report["models"][mapping.name]["decisions"] = dict(
+                                sorted(tally.items())
+                            )
+                        report["load_errors"] = errors
+                        checks = verify(
+                            mappings,
+                            transformed,
+                            decisions,
+                            backend=backend,
+                            dsn=dsn,
+                            run=run,
+                            sample=config.verify_sample,
+                        )
+                        report["verification"] = checks
+                        clean = not errors and all(
+                            result.get("ok")
+                            for model_checks in checks.values()
+                            for result in model_checks.values()
+                        )
+                        report["verdict"] = "clean" if clean else "mismatch"
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
         finally:
-            conn.close()
-    return MigrationReport(run_id=run_id, source_id=config.source_id, data=report)
+            supervisor.close()
+
+        report["duration_seconds"] = round(time.time() - started, 3)
+        report["sign_off"] = {
+            "operator": config.operator or _operator(),
+            "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        report["sign_off"].update(seal_report(report, report_key))
+        _atomic_write(
+            run_dir / "report.json", json.dumps(report, indent=2, default=str) + "\n"
+        )
+        _atomic_write(run_dir / "report.txt", render_summary(report))
+        if not config.dry_run:
+            conn = _connect(dsn)
+            try:
+                conn.execute(
+                    f"UPDATE {_qi(schema)}.{_qi(RUN_TABLE)} SET status = %s, finished_at = now(), "
+                    "report = %s::jsonb WHERE run_id = %s",
+                    (report["verdict"], json.dumps(report, default=str), run_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        return MigrationReport(run_id=run_id, source_id=config.source_id, data=report)
+    finally:
+        if lock is not None:
+            lock.close()
 
 
 def _operator() -> str:
@@ -2450,6 +2936,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--operator", default="", help="name recorded in the report's sign-off"
     )
+    parser.add_argument(
+        "--report-key",
+        type=Path,
+        help=(
+            "file holding a secret key; the report then carries an HMAC-SHA256 "
+            "(tamper evidence). Without it the report carries only a checksum."
+        ),
+    )
     return parser
 
 
@@ -2472,12 +2966,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         redis_server=args.redis_server,
         verify_sample=args.verify_sample,
         operator=args.operator,
+        report_key=args.report_key,
     )
 
     def _terminate(signum: int, _frame: Any) -> None:
         raise KeyboardInterrupt(f"signal {signum}")
 
-    previous = signal.signal(signal.SIGTERM, _terminate)
+    # SIGHUP is what an SSH drop sends; SIGINT is Ctrl-C. Each unwinds the
+    # run through its finally blocks (stopping the throwaway server and
+    # removing its copies). SIGKILL cannot be caught: the watchdog covers it.
+    handled = (signal.SIGTERM, signal.SIGHUP, signal.SIGINT)
+    previous = {s: signal.signal(s, _terminate) for s in handled}
     try:
         config.mappings = _mappings_from_args(args.model, args.mapping)
         report = run_migration(config)
@@ -2487,11 +2986,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except MigrationRefused as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 2
+    except KeyboardInterrupt as exc:
+        print(
+            f"INTERRUPTED ({exc or 'signal 2'}): the throwaway server is stopped "
+            "and its copies removed. Continue with --resume and the same "
+            "--run-dir.",
+            file=sys.stderr,
+        )
+        return 130
     finally:
-        signal.signal(signal.SIGTERM, previous)
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
     sys.stdout.write(report.summary())
     return 0 if report.clean or report.verdict == "dry-run" else 1
-
-
-if __name__ == "__main__":  # pragma: no cover - CLI entry
-    sys.exit(main())
