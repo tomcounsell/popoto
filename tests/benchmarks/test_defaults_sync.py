@@ -250,6 +250,10 @@ class TestDefaultsSync:
             "PG_MAINTAIN_LOCK_TIMEOUT_MS",
             "PG_MAINTAIN_STATEMENT_TIMEOUT_MS",
             "PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS",
+            # Postgres first-use DDL inside a unit (#776, PR #793 review):
+            # read from Defaults each time the dedicated DDL connection opens.
+            "PG_DDL_LOCK_TIMEOUT_MS",
+            "PG_DDL_STATEMENT_TIMEOUT_MS",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs
