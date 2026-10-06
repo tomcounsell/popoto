@@ -1486,9 +1486,11 @@ Python: its step estimate, its "decrease the step" check, and its pruning of
 useless neighbours. One statement fetches the rows whose score falls in those
 `[min, max)` ranges. That is the bounding-box prefilter, served by the
 partial B-tree; on a `Meta.ttl` model it fetches live rows only, and it is
-narrowed by the query's other top-level filters. Each candidate's distance
-is then `geohashGetDistance`, Redis's haversine on its 6372797.560856 m
-earth radius with its equal-longitude shortcut. A point is in when
+narrowed by the query's other top-level filters. A search by member reads
+the member's position whether or not its record has expired, as Redis's
+geo set still holds an expired member (see the divergences below). Each
+candidate's distance is then `geohashGetDistance`, Redis's haversine on
+its 6372797.560856 m earth radius with its equal-longitude shortcut. A point is in when
 `distance <= radius * conversion`. The matched keys scope the query's own
 statement (`_pk = ANY(…)`), so `limit`, `order_by`, `values=` and the
 other filters apply in SQL. With `with_distances`, each row carries
@@ -1548,7 +1550,9 @@ it is not a dependency.
 The seeded probe compares both legs against the *running* Redis, including
 the stored score and decoded position against `ZSCORE`/`GEOPOS`, and each
 leg's exact distance read off its own radius test (in at `d`, out one ulp
-below). Every comparison is exact, except four classes that count apart.
+below). Every comparison is exact, except five classes that count apart:
+four for arithmetic, and `nan_distance_arm64` (the `NaN` reply below,
+against a Redis that is not x86-64).
 `fma_position_ulp` (a position or distance one fused rounding away) and
 `fma_boundary` (a search or count differing only by members the contraction
 moves across the radius) exist only against a contracting build, and are
@@ -1557,9 +1561,35 @@ the two contractions reproduces the running Redis to the bit. `libm_ulp`
 and `libm_boundary` exist only against a Redis on another libm: a distance
 (never a position) within the envelope the formula gives when each of its
 five libm results is off by at most one ulp, or a search differing only by
-members whose envelope straddles the radius. Against a contracting Redis
-sharing the probe's libm (arm64 macOS) the `libm_*` classes are 0; against
-x86-64 Redis the `fma_*` classes are 0.
+members whose envelope straddles the radius.
+
+Which of these classes a run allows is measured, not assumed. Before the
+first seed the probe stores a fixed battery of 2,000 points on the running
+Redis and reads back each position (`GEOPOS`) and the exact distance Redis
+measures to a center. The `fma_*` classes are on only if some position is
+the fused decode's and not the plain one's. Positions call no libm, so they
+alone decide it. The `libm_*` classes are on only if some distance is
+neither model's on the probe's own libm, or if Redis reports another OS in
+`INFO server`. Against a Redis that shares the probe's arithmetic both are
+off, so any search or count that differs is undocumented. On arm64 macOS
+with Homebrew Redis the report reads `contracting (fma_* on), this host's
+libm (libm_* off)`, with 0 of 2,000 distances unexplained. On CI
+(`redis:7-alpine` against the runner's glibc Python) every position is
+plain and 129 distances are unexplained, so the result is `fma_*` off and
+`libm_*` on. `--libm` and `--fma` force either pair on or off.
+
+A search or count that differs is accepted member by member, never by the
+size of the gap. Each member the two legs disagree on must be in the class's
+boundary set, and the Postgres leg must answer it the way the probe's own
+plain model does, computed from the stored score with the probe's constants
+rather than the port's. A count only says how many rows matched, so when the
+counts differ the probe reads each leg's rows for the same parameters to
+find which members are involved. In the #789 review's planted bugs (seeds
+1–3 × 300, arm64), the search and count stage now flags the earth radius
+wrong in its 9th digit with 565 filter and 474 count mismatches, where
+`libm_boundary` used to absorb 718 and leave 208 and 39. It flags `>=`
+instead of `>` with 294 and 303, where 423 used to be absorbed and 87 and 87
+were left.
 
 ```bash
 REDIS_URL=redis://localhost:6379/7 \
@@ -1573,7 +1603,9 @@ POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
 |---|---|---|
 | Saving a point `GEOADD` refuses (`lat` past ±85.05112878, `lon` past ±180) | the hash is written, then `GEOADD` fails: the record exists, unindexed, and the save raises `ResponseError` | refused before writing: `ValueError` with the same text (`invalid longitude,latitude pair …`) |
 | A search the server refuses (bad center, bad or negative radius, a member that is not indexed) | `ResponseError` | `QueryException`, same text |
-| A record that has expired (`Meta.ttl`) | its geo-set member stays (no read purges it): `filter()` drops it at hydration, but `count()` keeps counting it, and a search by its member still runs around it | invisible to every search, `count()` and member lookup at once |
+| A record that has expired (`Meta.ttl`) | its geo-set member stays (no read purges it): `filter()` drops it at hydration, but `count()` keeps counting it | invisible to every search and `count()` at once |
+| A search by an expired member (`Meta.ttl`) | `GEORADIUSBYMEMBER` still decodes the stale member and searches around its last position: `filter()` returns the live rows near it (`[]` when none are), `count()` counts the stale members too. A member that was never saved, while only stale members are left, raises `ResponseError: could not decode requested zset member` | the same rows, searched around the expired row's last position, while the row is still in the table. `count()` counts live rows only; the never-saved member raises `QueryException` with the same text. Once the reaper has deleted the row (after a later write to the model), the member is missing and the search raises that `QueryException`, as Redis does after `clean_indexes` or a delete |
+| A distance that computes to `NaN` (`asin` of a rounding-inflated argument above 1; near-antipodal points under a huge or `inf` radius, not reached in 10 million centers at or within two ulps of a stored point's antipode on arm64) | the member is in (`NaN > radius` is false). `WITHDIST` prints `llrint(NaN * 10000)`: `-922337203685477.5808` on x86-64 (`LLONG_MIN`), which sorts it first; `0.0000` on arm64 | as x86-64, CI's reference: `-922337203685477.5808` (`geo.NAN_DISTANCE_REPLY`). Against arm64 Redis the probe counts the row as `nan_distance_arm64` |
 | A geo leaf scoping a ranking or a search (`rank_decayed(where=…)`, `recall`) | the leaf's key set | `BackendCapabilityError`: a geo filter scopes `filter()` and `count()` only, for now |
 | A Redis built with floating-point contraction (clang, arm64) | the decode and the haversine round `a*b + c` once: positions and distances one fused rounding away (up to ~0.19 m near the antipode), so a member that close to the radius can flip | plain IEEE arithmetic: positions equal to x86-64 Redis's to the bit, on every platform |
 | A Redis linked against another libm (musl in `redis:7-alpine`, against glibc or Apple's) | `sin`/`cos`/`asin` from its libm | from the host Python's: a distance can differ in its last bits, so a member that close to the radius can flip |
