@@ -6966,9 +6966,9 @@ cast to the column's type.</p>
 <td>refused before anything is written: <code>ModelException("value is not a valid float")</code> -- the same text, popoto's save error (as row (v) of the query table). Stored, a NaN start would sort above every float and hide the record from every gate. Pinned: <code>tests/test_validity_parity.py::TestNanInstants::test_a_nan_valid_from_on_save_is_refused</code></td>
 </tr>
 <tr>
-<td>A NaN instant in <code>supersede</code> / <code>invalidate</code> / <code>execute_supersede</code> (M3)</td>
-<td><code>ResponseError: value is not a valid float script: …</code>. With only <code>valid_from</code> NaN (a real close instant), <code>SUPERSEDE_LUA</code>'s validation phase lets it through and the successor's <code>ZADD</code> fails in the mutation phase, after the incumbent was closed and chained, with the pointer still naming it: half-written state, issue #778</td>
-<td><code>ValueError("value is not a valid float (&lt;instant&gt; is NaN)")</code>: the same text, a different class, raised before the first write, so nothing is written. Pinned: <code>TestNanInstants::test_a_nan_at_is_refused_and_writes_nothing</code> and <code>::test_a_nan_valid_from_alone_in_execute_supersede</code></td>
+<td>A NaN <code>valid_from</code> in a direct <code>execute_supersede(mode="open")</code> call (M3)</td>
+<td>the script's first <code>ZADD</code> refuses it: <code>ResponseError: value is not a valid float script: …</code>, nothing written. Every other NaN instant in <code>supersede</code> / <code>invalidate</code> / <code>execute_supersede</code> is refused on both legs alike -- <code>ValueError("value is not a valid float (&lt;instant&gt; is NaN)")</code> before the first write (#778, which on Redis used to close and chain the incumbent first); this one is left to the script because it is the save path's own refusal (the row above)</td>
+<td><code>ValueError</code> with the same text, nothing written. Pinned: <code>tests/test_validity_parity.py::TestNanInstants::test_a_nan_valid_from_in_mode_open_is_a_documented_divergence</code>; the shared refusal by <code>::test_a_nan_at_is_refused_and_writes_nothing</code> and <code>::test_a_nan_instant_in_execute_supersede_writes_nothing</code></td>
 </tr>
 <tr>
 <td>A NaN <code>as_of</code> / <code>validity__as_of</code> (M3)</td>
