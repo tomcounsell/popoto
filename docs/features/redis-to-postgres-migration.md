@@ -53,6 +53,15 @@ never reaches it or the server directly. The tests kill the tool with each
 of the four signals mid-run. Each time they check that no server, watchdog
 or directory is left, and that the server never had a TCP socket.
 
+One case is not covered: `SIGKILL` sent to both the tool and the watchdog,
+for example `kill -9` on every process you own. If the watchdog alone dies,
+the tool stops the server itself when the run ends. If both die, the server
+keeps running and the copy stays on disk. Even so, it is reachable only through its unix socket,
+which sits in a `0700` directory and needs the password. After such a kill,
+look for a leftover with `ps -ax -o pid,command | grep 'redis-server
+unixsocket:'`. Stop it with `kill <pid>`, then remove the
+`popoto-migrate-work-*` and `pmig-*` directories under `$TMPDIR`.
+
 Two read paths reach the throwaway server, and both are checked:
 
 - **The inventory** uses `ReadOnlyRedis`. It can only be built from the
