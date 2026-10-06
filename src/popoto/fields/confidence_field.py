@@ -273,6 +273,7 @@ class ConfidenceField(Field):
                 "import_state",
                 record_id(model_instance),
                 state,
+                uow=kwargs.get("uow"),
             )
             return None
 

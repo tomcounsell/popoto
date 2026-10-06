@@ -386,7 +386,11 @@ class Field(metaclass=FieldBase):
             field_name: Name of this field on the model.
             state: The dict previously returned by ``export_state`` for this
                 field, or ``None``.
-            **kwargs: Reserved for future extension.
+            **kwargs: ``uow`` -- a Postgres unit of work the restore must
+                join (``import_records(uow=...)``, #756): an override whose
+                state lives on a non-Redis backend passes it to the backend
+                call, so the restore commits with the record's save. Other
+                keys are reserved for future extension.
 
         Returns:
             None.

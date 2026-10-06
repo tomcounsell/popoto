@@ -263,6 +263,7 @@ class PredictionLedgerMixin:
                 _rid(model_instance, member_key),
                 entry,
                 state.get("partition") or "default",
+                uow=kwargs.get("uow"),
             )
             return None
 

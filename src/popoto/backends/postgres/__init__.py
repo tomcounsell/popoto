@@ -515,6 +515,34 @@ class PostgresUnitOfWork(UnitOfWork):
             except Exception as exc:
                 logger.warning("after-commit callback %r failed: %s", callback, exc)
 
+    @contextlib.contextmanager
+    def savepoint(self) -> Iterator["PostgresUnitOfWork"]:
+        """A ``SAVEPOINT`` inside this unit (sync units only): when the block
+        raises, every statement it ran is rolled back **and** every callback
+        it queued on this unit -- stream appends, ``before_commit`` and
+        ``after_commit`` callbacks, the TTL tables to reap -- is dropped, so
+        the unit commits nothing of it. Without the second half a save rolled
+        back to a savepoint would still append its stream entry at ``COMMIT``
+        (#756: ``import_records(uow=...)`` lands each record this way). The
+        exception propagates; the unit stays usable. The record-key locks the
+        block took stay in :attr:`locked` (the server may keep them until the
+        unit ends; over-reporting only refuses more self-waits)."""
+        marks = (
+            len(self._after_commit),
+            len(self._before_commit),
+            len(self._stream_appends),
+        )
+        reap = dict(self.reap)
+        try:
+            with self.conn.transaction():
+                yield self
+        except BaseException:
+            del self._after_commit[marks[0] :]
+            del self._before_commit[marks[1] :]
+            del self._stream_appends[marks[2] :]
+            self.reap = reap
+            raise
+
     @property
     def is_redis_pipeline(self) -> bool:
         return False
