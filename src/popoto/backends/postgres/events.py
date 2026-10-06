@@ -1788,11 +1788,11 @@ class EventsMixin:
     dsn: str
     _run: Callable[..., tuple[list[tuple[Any, ...]], int]]
     _atomically: Callable[..., Any]
+    _ensure_engine_table: Callable[..., None]
 
     def _events_ready(self) -> dict[str, str]:
         """The engine tables' qualified names, created on first use in this
         process (and again after ``forget_tables``)."""
-        from . import _schema_auto
         from .schema import engine_table_ddl, quote_ident
 
         q = lambda name: f"{quote_ident(self.schema)}.{quote_ident(name)}"  # noqa: E731
@@ -1800,19 +1800,8 @@ class EventsMixin:
         ready: set[str] = self.__dict__.setdefault("_engine_ready", set())
         if "popoto_stream" in ready:
             return names
-        rows, _ = self._run(
-            "SELECT count(*) FROM pg_tables WHERE schemaname = %s AND "
-            "tablename = ANY(%s::text[])",
-            [self.schema, list(STREAM_TABLES)],
-        )
-        if int(rows[0][0]) < len(STREAM_TABLES):
-            if not _schema_auto():
-                from ..types import SchemaDriftError
 
-                raise SchemaDriftError(
-                    f"{self.schema}.popoto_stream tables do not exist and "
-                    "POPOTO_SCHEMA_AUTO=0"
-                )
+        def ddl() -> tuple[str, list[Any]]:
             bodies = _table_bodies(q)
             sql, params = engine_table_ddl(
                 self.schema, STREAM_TABLES[0], bodies[STREAM_TABLES[0]]
@@ -1823,7 +1812,18 @@ class EventsMixin:
                 f"; CREATE INDEX IF NOT EXISTS {quote_ident('popoto_stream_pending_owner')} "
                 f"ON {q('popoto_stream_pending')} (stream, grp, consumer)"
             )
-            self._run(sql, params, write=True)
+            return sql, params
+
+        # First-use DDL never takes a pooled connection inside a unit of
+        # work (#776, PostgresBackend._ensure_engine_table).
+        self._ensure_engine_table(
+            "SELECT count(*) FROM pg_tables WHERE schemaname = %s AND "
+            "tablename = ANY(%s::text[])",
+            [self.schema, list(STREAM_TABLES)],
+            lambda rows: int(rows[0][0]) >= len(STREAM_TABLES),
+            ddl,
+            f"{self.schema}.popoto_stream tables do not exist",
+        )
         ready.add("popoto_stream")
         return names
 

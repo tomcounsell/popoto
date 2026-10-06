@@ -343,7 +343,8 @@ def test_an_expired_record_is_out_of_every_search(pg):
 def test_a_batch_commits_the_geo_columns_with_the_row(pg):
     pipe = popoto.batch()
     GeoPlace(name="rome", place=ROME).save(pipeline=pipe)
-    assert GeoPlace.query.count(place=ROME, place_radius=1) == 0
+    with pg.second_connection_ok():  # a reader outside the batch (#776)
+        assert GeoPlace.query.count(place=ROME, place_radius=1) == 0
     pipe.execute()
     assert GeoPlace.query.count(place=ROME, place_radius=1) == 1
     pipe = popoto.batch()

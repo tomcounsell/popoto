@@ -209,12 +209,18 @@ def _restore_state(
         klass.import_state(instance, from_jsonable(carried), **extra)
 
 
-def _exists_many(model_class: "type[Model]", keys: "list[str]") -> "dict[str, bool]":
+def _exists_many(
+    model_class: "type[Model]", keys: "list[str]", uow: Any = None
+) -> "dict[str, bool]":
     """Pipelined EXISTS over a batch of redis keys.
 
     On a model bound to another backend (#759 M5) the same question goes to
     that backend's ``exists`` -- a Redis ``EXISTS`` would ask a store the
     record was never written to, and report every landed record as lost.
+
+    ``uow``: the caller's unit of work, if any. The read runs on the unit's
+    own connection (#776), so it sees the unit's writes and never checks out
+    a second pooled connection while the unit holds one.
     """
     if not keys:
         return {}
@@ -224,7 +230,12 @@ def _exists_many(model_class: "type[Model]", keys: "list[str]") -> "dict[str, bo
     if backend is not None:
         from ..models.query import _record_ids
 
-        found = backend.exists(model_class._meta.spec, _record_ids(model_class, keys))
+        # ``uow=`` only when there is one: the protocol's ``exists`` takes
+        # no unit, and a backend that has none to offer need not accept it.
+        on_unit: "dict[str, Any]" = {} if uow is None else {"uow": uow}
+        found = backend.exists(
+            model_class._meta.spec, _record_ids(model_class, keys), **on_unit
+        )
         return {key: bool(value) for key, value in zip(keys, found)}
     pipeline = get_REDIS_DB().pipeline()
     for key in keys:
@@ -253,7 +264,7 @@ def _process_batch(
     through :func:`_land_in_unit`.
     """
     keys = [record["key"] for record in batch]
-    existing = _exists_many(model_class, keys)
+    existing = _exists_many(model_class, keys, uow=uow)
 
     bypass = on_write_gate == "bypass"
     landed: "list[RecordOutcome]" = []
@@ -360,7 +371,7 @@ def _process_batch(
 
     # Reconciliation: ground-truth the landed records that were NOT on the
     # collision path. Downgrade only -- never an upgrade.
-    confirmed = _exists_many(model_class, [outcome.key for outcome in landed])
+    confirmed = _exists_many(model_class, [outcome.key for outcome in landed], uow=uow)
     for outcome in landed:
         if not confirmed.get(outcome.key):
             outcome.category = ERRORED

@@ -613,6 +613,7 @@ def _search(
     ts: TableSpec,
     query: Any,
     scope: tuple[str, list[Any]] = ("", []),
+    uow: Any = None,
 ) -> GeoResolved:
     """One ``GEORADIUS``/``GEORADIUSBYMEMBER``, in Redis's argument order:
     the center (or the member) is checked first, then the radius; a search
@@ -645,6 +646,7 @@ def _search(
             f'WHERE "_pk" = %s AND {gh} IS NOT NULL{live_and}), '
             f"EXISTS (SELECT 1 FROM {ts.qualified} WHERE {gh} IS NOT NULL{live_and})",
             [member_key],
+            uow=uow,
         )
         center, indexed = rows[0]
         if not indexed:
@@ -666,6 +668,7 @@ def _search(
         f'SELECT "_pk", {lon_col}, {lat_col} FROM {ts.qualified} '
         f"WHERE ({clauses}){live_and}" + (f" AND {scope_sql}" if scope_sql else ""),
         params + list(scope_params),
+        uow=uow,
     )
     limit = radius * conversion
     keys: list[str] = []
@@ -683,9 +686,10 @@ def _search(
 
 
 def resolve_geo(
-    backend: Any, ts: TableSpec, where: Optional[Predicate]
+    backend: Any, ts: TableSpec, where: Optional[Predicate], uow: Any = None
 ) -> tuple[Optional[Predicate], Optional[dict[str, float]], Optional[str]]:
-    """Run every geo leaf of ``where`` and replace it with its matched keys.
+    """Run every geo leaf of ``where`` and replace it with its matched keys
+    (on ``uow``'s connection when one is given, #776).
 
     Returns the rewritten predicate, the distances of the leaves that asked
     for them (merged in predicate order: a later leaf's distance for a key
@@ -714,7 +718,7 @@ def resolve_geo(
     unit: Optional[str] = None
     for leaf in leaves:
         resolved = _search(
-            backend, ts, leaf.value, scope if id(leaf) in direct else ("", [])
+            backend, ts, leaf.value, scope if id(leaf) in direct else ("", []), uow
         )
         done[id(leaf)] = Cond(leaf.field, Op.WITHIN, resolved)
         if resolved.distances is not None:

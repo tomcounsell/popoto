@@ -169,7 +169,8 @@ def test_the_mutation_stream_is_written_only_after_commit(pg):
         kept = ProvenanceJournal.append(
             agent_id=AGENT, statement="committed", pipeline=uow
         ).entry
-        assert len(_stream_entries(probe)) == baseline  # not before COMMIT
+        with pg.second_connection_ok():  # a reader outside the unit (#776)
+            assert len(_stream_entries(probe)) == baseline  # not before COMMIT
     entries = _stream_entries(probe)
     assert len(entries) == baseline + 1
     _, fields = entries[-1]
@@ -357,7 +358,8 @@ def test_a_batch_carries_the_annotation(pg):
         agent_id=AGENT, statement="batched", pipeline=pipe
     )
     assert result.pipeline is pipe
-    assert JournalEntry.query.count() == before
+    with pg.second_connection_ok():  # a reader outside the batch (#776)
+        assert JournalEntry.query.count() == before
     pipe.execute()
     assert JournalEntry.query.count() == before + 1
     pipe = popoto.batch()
@@ -376,7 +378,8 @@ def test_a_batch_carries_the_annotation_and_the_close(pg):
             target, agent_id=AGENT, statement="fix", at=t0 + 50.0, pipeline=pipe
         )
         assert result.target_closed is True
-        assert _row(pg, JournalEntry, key)[1] == float("inf"), "not before execute"
+        with pg.second_connection_ok():  # a reader outside the batch (#776)
+            assert _row(pg, JournalEntry, key)[1] == float("inf"), "not before execute"
         pipe.execute()
     finally:
         pipe.reset()

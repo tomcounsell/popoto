@@ -703,7 +703,7 @@ def test_td_update_from_a_negative_zero_is_a_documented_divergence(backend):
 # -- popoto.batch() --------------------------------------------------------------------
 
 
-def test_long_tail_writes_join_a_batch():
+def test_long_tail_writes_join_a_batch(outside_unit):
     """A batched adjustment, pressure resolution, TD update and ledger write
     land on ``execute()`` and not before: Redis queues them; on Postgres each
     joins the batch's transaction (#783) behind the record lock it holds."""
@@ -719,10 +719,11 @@ def test_long_tail_writes_join_a_batch():
         PredictionLedgerMixin.record_prediction(
             ledger, predicted={"x": 1.0}, pipeline=pipe
         )
-        state = CyclicDecayField.export_state(rhythm, "relevance", None)
-        assert state["cycles"] == [[86400, 2.0, 0.0, 2]]
-        assert LtValue.query.get(name="batch").q_value == Decimal("0")
-        assert PredictionLedgerMixin.get_prediction_data(ledger) is None
+        with outside_unit(LtValue):  # readers outside the batch (#776)
+            state = CyclicDecayField.export_state(rhythm, "relevance", None)
+            assert state["cycles"] == [[86400, 2.0, 0.0, 2]]
+            assert LtValue.query.get(name="batch").q_value == Decimal("0")
+            assert PredictionLedgerMixin.get_prediction_data(ledger) is None
         pipe.execute()
     finally:
         pipe.reset()

@@ -480,6 +480,7 @@ class PostgresMemoryOps(PostgresValidityOps):
     _table: Callable[..., TableSpec]
     _run: Callable[..., Any]
     _record_locked: Callable[..., tuple[str, list[Any]]]
+    _ensure_engine_table: Callable[..., None]
     transaction: Callable[..., Any]
 
     # -- D. memory state --------------------------------------------------------
@@ -1033,29 +1034,22 @@ class PostgresMemoryOps(PostgresValidityOps):
         qualified = f"{quote_ident(self.schema)}.{quote_ident(RECALL_TABLE)}"
         if getattr(self, "_recall_ready", False):
             return qualified
-        from . import _schema_auto
-
-        rows, _ = self._run(
+        # First-use DDL never takes a pooled connection inside a unit of
+        # work (#776, PostgresBackend._ensure_engine_table). The schema lock
+        # comes first in the DDL, as ensure_table takes it (#759 M4b B1).
+        self._ensure_engine_table(
             "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
             [self.schema, RECALL_TABLE],
-        )
-        if not rows:
-            if not _schema_auto():
-                from ..types import SchemaDriftError
-
-                raise SchemaDriftError(
-                    f"{self.schema}.{RECALL_TABLE} does not exist and "
-                    "POPOTO_SCHEMA_AUTO=0"
-                )
-            # The schema lock first, as ensure_table takes it (#759 M4b B1).
-            sql, params = engine_table_ddl(
+            bool,
+            lambda: engine_table_ddl(
                 self.schema,
                 RECALL_TABLE,
                 "model text NOT NULL, part text NOT NULL, member text NOT NULL, "
                 "surfaced_at double precision NOT NULL, "
                 "PRIMARY KEY (model, part, member)",
-            )
-            self._run(sql, params, write=True)
+            ),
+            f"{self.schema}.{RECALL_TABLE} does not exist",
+        )
         self._recall_ready = True
         return qualified
 

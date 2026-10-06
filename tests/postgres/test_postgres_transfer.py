@@ -418,3 +418,26 @@ def test_a_per_record_ttl_is_not_carried_on_either_backend(pg, pg_schema):
     finally:
         TxTtl.delete_all()
         set_backend(previous)
+
+
+def test_import_inside_a_unit_reads_existence_on_the_unit(pg, pg_schema):
+    """#776 (PR #793 re-review): ``import_records(uow=...)`` asks which keys
+    already exist on the unit's own connection. On a second pooled one it
+    would trip the strict guard (``SecondConnectionError``) and, under READ
+    COMMITTED, could not see a row the same unit wrote moments earlier --
+    so ``on_conflict="skip"`` would overwrite it."""
+    from popoto.backends.postgres import STRICT_UNIT_CONNECTION
+
+    assert STRICT_UNIT_CONNECTION, "this suite runs with the strict guard on"
+    TxPlain(key="p1", owner="exported", rank=1.0).save()
+    TxPlain(key="p2", owner="exported", rank=2.0).save()
+    text = export_records(TxPlain).data
+    _fresh(pg, pg_schema)
+    TxPlain(key="seed", rank=0.0).save()  # the table exists before the unit
+    with pg.transaction() as uow:
+        TxPlain(key="p1", owner="in-unit", rank=9.0).save(pipeline=uow)
+        report = import_records(TxPlain, io.StringIO(text), on_conflict="skip", uow=uow)
+    assert report.count("skipped") == 1, report.summary()
+    assert report.count("landed") == 1, report.summary()
+    assert TxPlain.query.get(key="p1").owner == "in-unit"
+    assert TxPlain.query.get(key="p2").owner == "exported"

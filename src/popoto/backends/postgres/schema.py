@@ -468,6 +468,47 @@ def table_lock_key(schema: str, table: str) -> str:
     return f"popoto:ddl:{schema}.{table}"
 
 
+def ddl_timeout_sql(*, waiting: bool = False) -> str:
+    """``SET LOCAL lock_timeout`` and ``statement_timeout`` for one DDL
+    transaction, from ``Defaults`` (#776, PR #793 review).
+
+    Two phases, because they bound different waits:
+
+    * ``waiting=True`` -- *before* the advisory locks are taken, and while the
+      catalog is read: ``lock_timeout`` is
+      ``Defaults.PG_DDL_SCHEMA_LOCK_TIMEOUT_MS``, a much longer backstop. The
+      schema-wide DDL advisory lock is held for as long as another process's
+      migration runs, and a process whose model is already current just waits
+      its turn (as it always did) instead of failing at the short limit. The
+      wait cannot be a deadlock: every holder of these locks is itself
+      bounded by the DDL phase below, so the chain ends.
+    * ``waiting=False`` (default) -- immediately before a DDL statement:
+      ``lock_timeout`` is ``Defaults.PG_DDL_LOCK_TIMEOUT_MS``, so a DDL that
+      waits on a table lock another session's open transaction holds gives up
+      instead of hanging with the backend's first-use lock held.
+
+    ``statement_timeout`` is ``PG_DDL_STATEMENT_TIMEOUT_MS`` in both.
+    ``SET LOCAL`` ends with the transaction, so a pooled connection is never
+    left modified."""
+    from ...fields.constants import Defaults
+
+    lock_ms = max(1, int(Defaults.PG_DDL_LOCK_TIMEOUT_MS))
+    if waiting:
+        lock_ms = max(1, int(Defaults.PG_DDL_SCHEMA_LOCK_TIMEOUT_MS))
+    statement_ms = max(1, int(Defaults.PG_DDL_STATEMENT_TIMEOUT_MS))
+    return (
+        f"SET LOCAL lock_timeout = {lock_ms}; "
+        f"SET LOCAL statement_timeout = {statement_ms}; "
+    )
+
+
+def set_ddl_timeouts(cur: Any, *, waiting: bool = False) -> None:
+    """Run :func:`ddl_timeout_sql` on ``cur``, inside its transaction."""
+    for stmt in ddl_timeout_sql(waiting=waiting).split("; "):
+        if stmt.strip():
+            cur.execute(stmt.strip().rstrip(";"))
+
+
 def engine_table_ddl(schema: str, table: str, body: str) -> tuple[str, list[str]]:
     """One message that creates an engine-owned side table on first use.
 
@@ -478,9 +519,10 @@ def engine_table_ddl(schema: str, table: str, body: str) -> tuple[str, list[str]
     and its parameters for ``PostgresBackend._run(..., write=True)``.
     """
     return (
+        ddl_timeout_sql(waiting=True) + "SELECT pg_advisory_xact_lock(hashtext(%s)); "
         "SELECT pg_advisory_xact_lock(hashtext(%s)); "
-        "SELECT pg_advisory_xact_lock(hashtext(%s)); "
-        f"CREATE SCHEMA IF NOT EXISTS {quote_ident(schema)}; "
+        + ddl_timeout_sql()
+        + f"CREATE SCHEMA IF NOT EXISTS {quote_ident(schema)}; "
         f"CREATE TABLE IF NOT EXISTS {quote_ident(schema)}.{quote_ident(table)} "
         f"({body})",
         [schema_lock_key(schema), table_lock_key(schema, table)],
@@ -498,6 +540,9 @@ def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
     registry = f"{schema_q}.{POPOTO_SCHEMA_TABLE}"
     with conn.transaction():
         cur = conn.cursor()
+        # Waiting for another process's DDL is not bounded by the short DDL
+        # lock timeout (a current table never needs it): see ddl_timeout_sql.
+        set_ddl_timeouts(cur, waiting=True)
         cur.execute(
             "SELECT pg_advisory_xact_lock(hashtext(%s))", (schema_lock_key(ts.schema),)
         )
@@ -509,7 +554,9 @@ def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
                 raise SchemaDriftError(
                     f"schema {ts.schema!r} does not exist and POPOTO_SCHEMA_AUTO=0"
                 )
+            set_ddl_timeouts(cur)
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_q}")
+            set_ddl_timeouts(cur, waiting=True)
         cur.execute(_registry_sql(ts.schema))
         cur.execute(
             "SELECT pg_advisory_xact_lock(hashtext(%s))",
@@ -538,6 +585,7 @@ def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
                     f"(model {ts.model})"
                 )
             ddl = ts.create_sql()
+            set_ddl_timeouts(cur)
             for stmt in ddl:
                 cur.execute(stmt)
             _record(cur, ts, ddl, insert=True)
@@ -606,6 +654,7 @@ def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
             for name, decl in ENGINE_COLUMNS
         ]
         ddl += ts.companion_sql()
+        set_ddl_timeouts(cur)
         for stmt in ddl:
             cur.execute(stmt)
         _record(cur, ts, ddl, insert=False)

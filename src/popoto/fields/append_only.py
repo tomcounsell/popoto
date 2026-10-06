@@ -366,8 +366,16 @@ class AppendOnlyMixin:
             # links and open-claim pointer are its own row (and the pointer
             # table cascades with it), so step 1 already removed them; what
             # step 3 sweeps -- a neighbour's link naming the erased record --
-            # is the neighbours' chain columns.
-            _clear_links_to(backend, type(instance), validity_field_names, member)
+            # is the neighbours' chain columns. In the caller's unit of work
+            # when it passed one (#776): the delete above ran there, so the
+            # link it orphans is cleared there too, and a rollback restores
+            # both together.
+            from ..batch import unit_of
+
+            uow = unit_of(kwargs.get("pipeline"), backend)
+            _clear_links_to(
+                backend, type(instance), validity_field_names, member, uow=uow
+            )
             return existed
         for field_name in validity_field_names:
             keys = ValidityField.get_all_keys(instance, field_name)
@@ -398,11 +406,23 @@ class AppendOnlyMixin:
 
 
 def _clear_links_to(
-    backend: Any, model_class: Any, field_names: list[str], member: str
+    backend: Any,
+    model_class: Any,
+    field_names: list[str],
+    member: str,
+    *,
+    uow: Any = None,
 ) -> None:
     """Null every ``<f>__supersedes`` / ``<f>__superseded_by`` column that
     names ``member``: the value side of the chain hashes on Redis. Each row
-    it rewrites is a record write, so its record-key lock comes first."""
+    it rewrites is a record write, so its record-key lock comes first.
+
+    ``uow`` is the unit of work the erasure runs in (``hard_delete(...,
+    pipeline=uow)``): the read that finds the neighbours and the ``UPDATE``
+    that clears their links both run on its connection (#776), so the read
+    sees the unit's own writes and a rollback of the unit leaves the
+    neighbour's link exactly as it was. ``None`` is two autocommit
+    statements, as before."""
     if not field_names:
         return
     ts = backend._table(model_class._meta.spec)
@@ -410,7 +430,9 @@ def _clear_links_to(
         for suffix in ("__supersedes", "__superseded_by"):
             col = f'"{field_name}{suffix}"'
             rows, _ = backend._run(
-                f'SELECT "_pk" FROM {ts.qualified} WHERE {col} = %s', [member]
+                f'SELECT "_pk" FROM {ts.qualified} WHERE {col} = %s',
+                [member],
+                uow=uow,
             )
             keys = [row[0] for row in rows]
             if not keys:
@@ -422,4 +444,4 @@ def _clear_links_to(
                 f'WHERE "_pk" = ANY(%s::text[]) AND {col} = %s',
                 [keys, member],
             )
-            backend._run(sql, params, write=True)
+            backend._run(sql, params, uow=uow, write=True)

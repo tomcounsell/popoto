@@ -349,7 +349,10 @@ class EventStreamMixin:
                     uow=unit_of(pipeline, backend),
                 )
             except Exception as e:
-                if pipeline:
+                # An AssertionError -- the STRICT_UNIT_CONNECTION guard's
+                # SecondConnectionError among them -- is a bug report, never
+                # a stream outage to log past (#776).
+                if pipeline or isinstance(e, AssertionError):
                     raise
                 logger.warning(
                     "EventStreamMixin _xadd_event failed for %s: %s",
