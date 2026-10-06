@@ -3154,6 +3154,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#popoto.batch.open_unit_of" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        open_unit_of
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -4132,6 +4143,64 @@ Postgres write).</p>
 <a id="__codelineno-0-349" name="__codelineno-0-349"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pipeline</span><span class="p">,</span> <span class="n">UnitOfWork</span><span class="p">):</span>
 <a id="__codelineno-0-350" name="__codelineno-0-350"></a>        <span class="k">return</span> <span class="n">pipeline</span>
 <a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="k">return</span> <span class="n">join_unit</span><span class="p">(</span><span class="n">pipeline</span><span class="p">,</span> <span class="n">backend</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.batch.open_unit_of" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">open_unit_of</span><span class="p">(</span><span class="n">pipeline</span><span class="p">,</span> <span class="n">backend</span><span class="p">)</span></code>
+
+<a href="#popoto.batch.open_unit_of" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>The unit of work a <em>read</em> issued for a write to <code>backend</code> runs on
+(#776): <code>pipeline</code> when it is a non-Redis unit of work (a
+<code>transaction()</code>), the transaction a :class:<code>Batch</code> already holds on
+<code>backend</code>, else <code>None</code> -- an autocommit read. Never opens a
+transaction: a batch with no Postgres write yet holds no connection, so
+a read before its first write has no unit to join.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/batch.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-354">354</a></span>
+<span class="normal"><a href="#__codelineno-0-355">355</a></span>
+<span class="normal"><a href="#__codelineno-0-356">356</a></span>
+<span class="normal"><a href="#__codelineno-0-357">357</a></span>
+<span class="normal"><a href="#__codelineno-0-358">358</a></span>
+<span class="normal"><a href="#__codelineno-0-359">359</a></span>
+<span class="normal"><a href="#__codelineno-0-360">360</a></span>
+<span class="normal"><a href="#__codelineno-0-361">361</a></span>
+<span class="normal"><a href="#__codelineno-0-362">362</a></span>
+<span class="normal"><a href="#__codelineno-0-363">363</a></span>
+<span class="normal"><a href="#__codelineno-0-364">364</a></span>
+<span class="normal"><a href="#__codelineno-0-365">365</a></span>
+<span class="normal"><a href="#__codelineno-0-366">366</a></span>
+<span class="normal"><a href="#__codelineno-0-367">367</a></span>
+<span class="normal"><a href="#__codelineno-0-368">368</a></span>
+<span class="normal"><a href="#__codelineno-0-369">369</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-354" name="__codelineno-0-354"></a><span class="k">def</span><span class="w"> </span><span class="nf">open_unit_of</span><span class="p">(</span><span class="n">pipeline</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">backend</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="w">    </span><span class="sd">"""The unit of work a *read* issued for a write to ``backend`` runs on</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">    (#776): ``pipeline`` when it is a non-Redis unit of work (a</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a><span class="sd">    ``transaction()``), the transaction a :class:`Batch` already holds on</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">    ``backend``, else ``None`` -- an autocommit read. Never opens a</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a><span class="sd">    transaction: a batch with no Postgres write yet holds no connection, so</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a><span class="sd">    a read before its first write has no unit to join."""</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">.backends.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">UnitOfWork</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pipeline</span><span class="p">,</span> <span class="n">UnitOfWork</span><span class="p">):</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">backend</span> <span class="o">!=</span> <span class="s2">"redis"</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pipeline</span><span class="p">,</span> <span class="n">Batch</span><span class="p">):</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a>        <span class="n">pg</span> <span class="o">=</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">_pg</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a>        <span class="k">if</span> <span class="n">pg</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">pg</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="n">backend</span><span class="p">:</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>            <span class="k">return</span> <span class="n">pg</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a>    <span class="k">return</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
