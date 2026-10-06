@@ -582,7 +582,9 @@ async def test_a_refused_save_in_an_async_transaction_rolls_back_only_itself(
 
 
 def test_first_use_checks_the_server_version_through_the_async_path(pg, monkeypatch):
-    monkeypatch.setattr(type(pg), "_server_facts", lambda self: (170005, "UTF8"))
+    monkeypatch.setattr(
+        type(pg), "_server_facts", lambda self, uow=None: (170005, "UTF8")
+    )
     pg._server_checked = False
     pg.forget_tables()
     with pytest.raises(BackendCapabilityError, match="PostgreSQL 18 or newer.*170005"):

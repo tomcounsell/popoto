@@ -516,6 +516,7 @@ def write_tombstone(
     redis_client: Any = None,
     *,
     model_class: Any = None,
+    pipeline: Any = None,
 ) -> str:
     """Record that a drop happened, without recording what was dropped.
 
@@ -543,6 +544,13 @@ def write_tombstone(
         model_class: The refusing model (#759 M4). On a non-Redis backend
             the entry goes to that backend's audit tables instead; omitted
             (or a Redis-bound model), it goes to Redis as before.
+        pipeline: The refused save's ``pipeline=`` (#776). On a non-Redis
+            backend, a unit of work there (a ``transaction()``, or a
+            ``popoto.batch()``'s) carries the tombstone: it is written on the
+            unit's connection and commits or rolls back with it, never on a
+            second pooled connection the open unit may be holding back. On
+            Redis it is ignored: the tombstone goes straight to the client,
+            as before.
 
     Returns:
         str: The tombstone entry id.
@@ -560,7 +568,19 @@ def write_tombstone(
 
     backend = _audit_backend(model_class) if redis_client is None else None
     if backend is not None:
-        # Best-effort, as the Redis pipeline below is.
+        from ..backends.types import BackendRetryableError, BackendUnavailableError
+        from ..batch import unit_of
+
+        uow = unit_of(pipeline, backend)
+        # Best-effort against an outage only, as the Redis pipeline below is:
+        # the backend's own "could not run it" errors -- unavailable, busy,
+        # rolled back by a concurrent transaction -- are swallowed, and only
+        # for an autocommit write. Nothing else is: not a programming error,
+        # not the STRICT_UNIT_CONNECTION guard's SecondConnectionError (an
+        # AssertionError, whose whole job is to be seen, #776), and not a
+        # failure inside the caller's unit of work, whose transaction that
+        # failure has already aborted -- the caller has to hear about it. The
+        # save is refused either way, so propagating never fails open.
         try:
             backend.field_call(
                 model_class._meta.spec,
@@ -569,9 +589,11 @@ def write_tombstone(
                 verdict.reason or "unknown",
                 entry,
                 int(Defaults.NR_TOMBSTONE_LOG_MAX),
+                uow=uow,
             )
-        except Exception:  # pragma: no cover - exercised only on an outage
-            pass
+        except (BackendUnavailableError, BackendRetryableError):
+            if uow is not None:
+                raise
         return entry_id
 
     if redis_client is None:
@@ -674,7 +696,7 @@ class NeverRecordMixin:
             if isinstance(value, str) and value.strip():
                 yield value
 
-    def _check_never_record(self) -> NeverRecordVerdict:
+    def _check_never_record(self, pipeline: Any = None) -> NeverRecordVerdict:
         """Evaluate the firewall and gate the save.
 
         Each field is scanned independently under both renderings. There is
@@ -684,6 +706,11 @@ class NeverRecordMixin:
         normalization-surviving sentinel, which is per-field scanning with
         extra steps. Issue #561 names only intra-value splitting as the
         adversarial case.
+
+        Args:
+            pipeline: The save's ``pipeline=``, handed to
+                :func:`write_tombstone` so a refusal inside a Postgres unit of
+                work writes its tombstone in that unit (#776).
 
         Returns:
             NeverRecordVerdict: A clean verdict when the save may proceed.
@@ -705,7 +732,12 @@ class NeverRecordMixin:
                 # write without re-scanning the content. The verdict is
                 # content-free, so holding it costs nothing.
                 self._never_record_verdict = verdict
-                write_tombstone(type(self).__name__, verdict, model_class=type(self))
+                write_tombstone(
+                    type(self).__name__,
+                    verdict,
+                    model_class=type(self),
+                    pipeline=pipeline,
+                )
                 raise NeverRecordException(
                     f"never-record: {verdict.reason} ({verdict.detector})"
                 )

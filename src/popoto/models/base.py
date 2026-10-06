@@ -1623,7 +1623,7 @@ class Model(metaclass=ModelBase):
 
         if isinstance(self, NeverRecordMixin) and Defaults.NEVER_RECORD_ENABLED:
             try:
-                self._check_never_record()
+                self._check_never_record(pipeline=pipeline)
             except NeverRecordException:
                 return pipeline if pipeline else False
 

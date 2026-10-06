@@ -1596,9 +1596,25 @@ you have more than a few dozen clients. Advisory locks are only ever
 `popoto.batch()` holding Postgres writes) holds one pooled connection, and
 every statement popoto issues *for* that unit -- its writes, and the reads a
 write makes first (`pre_save`'s uniqueness read, `ValidityField`'s stored
-`valid_from`, the observation and provenance-journal pre-flights) -- runs on
-it. The one deliberate exception is a model's first-use DDL, which must
-commit on its own and runs once per model per process. What you issue
+`valid_from`, the observation and provenance-journal pre-flights, the
+neighbour-link sweep of `AppendOnlyMixin.hard_delete(..., pipeline=uow)`, the
+never-record tombstone of a save refused inside the unit) -- runs on it, and
+commits or rolls back with it.
+
+First use takes no pooled connection either. A model's first use in a
+process (and the first use of an engine side table: event streams, recipe
+tables, `popoto_recall_proposal`) checks the catalog, and when that happens
+inside a unit the check runs on the unit's own connection: `to_regclass`
+plus the model's `popoto_schema` record, which is all a table that already
+exists and is current -- the production case -- ever needs, so there is no
+DDL and no second connection. Only when the table is missing or needs an
+additive migration does DDL run, and DDL must commit on its own, so it runs
+on a **dedicated connection opened outside the pool** for that one call and
+closed after it, never on a pool slot the open units may all be holding.
+Before this, first use inside a unit took a second pooled connection: with
+the pool full of open units (4 async units on a fresh model at the default
+pool size of 4) every one of them failed with `BackendBusyError`. Outside a
+unit, first use runs on a pooled connection as before. What you issue
 yourself outside the unit while it is open -- a query inside `with
 transaction()`, a save without `pipeline=`, a nested batch -- still takes a
 connection of its own and sees committed state, as a Redis read inside a
@@ -1606,7 +1622,8 @@ batch sees nothing queued. `popoto.backends.postgres.STRICT_UNIT_CONNECTION`
 is a debug guard (off by default; popoto's own test suite turns it on): with
 it set, a pooled checkout while a unit is open in the same task or thread
 raises `SecondConnectionError` unless the block is inside
-`backend.second_connection_ok()`.
+`backend.second_connection_ok()`. No popoto code path declares that scope:
+it is for a caller who reads or writes outside the unit on purpose.
 
 **Stale connections.** A server restart, a failover or an idle reaper kills
 the pool's backends while the server stays up. The pool checks each connection
@@ -2075,7 +2092,10 @@ bridge greenlet runs on the loop thread, so for them the lock is re-entrant
 and concurrent first uses all pass it. What serialises them is the server:
 `ensure_table` takes a transaction-scoped advisory lock
 (`pg_advisory_xact_lock` on `popoto:ddl:<schema>`), so one task creates or
-checks the table and the others wait, then find it made.
+checks the table and the others wait, then find it made. Tasks that each hold
+an open `transaction()` never wait on the pool for it: the catalog check runs
+on each task's own connection, and any DDL on a dedicated connection outside
+the pool (see [Topology](#topology-and-the-outage-contract)).
 
 **Event loops.** Pools are per (DSN, process, event loop), lazy, each at most
 `Defaults.PG_POOL_MAX_SIZE` connections, validated on checkout like the sync
@@ -2277,7 +2297,8 @@ cast to the column's type.
 | An invalid `order_by=` / `values=` on a query that matches nothing | returns `[]` before validating | raises the same `QueryException` either way |
 | `save(update_fields=…)` on a record that does not exist yet | writes a partial hash that stays out of the class set, so queries do not see it | inserts the row (unlisted columns `NULL`), so queries see it |
 | `UniqueKeyField` / `UniqueField` / unique `Meta.indexes` conflict | checked by a read in `pre_save` before the write | the same read, through the backend -- on the save's unit of work when it holds one, so it sees that unit's own writes (#776) -- plus a `UNIQUE` index inside the write as the authority for a concurrent unit's uncommitted claim; same `ModelException` text either way (`tests/postgres/test_postgres_fields.py`, `test_postgres_unique_race.py`) |
-| Two saves in one batch that claim one unique value | both queue; `EXEC` applies the first and reports the second's conflict | the second is refused at its `save()` call (the read sees the first) and writes nothing; the batch stays healthy and `execute()` commits the first, as `EXEC` applies it on Redis -- the error is raised at the call instead of at `execute()`. Pinned: `tests/test_backend_parity_ttl.py::test_a_failed_batch_is_a_documented_divergence`, `tests/test_batch.py::test_a_second_claim_in_one_batch_is_refused_and_the_rest_commits` |
+| Two saves in one batch that claim one unique value | both queue; for a `UniqueField` or unique `Meta.indexes`, `EXEC` applies the first and reports the second's conflict. For a `UniqueKeyField` beside another key field (`name = UniqueKeyField()`, `agent = KeyField()`), **both records are saved**: two records hold one unique value, which an unbatched second save refuses with `ModelException` (pre-existing; #771) | the second is refused at its `save()` call (the read sees the first) and writes nothing; the batch stays healthy and `execute()` commits the first, as `EXEC` applies it on Redis -- the error is raised at the call instead of at `execute()`. Pinned: `tests/test_backend_parity_ttl.py::test_a_failed_batch_is_a_documented_divergence`, `tests/test_batch.py::test_a_second_claim_in_one_batch_is_refused_and_the_rest_commits` |
+| A batch or `transaction()` that deletes a unique value's holder and then saves a new record claiming the value | `pre_save`'s read sees the committed holder (the queued `DELETE` has not run), so the second save raises `ModelException` and the batch never reaches `EXEC`: the holder stays | the read runs on the unit's connection and sees the delete, so the claim succeeds and the unit commits both (#776). Pinned: `tests/postgres/test_postgres_unique_race.py::test_a_unit_sees_its_own_delete_of_the_holder` |
 | An aware `time` in a `TimeField` / `SortedField(type=time)` (M1.1) | stored with its offset (`isoformat()`) | `ValueError` naming the field: a `time` column holds wall-clock time only. Use a `DatetimeField` when the offset matters. Pinned: `tests/postgres/test_postgres_fields.py::test_an_aware_time_is_refused` |
 | `push()` on a capped `ListField` whose record was deleted (M1.1) | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
 | `load_raw_hash`, `Query.keys(catchall=/clean=)` | Redis debug and inspection APIs | raise `BackendCapabilityError` |
