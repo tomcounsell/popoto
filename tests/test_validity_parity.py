@@ -182,6 +182,24 @@ def _pointer(digest, model=ParityClaim):
     return raw.decode() if isinstance(raw, bytes) else raw
 
 
+def _raw_validity_state(model=ParityClaim):
+    """Every Redis key under ``model``'s validity prefix, with its contents
+    (the indexes, chain hashes and open-claim pointers)."""
+    db = get_REDIS_DB()
+    prefix = ValidityField.get_prefix_db_key(model, FIELD).redis_key
+    state = {}
+    for key in sorted(db.keys(f"{prefix}*")):
+        kind = db.type(key)
+        kind = kind.decode() if isinstance(kind, bytes) else kind
+        if kind == "zset":
+            state[key] = db.zrange(key, 0, -1, withscores=True)
+        elif kind == "hash":
+            state[key] = db.hgetall(key)
+        else:
+            state[key] = (kind, db.get(key) if kind == "string" else None)
+    return state
+
+
 def _typed(exc):
     return exc if isinstance(exc, ValidityError) else map_lua_error(exc)
 
@@ -378,8 +396,9 @@ class TestTypedErrors:
 # -- NaN instants (#777 review B1, B2) -------------------------------------------
 
 #: What Redis replies when a ``ZADD`` score is NaN; Postgres refuses with the
-#: same text. The classes differ (documented): Redis raises ``ResponseError``,
-#: Postgres ``ModelException`` on a save and ``ValueError`` on a supersede.
+#: same text. On a save the classes differ (documented): Redis raises
+#: ``ResponseError``, Postgres ``ModelException``. A supersede is refused with
+#: ``ValueError`` on both legs, before any write (#778).
 NAN_TEXT = "value is not a valid float"
 
 
@@ -422,59 +441,113 @@ class TestNanInstants:
     @pytest.mark.parametrize("entry", ["supersede", "invalidate"])
     def test_a_nan_at_is_refused_and_writes_nothing(self, backend, entry):
         """B2: a NaN ``at`` (the close and, for ``supersede``, the start) is
-        refused with Redis's text on both legs, before any write."""
+        refused with Redis's text and ``ValueError`` on both legs, before any
+        write (#778)."""
         identity = SupersessionProtocol.identity_key("u", "plan")
         old = _save("old")
         SupersessionProtocol.supersede(old, identity_key=identity)
         new = _save("new")
         before = (_interval(old), _interval(new), _links(old), _links(new))
-        with pytest.raises(_nan_error(backend)) as info:
+        with pytest.raises(ValueError) as info:
             if entry == "supersede":
                 SupersessionProtocol.supersede(
                     new, identity_key=identity, at=float("nan")
                 )
             else:
                 SupersessionProtocol.invalidate(old, at=float("nan"))
-        assert NAN_TEXT in str(info.value)
-        if not backend.is_redis:
-            assert type(info.value) is ValueError
-            assert str(info.value).startswith(NAN_TEXT)
+        assert type(info.value) is ValueError
+        assert str(info.value).startswith(NAN_TEXT)
         assert (_interval(old), _interval(new), _links(old), _links(new)) == before
         assert _pointer(identity) == _key(old)
 
-    def test_a_nan_valid_from_alone_in_execute_supersede(self, backend):
-        """B2: ``valid_from`` NaN with a real close instant. Same text on both
-        legs; documented divergence: ``SUPERSEDE_LUA``'s validation phase does
-        not reject NaN, so on Redis the incumbent's close and both chain links
-        are written before the successor's ``ZADD`` fails, and the pointer
-        still names the incumbent -- half-written state, #778. Postgres checks
-        every instant before its first write and writes nothing."""
+    @pytest.mark.parametrize(
+        "mode, instant",
+        [
+            ("supersede", "valid_from"),
+            ("supersede", "ingested_at"),
+            ("supersede", "close_at"),
+            ("supersede", "now"),
+            ("invalidate", "valid_from"),
+            ("invalidate", "ingested_at"),
+            ("invalidate", "close_at"),
+            ("invalidate", "now"),
+            ("open", "ingested_at"),
+            ("open", "now"),
+        ],
+    )
+    def test_a_nan_instant_in_execute_supersede_writes_nothing(
+        self, backend, mode, instant
+    ):
+        """#778: a NaN instant, with every other instant real, is refused
+        before the first write, on both legs, with the same class and text.
+
+        Redis used to let it through ``SUPERSEDE_LUA``'s validation phase:
+        with only ``valid_from`` (or ``ingested_at``) NaN, the incumbent was
+        closed and chained to the successor before the successor's ``ZADD``
+        failed, the successor was never opened and the pointer still named
+        the incumbent. Mode ``'open'`` tore the same way on a NaN
+        ``ingested_at`` (or ``now``): ``valid_from`` indexed, the rest not.
+        Mode ``'open'`` with a NaN ``valid_from`` is the save path's
+        documented divergence and is pinned by the save test above."""
         identity = SupersessionProtocol.identity_key("u", "plan")
         old = _save("old")
         SupersessionProtocol.supersede(old, identity_key=identity)
         new = _save("new")
-        new_interval = _interval(new)
-        with pytest.raises(_nan_error(backend)) as info:
+        if mode == "open":
+            # A member with no interval yet: the script's NX opens it.
+            _set_interval(new, valid_from=None, invalid_at=None)
+        before = (_interval(old), _interval(new), _links(old), _links(new))
+        raw_before = _raw_validity_state() if backend.is_redis else None
+        instants = {
+            "now": LATER,
+            "valid_from": LATER,
+            "ingested_at": LATER,
+            "close_at": LATER,
+        }
+        instants[instant] = float("nan")
+        with pytest.raises(ValueError) as info:
+            ValidityField.execute_supersede(
+                ParityClaim,
+                FIELD,
+                new_member="" if mode == "invalidate" else _key(new),
+                mode=mode,
+                identity_digest=identity,
+                **instants,
+            )
+        assert type(info.value) is ValueError
+        assert str(info.value) == f"{NAN_TEXT} ({instant} is NaN)"
+        assert (_interval(old), _interval(new), _links(old), _links(new)) == before
+        assert _interval(old)[1] == INF
+        assert _pointer(identity) == _key(old)
+        if backend.is_redis:
+            # Every key under the field's prefix, byte for byte.
+            assert _raw_validity_state() == raw_before
+
+    def test_a_nan_valid_from_in_mode_open_is_a_documented_divergence(self, backend):
+        """Mode ``'open'``'s ``valid_from`` is the save path's instant, so
+        Redis leaves its refusal to the script, whose first ``ZADD`` raises
+        ``ResponseError`` with nothing written. Postgres raises ``ValueError``
+        with the same text. Neither writes anything."""
+        import redis
+
+        new = _save("new")
+        _set_interval(new, valid_from=None, invalid_at=None)
+        raw_before = _raw_validity_state() if backend.is_redis else None
+        expected = redis.exceptions.ResponseError if backend.is_redis else ValueError
+        with pytest.raises(expected) as info:
             ValidityField.execute_supersede(
                 ParityClaim,
                 FIELD,
                 new_member=_key(new),
-                mode="supersede",
-                identity_digest=identity,
+                mode="open",
+                now=LATER,
                 valid_from=float("nan"),
+                ingested_at=LATER,
             )
         assert NAN_TEXT in str(info.value)
-        assert _pointer(identity) == _key(old)
-        assert _interval(new) == new_interval
+        assert _interval(new) == (None, None)
         if backend.is_redis:
-            # #778: torn -- the incumbent is closed and chained.
-            assert _interval(old)[1] != INF
-            assert _links(old) == (_key(new), None)
-        else:
-            assert type(info.value) is ValueError
-            assert _interval(old)[1] == INF
-            assert _links(old) == (None, None)
-            assert _links(new) == (None, None)
+            assert _raw_validity_state() == raw_before
 
 
 # -- supersede, mode by mode ----------------------------------------------------

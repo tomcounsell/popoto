@@ -72,6 +72,7 @@ Example:
 """
 
 import logging
+import math
 import time
 from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
@@ -112,6 +113,12 @@ MEMBER_ABSENT_ERROR = "POPOTO_VALIDITY_MEMBER_ABSENT"
 #: ZSET. Without this the assertion would lose silently to ``ZADD NX`` and leave
 #: the model hash and the index answering differently (#588 secondary defect).
 VALID_FROM_CONFLICT_ERROR = "POPOTO_VALIDITY_VALID_FROM_CONFLICT"
+
+#: The text Redis replies when a ``ZADD`` score is NaN. A NaN instant handed to
+#: :meth:`ValidityField.execute_supersede` is refused with it, as a
+#: :class:`ValueError`, before the script runs (#778) -- the same class and
+#: text as the Postgres backend's ``supersede``.
+NAN_INSTANT_ERROR = "value is not a valid float"
 
 #: Models already warned about the TTL/validity interaction (plan D9). Keyed by
 #: ``(model name, field name)`` so the warning fires exactly once per pair.
@@ -1159,8 +1166,10 @@ class ValidityField(Field):
             or the ``pipeline`` when one was supplied.
 
         Raises:
-            ValueError: If ``mode`` is not one of :data:`VALID_MODES`, or if the
-                client-side pre-check finds ``close_at`` before ``valid_from``.
+            ValueError: If ``mode`` is not one of :data:`VALID_MODES`, if the
+                client-side pre-check finds ``close_at`` before ``valid_from``,
+                or if an instant is NaN (:data:`NAN_INSTANT_ERROR`, naming the
+                instant; nothing is written).
             ValidityMemberAbsentError: If ``new_member``, or an explicitly-named
                 ``old_member``, does not exist at the instant of the write.
             ValidityCloseBeforeStartError: If ``close_at`` precedes the
@@ -1209,6 +1218,24 @@ class ValidityField(Field):
                 assert_valid_from=assert_valid_from,
                 pipeline=pipeline,
             )
+
+        for label, value in (
+            ("now", clock),
+            ("valid_from", valid_from),
+            ("ingested_at", ingested_at),
+            ("close_at", close_at),
+        ):
+            # #778: SUPERSEDE_LUA's validation phase does not reject a NaN
+            # instant, so its ZADD failed in the mutation phase -- after the
+            # incumbent's close and chain links were written. Refused here,
+            # before the script runs: nothing is written. The one exemption is
+            # mode 'open''s valid_from, the save path (on_save): there the
+            # script's first write refuses it with nothing indexed, which is
+            # the save's documented behaviour and stays as it was.
+            if label == "valid_from" and mode == "open":
+                continue
+            if value is not None and math.isnan(float(value)):
+                raise ValueError(f"{NAN_INSTANT_ERROR} ({label} is NaN)")
 
         keys = cls.get_all_keys(model, field_name)
         pointer_key = (
