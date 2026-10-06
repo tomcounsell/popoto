@@ -1989,3 +1989,176 @@ def test_a_rerun_records_each_duplicate_and_loser_once(
     assert [d["source"] for d in shared_equal["duplicates"]] == ["alpha"]
     assert [loser["source"] for loser in shared_diff["losers"]] == ["alpha"]
     assert after == before
+
+
+@pytest.mark.parametrize("plant", [None, "content", "provenance", "no_loser"])
+def test_a_resume_after_another_source_won_its_rows_verifies_them_against_the_winner(
+    tmp_path, monkeypatch, pg, admin, plant
+):
+    """#794 item 1. Run A crashes after its ``MigMemory`` batches committed;
+    source B then merges and legitimately wins one of A's committed rows
+    (0x11: B's copy is newer). A's resume used to report MISMATCH -- its
+    ``records`` count was one short and ``carried_state`` compared the row
+    with A's snapshot -- although the data was exactly what the merge rule
+    says. The row is now verified against the WINNER's provenance
+    (``superseded_by_merge``), so the resume is CLEAN; and a row that does
+    not hold what its winner recorded, or whose recorded winner should not
+    have beaten A, is still a MISMATCH. A row whose provenance does not
+    record A as the loser is not taken for a superseded one at all: it is
+    compared with A's snapshot, as before."""
+    now = time.time()
+    rdb_a, content_a, facts_a = build_snapshot(tmp_path, monkeypatch, name="a", now=now)
+    rdb_b, content_b, _ = build_snapshot(
+        tmp_path, monkeypatch, variant="b", name="b", now=now
+    )
+
+    def crash(model, batch):
+        if model == "MigLongTail" and batch == 0:
+            raise RuntimeError("power cut after MigMemory committed")
+
+    mig._crash_hook = crash
+    with pytest.raises(RuntimeError, match="power cut"):
+        run_migration(_config(tmp_path, pg, rdb_a, content_a, source_id="alpha"))
+    mig._crash_hook = None
+
+    won = facts_a["by_id"][0x11]
+    merged = run_migration(
+        _config(
+            tmp_path,
+            pg,
+            rdb_b,
+            content_b,
+            source_id="beta",
+            run_dir=tmp_path / "run-b",
+            mappings=[fx.VALOR_MEMORY_MAPPING],
+            merge=True,
+        )
+    )
+    assert merged.clean, merged.summary()
+    assert merged.data["models"]["MigMemory"]["decisions"]["won_merge"] == 1
+    (provenance,) = _rows(admin, pg.schema, "mig_memory", "_migrated_from")[won]
+    assert provenance["source"] == "beta"
+    assert [loser["source"] for loser in provenance["losers"]] == ["alpha"]
+
+    if plant == "content":
+        # The winner's row no longer holds what the winner recorded.
+        admin.execute(
+            f'UPDATE "{pg.schema}".mig_memory SET content = %s WHERE "_pk" = %s',
+            ("planted after the merge", won),
+        )
+    elif plant == "provenance":
+        # A recorded winner that should NOT have beaten A under the merge
+        # rule (older than A's copy, and a smaller source id).
+        provenance["updated_at"] = 0.0
+        provenance["source"] = "aardvark"
+        admin.execute(
+            f'UPDATE "{pg.schema}".mig_memory SET "_migrated_from" = %s::jsonb '
+            'WHERE "_pk" = %s',
+            (json.dumps(provenance), won),
+        )
+    elif plant == "no_loser":
+        provenance["losers"] = []
+        admin.execute(
+            f'UPDATE "{pg.schema}".mig_memory SET "_migrated_from" = %s::jsonb '
+            'WHERE "_pk" = %s',
+            (json.dumps(provenance), won),
+        )
+    admin.commit()
+
+    resumed = run_migration(
+        _config(
+            tmp_path,
+            pg,
+            rdb_a,
+            content_a,
+            source_id="alpha",
+            resume=True,
+            merge=True,
+        )
+    )
+    checks = resumed.data["verification"]["MigMemory"]
+    if plant == "no_loser":
+        assert not resumed.clean, resumed.summary()
+        assert "superseded_by_merge" not in checks
+        assert checks["records"]["expected"] == checks["records"]["compared"] + 1
+        assert [b["key"] for b in checks["carried_state"]["first_mismatches"]] == [won]
+        return
+    superseded = checks["superseded_by_merge"]
+    assert superseded["compared"] == 1, resumed.summary()
+    if plant is None:
+        assert resumed.clean, resumed.summary()
+        assert superseded["ok"] and checks["records"]["ok"]
+        assert checks["carried_state"]["ok"]
+        assert checks["records"]["expected"] == checks["records"]["compared"]
+        return
+    assert not resumed.clean, resumed.summary()
+    assert not superseded["ok"]
+    (bad,) = superseded["first_mismatches"]
+    assert bad["key"] == won and bad["winner"] == provenance["source"]
+    if plant == "content":
+        assert bad["parts"] == [mig.NOT_WINNERS_PAYLOAD], bad
+    else:
+        assert bad["parts"] == [mig.WINNER_DOES_NOT_BEAT], bad
+
+
+def test_a_resume_refused_after_a_native_save_names_resume_merge(
+    tmp_path, monkeypatch, pg, admin
+):
+    """#794 item 2. After a crash, popoto saves one of the run's committed
+    rows natively. A plain ``--resume`` is refused -- the table no longer
+    holds only this run's rows -- and the refusal used to tell the operator
+    to pass ``--resume``, which they just had. It now names ``--resume
+    --merge``, which continues and leaves the native row alone."""
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+
+    def crash(model, batch):
+        if model == "MigMemory" and batch == 1:
+            raise RuntimeError("power cut")
+
+    mig._crash_hook = crash
+    with pytest.raises(RuntimeError, match="power cut"):
+        run_migration(_config(tmp_path, pg, rdb, content))
+    mig._crash_hook = None
+    committed = sorted(_rows(admin, pg.schema, "mig_memory", "_migrated_from"))
+    target = committed[0]
+    with mig._no_embedding([fx.MigMemory]):
+        native = fx.MigMemory.query.get(**_key_fields(target))
+        native.importance = 42.0
+        native.save()
+
+    with pytest.raises(TargetNotEmpty) as refused:
+        run_migration(_config(tmp_path, pg, rdb, content, resume=True))
+    message = str(refused.value)
+    assert "--resume --merge" in message, message
+    assert "of which only 3 are this run's" in message, message
+    assert "natively" in message
+
+    resumed = run_migration(
+        _config(tmp_path, pg, rdb, content, resume=True, merge=True)
+    )
+    rows = _rows(admin, pg.schema, "mig_memory", "importance", "_migrated_from")
+    assert rows[target] == (42.0, None), resumed.summary()
+    assert len(rows) == 11
+    # The native save changed a row this run wrote: verification says so,
+    # and the operator inspects it.
+    assert not resumed.clean
+    records = resumed.data["verification"]["MigMemory"]["records"]
+    assert records["expected"] == records["compared"] + 1, resumed.summary()
+
+
+def test_a_refusal_without_resume_names_both_options(tmp_path, monkeypatch, pg):
+    with mig._no_embedding([fx.MigMemory]):
+        fx.MigMemory(
+            agent_id="valor", memory_id="b" * 32, project_key="ai", content="native"
+        ).save()
+    with pytest.raises(TargetNotEmpty) as refused:
+        mig.preflight_target(
+            pg.dsn,
+            pg.schema,
+            fx.MAPPINGS,
+            run_id="r",
+            merge=False,
+            resume=False,
+        )
+    message = str(refused.value)
+    assert "Pass --merge" in message and "--resume --merge" in message, message

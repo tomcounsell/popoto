@@ -78,7 +78,9 @@ greater source id, and the loser is logged under ``_migrated_from.losers``.
 The same source re-run with a newer snapshot replaces its own rows (the
 delta mechanism). A row popoto wrote natively (``_migrated_from IS NULL``)
 is never overwritten. The source id lives only in ``_migrated_from``; it
-never becomes part of a key or a scope.
+never becomes part of a key or a scope. A run resumed after another store
+merged over some of its committed rows verifies those rows against their
+winner's provenance (:func:`_superseded_by_merge`), not its own snapshot.
 """
 
 from __future__ import annotations
@@ -1600,11 +1602,27 @@ def preflight_target(
                 ).fetchone()[0]
             facts[mapping.name] = {"rows": total, "this_run": ours + pending}
             if total and not merge and not (resume and total == ours + pending):
+                if resume:
+                    # #794: the operator already passed --resume; naming it
+                    # again sent them round in a circle.
+                    raise TargetNotEmpty(
+                        f"{schema}.{table} holds {total} row(s) for "
+                        f"{mapping.name}, of which only {ours + pending} are "
+                        "this run's. The others were written since by someone "
+                        "else: popoto saving a row natively (which clears its "
+                        "_migrated_from), or another store's --merge. A plain "
+                        "--resume continues only into rows that are all its "
+                        "own; pass --resume --merge with the same --run-dir to "
+                        "continue under the merge rule, which never overwrites "
+                        "a natively saved row and decides every other key per "
+                        "key."
+                    )
                 raise TargetNotEmpty(
                     f"{schema}.{table} already holds {total} row(s) for "
                     f"{mapping.name}. Pass --merge to merge this store into them "
                     "(the merge rule decides per key), or --resume with the same "
-                    "--run-dir to continue an interrupted run."
+                    "--run-dir to continue an interrupted run (--resume --merge "
+                    "if anything else has written to the table since)."
                 )
     finally:
         conn.close()
@@ -2238,6 +2256,86 @@ def _verify_tool_columns(
 
 _CARRIED_SECTIONS = ("state", "model_state")
 
+WINNER_DOES_NOT_BEAT = "<winner does not beat this run>"
+NOT_WINNERS_PAYLOAD = "<not the winner's payload>"
+
+
+def _superseded_by_merge(
+    model: Any,
+    run: Mapping[str, Any],
+    by_key: Mapping[str, Mapping[str, Any]],
+    provenance: Mapping[str, Any],
+    decisions: Mapping[str, str],
+    pg_records: Mapping[str, Mapping[str, Any]],
+) -> tuple[set[str], list[dict[str, Any]]]:
+    """Rows this run wrote that ANOTHER source has since won under the merge
+    rule (#794): ``(keys, mismatches)``.
+
+    A run that crashed after committing some batches can be resumed after
+    another store merged into the same schema. That store sees the crashed
+    run's committed rows as ordinary migrated rows and, where its copy is
+    newer, replaces them (``won_merge``), recording this run among the row's
+    ``_migrated_from.losers``. The row is then correct, but it no longer
+    holds this run's snapshot, so comparing it with that snapshot reported a
+    mismatch that was not one. Such a row is verified against the WINNER
+    instead: it must hold exactly the payload the winner recorded
+    (``_migrated_from.payload_sha``, which covers values and carried state),
+    and the recorded winner must beat this run's copy under the merge rule
+    (later ``updated_at``, ties to the greater source id).
+
+    A row counts as superseded only when its provenance names another source
+    and lists THIS source's snapshot of exactly this payload among its
+    losers -- the trace the winning run leaves. A row popoto saved natively
+    (``_migrated_from`` NULL), or one whose provenance does not record this
+    run as the loser, is not superseded: the ``records`` and
+    ``carried_state`` checks still compare it with this run's snapshot."""
+    keys: set[str] = set()
+    bad: list[dict[str, Any]] = []
+    for key in sorted(by_key):
+        row = by_key[key]
+        meta = row["meta"]
+        if meta["reject"] or decisions.get(key) not in _WRITES:
+            continue
+        prov = provenance.get(key)
+        if not isinstance(prov, Mapping):
+            continue
+        if prov.get("source") in (None, run["source_id"]):
+            continue
+        if prov.get("payload_sha") == meta["payload_sha"]:
+            continue  # the same payload: this run's rows hold it already
+        lost = any(
+            isinstance(e, Mapping)
+            and e.get("source") == run["source_id"]
+            and e.get("snapshot") == run["rdb_sha256"]
+            and e.get("payload_sha") == meta["payload_sha"]
+            for e in (prov.get("losers") or [])
+        )
+        if not lost:
+            continue
+        keys.add(key)
+        parts: list[str] = []
+        try:
+            theirs = (float(prov.get("updated_at") or 0.0), str(prov.get("source")))
+        except (TypeError, ValueError):
+            theirs = (float("-inf"), "")
+        if not theirs > (float(meta["updated_at"]), run["source_id"]):
+            parts.append(WINNER_DOES_NOT_BEAT)
+        got = pg_records.get(key)
+        if got is None:
+            parts.append("<missing on Postgres>")
+        elif payload_sha(model, got) != prov.get("payload_sha"):
+            parts.append(NOT_WINNERS_PAYLOAD)
+        if parts:
+            bad.append(
+                {
+                    "key": key,
+                    "winner": prov.get("source"),
+                    "winner_run_id": prov.get("run_id"),
+                    "parts": parts,
+                }
+            )
+    return keys, bad
+
 
 def _verify_carried_state(
     conn: Any,
@@ -2247,6 +2345,7 @@ def _verify_carried_state(
     run: Mapping[str, Any],
     by_key: Mapping[str, Mapping[str, Any]],
     pg_records: Mapping[str, Mapping[str, Any]],
+    superseded: "set[str] | frozenset[str]" = frozenset(),
 ) -> dict[str, Any]:
     """Every row THIS run wrote holds the snapshot's carried state.
 
@@ -2261,7 +2360,9 @@ def _verify_carried_state(
     cycles, validity, the vector's dims and float32 hash), normalized as the
     ``records`` check normalizes it. Only a key whose final decision lost
     the merge, deduplicated, or failed to load is left out: its row is
-    another source's, or nothing was written.
+    another source's, or nothing was written. So is a row another source
+    has won since (``superseded``, :func:`_superseded_by_merge`): it is
+    verified against its winner's provenance instead.
 
     A row this run wrote and the application then changed natively (after
     a crash, before the resume) fails here too: the operator inspects it."""
@@ -2274,6 +2375,7 @@ def _verify_carried_state(
             (run["run_id"], mapping.name),
         ).fetchall()
         if decision not in (LOST_MERGE, DEDUPLICATED, UNCHANGED, LOAD_ERROR, REJECTED)
+        and pk not in superseded
     }
     conn.commit()
     bad: list[dict[str, Any]] = []
@@ -2464,10 +2566,19 @@ def verify(
             column_compared, column_bad = _verify_tool_columns(
                 conn, ts, by_key, provenance, run
             )
+            superseded, superseded_bad = _superseded_by_merge(
+                model,
+                run,
+                by_key,
+                provenance,
+                decisions.get(mapping.name, {}),
+                pg_records,
+            )
             expected_owned = sum(
                 1
                 for k, r in by_key.items()
                 if not r["meta"]["reject"]
+                and k not in superseded
                 and decisions.get(mapping.name, {}).get(k)
                 not in (LOST_MERGE, CONFLICT_NATIVE, LOAD_ERROR)
             )
@@ -2490,8 +2601,18 @@ def verify(
                 ],
                 "ok": not column_bad,
             }
+            if superseded:
+                # Rows another source won after this run wrote them (#794):
+                # each holds its winner's payload, and that winner beats
+                # this run's copy under the merge rule.
+                model_checks["superseded_by_merge"] = {
+                    "compared": len(superseded),
+                    "mismatched": len(superseded_bad),
+                    "first_mismatches": superseded_bad[:VERIFY_MISMATCH_DETAIL],
+                    "ok": not superseded_bad,
+                }
             model_checks["carried_state"] = _verify_carried_state(
-                conn, backend.schema, mapping, ts, run, by_key, pg_records
+                conn, backend.schema, mapping, ts, run, by_key, pg_records, superseded
             )
             stream_check = _verify_event_stream(conn, backend.schema, mapping, ts, run)
             if stream_check is not None:
