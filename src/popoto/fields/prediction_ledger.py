@@ -1077,6 +1077,10 @@ class PredictionLedgerMixin:
                     },
                     pipeline=pipeline,
                 )
+            except AssertionError:
+                # The STRICT_UNIT_CONNECTION guard's SecondConnectionError is
+                # a bug report, not a logging failure to warn past (#776).
+                raise
             except Exception:
                 logger.warning(
                     "PredictionLedger event logging failed for %s",

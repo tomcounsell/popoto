@@ -737,7 +737,8 @@ def test_deleting_a_record_an_open_batch_holds_is_refused_at_once(pg):
         GraphNode(name="a").save(pipeline=pipe)
         started = time.monotonic()
         with pytest.raises(BackendCapabilityError, match="this task or thread holds"):
-            GraphNode.query.get(name="a").delete()
+            with pg.second_connection_ok():  # a write outside the batch (#776)
+                GraphNode.query.get(name="a").delete()
         assert time.monotonic() - started < 1.0
     finally:
         pipe.execute()

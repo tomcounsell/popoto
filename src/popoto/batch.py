@@ -68,7 +68,7 @@ from .redis_db import GuardedPipeline, get_REDIS_DB
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from redis.client import Pipeline
 
-__all__ = ["Batch", "batch", "join_unit", "unit_of"]
+__all__ = ["Batch", "batch", "join_unit", "open_unit_of", "unit_of"]
 
 _MIXED = (
     "popoto.batch() cannot mix Redis and Postgres writes: a Redis MULTI/EXEC "
@@ -349,3 +349,21 @@ def unit_of(pipeline: Any, backend: Any) -> Any:
     if isinstance(pipeline, UnitOfWork):
         return pipeline
     return join_unit(pipeline, backend)
+
+
+def open_unit_of(pipeline: Any, backend: Any) -> Any:
+    """The unit of work a *read* issued for a write to ``backend`` runs on
+    (#776): ``pipeline`` when it is a non-Redis unit of work (a
+    ``transaction()``), the transaction a :class:`Batch` already holds on
+    ``backend``, else ``None`` -- an autocommit read. Never opens a
+    transaction: a batch with no Postgres write yet holds no connection, so
+    a read before its first write has no unit to join."""
+    from .backends.types import UnitOfWork
+
+    if isinstance(pipeline, UnitOfWork):
+        return pipeline if pipeline.backend != "redis" else None
+    if isinstance(pipeline, Batch):
+        pg = pipeline._pg
+        if pg is not None and pg[0] is backend:
+            return pg[2]
+    return None

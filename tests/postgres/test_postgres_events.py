@@ -412,25 +412,27 @@ def test_claims_skip_a_pending_entry_another_transaction_holds(pg):
     """``XCLAIM``/``XAUTOCLAIM`` take the pending rows ``FOR UPDATE SKIP
     LOCKED``: one a concurrent claimer holds is passed over, not waited on
     and not claimed twice."""
-    store = _store(pg)
-    store.xgroup_create(KEY, "g", id="0", mkstream=True)
-    ids = [store.xadd(KEY, {"i": i}) for i in range(3)]
-    store.xreadgroup("g", "crashed", {KEY: ">"})
-    t = pg._events_ready()
-    with pg.transaction() as uow:
-        uow.conn.execute(
-            f"SELECT 1 FROM {t['popoto_stream_pending']} WHERE stream = %s AND "
-            "grp = %s AND (ms, seq) = (%s, %s) FOR UPDATE",
-            [KEY, "g", *(int(p) for p in ids[0].split(b"-"))],
-        )
-        cursor, claimed, deleted = store.xautoclaim(KEY, "g", "rescuer", 0)
-        assert [i for i, _ in claimed] == ids[1:]
-        assert store.xclaim(KEY, "g", "other", 0, [ids[0]]) == []
-    owners = {
-        p["message_id"]: p["consumer"]
-        for p in store.xpending_range(KEY, "g", "-", "+", 10)
-    }
-    assert owners == {ids[0]: b"crashed", ids[1]: b"rescuer", ids[2]: b"rescuer"}
+    # Reads and writes outside the open unit are this test's subject (#776).
+    with pg.second_connection_ok():
+        store = _store(pg)
+        store.xgroup_create(KEY, "g", id="0", mkstream=True)
+        ids = [store.xadd(KEY, {"i": i}) for i in range(3)]
+        store.xreadgroup("g", "crashed", {KEY: ">"})
+        t = pg._events_ready()
+        with pg.transaction() as uow:
+            uow.conn.execute(
+                f"SELECT 1 FROM {t['popoto_stream_pending']} WHERE stream = %s AND "
+                "grp = %s AND (ms, seq) = (%s, %s) FOR UPDATE",
+                [KEY, "g", *(int(p) for p in ids[0].split(b"-"))],
+            )
+            cursor, claimed, deleted = store.xautoclaim(KEY, "g", "rescuer", 0)
+            assert [i for i, _ in claimed] == ids[1:]
+            assert store.xclaim(KEY, "g", "other", 0, [ids[0]]) == []
+        owners = {
+            p["message_id"]: p["consumer"]
+            for p in store.xpending_range(KEY, "g", "-", "+", 10)
+        }
+        assert owners == {ids[0]: b"crashed", ids[1]: b"rescuer", ids[2]: b"rescuer"}
 
 
 def test_a_blocking_read_wakes_on_the_append(pg):

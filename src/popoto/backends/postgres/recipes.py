@@ -135,6 +135,7 @@ class RecipeOpsMixin:
     _table: Callable[..., Any]
     _run: Callable[..., tuple[list[tuple[Any, ...]], int]]
     _record_locked: Callable[..., tuple[str, list[Any]]]
+    _ensure_engine_table: Callable[..., None]
 
     # -- engine tables ------------------------------------------------------------
 
@@ -145,23 +146,17 @@ class RecipeOpsMixin:
         ready: set[str] = self.__dict__.setdefault("_engine_ready", set())
         if name in ready:
             return qualified
-        from . import _schema_auto
-
-        rows, _ = self._run(
+        # First-use DDL never takes a pooled connection inside a unit of
+        # work (#776, PostgresBackend._ensure_engine_table). The schema lock
+        # comes first in the DDL, as ensure_table takes it: a per-table lock
+        # alone lets two first uses race on CREATE SCHEMA (B1).
+        self._ensure_engine_table(
             "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
             [self.schema, name],
+            bool,
+            lambda: engine_table_ddl(self.schema, name, ENGINE_TABLES[name]),
+            f"{self.schema}.{name} does not exist",
         )
-        if not rows:
-            if not _schema_auto():
-                from ..types import SchemaDriftError
-
-                raise SchemaDriftError(
-                    f"{self.schema}.{name} does not exist and POPOTO_SCHEMA_AUTO=0"
-                )
-            # The schema lock first, as ensure_table takes it: a per-table
-            # lock alone lets two first uses race on CREATE SCHEMA (B1).
-            sql, params = engine_table_ddl(self.schema, name, ENGINE_TABLES[name])
-            self._run(sql, params, write=True)
         ready.add(name)
         return qualified
 
@@ -649,19 +644,36 @@ class RecipeOpsMixin:
     ) -> None:
         """``HINCRBY counts <reason> 1``, ``LPUSH drops <entry>``, ``LTRIM``
         to the newest ``keep``: one message. The entry is the same
-        content-free JSON the Redis list holds."""
-        counts = self._engine("popoto_never_record_count")
-        log = self._engine("popoto_never_record_log")
-        self._run(
-            f"INSERT INTO {counts} AS c (model, reason, count) VALUES (%s, %s, 1) "
-            "ON CONFLICT (model, reason) DO UPDATE SET count = c.count + 1; "
-            f"INSERT INTO {log} (model, entry) VALUES (%s, %s); "
-            f"DELETE FROM {log} WHERE model = %s AND seq NOT IN ("
-            f"SELECT seq FROM {log} WHERE model = %s ORDER BY seq DESC LIMIT %s)",
-            [spec.name, reason, spec.name, entry, spec.name, spec.name, int(keep)],
-            uow=uow,
-            write=True,
-        )
+        content-free JSON the Redis list holds.
+
+        A database error :meth:`_run` leaves unclassified (an ``UndefinedTable``
+        after the audit tables were dropped under a warm memo, a permission
+        error) is raised as :class:`~popoto.backends.BackendError`, never as
+        raw psycopg (PR #793 review): the refused save's caller sees popoto's
+        error family whether or not a unit of work carried the tombstone."""
+        import psycopg
+
+        from ..types import BackendError
+
+        try:
+            counts = self._engine("popoto_never_record_count")
+            log = self._engine("popoto_never_record_log")
+            self._run(
+                f"INSERT INTO {counts} AS c (model, reason, count) VALUES (%s, %s, 1) "
+                "ON CONFLICT (model, reason) DO UPDATE SET count = c.count + 1; "
+                f"INSERT INTO {log} (model, entry) VALUES (%s, %s); "
+                f"DELETE FROM {log} WHERE model = %s AND seq NOT IN ("
+                f"SELECT seq FROM {log} WHERE model = %s ORDER BY seq DESC LIMIT %s)",
+                [spec.name, reason, spec.name, entry, spec.name, spec.name, int(keep)],
+                uow=uow,
+                write=True,
+            )
+        except psycopg.Error as exc:
+            raise BackendError(
+                f"popoto could not write the never-record tombstone for "
+                f"{spec.name} (SQLSTATE {getattr(exc, 'sqlstate', None)}: "
+                f"{type(exc).__name__}: {exc}); the save was refused regardless"
+            ) from exc
 
     def _nr_counts(
         self, spec: ModelSpec, *, uow: Optional[UnitOfWork] = None

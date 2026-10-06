@@ -937,6 +937,25 @@ class ProvenanceJournal:
 
     @classmethod
     def _write(
+        cls, *, pipeline: Optional["Pipeline"], **kwargs: Any
+    ) -> AnnotationResult:
+        """:meth:`_write_entry`, with the pre-flight's reads (the target's
+        existence, the target itself, its stored ``valid_from``) on the
+        caller's unit of work when the journal lives on a non-Redis backend
+        and ``pipeline`` holds one (#776): a target saved earlier in that
+        unit is found, and no second connection is checked out while the
+        unit holds one. On Redis this is :meth:`_write_entry` exactly."""
+        from ..backends.routing import non_redis_backend
+        from ..batch import open_unit_of
+
+        backend = non_redis_backend(cls.entry_model)
+        if backend is None:
+            return cls._write_entry(pipeline=pipeline, **kwargs)
+        with backend.reads_on(open_unit_of(pipeline, backend)):
+            return cls._write_entry(pipeline=pipeline, **kwargs)
+
+    @classmethod
+    def _write_entry(
         cls,
         *,
         agent_id: str,

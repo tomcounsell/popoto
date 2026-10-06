@@ -10,6 +10,8 @@
 # To disable: pytest -p no:popoto
 # To override DB: set POPOTO_TEST_DB env var or popoto_test_db ini option
 
+import contextlib
+
 import pytest
 
 
@@ -74,3 +76,41 @@ def assert_captured():
     not an importable package, so ``from conftest import ...`` fails at
     collection."""
     return _assert_captured
+
+
+# ---------------------------------------------------------------------------
+# Postgres: one connection per unit of work (#776)
+# ---------------------------------------------------------------------------
+#
+# Every test runs with the debug guard on: popoto checking out a second pooled
+# connection while a transaction() or batch is open in the same task/thread
+# raises SecondConnectionError. A test that does so *as a user* (a query
+# inside `with transaction()`, a nested batch) wraps that call in
+# `backend.second_connection_ok()` -- through the `outside_unit` fixture,
+# which is a no-op for a Redis-bound model.
+try:
+    import popoto.backends.postgres as _popoto_pg
+except ImportError:  # pragma: no cover - the postgres extra is absent
+    pass
+else:
+    _popoto_pg.STRICT_UNIT_CONNECTION = True
+
+
+@contextlib.contextmanager
+def _outside_unit(model=None):
+    from popoto.backends import get_backend
+
+    backend = get_backend(model)
+    allow = getattr(backend, "second_connection_ok", None)
+    if allow is None:
+        yield
+        return
+    with allow():
+        yield
+
+
+@pytest.fixture
+def outside_unit():
+    """``with outside_unit(Model):`` -- the block deliberately reads or
+    writes outside the unit of work the test holds open (#776)."""
+    return _outside_unit

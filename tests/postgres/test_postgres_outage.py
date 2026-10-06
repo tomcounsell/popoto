@@ -256,7 +256,9 @@ def test_only_statements_that_cannot_have_committed_are_retried(
 
 
 def test_server_below_18_is_refused_at_bind(pg, monkeypatch):
-    monkeypatch.setattr(type(pg), "_server_facts", lambda self: (170005, "UTF8"))
+    monkeypatch.setattr(
+        type(pg), "_server_facts", lambda self, uow=None: (170005, "UTF8")
+    )
     pg._server_checked = False
     pg.forget_tables()
     with pytest.raises(BackendCapabilityError, match="PostgreSQL 18 or newer.*170005"):
@@ -264,7 +266,9 @@ def test_server_below_18_is_refused_at_bind(pg, monkeypatch):
 
 
 def test_non_utf8_server_is_refused_at_bind(pg, monkeypatch):
-    monkeypatch.setattr(type(pg), "_server_facts", lambda self: (180006, "LATIN1"))
+    monkeypatch.setattr(
+        type(pg), "_server_facts", lambda self, uow=None: (180006, "LATIN1")
+    )
     pg._server_checked = False
     pg.forget_tables()
     with pytest.raises(BackendCapabilityError, match="UTF8"):

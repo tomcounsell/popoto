@@ -1188,11 +1188,21 @@ class Model(metaclass=ModelBase):
         if is_parent_model:
             RELATED_MODEL_LOAD_SEQUENCE = set()
 
-    def _backend_unique_conflict(self) -> Optional[str]:
+    def _backend_unique_conflict(self, pipeline: Any = None) -> Optional[str]:
         """``pre_save``'s two uniqueness reads -- unique ``Meta.indexes``
         tuples, then unique fields -- through the model's (non-Redis)
         backend's ``select`` (#759 M1.1). Returns the message Redis raises for
         the first conflict, or ``None``.
+
+        When the save was handed a unit of work that already holds a
+        connection (a ``transaction()``, or a ``popoto.batch()`` with a
+        Postgres write in it), the reads run on that connection (#776): a
+        second checkout could never be served once every pooled connection
+        is held by such a unit, and it would read committed state rather
+        than the unit's own -- a holder the unit deleted would still
+        conflict, and a value the unit just claimed would not. The backend's
+        ``UNIQUE`` index stays the authority for a concurrent unit's
+        uncommitted claim, which no read can see.
 
         A tuple with a ``None`` in it is skipped (NULLs are distinct), as is
         a value that is ``None``. A sole key field or an auto field is not
@@ -1200,15 +1210,18 @@ class Model(metaclass=ModelBase):
         the second is a generated UUID whose UNIQUE index stays the backstop.
         """
         from ..backends import And, Cond, Op, QueryPlan
+        from ..batch import open_unit_of
 
         backend = get_backend(type(self))
         spec = self._meta.spec
         own = {key for key in (self._redis_key, self.db_key.redis_key) if key}
+        unit = open_unit_of(pipeline, backend)
+        on_unit = {"uow": unit} if unit is not None else {}
 
         def taken(conds: "list[Any]") -> bool:
             where = conds[0] if len(conds) == 1 else And(tuple(conds))
             rows = backend.select(
-                spec, QueryPlan(where=where, limit=len(own) + 1, project=())
+                spec, QueryPlan(where=where, limit=len(own) + 1, project=()), **on_unit
             )
             return any(row["_id"].canonical not in own for row in rows)
 
@@ -1325,7 +1338,7 @@ class Model(metaclass=ModelBase):
             self._meta.indexes
             or any(getattr(f, "unique", False) for f in self._meta.fields.values())
         ) and get_backend(type(self)).name != "redis":
-            error_message = self._backend_unique_conflict()
+            error_message = self._backend_unique_conflict(pipeline)
             if error_message is None:
                 pass
             elif ignore_errors:
@@ -1610,7 +1623,7 @@ class Model(metaclass=ModelBase):
 
         if isinstance(self, NeverRecordMixin) and Defaults.NEVER_RECORD_ENABLED:
             try:
-                self._check_never_record()
+                self._check_never_record(pipeline=pipeline)
             except NeverRecordException:
                 return pipeline if pipeline else False
 
@@ -1663,6 +1676,9 @@ class Model(metaclass=ModelBase):
                 self,
                 field_name=field_name,
                 field_value=getattr(self, field_name),
+                # #776: a check that reads (ValidityField's stored valid_from)
+                # runs on this save's unit of work, if it holds a connection.
+                pipeline=pipeline,
                 **kwargs,
             )
 

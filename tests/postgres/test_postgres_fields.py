@@ -146,9 +146,11 @@ def test_codec_refuses_what_msgpack_refuses():
 
 
 def test_unique_index_is_the_backstop_behind_the_pre_save_read(pg):
-    """Inside one transaction pre_save's read (autocommit, outside it) cannot
-    see the first row; the UNIQUE index catches the second, with the same
-    text, and the whole unit rolls back."""
+    """Inside one transaction pre_save's read runs on the unit's connection
+    (#776), so it sees the first row and refuses the second with the same
+    text the UNIQUE index would raise; the block exits on it and the whole
+    unit rolls back. (The index as the authority behind a read that cannot
+    see a concurrent claim: test_postgres_unique_race.py.)"""
     with pytest.raises(
         ModelException,
         match="^Unique constraint violated: email=e already exists on another instance$",

@@ -677,19 +677,24 @@ def test_a_batch_is_one_transaction_committed_by_execute(pg):
     a = TtlNote(name="a").save(pipeline=pipe)
     assert a is pipe, "save hands the batch back, as a queued save does"
     TtlNote(name="b").save(pipeline=pipe)
-    assert TtlNote.query.count() == 0, "not visible before execute()"
+    with pg.second_connection_ok():  # a reader outside the batch (#776)
+        assert TtlNote.query.count() == 0, "not visible before execute()"
     assert pipe.execute() == []
     assert {n.name for n in TtlNote.query.all()} == {"a", "b"}
 
 
-def test_a_failed_statement_rolls_the_whole_batch_back(pg):
+def test_a_failed_statement_rolls_the_whole_batch_back(pg, monkeypatch):
     TtlCoded(name="taken", code="dup").save()
     pipe = popoto.batch()
     TtlCoded(name="a", code="a").save(pipeline=pipe)
     TtlNote(name="n").save(pipeline=pipe)
+    # pre_save's read runs in the batch's transaction and would refuse "b"
+    # before sending it (#776); skip it so the UNIQUE index refuses "b"
+    # inside the transaction, as it does a concurrent unit's claim.
+    monkeypatch.setattr(
+        TtlCoded, "_backend_unique_conflict", lambda self, pipeline=None: None
+    )
     with pytest.raises(ModelException):
-        # The batch's rows are not committed, so pre_save's read cannot see
-        # "a": the conflict is the UNIQUE index's, inside the transaction.
         TtlCoded(name="b", code="a").save(pipeline=pipe)
     with pytest.raises(BackendError, match="rolled back"):
         pipe.execute()
@@ -744,8 +749,9 @@ def test_delete_and_increment_join_the_batch(pg):
     pipe = popoto.batch()
     assert note.atomic_increment("hits", 2, pipeline=pipe) == 3
     assert other.delete(pipeline=pipe) is pipe
-    assert TtlNote.query.get(name="a").hits == 1
-    assert TtlNote.query.get(name="b") is not None
+    with pg.second_connection_ok():  # a reader outside the batch (#776)
+        assert TtlNote.query.get(name="a").hits == 1
+        assert TtlNote.query.get(name="b") is not None
     pipe.execute()
     assert TtlNote.query.get(name="a").hits == 3
     assert TtlNote.query.get(name="b") is None
@@ -795,49 +801,59 @@ def test_concurrent_batches_do_not_see_each_other(pg):
 
 
 def test_nested_batches_writing_one_record_are_refused_at_once(pg):
-    outer = popoto.batch()
-    inner = popoto.batch()
-    try:
-        TtlNote(name="same", hits=1).save(pipeline=outer)
-        started = time.monotonic()
-        with pytest.raises(BackendCapabilityError, match="this task or thread holds"):
-            TtlNote(name="same", hits=2).save(pipeline=inner)
-        assert time.monotonic() - started < 1.0
-        # The inner batch's transaction is unharmed (nothing was sent), and
-        # the outer one still commits.
-        TtlNote(name="other").save(pipeline=inner)
-        inner.execute()
-        outer.execute()
-    finally:
-        inner.reset()
-        outer.reset()
-    assert TtlNote.query.get(name="same").hits == 1
-    assert TtlNote.query.get(name="other") is not None
-    assert pg.health.dropped_writes == 0
+    # Reads and writes outside the open unit are this test's subject (#776).
+    with pg.second_connection_ok():
+        outer = popoto.batch()
+        inner = popoto.batch()
+        try:
+            TtlNote(name="same", hits=1).save(pipeline=outer)
+            started = time.monotonic()
+            with pytest.raises(
+                BackendCapabilityError, match="this task or thread holds"
+            ):
+                TtlNote(name="same", hits=2).save(pipeline=inner)
+            assert time.monotonic() - started < 1.0
+            # The inner batch's transaction is unharmed (nothing was sent), and
+            # the outer one still commits.
+            TtlNote(name="other").save(pipeline=inner)
+            inner.execute()
+            outer.execute()
+        finally:
+            inner.reset()
+            outer.reset()
+        assert TtlNote.query.get(name="same").hits == 1
+        assert TtlNote.query.get(name="other") is not None
+        assert pg.health.dropped_writes == 0
 
 
 def test_nested_batches_on_different_records_both_commit(pg):
-    outer = popoto.batch()
-    TtlNote(name="a").save(pipeline=outer)
-    inner = popoto.batch()
-    TtlNote(name="b").save(pipeline=inner)
-    inner.execute()
-    assert TtlNote.query.get(name="b") is not None
-    assert TtlNote.query.get(name="a") is None
-    outer.execute()
-    assert TtlNote.query.get(name="a") is not None
+    # Reads and writes outside the open unit are this test's subject (#776).
+    with pg.second_connection_ok():
+        outer = popoto.batch()
+        TtlNote(name="a").save(pipeline=outer)
+        inner = popoto.batch()
+        TtlNote(name="b").save(pipeline=inner)
+        inner.execute()
+        assert TtlNote.query.get(name="b") is not None
+        assert TtlNote.query.get(name="a") is None
+        outer.execute()
+        assert TtlNote.query.get(name="a") is not None
 
 
 def test_a_write_outside_the_batch_to_a_record_in_it_is_refused(pg):
-    pipe = popoto.batch()
-    try:
-        TtlNote(name="held").save(pipeline=pipe)
-        with pytest.raises(BackendCapabilityError, match="this task or thread holds"):
-            TtlNote(name="held", hits=5).save()
-        TtlNote(name="free").save()  # another record is not held
-    finally:
-        pipe.execute()
-    assert TtlNote.query.get(name="held").hits == 0
+    # Reads and writes outside the open unit are this test's subject (#776).
+    with pg.second_connection_ok():
+        pipe = popoto.batch()
+        try:
+            TtlNote(name="held").save(pipeline=pipe)
+            with pytest.raises(
+                BackendCapabilityError, match="this task or thread holds"
+            ):
+                TtlNote(name="held", hits=5).save()
+            TtlNote(name="free").save()  # another record is not held
+        finally:
+            pipe.execute()
+        assert TtlNote.query.get(name="held").hits == 0
 
 
 def test_another_thread_still_waits_for_the_batch(pg):

@@ -85,7 +85,9 @@ from .plan import (
     to_db_value,
 )
 from .schema import (
+    POPOTO_SCHEMA_TABLE,
     RELATIONSHIP_KINDS,
+    SCHEMA_FORMAT_VERSION,
     UTCOFF_SUFFIX,
     TableSpec,
     compile_table,
@@ -107,7 +109,13 @@ from .ttl import (
     reap,
     ttl_remaining,
 )
-from .validity import ensure_validity_tables, refuse_valid_from_conflict, save_parts
+from .validity import (
+    ensure_validity_tables,
+    pointer_table,
+    refuse_valid_from_conflict,
+    save_parts,
+    validity_field_names,
+)
 
 __all__ = [
     "POSTGRES_URL_ENV",
@@ -116,6 +124,7 @@ __all__ = [
     "Health",
     "PostgresBackend",
     "PostgresUnitOfWork",
+    "SecondConnectionError",
     "backend_from_env",
 ]
 
@@ -129,6 +138,31 @@ MIN_SERVER_VERSION_NUM = 180000
 """Architect decision 2: Postgres 18 is the floor; no 16/17 fallback."""
 
 POSTGRES_CAPABILITIES_GROUPS = frozenset("ABC")
+
+#: Debug guard (#776): when true, checking out a second pooled connection
+#: while a ``transaction()`` (or a ``popoto.batch()`` holding Postgres
+#: writes) is open in the same task or thread raises
+#: :class:`SecondConnectionError` instead of waiting for one. Off in
+#: production; ``tests/conftest.py`` turns it on for the whole suite.
+#:
+#: Why it exists: popoto's own code once read through a second connection on
+#: behalf of a unit that already held one (``pre_save``'s uniqueness read).
+#: With every pool connection held by an open unit that read could never be
+#: served, and it saw committed state, not the unit's own writes. Every read
+#: popoto issues for a unit now runs on the unit's connection; the guard is
+#: how the suite proves no path regressed. First-use DDL, which must commit
+#: outside any caller's transaction, takes no pooled connection either: its
+#: catalog check runs on the open unit's connection, and the DDL itself, when
+#: there is any, on a dedicated connection outside the pool
+#: (:meth:`PostgresBackend._ddl_connection`). Only a test that *as a user*
+#: reads or writes outside the unit it has open declares
+#: :meth:`PostgresBackend.second_connection_ok`.
+STRICT_UNIT_CONNECTION = False
+
+
+class SecondConnectionError(AssertionError):
+    """A pooled connection was checked out while this task or thread has a
+    Postgres unit of work open (``STRICT_UNIT_CONNECTION``, #776)."""
 
 
 def backend_from_env() -> "PostgresBackend":
@@ -600,6 +634,17 @@ class PostgresBackend(
         self._open: weakref.WeakKeyDictionary[Any, list[PostgresUnitOfWork]] = (
             weakref.WeakKeyDictionary()
         )
+        # Scopes inside second_connection_ok(), with their nesting depth
+        # (#776): the STRICT_UNIT_CONNECTION guard lets their checkouts pass.
+        self._second_ok: weakref.WeakKeyDictionary[Any, int] = (
+            weakref.WeakKeyDictionary()
+        )
+        # Units whose connection a scope's otherwise-autocommit *reads* run on
+        # (reads_on, #776): model-level reads issued on behalf of a write that
+        # was handed a unit (``Model.exists``, ``query.get``).
+        self._read_units: weakref.WeakKeyDictionary[Any, list[PostgresUnitOfWork]] = (
+            weakref.WeakKeyDictionary()
+        )
 
     def __repr__(self) -> str:
         return f"<PostgresBackend schema={self.schema!r}>"
@@ -654,6 +699,7 @@ class PostgresBackend(
     @contextlib.contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[Any]:
         psycopg = _import_psycopg()
+        self._guard_second_checkout("a transaction or DDL connection")
         try:
             pool = _pool_for(self.dsn)
             with _checkout(pool) as conn:
@@ -800,26 +846,114 @@ class PostgresBackend(
             )
 
     @contextlib.contextmanager
-    def _maintenance_connection(self, lock_timeout_ms: int) -> Iterator[Any]:
-        """A dedicated ``autocommit`` connection for ``REINDEX``/``DROP
-        INDEX CONCURRENTLY`` (#788 review), opened for the block and closed
-        after it: never a pooled one, so a long REINDEX holds no pool slot
-        and its session ``lock_timeout``/``statement_timeout`` (which
-        ``CONCURRENTLY`` needs: it cannot run in a transaction block, so
-        ``SET LOCAL`` cannot reach it) can never leak to another caller.
-        Inside the async bridge it is an ``AsyncConnection`` on the loop.
+    def second_connection_ok(self) -> Iterator[None]:
+        """Declare that the block checks out a pooled connection of its own
+        while a unit of work may be open in this task or thread, on purpose:
+        first-use DDL (which must commit outside any caller's transaction),
+        or a caller that reads or writes outside the unit it holds (a query
+        inside ``with transaction()``, a nested batch). Only the debug guard
+        (:data:`STRICT_UNIT_CONNECTION`) reads it; nothing else changes."""
+        scope = self._lock_scope()
+        with self._lock:
+            self._second_ok[scope] = self._second_ok.get(scope, 0) + 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                left = self._second_ok.get(scope, 1) - 1
+                if left > 0:
+                    self._second_ok[scope] = left
+                else:
+                    self._second_ok.pop(scope, None)
 
-        Failing to *open* it is an outage (``BackendUnavailableError``, no
-        dropped write: nothing was written); errors from the block's own
-        statements propagate raw, for the caller to classify."""
+    @contextlib.contextmanager
+    def reads_on(self, uow: Optional[UnitOfWork]) -> Iterator[None]:
+        """Run every read in the block that names no unit of work on
+        ``uow``'s connection (#776): for code that reads through model-level
+        APIs (``Model.exists``, ``query.get``) on behalf of a write it was
+        handed ``uow`` for, so the read sees the unit's own writes and takes
+        no second pooled connection. A write is never redirected: one that
+        names no unit stays an autocommit statement. ``None``, or a unit that
+        is not this backend's kind, makes the block a no-op."""
+        pg = _pg_uow(uow)
+        if pg is None:
+            yield
+            return
+        scope = self._lock_scope()
+        with self._lock:
+            stack = self._read_units.get(scope)
+            if stack is None:
+                stack = self._read_units[scope] = []
+            stack.append(pg)
+        try:
+            yield
+        finally:
+            with self._lock:
+                stack.remove(pg)
+                if not stack:
+                    self._read_units.pop(scope, None)
+
+    def _read_unit(self) -> Optional[PostgresUnitOfWork]:
+        """The innermost :meth:`reads_on` unit of this task or thread."""
+        if not self._read_units:
+            return None
+        scope = self._lock_scope()
+        with self._lock:
+            stack = self._read_units.get(scope)
+            return stack[-1] if stack else None
+
+    def _guard_second_checkout(self, what: str) -> None:
+        """Under :data:`STRICT_UNIT_CONNECTION`, refuse to check out a
+        pooled connection while a unit of work is open in this task or
+        thread, outside :meth:`second_connection_ok` (#776). Called just
+        before every pooled checkout, after the record-lock self-wait check,
+        so that refusal keeps its own error."""
+        if not STRICT_UNIT_CONNECTION:
+            return
+        units = self._open_units()
+        if not units:
+            return
+        scope = self._lock_scope()
+        with self._lock:
+            if self._second_ok.get(scope):
+                return
+        raise SecondConnectionError(
+            f"popoto checked out a second pooled Postgres connection ({what}) "
+            f"while {len(units)} unit(s) of work are open in this task or "
+            "thread: a read or write issued for an open unit must run on the "
+            "unit's own connection (pass uow=), and a deliberate second "
+            "connection belongs inside backend.second_connection_ok() (#776)"
+        )
+
+    @contextlib.contextmanager
+    def _dedicated_connection(self, **extra: Any) -> Iterator[Any]:
+        """A dedicated ``autocommit`` connection, opened for the block and
+        closed after it: never a pooled one, so it holds no pool slot and no
+        session setting it makes can leak to another caller. Inside the async
+        bridge it is an ``AsyncConnection`` on the loop. ``extra`` adds
+        connect options; ``client_binding=True`` asks for client-side
+        parameter binding, as the pool's connections have, so one message can
+        carry several statements with parameters.
+
+        Failing to *open* it is an outage (``BackendUnavailableError``;
+        dropped-write accounting follows the triggering operation's write
+        intent); errors from the block's own statements propagate raw, for
+        the caller to classify."""
         psycopg = _import_psycopg()
         timeout = float(Defaults.PG_CONNECT_TIMEOUT_SECONDS)
-        kwargs = {
+        bridge = _bridged()
+        kwargs: dict[str, Any] = {
             "autocommit": True,
             "prepare_threshold": None,
             "connect_timeout": max(1, int(round(timeout))),
         }
-        bridge = _bridged()
+        if extra.pop("client_binding", False):
+            kwargs["cursor_factory"] = (
+                psycopg.AsyncClientCursor
+                if bridge is not None
+                else psycopg.ClientCursor
+            )
+        kwargs.update(extra)
         try:
             if bridge is not None:
                 conn = bridge.connect(self.dsn, **kwargs)
@@ -828,9 +962,6 @@ class PostgresBackend(
         except psycopg.OperationalError as exc:
             raise self._fail(exc, write=False) from exc
         try:
-            statement_ms = int(Defaults.PG_MAINTAIN_STATEMENT_TIMEOUT_MS)
-            conn.execute(f"SET lock_timeout = {max(0, int(lock_timeout_ms))}")
-            conn.execute(f"SET statement_timeout = {max(0, statement_ms)}")
             yield conn
         finally:
             try:
@@ -840,6 +971,126 @@ class PostgresBackend(
                     conn.pgconn.finish()
                 except Exception:  # noqa: BLE001 - already gone
                     pass
+
+    @contextlib.contextmanager
+    def _maintenance_connection(self, lock_timeout_ms: int) -> Iterator[Any]:
+        """A :meth:`_dedicated_connection` for ``REINDEX``/``DROP INDEX
+        CONCURRENTLY`` (#788 review): a long REINDEX holds no pool slot, and
+        its session ``lock_timeout``/``statement_timeout`` (which
+        ``CONCURRENTLY`` needs: it cannot run in a transaction block, so
+        ``SET LOCAL`` cannot reach it) can never leak to another caller.
+        Errors from the block's own statements propagate raw."""
+        with self._dedicated_connection() as conn:
+            statement_ms = int(Defaults.PG_MAINTAIN_STATEMENT_TIMEOUT_MS)
+            conn.execute(f"SET lock_timeout = {max(0, int(lock_timeout_ms))}")
+            conn.execute(f"SET statement_timeout = {max(0, statement_ms)}")
+            yield conn
+
+    @contextlib.contextmanager
+    def _ddl_connection(self) -> Iterator[Any]:
+        """The connection first-use DDL runs on (#776): a pooled one when no
+        unit of work is open in this task or thread (or in an ancestor task
+        that awaits it), else a :meth:`_dedicated_connection` outside the
+        pool.
+
+        DDL has to commit on its own, never inside a caller's unit (a
+        rollback would leave the memo naming a table that is not there), so
+        it cannot use the unit's connection. Taking a *pooled* one while the
+        unit holds another starved the pool: N concurrent units on a cold
+        model, N = ``PG_POOL_MAX_SIZE``, each held a slot and waited for one
+        more, and every one of them failed with ``BackendBusyError``. A
+        dedicated connection costs a connect, paid only when there is DDL to
+        run: the common case -- the table exists -- is settled before this by
+        a catalog read on the unit's own connection
+        (:meth:`_table_if_current`, :meth:`_ensure_engine_table`). Failures
+        are classified as :meth:`_connection` classifies them.
+
+        The dedicated connection carries a session ``lock_timeout``
+        (``Defaults.PG_DDL_LOCK_TIMEOUT_MS``) and ``statement_timeout``
+        (``Defaults.PG_DDL_STATEMENT_TIMEOUT_MS``), so DDL that waits on
+        another session's lock gives up instead of hanging with the
+        first-use lock held (PR #793 review). Either timeout raises
+        :class:`~popoto.backends.BackendRetryableError` -- contention, not an
+        outage: health is untouched -- and nothing is memoised, so the next
+        use runs the check again. A lock the open unit itself holds is
+        refused before any DDL by :meth:`_refuse_ddl_under_own_lock`."""
+        psycopg = _import_psycopg()
+        lock_ms = max(1, int(Defaults.PG_DDL_LOCK_TIMEOUT_MS))
+        statement_ms = max(1, int(Defaults.PG_DDL_STATEMENT_TIMEOUT_MS))
+        try:
+            if not self._unit_open_here():
+                # Pooled. The timeouts are SET LOCAL inside each DDL
+                # transaction (schema.ddl_timeout_sql), so this connection
+                # goes back to the pool unmodified.
+                self._guard_second_checkout("a transaction or DDL connection")
+                pool = _pool_for(self.dsn)
+                with _checkout(pool) as conn:
+                    yield conn
+            else:
+                with self._dedicated_connection(client_binding=True) as conn:
+                    # A backstop for any statement outside ensure_table's own
+                    # SET LOCAL phases (which override it per transaction).
+                    conn.execute(f"SET lock_timeout = {lock_ms}")
+                    conn.execute(f"SET statement_timeout = {statement_ms}")
+                    yield conn
+        except _rollback_errors(psycopg) as exc:
+            raise _retryable(exc) from exc
+        except (psycopg.errors.LockNotAvailable, psycopg.errors.QueryCanceled) as exc:
+            raise BackendRetryableError(
+                f"first-use DDL gave up waiting (SQLSTATE "
+                f"{getattr(exc, 'sqlstate', None)}: {exc}): another session "
+                f"holds a lock it needs (Defaults.PG_DDL_LOCK_TIMEOUT_MS = "
+                f"{lock_ms}, PG_DDL_SCHEMA_LOCK_TIMEOUT_MS = "
+                f"{int(Defaults.PG_DDL_SCHEMA_LOCK_TIMEOUT_MS)}, "
+                f"PG_DDL_STATEMENT_TIMEOUT_MS = {statement_ms}); "
+                "nothing was changed, so retry it once that transaction ends"
+            ) from exc
+        except psycopg.OperationalError as exc:
+            busy = _busy(exc)
+            if busy is not None:
+                raise busy from exc
+            raise self._fail(exc, write=False) from exc
+
+    def _own_unit(self) -> Optional[PostgresUnitOfWork]:
+        """The innermost ``transaction()`` open in this task or thread, whose
+        connection a first-use catalog read can run on for free (#776)."""
+        units = self._open_units()
+        return units[-1] if units else None
+
+    def _ensure_engine_table(
+        self,
+        probe: str,
+        params: Sequence[Any],
+        present: Callable[[list[tuple[Any, ...]]], bool],
+        ddl: Callable[[], tuple[str, list[Any]]],
+        missing: str,
+    ) -> None:
+        """First use of an engine-owned side table (the event streams, the
+        recipe tables, ``popoto_recall_proposal``): run the catalog ``probe``
+        and, when ``present(rows)`` says the table is missing, ``ddl()``.
+
+        Neither takes a pooled connection while a unit of work is open here
+        (#776): the probe is a read, so it runs on the unit's own connection;
+        the DDL must commit on its own, so it runs on :meth:`_ddl_connection`.
+        With no unit open the DDL runs on a pooled one; either way it carries
+        its own ``SET LOCAL`` lock and statement timeouts.
+        ``missing`` describes the table for the ``POPOTO_SCHEMA_AUTO=0``
+        error."""
+        rows, _ = self._run(probe, params, uow=self._own_unit())
+        if present(rows):
+            return
+        if not _schema_auto():
+            from ..types import SchemaDriftError
+
+            raise SchemaDriftError(f"{missing} and POPOTO_SCHEMA_AUTO=0")
+        sql, ddl_params = ddl()
+        # The DDL (which carries its own SET LOCAL timeouts) always runs on
+        # _ddl_connection, so a wait on another session's lock ends in
+        # BackendRetryableError whether or not a unit is open here.
+        with self._write_intent(True), self._ddl_connection() as conn:
+            cur = conn.execute(sql, ddl_params)
+            while cur.nextset():
+                pass
 
     def _note_open_scope(self) -> None:
         """Record the running task in :data:`_ancestor_scopes` of its own
@@ -885,6 +1136,8 @@ class PostgresBackend(
         """
         psycopg = _import_psycopg()
         pg = _pg_uow(uow)
+        if pg is None and not write:
+            pg = self._read_unit()  # reads_on (#776)
         lock_keys = record_lock_keys(sql, params)
         if lock_keys:
             self._refuse_self_wait(pg, lock_keys)
@@ -904,6 +1157,7 @@ class PostgresBackend(
             rows = cur.fetchall() if cur.description else []
             pg.locked.update(lock_keys)
             return rows, cur.rowcount
+        self._guard_second_checkout(f"autocommit {sql.split(None, 1)[0]!s}")
         attempts = int(Defaults.PG_TRANSACTION_RETRIES) + 1
         prefix = self._statement_prefix()
         attempt = 0
@@ -958,10 +1212,14 @@ class PostgresBackend(
             return False
         return not write or getattr(exc, "sqlstate", None) is not None
 
-    def _check_server(self) -> None:
+    def _check_server(self, uow: Optional[UnitOfWork] = None) -> None:
         if self._server_checked:
             return
-        version, encoding = self._server_facts()
+        self._check_server_facts(*self._server_facts(uow))
+
+    def _check_server_facts(self, version: int, encoding: str) -> None:
+        """Refuse a server below the version floor or not UTF8; else
+        remember that this backend's server passed."""
         if version < MIN_SERVER_VERSION_NUM:
             raise BackendCapabilityError(
                 f"popoto's Postgres backend requires PostgreSQL 18 or newer "
@@ -976,10 +1234,11 @@ class PostgresBackend(
             )
         self._server_checked = True
 
-    def _server_facts(self) -> tuple[int, str]:
+    def _server_facts(self, uow: Optional[UnitOfWork] = None) -> tuple[int, str]:
         rows, _ = self._run(
             "SELECT current_setting('server_version_num')::int, "
-            "current_setting('server_encoding')"
+            "current_setting('server_encoding')",
+            uow=uow,
         )
         return int(rows[0][0]), str(rows[0][1])
 
@@ -997,18 +1256,34 @@ class PostgresBackend(
             return self._check_table(spec)
 
     def _check_table(self, spec: ModelSpec) -> TableSpec:
+        # Inside a unit of work, settle the common case first -- the table
+        # exists and is current -- with catalog reads on the unit's own
+        # connection: no DDL, no second connection (#776).
+        unit = self._own_unit()
+        if unit is not None:
+            current = self._table_if_current(spec, unit)
+            if current is not None:
+                with self._lock:
+                    self._tables[spec.name] = (spec, current)
+                return current
         # The RLock separates threads, not async tasks: every bridge greenlet
         # runs on the loop thread, so for them it is re-entrant and concurrent
         # first uses all pass it (M5). What serialises first use is the
         # server-side DDL lock `ensure_table` takes (pg_advisory_xact_lock on
         # "popoto:ddl:<schema>"); a second caller then finds the table made.
+        # First-use DDL must commit on its own, never inside a caller's unit
+        # of work (its rollback would leave the memo naming a table that is
+        # not there): with a unit open it runs on a dedicated connection
+        # outside the pool, never on a pool slot the open units may be
+        # holding (_ddl_connection, #776). It runs once per model per process.
         with self._lock:
             cached = self._tables.get(spec.name)
             if cached is not None and cached[0] is spec:
                 return cached[1]
-            self._check_server()
             ts = compile_table(spec, self.schema)
-            with self._connection() as conn:
+            with self._ddl_connection() as conn:
+                self._refuse_ddl_under_own_lock(conn, ts, spec)
+                self._check_server(PostgresUnitOfWork(conn))
                 require_extensions(conn, ts)
                 ensure_table(conn, ts, auto=_schema_auto())
                 # M3: a ValidityField's open-pointer table, outside any
@@ -1017,6 +1292,134 @@ class PostgresBackend(
             self._ok()
             self._tables[spec.name] = (spec, ts)
             return ts
+
+    def _units_here(self) -> list[PostgresUnitOfWork]:
+        """Every ``transaction()`` open in this task or thread, or in an
+        ancestor task that awaits this one: the units :meth:`_unit_open_here`
+        reports, as a list."""
+        units = list(self._open_units())
+        ancestors = _ancestor_scopes.get()
+        if ancestors:
+            scope = self._lock_scope()
+            with self._lock:
+                for task in (ref() for ref in ancestors):
+                    if task is not None and task is not scope:
+                        units.extend(self._open.get(task) or ())
+        return units
+
+    def _refuse_ddl_under_own_lock(
+        self, conn: Any, ts: TableSpec, spec: ModelSpec
+    ) -> None:
+        """Refuse first-use DDL for ``ts`` while a unit of work open here
+        already holds a lock on that table (or one of its validity pointer
+        tables), before any DDL is sent (PR #793 review).
+
+        The DDL must commit on its own, so it runs on a connection other than
+        the unit's (:meth:`_ddl_connection`); an ``ALTER TABLE`` there waits
+        for every lock on the table, including the one this unit took when
+        it read or wrote it -- and this unit cannot commit while this task or
+        thread waits. Two shapes reach it: a model redefined with an added
+        field after the unit already used its table, and an auto-key model
+        whose table was bound before its first instance existed (the first
+        instance adds ``_auto_key``) after the unit read it. Without this the
+        wait lasts until ``PG_DDL_LOCK_TIMEOUT_MS``, with the first-use lock
+        held; with it, the caller gets :class:`SchemaDriftError` at once.
+
+        ``pg_locks`` is a cluster-wide view, so it is read on ``conn`` (the
+        DDL connection itself) for the units' backend pids: no statement runs
+        on a unit's connection, which may belong to an ancestor task."""
+        units = self._units_here()
+        if not units:
+            return
+        pids = []
+        for unit in units:
+            pid = getattr(getattr(unit.conn, "info", None), "backend_pid", None)
+            if pid:
+                pids.append(int(pid))
+        if not pids:
+            return
+        names = [ts.qualified]
+        names += [pointer_table(ts, f) for f in validity_field_names(spec)]
+        held = conn.execute(
+            "SELECT DISTINCT l.mode FROM pg_locks l WHERE l.locktype = 'relation' "
+            "AND l.granted AND l.pid = ANY(%s) AND l.database = (SELECT oid FROM "
+            "pg_database WHERE datname = current_database()) AND l.relation = "
+            "ANY(ARRAY(SELECT to_regclass(n)::oid FROM unnest(%s::text[]) AS n "
+            "WHERE to_regclass(n) IS NOT NULL))",
+            (pids, names),
+        ).fetchall()
+        if not held:
+            return
+        # A table that is already current needs no DDL that conflicts with
+        # the unit's lock (the check reached here from an ancestor task's
+        # unit, whose catalog was not read first): let ensure_table say so.
+        if self._table_if_current(spec, PostgresUnitOfWork(conn)) is not None:
+            return
+        from ..types import SchemaDriftError
+
+        modes = ", ".join(sorted(str(row[0]) for row in held))
+        raise SchemaDriftError(
+            f"{ts.qualified} (model {ts.model}) needs a schema change (create "
+            "or additive migration) while a unit of work open in this task or "
+            f"thread already holds a lock on it ({modes}). The change must "
+            "commit on its own connection, which would wait for this unit "
+            "forever. Let the schema change happen outside the unit: use the "
+            "model once -- a save, or a query after its first instance exists "
+            "-- before opening the transaction, or commit the unit first "
+            "(#776)."
+        )
+
+    def _table_if_current(
+        self, spec: ModelSpec, unit: PostgresUnitOfWork
+    ) -> Optional[TableSpec]:
+        """``spec``'s table when the catalog, read on ``unit``'s connection,
+        shows it exists and is current, else ``None`` (#776).
+
+        "Current" is :func:`~.schema.ensure_table`'s own ``"current"``
+        outcome -- the ``popoto_schema`` record names this model, a format
+        this client understands and this spec's fingerprint -- plus every
+        ``ValidityField`` pointer table present. The record and the DDL it
+        describes commit in one transaction, so a committed matching record
+        is the table in that shape; reading it needs no advisory lock.
+        Anything else -- a missing schema, registry, table or record, a
+        fingerprint to migrate to, drift -- returns ``None``, and the full
+        check runs (and raises what it raises) on :meth:`_ddl_connection`.
+        Every statement here is a catalog read (``to_regclass`` never raises
+        for a missing relation, and the registry is read only once it is
+        known to exist), so it cannot abort the caller's transaction."""
+        ts = compile_table(spec, self.schema)
+        registry = f"{quote_ident(self.schema)}.{POPOTO_SCHEMA_TABLE}"
+        names = [registry, ts.qualified]
+        names += [pointer_table(ts, f) for f in validity_field_names(spec)]
+        regclass = ", ".join("to_regclass(%s) IS NOT NULL" for _ in names)
+        rows, _ = self._run(
+            "SELECT current_setting('server_version_num')::int, "
+            f"current_setting('server_encoding'), {regclass}",
+            names,
+            uow=unit,
+        )
+        version, encoding, *present = rows[0]
+        if not self._server_checked:
+            self._check_server_facts(int(version), str(encoding))
+        if not all(present):
+            return None
+        rows, _ = self._run(
+            f"SELECT model, fingerprint, format_version FROM {registry} "
+            "WHERE table_name = %s",
+            [ts.table],
+            uow=unit,
+        )
+        if not rows:
+            return None
+        model, fingerprint, fmt = rows[0]
+        if (
+            model != ts.model
+            or int(fmt) > SCHEMA_FORMAT_VERSION
+            or fingerprint != ts.fingerprint()
+        ):
+            return None
+        require_extensions(unit.conn, ts)
+        return ts
 
     def forget_tables(self) -> None:
         """Drop the in-process memo of checked tables (test isolation)."""
@@ -1412,10 +1815,13 @@ class PostgresBackend(
         ids: Sequence[RecordId],
         *,
         fields: Optional[Sequence[str]] = None,
+        uow: Optional[UnitOfWork] = None,
         **options: Any,
     ) -> list[Optional[Row]]:
         """``SELECT <cols> FROM <table> WHERE _pk = ANY(…)``: decoded rows
-        in ``ids`` order, ``None`` where there is no record."""
+        in ``ids`` order, ``None`` where there is no record. With a Postgres
+        ``uow`` the read runs on its transaction's connection and sees its
+        own writes (#776); otherwise it is an autocommit read."""
         if not ids:
             return []
         ts = self._table(spec)
@@ -1432,7 +1838,7 @@ class PostgresBackend(
         if live:
             # M5: an expired row is no record, reaped or not.
             sql += " AND " + live
-        rows, _ = self._run(sql, params)
+        rows, _ = self._run(sql, params, uow=uow)
         by_pk = {row[0]: self._decode(ts, cols, row) for row in rows}
         return [by_pk.get(k) for k in keys]
 
@@ -1478,7 +1884,13 @@ class PostgresBackend(
             return sum(1 for (alive,) in rows if alive)
         return int(count or 0)
 
-    def exists(self, spec: ModelSpec, ids: Sequence[RecordId]) -> list[bool]:
+    def exists(
+        self,
+        spec: ModelSpec,
+        ids: Sequence[RecordId],
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> list[bool]:
         if not ids:
             return []
         ts = self._table(spec)
@@ -1488,6 +1900,7 @@ class PostgresBackend(
             f'SELECT "_pk" FROM {ts.qualified} WHERE "_pk" = ANY(%s::text[])'
             + (f" AND {live}" if live else ""),
             [keys],
+            uow=uow,
         )
         found = {row[0] for row in rows}
         return [k in found for k in keys]
@@ -1565,10 +1978,18 @@ class PostgresBackend(
             )
         return plan
 
-    def select(self, spec: ModelSpec, plan: QueryPlan) -> list[Row]:
+    def select(
+        self,
+        spec: ModelSpec,
+        plan: QueryPlan,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> list[Row]:
         """``SELECT … WHERE <predicate> ORDER BY …, _pk COLLATE "C" LIMIT``.
         ``project=()`` returns id-only rows; a projection returns rows with
-        just those fields (and ``_id``)."""
+        just those fields (and ``_id``). With a Postgres ``uow`` the read
+        runs on its transaction's connection and sees its own writes
+        (#776: ``pre_save``'s uniqueness read inside a unit of work)."""
         ts = self._table(spec)
         plan = self._plan(plan)
         kinds = {name: fs.kind for name, fs in spec.fields.items()}
@@ -1578,7 +1999,7 @@ class PostgresBackend(
             # Id-only rows. The keys() call carries no filter; a plan with a
             # where/order/limit (sample_related_keys: ORDER BY random() LIMIT
             # n) is honoured rather than dropped.
-            where, _, _ = resolve_geo(self, ts, plan.where)
+            where, _, _ = resolve_geo(self, ts, plan.where, uow)
             where_sql, params = render_where(ts, kinds, where)
             sql = f'SELECT "_pk" FROM {ts.qualified}{where_sql}'
             sql += render_order(ts, plan.order_by, non_null_fields(where))
@@ -1586,14 +2007,14 @@ class PostgresBackend(
                 sql += f" LIMIT {int(plan.limit)}"
             if plan.offset:
                 sql += f" OFFSET {int(plan.offset)}"
-            rows, _ = self._run(sql, params)
+            rows, _ = self._run(sql, params, uow=uow)
             return [
                 {"_id": RecordId(spec.name, (), pk, native=pk.encode())}
                 for (pk,) in rows
             ]
         # M5: a geo leaf runs its search first and scopes the statement by
         # the keys it matched (.geo); with_distances orders by the distance.
-        where, distances, unit = resolve_geo(self, ts, plan.where)
+        where, distances, unit = resolve_geo(self, ts, plan.where, uow)
         if not any(c.name == "_geo_distance" for c in plan.compute):
             distances = None
         where_sql, params = render_where(ts, kinds, where)
@@ -1621,7 +2042,7 @@ class PostgresBackend(
             sql += f" LIMIT {int(plan.limit)}"
         if plan.offset:
             sql += f" OFFSET {int(plan.offset)}"
-        rows, _ = self._run(sql, params)
+        rows, _ = self._run(sql, params, uow=uow)
         out: list[Row] = []
         for row in rows:
             decoded = self._decode(ts, cols, row)
@@ -1632,13 +2053,21 @@ class PostgresBackend(
             out.append(decoded)
         return out
 
-    def count(self, spec: ModelSpec, plan: QueryPlan) -> int:
+    def count(
+        self,
+        spec: ModelSpec,
+        plan: QueryPlan,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> int:
         ts = self._table(spec)
         plan = self._plan(plan)
         kinds = {name: fs.kind for name, fs in spec.fields.items()}
-        where, _, _ = resolve_geo(self, ts, plan.where)
+        where, _, _ = resolve_geo(self, ts, plan.where, uow)
         where_sql, params = render_where(ts, kinds, where)
-        rows, _ = self._run(f"SELECT count(*) FROM {ts.qualified}{where_sql}", params)
+        rows, _ = self._run(
+            f"SELECT count(*) FROM {ts.qualified}{where_sql}", params, uow=uow
+        )
         return int(rows[0][0])
 
     # -- D-H: later milestones ---------------------------------------------------

@@ -817,6 +817,38 @@ class Defaults:
     # waits only this long and the next rebuild/clean drops them instead.
     PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS = 1000
 
+    # -- Postgres first-use DDL (#776, PR #793 review) -------------------------
+    # Every DDL transaction popoto issues (a model's create/additive
+    # migration, an engine side table, a ValidityField pointer table), in or
+    # out of a unit of work, runs under SET LOCAL timeouts, so a pooled
+    # connection is never left modified. Waiting and DDL are bounded
+    # separately:
+    #
+    # A DDL statement that waits on a lock -- the table lock another
+    # session's open transaction holds -- gives up after this long and the
+    # operation raises BackendRetryableError, releasing the first-use lock
+    # for every other thread. (A lock the waiting unit itself holds is
+    # refused before any DDL runs: that wait could never end. A lock held
+    # only on a companion table -- BM25, edges -- is not detected up front;
+    # it ends here, in this timeout, never in a hang.)
+    PG_DDL_LOCK_TIMEOUT_MS = 5000
+    # The wait for the schema-wide DDL advisory lock (and the table's), and
+    # the catalog read after it, are NOT bounded by the limit above: another
+    # process may legitimately run a long migration, and a first use of a
+    # model that is already current simply waits for it, as it always did
+    # (a rolling deploy must not fail every new worker). The holders of
+    # those locks are themselves bounded by PG_DDL_LOCK_TIMEOUT_MS, so the
+    # wait cannot deadlock; this is only a backstop, equal to the statement
+    # timeout.
+    PG_DDL_SCHEMA_LOCK_TIMEOUT_MS = 300000
+    # One DDL statement is cancelled after this long (also
+    # BackendRetryableError). It bounds a hang, not the work -- but a very
+    # large index build (roughly 100M rows for a b-tree on a populated
+    # column) can exceed it, and every retry would rebuild the index and be
+    # cancelled again while holding the table's lock. Raise this (e.g. in
+    # the process that runs the migration) before first use of such a table.
+    PG_DDL_STATEMENT_TIMEOUT_MS = 300000
+
     # -- Postgres graph (#759 M4) ----------------------------------------------
     # CoOccurrenceField.propagate() on Postgres answers with one WITH RECURSIVE
     # statement while it expands at most this many BFS layers (ceil(depth)),
