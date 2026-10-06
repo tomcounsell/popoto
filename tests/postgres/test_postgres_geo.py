@@ -497,9 +497,6 @@ def _probe():
 def test_a_slice_of_the_seeded_geo_probe_has_no_undocumented_mismatch(pg):
     probe = _probe()
     report = probe.run(pg, seeds=[11], shapes=40)
-    import warnings  # TEMPORARY (#791): surface CI's calibration
-
-    warnings.warn(f"CALIBRATION {report['calibration']} DOC {report['documented']}")
     assert report["shapes"] == 40
     assert report["undocumented"] == [], report["undocumented"][:5]
 
