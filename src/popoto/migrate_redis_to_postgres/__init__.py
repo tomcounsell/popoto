@@ -55,14 +55,19 @@ Records land through :func:`popoto.transfer.import_records` on a
 narrow vector rows, membership tokens, indexes) is built by the engine that
 will maintain it. Every native write sets ``_migrated_from = NULL``; the tool
 then writes ``_migrated_from``, ``_estimated_fields``, ``_created_at`` and
-``_updated_at`` (and the staged-read columns) in a transaction of its own,
-together with its ledger and resume marker. A crash between the two leaves a
-``pending`` ledger row, which is how a resumed run tells its own half-written
-rows from rows popoto wrote natively. Only the SAME run (``run_id``) adopts
-its pending rows, and only while each still holds exactly what it imported;
-a row another run left pending, or one popoto saved after the crash, is
-treated as native. A session advisory lock on the target schema keeps two
-runs from loading into it at once.
+``_updated_at`` (and the staged-read columns), its ledger and its resume
+marker. **Each batch is one Postgres transaction**: the saves, every
+carried-state restore (``import_records(uow=...)``), the provenance, the
+ledger rows and the marker commit together, so a crash leaves none of a
+batch or all of it (:func:`_load_model`). A ``pending`` ledger row can only
+be left by a run from before batches were atomic; it is how a resumed run
+tells its own half-written rows from rows popoto wrote natively. Only the
+SAME run (``run_id``) adopts its pending rows, and only while each still
+holds exactly what it imported; a row another run left pending, or one
+popoto saved after the crash, is treated as native. Verification never
+trusts that alone: every row this run queued a save for must hold the
+snapshot's carried state (``carried_state``). A session advisory lock on
+the target schema keeps two runs from loading into it at once.
 
 **Merge rule** (v2 plan, "Reconciliation with #755 / #756 / #758"): several
 per-machine stores load into the one central database, one run per store,
@@ -680,8 +685,8 @@ def _as_epoch(item: Any) -> Optional[float]:
 # -- configuration and report --------------------------------------------------
 
 DEFAULT_BATCH_SIZE = 200
-"""Records per load batch: one ledger commit, one ``import_records`` call
-and one provenance transaction each."""
+"""Records per load batch: one Postgres transaction each (its saves,
+carried state, provenance, ledger rows and resume marker)."""
 
 VERIFY_DECAY_TOP_N = 50
 """Records compared per partition in the decay-ranking check."""
@@ -1758,8 +1763,26 @@ def _native_since_crash(
 
 _crash_hook: Optional[Callable[[str, int], None]] = None
 """Test seam: called with ``(model, batch number)`` after a batch's records
-landed and before its provenance commits -- the window a crash must
-survive."""
+landed and before its provenance is written -- inside the batch's
+transaction, so a crash there leaves nothing of the batch."""
+
+_step_hook: Optional[Callable[[str, int, str], None]] = None
+"""Test seam: called with ``(model, batch number, step)`` between the steps
+of a batch's transaction: ``locked``, ``ledger_pending``, ``imported``,
+``provenance`` and ``ledger_done`` (the last just before ``COMMIT``)."""
+
+
+def _step(model: str, number: int, step: str) -> None:
+    if _step_hook is not None:
+        _step_hook(model, number, step)
+
+
+def _batch_unit(backend: Any) -> Any:
+    """The unit of work one batch runs in: ``backend.transaction()``. A
+    named seam so the revert check can swap in per-statement commits (the
+    pre-atomic behaviour) and show the verification catches what that
+    leaves behind."""
+    return backend.transaction()
 
 
 def _load_model(
@@ -1774,9 +1797,20 @@ def _load_model(
     decisions: dict[str, str],
     errors: list[str],
 ) -> None:
-    from ..backends.postgres.search import record_lock_sql
-    from ..transfer.format import dump_line
-    from ..transfer.import_ import import_records
+    """Load ``rows`` batch by batch, each batch ONE Postgres transaction.
+
+    A batch's record saves, every carried-state writer (confidence, access
+    counters, prediction ledger, edges, cycles, validity, vector), its
+    ``_migrated_from`` provenance, its ledger rows and the resume marker all
+    commit together (:func:`_load_batch`). A crash -- an exception, or
+    ``kill -9`` at any instant -- therefore leaves either none of the batch
+    or all of it, never a saved row whose carried state or provenance is
+    missing (#756 review: such a row could not be told from a native write
+    on resume, was reported ``conflict_native`` and kept its defaults under
+    a CLEAN verdict). A deadlock or serialization failure rolls the batch
+    back and runs it again, up to ``Defaults.PG_TRANSACTION_RETRIES`` times."""
+    from ..backends.types import BackendRetryableError
+    from ..fields.constants import Defaults
 
     model = mapping.model
     schema = backend.schema
@@ -1784,9 +1818,6 @@ def _load_model(
     table = ts.qualified
     ledger = f"{_qi(schema)}.{_qi(LEDGER_TABLE)}"
     runs = f"{_qi(schema)}.{_qi(RUN_TABLE)}"
-    layout = ts.search
-    embedding_layouts = list(layout.embedding.values()) if layout is not None else []
-    has_access = "AccessTrackerMixin" in {k.__name__ for k in model.__mro__}
 
     progress = conn.execute(
         f"SELECT progress->>%s FROM {runs} WHERE run_id = %s",
@@ -1806,22 +1837,96 @@ def _load_model(
         conn.commit()
     native_since_crash = _native_since_crash(mapping, conn, table, ledger, run)
 
+    attempts = int(Defaults.PG_TRANSACTION_RETRIES) + 1
     for number, start in enumerate(range(0, len(todo), max(1, batch_size))):
         batch = todo[start : start + batch_size]
-        keys = [r["key"] for r in batch]
-        found = conn.execute(
+        for attempt in range(1, attempts + 1):
+            try:
+                batch_decisions, batch_errors = _load_batch(
+                    mapping,
+                    batch,
+                    number,
+                    manifest,
+                    backend=backend,
+                    ts=ts,
+                    run=run,
+                    native_since_crash=native_since_crash,
+                )
+            except BackendRetryableError:
+                if attempt == attempts:
+                    raise
+                time.sleep(0.05 * attempt)
+                continue
+            break
+        decisions.update(batch_decisions)
+        errors.extend(batch_errors)
+
+
+def _load_batch(
+    mapping: ModelMapping,
+    batch: Sequence[dict[str, Any]],
+    number: int,
+    manifest: Mapping[str, Any],
+    *,
+    backend: Any,
+    ts: Any,
+    run: Mapping[str, Any],
+    native_since_crash: set[str],
+) -> tuple[dict[str, str], list[str]]:
+    """One batch, in one ``backend.transaction()``; returns its decisions
+    and load errors once it has committed.
+
+    Lock order (plan §6, TD-2, the backend's one order): the batch first
+    takes every ``(model, field)`` validity lock the model has, then the
+    record-key advisory locks of ALL its keys in ``_pk`` byte order, in two
+    statements, before it reads or writes anything. Every later lock a save
+    or a carried-state writer asks for is one of those (re-taking a held
+    advisory lock is a no-op), and the stream rows are locked last, at
+    ``COMMIT`` (``defer_stream_append``). Holding the keys before the reads
+    also means a native save of a key cannot slip between this batch's merge
+    decision and its write."""
+    from ..fields.validity_field import ValidityField
+    from ..transfer.format import dump_line
+    from ..transfer.import_ import import_records
+
+    model = mapping.model
+    schema = backend.schema
+    table = ts.qualified
+    ledger = f"{_qi(schema)}.{_qi(LEDGER_TABLE)}"
+    runs = f"{_qi(schema)}.{_qi(RUN_TABLE)}"
+    layout = ts.search
+    embedding_layouts = list(layout.embedding.values()) if layout is not None else []
+    has_access = "AccessTrackerMixin" in {k.__name__ for k in model.__mro__}
+    validity = sorted(
+        name
+        for name, field in model._meta.fields.items()
+        if isinstance(field, ValidityField)
+    )
+    keys = [r["key"] for r in batch]
+    decisions: dict[str, str] = {}
+    errors: list[str] = []
+
+    with _batch_unit(backend) as uow:
+        tx = uow.conn
+        if validity:
+            backend._validity_lock(ts, validity, uow)
+        lock_sql, lock_params = backend._record_locked(ts, keys, "SELECT 1", [])
+        backend._run(lock_sql, lock_params, uow=uow, write=True)
+        _step(mapping.name, number, "locked")
+
+        found = tx.execute(
             f'SELECT "_pk", "_migrated_from" FROM {table} WHERE "_pk" = ANY(%s)',
             (keys,),
         ).fetchall()
         existing = {pk: mf for pk, mf in found}
         # Only THIS run's pending rows are adopted. A row another run left
-        # pending (it crashed between its import and its provenance) is
-        # indistinguishable from a native row -- and may have become one,
-        # if popoto saved it since -- so it is treated as native: never
-        # overwritten, reported as conflict_native.
+        # pending (it crashed between its import and its provenance, before
+        # batches were atomic) is indistinguishable from a native row -- and
+        # may have become one, if popoto saved it since -- so it is treated
+        # as native: never overwritten, reported as conflict_native.
         pending: dict[str, Optional[dict[str, Any]]] = {}
         pending_sha: dict[str, str] = {}
-        for pk, detail, sha in conn.execute(
+        for pk, detail, sha in tx.execute(
             f"SELECT _pk, detail, payload_sha FROM {ledger} WHERE run_id = %s "
             "AND model = %s AND _pk = ANY(%s) AND state = 'pending'",
             (run["run_id"], mapping.name, keys),
@@ -1829,7 +1934,6 @@ def _load_model(
             if pk not in native_since_crash:
                 pending[pk] = json.loads(detail) if detail else None
                 pending_sha[pk] = sha
-        conn.commit()
 
         def previous_of(key: str) -> Optional[dict[str, Any]]:
             if key in existing and existing[key] is not None:
@@ -1858,14 +1962,15 @@ def _load_model(
         adopted = _adopted_keys(plan, pending_sha)
         writes = [row for row, d in plan if d in _WRITES and row["key"] not in adopted]
         if writes:
-            conn.cursor().executemany(
+            tx.cursor().executemany(
                 f"INSERT INTO {ledger} AS l (run_id, model, _pk, state, decision, "
                 "payload_sha, detail, write_started_at) VALUES (%s, %s, %s, 'pending', "
                 "'write', %s, %s, now()) ON CONFLICT (run_id, model, _pk) DO UPDATE SET "
                 "state = 'pending', decision = 'write', payload_sha = "
                 "EXCLUDED.payload_sha, detail = EXCLUDED.detail, at = now(), "
-                # A key this run already queued before a crash keeps its
-                # window start: the crashed import's event belongs to it.
+                # A key this run left pending before a crash (a run that
+                # predates atomic batches) keeps its window start: the
+                # crashed import's event belongs to it.
                 "write_started_at = CASE WHEN l.state = 'pending' THEN "
                 "coalesce(l.write_started_at, now()) ELSE now() END",
                 [
@@ -1874,15 +1979,16 @@ def _load_model(
                         mapping.name,
                         r["key"],
                         r["meta"]["payload_sha"],
-                        # The provenance this write replaces: a resume after
-                        # a crash finds the row's _migrated_from already
-                        # nulled by the save, and reads it back from here.
+                        # The provenance this write replaces: the save nulls
+                        # the row's _migrated_from, and the provenance step
+                        # below reads it back from here.
                         json.dumps(previous_of(r["key"])),
                     )
                     for r in writes
                 ],
             )
-            conn.commit()
+        _step(mapping.name, number, "ledger_pending")
+        if writes:
             stream = io.StringIO()
             stream.write(dump_line(dict(manifest)))
             for r in writes:
@@ -1894,6 +2000,7 @@ def _load_model(
                 on_conflict="overwrite",
                 on_write_gate="bypass",
                 on_embedding_mismatch="carry",
+                uow=uow,
             )
             failed = {o.key: o for o in report.outcomes if o.category != "landed"}
             if failed:
@@ -1908,13 +2015,8 @@ def _load_model(
 
         if _crash_hook is not None:
             _crash_hook(mapping.name, number)
+        _step(mapping.name, number, "imported")
 
-        # The provenance transaction: one commit per batch.
-        landed = [row for row, d in plan if d in _WRITES]
-        if landed:
-            lock_sql, lock_params = record_lock_sql(ts, [r["key"] for r in landed])
-            if lock_sql:
-                conn.execute(lock_sql.rstrip().rstrip(";"), lock_params)
         for row, decision in plan:
             key, meta = row["key"], row["meta"]
             previous = previous_of(key)
@@ -1941,10 +2043,16 @@ def _load_model(
                             f"{_qi(emb.hash)} = CASE WHEN {_qi(emb.vec)} IS NULL THEN "
                             f"{_qi(emb.hash)} ELSE md5({_qi(emb.source)}::text) END"
                         )
-                conn.execute(
+                updated = tx.execute(
                     f'UPDATE {table} SET {", ".join(sets)} WHERE "_pk" = %s',
                     params + [key],
-                )
+                ).rowcount
+                if updated != 1:
+                    # The save ran in this transaction: its row must be here.
+                    raise MigrationError(
+                        f"{mapping.name} {key}: the row this batch saved is not "
+                        "in its own transaction; the batch is rolled back"
+                    )
             elif decision in (DEDUPLICATED, LOST_MERGE) and previous is not None:
                 merged = dict(previous)
                 if decision == DEDUPLICATED:
@@ -1970,13 +2078,15 @@ def _load_model(
                         ("source", "snapshot", "payload_sha"),
                     )
                 if merged != previous:
-                    conn.execute(
+                    tx.execute(
                         f'UPDATE {table} SET "_migrated_from" = %s::jsonb '
                         'WHERE "_pk" = %s AND "_migrated_from" IS NOT NULL',
                         (json.dumps(merged), key),
                     )
             decisions[key] = decision
-        conn.cursor().executemany(
+        _step(mapping.name, number, "provenance")
+
+        tx.cursor().executemany(
             f"INSERT INTO {ledger} (run_id, model, _pk, state, decision, payload_sha, detail) "
             "VALUES (%s, %s, %s, 'done', %s, %s, %s) ON CONFLICT (run_id, model, _pk) "
             "DO UPDATE SET state = 'done', decision = EXCLUDED.decision, "
@@ -1995,18 +2105,20 @@ def _load_model(
         )
         # Rows another run left pending are settled only where this run has
         # actually written the key since (it could not have adopted them).
+        landed = [row["key"] for row, d in plan if d in _WRITES]
         if landed:
-            conn.execute(
+            tx.execute(
                 f"UPDATE {ledger} SET state = 'superseded' WHERE model = %s AND "
                 "_pk = ANY(%s) AND state = 'pending' AND run_id <> %s",
-                (mapping.name, [r["key"] for r in landed], run["run_id"]),
+                (mapping.name, landed, run["run_id"]),
             )
-        conn.execute(
+        tx.execute(
             f"UPDATE {runs} SET progress = jsonb_set(progress, ARRAY[%s], to_jsonb(%s::text)) "
             "WHERE run_id = %s",
             (mapping.name, keys[-1], run["run_id"]),
         )
-        conn.commit()
+        _step(mapping.name, number, "ledger_done")
+    return decisions, errors
 
 
 # -- verification ----------------------------------------------------------------
@@ -2122,6 +2234,72 @@ def _verify_tool_columns(
             bad[pk] = parts
     conn.commit()
     return len(mine), bad
+
+
+_CARRIED_SECTIONS = ("state", "model_state")
+
+
+def _verify_carried_state(
+    conn: Any,
+    schema: str,
+    mapping: ModelMapping,
+    ts: Any,
+    run: Mapping[str, Any],
+    by_key: Mapping[str, Mapping[str, Any]],
+    pg_records: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Every row THIS run wrote holds the snapshot's carried state.
+
+    "Wrote" is read from the ledger, not from ``_migrated_from``: every key
+    this run ever queued a save for (``write_started_at`` set), whatever its
+    final decision -- including ``conflict_native``, which is how a row whose
+    save committed without its carried state used to hide (#756 review: a
+    crash between the save and the restore left seed confidence, counters
+    and vector, the resume could not tell the row from a native write, and
+    the verdict was CLEAN). The carried state is the export's ``state`` and
+    ``model_state`` (confidence, access counters, prediction ledger, edges,
+    cycles, validity, the vector's dims and float32 hash), normalized as the
+    ``records`` check normalizes it. Only a key whose final decision lost
+    the merge, deduplicated, or failed to load is left out: its row is
+    another source's, or nothing was written.
+
+    A row this run wrote and the application then changed natively (after
+    a crash, before the resume) fails here too: the operator inspects it."""
+    s = _qi(schema)
+    written = {
+        pk: decision
+        for pk, decision in conn.execute(
+            f"SELECT _pk, decision FROM {s}.{_qi(LEDGER_TABLE)} WHERE run_id = %s "
+            "AND model = %s AND write_started_at IS NOT NULL",
+            (run["run_id"], mapping.name),
+        ).fetchall()
+        if decision not in (LOST_MERGE, DEDUPLICATED, UNCHANGED, LOAD_ERROR, REJECTED)
+    }
+    conn.commit()
+    bad: list[dict[str, Any]] = []
+    for key in sorted(written):
+        row = by_key.get(key)
+        if row is None:
+            continue
+        got = pg_records.get(key)
+        if got is None:
+            bad.append({"key": key, "decision": written[key], "parts": ["<missing>"]})
+            continue
+        want = normalize_record(mapping.model, row["record"])
+        have = normalize_record(mapping.model, got)
+        parts = [
+            part
+            for part in _diff_parts(have, want)
+            if part.split(".", 1)[0] in _CARRIED_SECTIONS
+        ]
+        if parts:
+            bad.append({"key": key, "decision": written[key], "parts": parts})
+    return {
+        "compared": len(written),
+        "mismatched": len(bad),
+        "first_mismatches": bad[:VERIFY_MISMATCH_DETAIL],
+        "ok": not bad,
+    }
 
 
 _SAVE_EVENT_OPS = frozenset({"create", "update"})
@@ -2312,6 +2490,9 @@ def verify(
                 ],
                 "ok": not column_bad,
             }
+            model_checks["carried_state"] = _verify_carried_state(
+                conn, backend.schema, mapping, ts, run, by_key, pg_records
+            )
             stream_check = _verify_event_stream(conn, backend.schema, mapping, ts, run)
             if stream_check is not None:
                 model_checks["event_stream"] = stream_check

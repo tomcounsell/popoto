@@ -479,6 +479,7 @@ class CoOccurrenceField(Field):
                 None,
                 None,
                 edges=dict(ranked),
+                uow=kwargs.get("uow"),
             )
             return None
 

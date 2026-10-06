@@ -192,7 +192,11 @@ class AccessTrackerMixin:
             # #759 M5: the counters onto the record's row; a carried
             # access_log has nowhere to go on Postgres and is dropped (§1.1).
             model_instance._access_call(
-                backend, "import_state", model_instance._at_record_id(), state
+                backend,
+                "import_state",
+                model_instance._at_record_id(),
+                state,
+                uow=kwargs.get("uow"),
             )
             return None
 

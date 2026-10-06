@@ -86,7 +86,9 @@ On Postgres, records go in only through popoto's save path
 (`import_records`). The engine therefore builds every derived table it will
 later maintain: BM25 postings, narrow vector rows, membership tokens and
 indexes. The tool's only other writes are its provenance columns, its ledger
-and its resume marker.
+and its resume marker. A batch's saves, the carried state restored onto
+them, their provenance, their ledger rows and the resume marker commit in
+**one Postgres transaction** (see *Resume and idempotency*).
 
 ## Runbook
 
@@ -177,7 +179,7 @@ would continue a run that never started. Per key:
 | Differing payload from this source (a newer snapshot) | `updated_delta` | Replaced. This is the delta mechanism. |
 | Differing payload from another source | `won_merge` / `lost_merge` | The later `_updated_at` wins. A tie goes to the greater source id. The loser is logged in the winner's `_migrated_from.losers`. |
 | A row popoto wrote natively (`_migrated_from IS NULL`) | `conflict_native` | Never overwritten. |
-| A row another run left half-written (it crashed between import and provenance) | `conflict_native` | Treated as native. Only the run that wrote it can adopt it (see *Resume*). |
+| A row another run left half-written (it crashed between import and provenance; only a run from before batches were atomic can leave one) | `conflict_native` | Treated as native. Only the run that wrote it can adopt it (see *Resume*). |
 | A record Postgres cannot store | `rejected` | Not written. Counted, with the reason. |
 
 The payload is the record's normalized export: field values, confidence
@@ -324,6 +326,15 @@ through popoto on Postgres and compares it with the snapshot:
   a mismatch: that is what a resume used to leave when it saved an adopted
   row again. No event is a mismatch too, unless the stream was trimmed to
   its `MAXLEN` (the default is 10000 entries) or had entries deleted.
+- **carried state**: every key this run queued a save for, read from the
+  ledger rather than from `_migrated_from`, holds the snapshot's carried
+  state: confidence evidence, access counters, the prediction ledger,
+  edges, cycles, validity, and the vector's dimensions and float32 hash.
+  That includes a key the run ended up reporting as `conflict_native`. A
+  row whose save committed without its carried state therefore fails the
+  run instead of hiding behind a native-looking row. A row the run wrote
+  and the application then changed before a resume fails it too; inspect
+  it.
 - **staged reads** match the inventory.
 - **`check_indexes()`** reports no drift.
 
@@ -403,19 +414,43 @@ memory-gate counters, which stay in Redis.
 
 ## Resume and idempotency
 
-Records load in batches (`--batch-size`, default 200). Each batch:
+Records load in batches (`--batch-size`, default 200). Each batch is **one
+Postgres transaction**:
 
-1. Writes `pending` ledger rows and commits them.
-2. Lands its records through `import_records`. Each save sets
+1. It takes its locks, in the backend's one lock order: any `(model,
+   field)` validity lock, then the record-key locks of every key in the
+   batch, in `_pk` byte order. It reads the existing rows only after that,
+   so a native save cannot slip in between the merge decision and the
+   write. The stream rows are locked last, at commit.
+2. It writes `pending` ledger rows.
+3. It lands its records through `import_records(uow=...)`. Each record's
+   save and the restore of its carried state (confidence evidence, access
+   counters, prediction ledger, edges, cycles, validity, vector) run in
+   that transaction, under a savepoint per record. A record that fails is
+   rolled back whole and reported as a load error. Each save sets
    `_migrated_from = NULL`, like any native write.
-3. Writes the provenance columns, marks the ledger `done` and advances the
-   resume marker, all in one transaction.
+4. It writes the provenance columns, marks the ledger `done` and advances
+   the resume marker. Then it commits.
 
-If the run dies between steps 2 and 3, rows are left that look native. Their
-`pending` ledger rows show that the tool wrote them. Re-run with `--resume`
-and the same `--run-dir`: it skips the committed batches, adopts the pending
-rows (`resumed`), and continues. Without `--resume`, those rows make the
-target non-empty, and the run is refused.
+A crash at any point, `kill -9` included, therefore leaves either none of
+the batch or all of it. There is no row without its carried state or its
+provenance. Re-run with `--resume` and the same `--run-dir`: it skips the
+committed batches and loads the rest. Without `--resume`, the committed
+batches make the target non-empty, and the run is refused. A deadlock or
+serialization failure rolls the batch back and runs it again, up to three
+times.
+
+Holding a batch's locks to its commit costs little. On a 1500-record store
+with a stream, confidence and access tracking, the load phase took 2.6 to
+3.0 s at `--batch-size` 100 or 200. With a commit per statement, as before,
+it took 3.8 to 4.2 s. Each batch held its locks for at most 0.22 s at 100
+and 0.48 s at 200. A batch blocks only native writes to its own keys, and
+only while it runs.
+
+A schema that a run from **before batches were atomic** crashed into can
+still hold rows that look native, with `pending` ledger rows that show the
+tool wrote them. The resume rules for those are unchanged: the same run
+adopts them (`resumed`).
 
 An adopted row is **not saved again**. Its save committed together with
 everything the save derives: the `EventStreamMixin` event and its
@@ -438,26 +473,17 @@ Adoption is narrow on purpose:
   the ledger's `payload_sha`. The resume then reports it as
   `conflict_native` and leaves it alone.
 
-Two situations need a manual step after a resume:
+One situation needs a manual step after a resume:
 
-- **Another source merged while this run was down.** If source B ran with
-  `--merge` after A crashed and before A resumed, A's half-written rows
-  looked native to B. B reported those keys as `conflict_native` and did
+- **Another source merged while this run was down.** This applies only to
+  a run from before batches were atomic: an atomic batch leaves no
+  half-written rows. If source B ran with `--merge` after A crashed and
+  before A resumed, A's half-written rows looked native to B. B reported those keys as `conflict_native` and did
   not write them, yet its verdict is still `clean`. After A's resume
   finishes, run B again: the same snapshot, `--merge` and a **new**
   `--run-dir`. Its rows then go through the merge rule (`won_merge`,
   `lost_merge` or `deduplicated`). Do this for every source that ran in
   between and reported `conflict_native`, in the order they first ran.
-- **A `conflict_native` the resume did not expect.** A row also stops
-  hashing to the ledger when the run died after the record's save but
-  before its carried state (confidence evidence, access counters, vector)
-  was restored onto it. The resume cannot tell that from a native save,
-  so it leaves the row alone and reports `conflict_native`. If the writers
-  were frozen, nothing native happened. Delete those records through
-  popoto on the Postgres backend (`delete()`, which keeps the derived
-  tables consistent and, on an `EventStreamMixin` model, appends a `delete`
-  event), then run the same snapshot again with `--merge` and a new
-  `--run-dir`, so they load as `inserted`.
 
 The tool keeps two tables in the target schema: `popoto_migration_run` (one
 row per run, with its status, progress and final report) and

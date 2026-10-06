@@ -57,7 +57,7 @@ class _ImportsState(Protocol):
     __name__: str
 
     @staticmethod
-    def import_state(instance: Any, carried: Any) -> Any: ...
+    def import_state(instance: Any, carried: Any, **kwargs: Any) -> Any: ...
 
 
 BATCH_SIZE = 500
@@ -161,6 +161,7 @@ def _restore_state(
     instance: "Model",
     record: "dict[str, Any]",
     drop: "set[str]",
+    uow: Any = None,
 ) -> None:
     """Restore carried state after the save.
 
@@ -168,7 +169,11 @@ def _restore_state(
     and ``on_save`` seeds or clobbers them, so restoring first would be undone.
     Any raise here propagates to the caller, which classifies the record as
     ``partial`` -- the record exists, its auxiliary state does not.
+
+    ``uow``: a Postgres unit of work every writer joins (passed on as
+    ``import_state(..., uow=uow)``), so the restore commits with the save.
     """
+    extra: "dict[str, Any]" = {"uow": uow} if uow is not None else {}
     for field_name, carried in (record.get("state") or {}).items():
         if field_name in drop:
             continue
@@ -181,7 +186,7 @@ def _restore_state(
         importer = getattr(model_field, "import_state", None)
         if importer is None:
             continue
-        importer(instance, field_name, from_jsonable(carried))
+        importer(instance, field_name, from_jsonable(carried), **extra)
 
     model_state = record.get("model_state") or {}
     if not model_state:
@@ -201,7 +206,7 @@ def _restore_state(
                 f"carried state names {class_name!r}, which is not in the "
                 f"destination model's MRO or defines no import_state"
             )
-        klass.import_state(instance, from_jsonable(carried))
+        klass.import_state(instance, from_jsonable(carried), **extra)
 
 
 def _exists_many(model_class: "type[Model]", keys: "list[str]") -> "dict[str, bool]":
@@ -235,6 +240,7 @@ def _process_batch(
     on_write_gate: str,
     drop_state: "set[str]",
     apply_remapped_references: bool = False,
+    uow: Any = None,
 ) -> None:
     """Conflict-check, save, restore state, and reconcile one batch.
 
@@ -242,6 +248,9 @@ def _process_batch(
     which stashes each record's rewritten reference strings under
     :data:`REMAPPED_REFERENCES_KEY`; see :func:`_remap_record` for why the
     re-assignment after construction is required.
+
+    ``uow``: the caller's Postgres unit of work; each record lands in it
+    through :func:`_land_in_unit`.
     """
     keys = [record["key"] for record in batch]
     existing = _exists_many(model_class, keys)
@@ -281,6 +290,14 @@ def _process_batch(
         if apply_remapped_references and isinstance(remapped_refs, dict):
             for field_name, reference in remapped_refs.items():
                 setattr(instance, field_name, reference)
+
+        if uow is not None:
+            outcome = _land_in_unit(
+                model_class, instance, record, report, bypass, drop_state, uow
+            )
+            if outcome is not None and not existing.get(key):
+                landed.append(outcome)
+            continue
 
         # --- stage 1b: save ---------------------------------------------
         try:
@@ -335,6 +352,12 @@ def _process_batch(
         if not existing.get(key):
             landed.append(outcome)
 
+    if uow is not None:
+        # Inside a caller's unit the save's own statement is the ground
+        # truth: an existence read on another connection cannot see the
+        # rows until the caller commits, and would downgrade every one.
+        return
+
     # Reconciliation: ground-truth the landed records that were NOT on the
     # collision path. Downgrade only -- never an upgrade.
     confirmed = _exists_many(model_class, [outcome.key for outcome in landed])
@@ -345,6 +368,57 @@ def _process_batch(
                 "save() reported success but the key is absent from the "
                 "destination afterwards; the write did not survive"
             )
+
+
+def _land_in_unit(
+    model_class: "type[Model]",
+    instance: "Model",
+    record: "dict[str, Any]",
+    report: ImportReport,
+    bypass: bool,
+    drop_state: "set[str]",
+    uow: Any,
+) -> "RecordOutcome | None":
+    """Save one record and restore its carried state inside ``uow``, under a
+    savepoint of its own: either both are in the caller's transaction, or --
+    when either raises -- neither is, and nothing the record queued on the
+    unit (its stream append) survives. There is no ``partial`` outcome on
+    this path: a record whose state cannot be restored is rolled back whole
+    and reported ``errored``."""
+    key = record["key"]
+    stage = "save"
+    try:
+        with uow.savepoint():
+            result = instance.save(
+                skip_auto_now=True, skip_write_filter=bypass, pipeline=uow
+            )
+            if result is False or result is None:
+                report.add(
+                    key,
+                    REJECTED,
+                    "save() returned falsy: the destination's write gate refused "
+                    "the record (pass on_write_gate='bypass' to override) or an "
+                    "application-level save() override rejected it",
+                )
+                return None
+            stage = "restore"
+            _restore_state(model_class, instance, record, drop_state, uow=uow)
+    except Exception as exc:
+        what = (
+            "save failed"
+            if stage == "save"
+            else "saved, but restoring carried state failed"
+        )
+        report.add(
+            key,
+            ERRORED,
+            f"{what}: {type(exc).__name__}: {exc}. Rolled back: nothing of "
+            "this record was written.",
+        )
+        return None
+    if bypass:
+        report.write_gate_bypassed += 1
+    return report.add(key, LANDED)
 
 
 _NO_KEY_REASON = (
@@ -730,6 +804,7 @@ def import_records(
     on_embedding_mismatch: str = "error",
     preserve_keys: bool = True,
     key_map: "dict[str, str] | None" = None,
+    uow: Any = None,
 ) -> ImportReport:
     """Import records from a JSON Lines export into ``model_class``.
 
@@ -785,6 +860,16 @@ def import_records(
             across runs. Feed run N's ``ImportReport.key_map`` in as run
             N+1's seed. A reference whose target is in no seed and not in
             this file keeps its old key and is counted as dangling.
+        uow: A Postgres unit of work (``backend.transaction()``) to import
+            into, for a model bound to Postgres, with ``preserve_keys=True``.
+            Every record's save **and** its carried-state restore then run
+            in the caller's transaction, under a savepoint per record, and
+            commit when the caller's does -- so a crash at any point leaves
+            either nothing or the complete record. A record that fails is
+            rolled back whole (``errored``, never ``partial``). Records are
+            not reconciled with an existence read afterwards (another
+            connection cannot see them before the commit). Default ``None``:
+            each write commits on its own, as before.
 
     Returns:
         An :class:`ImportReport` accounting for every record line as landed,
@@ -805,9 +890,10 @@ def import_records(
             the last raises before anything is written.
 
     Note:
-        Import is not atomic across records and assumes the destination is not
-        under concurrent write for this model. The recovery path for an
-        interrupted run is to re-run with ``on_conflict="overwrite"``.
+        Without ``uow`` import is not atomic across records and assumes the
+        destination is not under concurrent write for this model. The
+        recovery path for an interrupted run is to re-run with
+        ``on_conflict="overwrite"``.
 
     Example:
         with open("memories.jsonl") as fh:
@@ -824,6 +910,16 @@ def import_records(
             "key_map is only meaningful with preserve_keys=False; when keys "
             "are preserved no reference needs remapping"
         )
+    if uow is not None:
+        from ..backends.routing import non_redis_backend
+
+        if not preserve_keys:
+            raise ValueError("uow= is supported with preserve_keys=True only")
+        if non_redis_backend(model_class) is None or not hasattr(uow, "savepoint"):
+            raise ValueError(
+                "uow= takes a Postgres unit of work (backend.transaction()) for "
+                "a model bound to that backend"
+            )
 
     report = ImportReport(model=model_class.__name__)
 
@@ -876,13 +972,25 @@ def import_records(
         batch.append(record)
         if len(batch) >= BATCH_SIZE:
             _process_batch(
-                model_class, batch, report, on_conflict, on_write_gate, drop_state
+                model_class,
+                batch,
+                report,
+                on_conflict,
+                on_write_gate,
+                drop_state,
+                uow=uow,
             )
             batch = []
 
     if batch:
         _process_batch(
-            model_class, batch, report, on_conflict, on_write_gate, drop_state
+            model_class,
+            batch,
+            report,
+            on_conflict,
+            on_write_gate,
+            drop_state,
+            uow=uow,
         )
 
     return report

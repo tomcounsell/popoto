@@ -273,7 +273,12 @@ misreported that as success.
 ## Resuming an interrupted import
 
 Import is not atomic across records — a crash partway through leaves some records
-written and some not. The recovery path is to re-run the same file with
+written and some not. (On a model bound to Postgres you can pass
+`uow=backend.transaction()`'s unit: every record's save and the restore of its
+carried state then run in your transaction, a savepoint per record, and commit
+when you commit. A record that fails there is rolled back whole and reported
+`errored`, never `partial`. The Redis-to-Postgres migration loads each batch this
+way.) The recovery path is to re-run the same file with
 `on_conflict="overwrite"`: already-landed records overwrite themselves with identical
 values (a no-op in effect), and records that had not yet been written land normally.
 Because keys are always preserved, this converges rather than producing duplicates.

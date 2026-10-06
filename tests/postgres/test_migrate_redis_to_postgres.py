@@ -414,25 +414,26 @@ def test_an_interrupted_load_resumes_and_converges(
     mig._crash_hook = None
     assert started and all(_gone(s) for s in started)
 
-    # The crashed batch landed through popoto's save (so _migrated_from is
-    # NULL, like a native row) but its ledger rows are pending.
+    # Each batch is one transaction: the crashed batch left nothing -- no
+    # row, no pending ledger row -- and the committed batch is complete.
     rows = _rows(admin, pg.schema, "mig_memory", "_migrated_from")
-    half_written = [k for k, (mf,) in rows.items() if mf is None]
-    assert len(half_written) == 4
+    assert len(rows) == 4
+    assert all(mf is not None for (mf,) in rows.values())
     pending = admin.execute(
         f'SELECT count(*) FROM "{pg.schema}".popoto_migration_ledger '
         "WHERE state = 'pending'"
     ).fetchone()[0]
-    assert pending == 4
+    assert pending == 0
+    admin.commit()
 
-    # Without --resume the half-written schema is refused, never merged.
+    # Without --resume the half-loaded schema is refused, never merged.
     with pytest.raises(mig.MigrationRefused):
         run_migration(_config(tmp_path, pg, rdb, content))
 
     report = run_migration(_config(tmp_path, pg, rdb, content, resume=True))
     assert report.clean, report.summary()
     decisions = report.data["models"]["MigMemory"]["decisions"]
-    assert decisions == {"inserted": 7, "resumed": 4}
+    assert decisions == {"inserted": 11}
     rows = _rows(admin, pg.schema, "mig_memory", "_migrated_from")
     assert all(mf is not None for (mf,) in rows.values())
     assert set(rows) == set(facts["memory_keys"])
@@ -512,6 +513,52 @@ def _stream_events(admin, schema):
         entry = dict(zip(flat[0::2], flat[1::2]))
         out.append((entry[b"pk"].decode(), entry[b"op"].decode()))
     return sorted(out)
+
+
+class _Crash(BaseException):
+    """A crash: not an ``Exception``, so no per-record ``except`` catches
+    it, as nothing catches ``kill -9``."""
+
+
+def _non_atomic(monkeypatch):
+    """Revert to the pre-atomic load: every statement of a batch commits on
+    its own -- the save, each carried-state writer, the ledger rows and the
+    provenance -- exactly as before batches were one transaction. Used to
+    build the state an older run's crash left behind (a saved row with no
+    provenance, a pending ledger row), and as the revert check."""
+    import contextlib
+
+    from popoto.backends.postgres import PostgresUnitOfWork
+
+    class EachStatementCommits(PostgresUnitOfWork):
+        __slots__ = ()
+
+        @contextlib.contextmanager
+        def savepoint(self):
+            yield self
+
+        def defer_stream_append(self, stream, callback):
+            callback()
+
+        def before_commit(self, callback):
+            callback()
+
+    @contextlib.contextmanager
+    def unit(backend):
+        conn = psycopg.connect(
+            backend.dsn,
+            autocommit=True,
+            prepare_threshold=None,
+            cursor_factory=psycopg.ClientCursor,
+        )
+        try:
+            uow = EachStatementCommits(conn)
+            yield uow
+            uow._run_after_commit()
+        finally:
+            conn.close()
+
+    monkeypatch.setattr(mig, "_batch_unit", unit)
 
 
 def _crash_at(monkeypatch, point, model_name, batch):
@@ -595,9 +642,12 @@ def test_verification_reports_a_doubled_stream_as_a_mismatch(
     tmp_path, monkeypatch, pg, admin
 ):
     """Non-vacuity of the stream check: put the old behaviour back (every
-    adopted row saved again) and the resumed run must NOT be clean."""
+    adopted row saved again) and the resumed run must NOT be clean. Rows to
+    adopt exist only after a crash of a pre-atomic run, so that is the
+    crash simulated here."""
     rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
     with monkeypatch.context() as armed:
+        _non_atomic(armed)
         _crash_at(armed, "after_import", "MigLongTail", 0)
         with pytest.raises(RuntimeError, match="crash"):
             run_migration(_config(tmp_path, pg, rdb, content))
@@ -612,6 +662,457 @@ def test_verification_reports_a_doubled_stream_as_a_mismatch(
     assert stream["keys_with_more_than_one"] == 2
     assert {m["save_events"] for m in stream["first_mismatches"]} == {2}
     assert "MigLongTail event_stream: MISMATCH" in report.summary()
+
+
+# -- each batch is one transaction (#756 review, patch 4) -------------------------
+
+
+def _writers():
+    """Every step inside a batch's import that writes: the record save of
+    each fixture model, then each carried-state writer (field and model
+    ``import_state``), as ``name -> (owner, attribute)``."""
+    from popoto.fields.access_tracker import AccessTrackerMixin
+    from popoto.fields.co_occurrence_field import CoOccurrenceField
+    from popoto.fields.confidence_field import ConfidenceField
+    from popoto.fields.cyclic_decay_field import CyclicDecayField
+    from popoto.fields.embedding_field import EmbeddingField
+    from popoto.fields.prediction_ledger import PredictionLedgerMixin
+    from popoto.fields.validity_field import ValidityField
+
+    return {
+        "save:MigMemory": (fx.MigMemory, "save"),
+        "save:MigLongTail": (fx.MigLongTail, "save"),
+        "ConfidenceField": (ConfidenceField, "import_state"),
+        "EmbeddingField": (EmbeddingField, "import_state"),
+        "AccessTrackerMixin": (AccessTrackerMixin, "import_state"),
+        "CoOccurrenceField": (CoOccurrenceField, "import_state"),
+        "CyclicDecayField": (CyclicDecayField, "import_state"),
+        "ValidityField": (ValidityField, "import_state"),
+        "PredictionLedgerMixin": (PredictionLedgerMixin, "import_state"),
+    }
+
+
+def _arm_writer(monkeypatch, name, counts, crash_at=None):
+    """Wrap one writer: count its calls, and raise :class:`_Crash` right
+    AFTER call number ``crash_at`` -- between that write and the next step
+    of the batch."""
+    import inspect
+
+    owner, attr = _writers()[name]
+    real = getattr(owner, attr)
+
+    def after(out):
+        counts[name] = counts.get(name, 0) + 1
+        if crash_at is not None and counts[name] == crash_at:
+            raise _Crash(f"crash after {name} call {crash_at}")
+        return out
+
+    if isinstance(inspect.getattr_static(owner, attr), classmethod):
+
+        def wrapped_cm(cls, *args, **kwargs):
+            return after(real(*args, **kwargs))
+
+        monkeypatch.setattr(owner, attr, classmethod(wrapped_cm))
+    else:
+
+        def wrapped(self, *args, **kwargs):
+            return after(real(self, *args, **kwargs))
+
+        monkeypatch.setattr(owner, attr, wrapped)
+
+
+def _nothing_half_written(admin, schema):
+    """After a crash: no ledger row is pending, and every migrated row
+    carries its provenance -- the crashed batch left nothing behind."""
+    pending = admin.execute(
+        f'SELECT count(*) FROM "{schema}".popoto_migration_ledger '
+        "WHERE state = 'pending'"
+    ).fetchone()[0]
+    bare = 0
+    for table in ("mig_memory", "mig_long_tail", "mig_ttl"):
+        if admin.execute(
+            "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
+            (schema, table),
+        ).fetchone():
+            bare += admin.execute(
+                f'SELECT count(*) FROM "{schema}"."{table}" '
+                'WHERE "_migrated_from" IS NULL'
+            ).fetchone()[0]
+    admin.commit()
+    return pending == 0 and bare == 0
+
+
+#: (kind, target, model, batch): a crash right after a writer's call
+#: (``writer``; the call number is chosen from a clean load's count), or at
+#: a step of the tool's own (``step``: between the lock, the pending ledger
+#: rows, the import, the provenance and the done ledger rows / marker).
+TXN_CRASH_POINTS = [
+    ("writer", "save:MigMemory", None, None),
+    ("writer", "save:MigLongTail", None, None),
+    ("writer", "ConfidenceField", None, None),
+    ("writer", "EmbeddingField", None, None),
+    ("writer", "AccessTrackerMixin", None, None),
+    ("writer", "CoOccurrenceField", None, None),
+    ("writer", "CyclicDecayField", None, None),
+    ("writer", "ValidityField", None, None),
+    ("writer", "PredictionLedgerMixin", None, None),
+] + [
+    ("step", step, model, batch)
+    for model, batch in (("MigMemory", 1), ("MigLongTail", 0))
+    for step in ("locked", "ledger_pending", "imported", "provenance", "ledger_done")
+]
+
+
+@pytest.mark.parametrize(
+    "kind,target,model_name,batch",
+    TXN_CRASH_POINTS,
+    ids=[f"{k}-{t}" + (f"-{m}{b}" if m else "") for k, t, m, b in TXN_CRASH_POINTS],
+)
+def test_a_crash_between_any_two_steps_of_a_batch_leaves_nothing_of_it(
+    tmp_path, monkeypatch, pg, pg_schema, admin, kind, target, model_name, batch
+):
+    """Coordinator decision on #792: a batch's saves, each carried-state
+    writer, its provenance and its ledger rows are ONE transaction. A crash
+    between any two of them leaves no trace of the batch -- no saved row
+    without its carried state or provenance, no pending ledger row -- and
+    the resume then converges on exactly what a clean load leaves, CLEAN."""
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    counts: dict[str, int] = {}
+    with monkeypatch.context() as counting:
+        for name in _writers():
+            _arm_writer(counting, name, counts)
+        clean = run_migration(
+            _config(tmp_path, pg, rdb, content, run_dir=tmp_path / "c")
+        )
+    assert clean.clean, clean.summary()
+    want = _derived_state(admin, pg.schema)
+    want_events = _stream_events(admin, pg.schema)
+
+    pg_schema.drop_tables()
+    pg.forget_tables()
+    with monkeypatch.context() as armed:
+        if kind == "writer":
+            assert counts.get(target), f"the clean load never called {target}"
+            _arm_writer(armed, target, {}, crash_at=(counts[target] + 1) // 2)
+        else:
+
+            def hook(model, number, step):
+                if (model, number, step) == (model_name, batch, target):
+                    raise _Crash(f"crash at {step} of {model}/{number}")
+
+            armed.setattr(mig, "_step_hook", hook)
+        with pytest.raises(_Crash):
+            run_migration(_config(tmp_path, pg, rdb, content))
+    assert _nothing_half_written(admin, pg.schema)
+
+    report = run_migration(_config(tmp_path, pg, rdb, content, resume=True))
+    assert report.clean, report.summary()
+    assert "resumed" not in report.data["models"]["MigMemory"]["decisions"]
+    assert _stream_events(admin, pg.schema) == want_events
+    assert _derived_state(admin, pg.schema) == want
+
+
+def test_a_batch_takes_every_lock_first_in_the_global_order(tmp_path, monkeypatch, pg):
+    """The batch transaction keeps the backend's one lock order (plan §6,
+    TD-2): it takes the ``(model, field)`` validity locks, then the
+    record-key locks of every key in the batch in ``_pk`` byte order,
+    before anything else. Every lock any later statement of the batch asks
+    for -- each save, each carried-state writer -- is one it already holds,
+    so the batch never waits on a lock while holding a later one (the stream
+    rows, the last in the order, are locked at COMMIT)."""
+    from popoto.backends.postgres import PostgresBackend
+    from popoto.backends.postgres.search import record_lock_keys
+
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    log: list[tuple[str, list[str]]] = []
+    real_run = PostgresBackend._run
+
+    def run(self, sql, params=(), *, uow=None, write=False):
+        if uow is not None:
+            if params and str(params[0]).startswith("popoto:validity:"):
+                log.append(("validity", [str(params[0])]))
+            else:
+                keys = record_lock_keys(sql, params)
+                if keys:
+                    log.append(("record", list(keys)))
+        return real_run(self, sql, params, uow=uow, write=write)
+
+    batches: list[tuple[str, int, int, int]] = []
+    marks: dict[tuple[str, int], int] = {}
+
+    def hook(model, number, step):
+        if step == "locked":
+            marks[(model, number)] = len(log)
+        elif step == "ledger_done":
+            batches.append((model, number, marks[(model, number)], len(log)))
+
+    monkeypatch.setattr(PostgresBackend, "_run", run)
+    monkeypatch.setattr(mig, "_step_hook", hook)
+    start = 0
+    report = run_migration(_config(tmp_path, pg, rdb, content))
+    assert report.clean, report.summary()
+    assert len(batches) == 5  # MigMemory 3 batches of 4, MigLongTail, MigTtl
+    for model, number, locked_at, done_at in batches:
+        up_front, later = log[start:locked_at], log[locked_at:done_at]
+        start = done_at
+        kinds = [kind for kind, _ in up_front]
+        assert kinds == ["validity"] * (len(kinds) - 1) + ["record"], (model, kinds)
+        validity_held = {
+            k for kind, keys in up_front if kind == "validity" for k in keys
+        }
+        if model == "MigLongTail":
+            assert validity_held  # its ValidityField's (model, field) lock
+        held = up_front[-1][1]
+        assert held == sorted(held, key=lambda k: k.encode("utf-8")), (model, held)
+        for kind, keys in later:
+            pool = validity_held if kind == "validity" else set(held)
+            assert set(keys) <= pool, (model, number, kind, keys)
+        assert later, (model, number)  # the saves did ask (and were granted)
+
+
+def test_without_the_batch_transaction_the_verification_reports_mismatch(
+    tmp_path, monkeypatch, pg, admin
+):
+    """Revert check: with each statement committing on its own (the
+    pre-atomic load), a crash after the 6th MigMemory record's save -- its
+    carried state not yet restored -- leaves a row the resume cannot tell
+    from a native write. It reports it ``conflict_native`` and keeps its
+    seed state. Every other check passes (that was the CLEAN verdict); the
+    ``carried_state`` check, which reads what this run wrote from the
+    ledger, now reports MISMATCH."""
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    with monkeypatch.context() as armed:
+        _non_atomic(armed)
+        _arm_writer(armed, "save:MigMemory", {}, crash_at=6)
+        with pytest.raises(_Crash):
+            run_migration(_config(tmp_path, pg, rdb, content))
+    report = run_migration(_config(tmp_path, pg, rdb, content, resume=True))
+
+    decisions = report.data["models"]["MigMemory"]["decisions"]
+    assert decisions.get("conflict_native") == 1, report.summary()
+    assert report.verdict == "mismatch", report.summary()
+    checks = report.data["verification"]
+    carried = checks["MigMemory"]["carried_state"]
+    assert not carried["ok"] and carried["mismatched"] == 1
+    (bad,) = carried["first_mismatches"]
+    assert bad["decision"] == "conflict_native"
+    assert "state.embedding" in bad["parts"]
+    failing = [
+        f"{model} {name}"
+        for model, model_checks in checks.items()
+        for name, result in model_checks.items()
+        if not result["ok"]
+    ]
+    assert failing == ["MigMemory carried_state"], failing
+    assert not report.data["load_errors"]
+    assert "MigMemory carried_state: MISMATCH" in report.summary()
+
+
+def test_a_record_rolled_back_in_its_unit_leaves_no_row_and_no_event(
+    tmp_path, monkeypatch, pg, admin
+):
+    """``import_records(uow=...)``: a record whose carried state fails to
+    restore is rolled back to its savepoint whole -- no row, and no stream
+    event queued on the unit -- while the other record commits with the
+    unit (row, state and its one ``create`` event)."""
+    import io
+
+    from popoto.fields.cyclic_decay_field import CyclicDecayField
+    from popoto.transfer import export_records, import_records
+
+    models = list(fx.MODELS)
+    with mig._postgres_side(models, pg), mig._no_embedding(models):
+        a = fx.MigLongTail.create(name="alpha", body="alpha body")
+        b = fx.MigLongTail.create(name="beta", body="beta body")
+        a.strengthen_cycle("rhythm", factor=1.5)
+        b.strengthen_cycle("rhythm", factor=1.5)
+        exported = export_records(fx.MigLongTail).data
+        keys = [a.db_key.redis_key, b.db_key.redis_key]
+        a.delete()
+        b.delete()
+        before = _stream_events(admin, pg.schema)
+
+        real = CyclicDecayField.import_state
+
+        def failing(cls, instance, field_name, state, **kwargs):
+            if instance.name == "beta":
+                raise RuntimeError("restore failed")
+            return real(instance, field_name, state, **kwargs)
+
+        monkeypatch.setattr(CyclicDecayField, "import_state", classmethod(failing))
+        with pg.transaction() as uow:
+            report = import_records(
+                fx.MigLongTail,
+                io.StringIO(exported),
+                on_conflict="overwrite",
+                uow=uow,
+            )
+        outcomes = {o.key: o for o in report.outcomes}
+        assert outcomes[keys[0]].category == "landed"
+        assert outcomes[keys[1]].category == "errored"
+        assert "Rolled back" in outcomes[keys[1]].reason
+        rows = _rows(admin, pg.schema, "mig_long_tail", "name")
+        assert set(rows) == {keys[0]}
+        after = _stream_events(admin, pg.schema)
+        added = list(after)
+        for event in before:
+            added.remove(event)
+        assert added == [(keys[0], "create")]
+
+
+_KILL_DRIVER = """
+import json, os, sys, time
+from popoto import migrate_redis_to_postgres as mig
+
+marker, model, batch, step = sys.argv[1:5]
+
+
+def stall():
+    with open(marker + ".part", "w") as handle:
+        json.dump({"pid": os.getpid()}, handle)
+    os.replace(marker + ".part", marker)
+    while True:
+        time.sleep(0.1)
+
+
+if step.startswith("ConfidenceField:"):
+    from popoto.fields.confidence_field import ConfidenceField
+
+    nth = int(step.split(":")[1])
+    real = ConfidenceField.import_state
+    calls = [0]
+
+    def wrapped(cls, *args, **kwargs):
+        out = real(*args, **kwargs)
+        calls[0] += 1
+        if calls[0] == nth:
+            stall()
+        return out
+
+    ConfidenceField.import_state = classmethod(wrapped)
+else:
+
+    def hook(m, b, s):
+        if (m, b, s) == (model, int(batch), step):
+            stall()
+
+    mig._step_hook = hook
+sys.exit(mig.main(sys.argv[5:]))
+"""
+
+#: Where the subprocess is held when it is sent SIGKILL: inside a writer of
+#: the import (the 6th confidence restore, batch 1), and at three of the
+#: tool's own steps -- right after the batch's locks, after its records
+#: landed, and just before its COMMIT.
+KILL_POINTS = [
+    # (model, batch, held at, committed rows of (mig_memory, mig_long_tail))
+    ("MigMemory", 1, "ConfidenceField:6", (4, 0)),
+    ("MigMemory", 1, "locked", (4, 0)),
+    ("MigMemory", 2, "imported", (8, 0)),
+    ("MigLongTail", 0, "ledger_done", (11, 0)),
+]
+
+
+def _count_rows(admin, schema, table):
+    found = admin.execute(
+        "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
+        (schema, table),
+    ).fetchone()
+    n = (
+        admin.execute(f'SELECT count(*) FROM "{schema}"."{table}"').fetchone()[0]
+        if found
+        else 0
+    )
+    admin.commit()
+    return n
+
+
+@pytest.mark.parametrize(
+    "model_name,batch,step,committed",
+    KILL_POINTS,
+    ids=[f"{m}{b}-{s.split(':')[0]}" for m, b, s, _ in KILL_POINTS],
+)
+def test_kill_9_inside_a_batch_then_resume_equals_a_clean_load(
+    tmp_path, monkeypatch, pg, pg_schema, admin, model_name, batch, step, committed
+):
+    """``kill -9`` of the real CLI while a batch's transaction is open: the
+    server rolls the batch back, so the schema holds only whole batches.
+    ``--resume`` then leaves every table exactly as a clean load does."""
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    clean = run_migration(_config(tmp_path, pg, rdb, content, run_dir=tmp_path / "c"))
+    assert clean.clean, clean.summary()
+    want = _derived_state(admin, pg.schema)
+    want_events = _stream_events(admin, pg.schema)
+    pg_schema.drop_tables()
+    pg.forget_tables()
+
+    driver = tmp_path / "kill_driver.py"
+    driver.write_text(_KILL_DRIVER)
+    marker = tmp_path / "held.json"
+    tool = subprocess.Popen(
+        [
+            sys.executable,
+            str(driver),
+            str(marker),
+            model_name,
+            str(batch),
+            step,
+            "--rdb",
+            str(rdb),
+            "--content-dir",
+            str(content),
+            "--run-dir",
+            str(tmp_path / "run"),
+            "--source-id",
+            "laptop-a",
+            "--mapping",
+            "tests.postgres.migrate_fixtures:MAPPINGS",
+            "--redis-server",
+            REDIS_SERVER,
+            "--batch-size",
+            "4",
+        ],
+        cwd=REPO_ROOT,
+        env=_cli_env(POPOTO_POSTGRES_URL=pg.dsn, POPOTO_POSTGRES_SCHEMA=pg.schema),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 120
+        while not marker.exists():
+            assert tool.poll() is None, tool.stderr.read().decode()
+            assert time.monotonic() < deadline, f"the run never reached {step}"
+            time.sleep(0.05)
+        os.kill(tool.pid, signal.SIGKILL)
+        tool.wait(timeout=60)
+    finally:
+        if tool.poll() is None:
+            tool.kill()
+            tool.wait()
+
+    # Only whole batches are visible: the killed batch's rows were never
+    # committed, and nothing is pending.
+    assert (
+        _count_rows(admin, pg.schema, "mig_memory"),
+        _count_rows(admin, pg.schema, "mig_long_tail"),
+    ) == committed
+    assert _nothing_half_written(admin, pg.schema)
+
+    # The server ends the dead session (rolling its batch back and
+    # releasing the schema lock) once it reads the closed socket.
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            report = run_migration(_config(tmp_path, pg, rdb, content, resume=True))
+            break
+        except mig.MigrationRefused as exc:
+            if "holds the lock" not in str(exc) or time.monotonic() > deadline:
+                raise
+            time.sleep(0.2)
+    assert report.clean, report.summary()
+    assert _stream_events(admin, pg.schema) == want_events
+    assert _derived_state(admin, pg.schema) == want
 
 
 def test_the_stream_check_counts_only_this_runs_window(
@@ -1239,17 +1740,23 @@ def test_a_merge_never_adopts_another_runs_pending_rows(
     popoto then saves one of those rows natively (importance 42), and a
     different run merges a store holding the same key. Another run's pending
     rows are foreign: the native value stays and the merge reports the
-    conflict. A later resume of run A does not overwrite it either."""
+    conflict. A later resume of run A does not overwrite it either.
+
+    Run A is a pre-atomic run (:func:`_non_atomic`): an atomic batch leaves
+    no pending row to crash with, but a schema an older run crashed into
+    still holds them, and the resume rules for them are unchanged."""
     rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
 
     def crash(model, batch):
         if model == "MigMemory" and batch == 1:
             raise RuntimeError("crash between import and provenance")
 
-    mig._crash_hook = crash
-    with pytest.raises(RuntimeError, match="crash between"):
-        run_migration(_config(tmp_path, pg, rdb, content, source_id="laptop-a"))
-    mig._crash_hook = None
+    with monkeypatch.context() as legacy:
+        _non_atomic(legacy)
+        mig._crash_hook = crash
+        with pytest.raises(RuntimeError, match="crash between"):
+            run_migration(_config(tmp_path, pg, rdb, content, source_id="laptop-a"))
+        mig._crash_hook = None
     pending = sorted(
         r[0]
         for r in admin.execute(
