@@ -538,10 +538,10 @@ class PostgresValidityOps:
             ("close_at", close_at),
         ):
             if math.isnan(value):
-                # Redis: the script's ZADD replies ``value is not a valid
-                # float`` (a ResponseError; with only valid_from NaN, after
-                # the incumbent's close -- #778). Here: the same text, a
-                # ValueError, and nothing written.
+                # As on Redis since #778: ValidityField.execute_supersede
+                # refuses a NaN instant before the script runs (mode 'open''s
+                # valid_from aside, which the script's ZADD refuses). The same
+                # text, a ValueError, and nothing written.
                 raise ValueError(f"{NAN_SCORE_ERROR} ({label} is NaN)")
         new = successor.canonical if successor is not None else ""
         named_old = incumbent.canonical if incumbent is not None else ""
