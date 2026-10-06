@@ -763,6 +763,7 @@ class ValidityField(Field):
                 "import",
                 _record_id(model_instance, member_key),
                 dict(state),
+                uow=kwargs.get("uow"),
             )
             return None
         keys = cls.get_all_keys(model_instance, field_name)

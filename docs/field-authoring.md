@@ -239,7 +239,10 @@ has been constructed and saved — so any structure `on_save` already rebuilt ex
 and can be overwritten or supplemented. `state` is whatever `export_state` returned
 for this field on the exporting side, or `None` if nothing was carried. The base
 implementation is a no-op, which is correct whenever there is no carried state to
-restore.
+restore. It may receive a `uow=` keyword: a Postgres unit of work the import
+runs in (`import_records(uow=...)`). An override whose state lives on a
+non-Redis backend passes it on to the backend call, so the restore commits with
+the record's save; accept `**kwargs` so it can arrive.
 
 Both methods resolve their own configuration from
 `model_instance._meta.fields[field_name]` rather than taking it as an argument,

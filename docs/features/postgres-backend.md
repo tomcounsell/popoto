@@ -1420,8 +1420,11 @@ Everything a Redis → Postgres copy loses or changes when it goes through
 | `CoOccurrenceField` | An import truncates each record's edge set to the destination field's `max_edges`, on both backends. Edges beyond it are dropped. | Raise `max_edges` on the destination before the import if the source's sets are larger. |
 | `WriteFilterMixin` priority, Valor's outcome telemetry | Not exercised on Postgres by M5. Unverified. | Verify before relying on it. |
 
-Merging several Redis stores into one schema and the `_migrated_from`
-provenance also remain #756's work.
+The one-off copy itself is
+[Redis to Postgres Migration](redis-to-postgres-migration.md): it serves the
+snapshot from a private `redis-server`, handles each row of this table,
+writes `_migrated_from`/`_estimated_fields`, and merges several machines'
+stores into one schema.
 
 ## Geo (M5)
 

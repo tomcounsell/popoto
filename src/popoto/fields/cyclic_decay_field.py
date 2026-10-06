@@ -688,6 +688,7 @@ class CyclicDecayField(DecayingSortedField):
                         ),
                     }
                 ),
+                uow=kwargs.get("uow"),
             )
             return None
 

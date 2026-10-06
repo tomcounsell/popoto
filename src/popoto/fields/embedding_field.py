@@ -530,6 +530,7 @@ class EmbeddingField(Field):
                 record_id(model_instance),
                 state,
                 instance=model_instance,
+                uow=kwargs.get("uow"),
             )
             return None
 
