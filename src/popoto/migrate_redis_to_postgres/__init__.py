@@ -78,7 +78,10 @@ greater source id, and the loser is logged under ``_migrated_from.losers``.
 The same source re-run with a newer snapshot replaces its own rows (the
 delta mechanism). A row popoto wrote natively (``_migrated_from IS NULL``)
 is never overwritten. The source id lives only in ``_migrated_from``; it
-never becomes part of a key or a scope.
+never becomes part of a key or a scope. A run resumed after another store
+merged over some of its committed rows verifies those rows against their
+winner (:func:`_superseded_by_merge`), not its own snapshot -- but only
+where the winner's own run and ledger rows back the claim.
 """
 
 from __future__ import annotations
@@ -1507,6 +1510,14 @@ def _ensure_tool_tables(conn: Any, schema: str) -> None:
         f"ALTER TABLE {s}.{_qi(LEDGER_TABLE)} "
         "ADD COLUMN IF NOT EXISTS write_started_at timestamptz"
     )
+    # What a write decision put in the columns the tool writes itself
+    # (``_updated_at``, ``_created_at``, ``_estimated_fields``, staged
+    # reads): the record a later run's verification checks a row this run
+    # won from it against (:func:`_superseded_by_merge`), because the row's
+    # own ``_migrated_from`` cannot vouch for itself.
+    conn.execute(
+        f"ALTER TABLE {s}.{_qi(LEDGER_TABLE)} ADD COLUMN IF NOT EXISTS wrote jsonb"
+    )
     conn.execute(
         f"CREATE INDEX IF NOT EXISTS {_qi(LEDGER_TABLE + '__pending')} ON "
         f"{s}.{_qi(LEDGER_TABLE)} (model, _pk) WHERE state = 'pending'"
@@ -1558,6 +1569,23 @@ def _lock_target_schema(dsn: str, schema: str) -> Any:
     return conn
 
 
+def _release_schema_lock(conn: Any, schema: str) -> None:
+    """Release :func:`_lock_target_schema`'s lock, then close its session.
+
+    Unlocking explicitly makes the release synchronous: closing alone only
+    sends the server a terminate, and the backend drops its advisory locks
+    when it gets round to exiting, so a run started right after this one
+    returned could still be refused (seen as a CI flake)."""
+    try:
+        conn.execute(
+            "SELECT pg_advisory_unlock(%s, hashtext(%s))", (_LOCK_CLASS, schema)
+        )
+    except Exception:  # the session is gone already: so is its lock
+        pass
+    finally:
+        conn.close()
+
+
 def _connect_autocommit(dsn: str) -> Any:
     import psycopg
 
@@ -1600,11 +1628,29 @@ def preflight_target(
                 ).fetchone()[0]
             facts[mapping.name] = {"rows": total, "this_run": ours + pending}
             if total and not merge and not (resume and total == ours + pending):
+                if resume:
+                    # #794: the operator already passed --resume; naming it
+                    # again sent them round in a circle.
+                    raise TargetNotEmpty(
+                        f"{schema}.{table} holds {total} row(s) for "
+                        f"{mapping.name}, of which only {ours + pending} are "
+                        "this run's. The others are rows this run did not "
+                        "write: another store's rows, which were already there "
+                        "if this run began with --merge, or rows written since "
+                        "-- popoto saving a row natively (which clears its "
+                        "_migrated_from), or another store's --merge. A plain "
+                        "--resume continues only into rows that are all its "
+                        "own; pass --resume --merge with the same --run-dir to "
+                        "continue under the merge rule, which never overwrites "
+                        "a natively saved row and decides every other key per "
+                        "key."
+                    )
                 raise TargetNotEmpty(
                     f"{schema}.{table} already holds {total} row(s) for "
                     f"{mapping.name}. Pass --merge to merge this store into them "
                     "(the merge rule decides per key), or --resume with the same "
-                    "--run-dir to continue an interrupted run."
+                    "--run-dir to continue an interrupted run (--resume --merge "
+                    "if anything else has written to the table since)."
                 )
     finally:
         conn.close()
@@ -1707,6 +1753,18 @@ def _provenance(
             else []
         ),
         "losers": losers,
+    }
+
+
+def _wrote(meta: Mapping[str, Any]) -> dict[str, Any]:
+    """The tool-written column values of a write, as its ``done`` ledger row
+    records them (``wrote``)."""
+    return {
+        "updated_at": meta["updated_at"],
+        "created_at": meta["created_at"],
+        "estimated_fields": list(meta["estimated_fields"]),
+        "staged_reads": meta["staged_reads"],
+        "staged_at": meta["staged_at"],
     }
 
 
@@ -2087,10 +2145,11 @@ def _load_batch(
         _step(mapping.name, number, "provenance")
 
         tx.cursor().executemany(
-            f"INSERT INTO {ledger} (run_id, model, _pk, state, decision, payload_sha, detail) "
-            "VALUES (%s, %s, %s, 'done', %s, %s, %s) ON CONFLICT (run_id, model, _pk) "
-            "DO UPDATE SET state = 'done', decision = EXCLUDED.decision, "
-            "payload_sha = EXCLUDED.payload_sha, detail = EXCLUDED.detail, at = now()",
+            f"INSERT INTO {ledger} (run_id, model, _pk, state, decision, payload_sha, "
+            "detail, wrote) VALUES (%s, %s, %s, 'done', %s, %s, %s, %s::jsonb) "
+            "ON CONFLICT (run_id, model, _pk) DO UPDATE SET state = 'done', "
+            "decision = EXCLUDED.decision, payload_sha = EXCLUDED.payload_sha, "
+            "detail = EXCLUDED.detail, wrote = EXCLUDED.wrote, at = now()",
             [
                 (
                     run["run_id"],
@@ -2099,6 +2158,7 @@ def _load_batch(
                     d,
                     r["meta"]["payload_sha"],
                     r["meta"]["reject"],
+                    json.dumps(_wrote(r["meta"])) if d in _WRITES else None,
                 )
                 for r, d in plan
             ],
@@ -2201,6 +2261,21 @@ def _verify_tool_columns(
     )
     if not mine:
         return 0, {}
+    bad: dict[str, list[str]] = {}
+    for pk, values in _read_tool_columns(conn, ts, mine).items():
+        parts = _tool_column_parts(values, by_key[pk]["meta"])
+        if parts:
+            bad[pk] = parts
+    return len(mine), bad
+
+
+def _read_tool_columns(
+    conn: Any, ts: Any, keys: Sequence[str]
+) -> dict[str, dict[str, Any]]:
+    """``{key: values}`` of the columns the tool writes itself, for ``keys``:
+    ``created_at`` and ``updated_at`` (epoch seconds), ``estimated_fields``,
+    and ``bad_hashes``, the embedding ``<f>__hash`` columns that do not hold
+    ``md5`` of their source text although a vector landed."""
     layout = ts.search
     embeddings = [
         e for e in (layout.embedding.values() if layout is not None else []) if e.source
@@ -2214,29 +2289,244 @@ def _verify_tool_columns(
         f"md5({_qi(e.source)}::text))"
         for e in embeddings
     ]
-    bad: dict[str, list[str]] = {}
+    out: dict[str, dict[str, Any]] = {}
     for pk, created, updated, estimated, *hash_bad in conn.execute(
         f'SELECT "_pk", {", ".join(columns)} FROM {ts.qualified} WHERE "_pk" = ANY(%s)',
-        (mine,),
+        (list(keys),),
     ).fetchall():
-        meta = by_key[pk]["meta"]
-        parts: list[str] = []
-        if created is None or abs(float(created) - float(meta["created_at"])) > 1e-3:
-            parts.append("_created_at")
-        if updated is None or abs(float(updated) - float(meta["updated_at"])) > 1e-3:
-            parts.append("_updated_at")
-        if list(estimated or []) != list(meta["estimated_fields"]):
-            parts.append("_estimated_fields")
-        for emb, wrong in zip(embeddings, hash_bad):
-            if wrong:
-                parts.append(emb.hash)
-        if parts:
-            bad[pk] = parts
+        out[pk] = {
+            "created_at": created,
+            "updated_at": updated,
+            "estimated_fields": list(estimated or []),
+            "bad_hashes": [e.hash for e, wrong in zip(embeddings, hash_bad) if wrong],
+        }
     conn.commit()
-    return len(mine), bad
+    return out
+
+
+def _close(have: Any, want: Any, tolerance: float = 1e-3) -> bool:
+    try:
+        return abs(float(have) - float(want)) <= tolerance
+    except (TypeError, ValueError):
+        return False
+
+
+def _tool_column_parts(values: Mapping[str, Any], want: Mapping[str, Any]) -> list[str]:
+    """The tool-written columns in ``values`` (:func:`_read_tool_columns`)
+    that differ from ``want`` (a record's ``meta``, or a ledger's ``wrote``)."""
+    parts: list[str] = []
+    if not _close(values["created_at"], want.get("created_at")):
+        parts.append("_created_at")
+    if not _close(values["updated_at"], want.get("updated_at")):
+        parts.append("_updated_at")
+    if list(values["estimated_fields"]) != list(want.get("estimated_fields") or []):
+        parts.append("_estimated_fields")
+    return parts + list(values["bad_hashes"])
+
+
+def _staged_differs(staged: Any, want: Mapping[str, Any]) -> bool:
+    """Whether a row's ``(_staged_reads, _staged_at)`` differ from what was
+    written (a record's ``meta``, or a ledger's ``wrote``)."""
+    n, at = staged if staged is not None else (None, None)
+    if int(n or 0) != int(want.get("staged_reads") or 0):
+        return True
+    return want.get("staged_at") is not None and not _close(
+        at or 0, want["staged_at"], 1e-6
+    )
 
 
 _CARRIED_SECTIONS = ("state", "model_state")
+
+WINNER_DOES_NOT_BEAT = "<winner does not beat this run>"
+NOT_WINNERS_PAYLOAD = "<not the winner's payload>"
+NOT_WINNERS_STAGED_READS = "<not the winner's staged reads>"
+
+
+def _winner_evidence(
+    conn: Any,
+    schema: str,
+    model_name: str,
+    claims: Mapping[str, Mapping[str, Any]],
+) -> tuple[dict[str, tuple[str, str]], dict[tuple[str, str], tuple[Any, ...]]]:
+    """What the tool's own tables say about the winners ``claims`` name:
+    ``({run_id: (source_id, rdb_sha256)}, {(run_id, key): (state, decision,
+    payload_sha, wrote)})``. Neither depends on the ``_migrated_from`` under
+    test."""
+    run_ids = sorted({str(p.get("run_id")) for p in claims.values()})
+    s = _qi(schema)
+    runs = {
+        rid: (src, sha)
+        for rid, src, sha in conn.execute(
+            f"SELECT run_id, source_id, rdb_sha256 FROM {s}.{_qi(RUN_TABLE)} "
+            "WHERE run_id = ANY(%s)",
+            (run_ids,),
+        ).fetchall()
+    }
+    ledger = {
+        (rid, pk): (state, decision, sha, wrote)
+        for rid, pk, state, decision, sha, wrote in conn.execute(
+            f"SELECT run_id, _pk, state, decision, payload_sha, wrote FROM "
+            f"{s}.{_qi(LEDGER_TABLE)} WHERE model = %s AND run_id = ANY(%s) "
+            "AND _pk = ANY(%s)",
+            (model_name, run_ids, sorted(claims)),
+        ).fetchall()
+    }
+    conn.commit()
+    return runs, ledger
+
+
+def _unconfirmed_reasons(
+    prov: Mapping[str, Any],
+    run_row: Optional[tuple[str, str]],
+    ledger_row: Optional[tuple[Any, ...]],
+    row_updated_at: Any,
+) -> list[str]:
+    """Why the winner a row's ``_migrated_from`` claims is not backed by
+    the claimed run's own records (empty when it is)."""
+    if run_row is None:
+        return ["<winner's run is not in popoto_migration_run>"]
+    reasons: list[str] = []
+    source_id, rdb_sha256 = run_row
+    if source_id != prov.get("source"):
+        reasons.append("<winner's run has another source>")
+    if rdb_sha256 != prov.get("snapshot"):
+        reasons.append("<winner's run has another snapshot>")
+    if ledger_row is None:
+        return reasons + ["<no ledger row for the key in the winner's run>"]
+    state, decision, sha, wrote = ledger_row
+    if state != "done" or decision not in _WRITES:
+        reasons.append(f"<winner's ledger says {state}/{decision}>")
+    if sha != prov.get("payload_sha"):
+        reasons.append("<winner's ledger has another payload_sha>")
+    if not isinstance(wrote, Mapping):
+        return reasons + ["<winner's ledger records no written columns>"]
+    if not _close(wrote.get("updated_at"), prov.get("updated_at")):
+        reasons.append("<winner's ledger has another updated_at>")
+    if not _close(row_updated_at, wrote.get("updated_at")):
+        reasons.append("<_updated_at is not the winner's>")
+    return reasons
+
+
+def _superseded_by_merge(
+    conn: Any,
+    schema: str,
+    mapping: ModelMapping,
+    ts: Any,
+    run: Mapping[str, Any],
+    by_key: Mapping[str, Mapping[str, Any]],
+    provenance: Mapping[str, Any],
+    decisions: Mapping[str, str],
+    pg_records: Mapping[str, Mapping[str, Any]],
+    staged_cols: Mapping[str, Any],
+) -> tuple[set[str], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Rows this run wrote that ANOTHER source has since won under the merge
+    rule (#794): ``(keys, mismatches, unconfirmed)``.
+
+    A run that crashed after committing some batches can be resumed after
+    another store merged into the same schema. That store sees the crashed
+    run's committed rows as ordinary migrated rows and, where its copy is
+    newer, replaces them (``won_merge``), recording this run among the row's
+    ``_migrated_from.losers``. The row is then correct, but it no longer
+    holds this run's snapshot, so comparing it with that snapshot reported a
+    mismatch that was not one. Such a row is verified against the WINNER
+    instead.
+
+    A candidate is a row whose provenance names another source and lists
+    THIS source's snapshot of exactly this payload among its losers -- the
+    trace the winning run leaves. The provenance cannot vouch for itself
+    (#796 review: a self-consistent forged ``_migrated_from`` turned a wrong
+    row CLEAN), so a candidate counts as superseded only when the tool's own
+    records back the claimed winner independently: its run is in
+    ``popoto_migration_run`` with the claimed source and snapshot; that
+    run's ledger row for the key is ``done`` with a write decision and the
+    claimed ``payload_sha``; the ledger's recorded ``updated_at`` is the
+    claimed one; and the row's ``_updated_at`` column holds it. A candidate
+    that fails any of these is ``unconfirmed``: it is NOT superseded, so the
+    ``records`` and ``carried_state`` checks compare it with this run's
+    snapshot, as for any other row this run wrote.
+
+    A superseded row must then hold exactly the winner's payload (values and
+    carried state), the winner must beat this run's copy under the merge
+    rule -- decided on the winner's LEDGER values (recorded ``updated_at``,
+    its run's ``source_id``), never the provenance's -- and the columns the
+    tool writes outside the save path (``_created_at``,
+    ``_estimated_fields``, embedding hashes, staged reads) must be what the
+    winner's ledger says it wrote."""
+    model = mapping.model
+    claims: dict[str, Mapping[str, Any]] = {}
+    for key in sorted(by_key):
+        meta = by_key[key]["meta"]
+        if meta["reject"] or decisions.get(key) not in _WRITES:
+            continue
+        prov = provenance.get(key)
+        if not isinstance(prov, Mapping):
+            continue
+        if prov.get("source") in (None, run["source_id"]):
+            continue
+        if prov.get("payload_sha") == meta["payload_sha"]:
+            continue  # the same payload: this run's rows hold it already
+        lost = any(
+            isinstance(e, Mapping)
+            and e.get("source") == run["source_id"]
+            and e.get("snapshot") == run["rdb_sha256"]
+            and e.get("payload_sha") == meta["payload_sha"]
+            for e in (prov.get("losers") or [])
+        )
+        if lost:
+            claims[key] = prov
+    if not claims:
+        return set(), [], []
+    runs, ledger = _winner_evidence(conn, schema, mapping.name, claims)
+    columns = _read_tool_columns(conn, ts, sorted(claims))
+
+    keys: set[str] = set()
+    bad: list[dict[str, Any]] = []
+    unconfirmed: list[dict[str, Any]] = []
+    for key, prov in claims.items():
+        meta = by_key[key]["meta"]
+        run_id = str(prov.get("run_id"))
+        run_row = runs.get(run_id)
+        ledger_row = ledger.get((run_id, key))
+        values = columns.get(key)
+        reasons = _unconfirmed_reasons(
+            prov, run_row, ledger_row, values["updated_at"] if values else None
+        )
+        if reasons or run_row is None or ledger_row is None or values is None:
+            unconfirmed.append(
+                {
+                    "key": key,
+                    "claimed_winner": prov.get("source"),
+                    "claimed_run_id": prov.get("run_id"),
+                    "reasons": reasons or ["<missing on Postgres>"],
+                }
+            )
+            continue
+        keys.add(key)
+        wrote = ledger_row[3]
+        parts: list[str] = []
+        theirs = (float(wrote["updated_at"]), str(run_row[0]))
+        if not theirs > (float(meta["updated_at"]), run["source_id"]):
+            parts.append(WINNER_DOES_NOT_BEAT)
+        got = pg_records.get(key)
+        if got is None:
+            parts.append("<missing on Postgres>")
+        elif payload_sha(model, got) != ledger_row[2]:
+            parts.append(NOT_WINNERS_PAYLOAD)
+        # _updated_at already matched the ledger above, or the row would
+        # not be superseded.
+        parts += [p for p in _tool_column_parts(values, wrote) if p != "_updated_at"]
+        if staged_cols and _staged_differs(staged_cols.get(key), wrote):
+            parts.append(NOT_WINNERS_STAGED_READS)
+        if parts:
+            bad.append(
+                {
+                    "key": key,
+                    "winner": run_row[0],
+                    "winner_run_id": run_id,
+                    "parts": parts,
+                }
+            )
+    return keys, bad, unconfirmed
 
 
 def _verify_carried_state(
@@ -2247,6 +2537,7 @@ def _verify_carried_state(
     run: Mapping[str, Any],
     by_key: Mapping[str, Mapping[str, Any]],
     pg_records: Mapping[str, Mapping[str, Any]],
+    superseded: "set[str] | frozenset[str]" = frozenset(),
 ) -> dict[str, Any]:
     """Every row THIS run wrote holds the snapshot's carried state.
 
@@ -2261,7 +2552,9 @@ def _verify_carried_state(
     cycles, validity, the vector's dims and float32 hash), normalized as the
     ``records`` check normalizes it. Only a key whose final decision lost
     the merge, deduplicated, or failed to load is left out: its row is
-    another source's, or nothing was written.
+    another source's, or nothing was written. So is a row another source
+    has won since (``superseded``, :func:`_superseded_by_merge`): it is
+    verified against its winner's provenance instead.
 
     A row this run wrote and the application then changed natively (after
     a crash, before the resume) fails here too: the operator inspects it."""
@@ -2274,6 +2567,7 @@ def _verify_carried_state(
             (run["run_id"], mapping.name),
         ).fetchall()
         if decision not in (LOST_MERGE, DEDUPLICATED, UNCHANGED, LOAD_ERROR, REJECTED)
+        and pk not in superseded
     }
     conn.commit()
     bad: list[dict[str, Any]] = []
@@ -2450,24 +2744,32 @@ def verify(
                             ),
                         }
                     )
-            staged_bad = []
-            for key in owned:
-                if not staged_cols:
-                    break
-                meta = by_key[key]["meta"]
-                n, at = staged_cols.get(key, (None, None))
-                if int(n or 0) != int(meta["staged_reads"] or 0) or (
-                    meta["staged_at"] is not None
-                    and abs(float(at or 0) - float(meta["staged_at"])) > 1e-6
-                ):
-                    staged_bad.append(key)
+            staged_bad = [
+                key
+                for key in owned
+                if staged_cols
+                and _staged_differs(staged_cols.get(key), by_key[key]["meta"])
+            ]
             column_compared, column_bad = _verify_tool_columns(
                 conn, ts, by_key, provenance, run
+            )
+            superseded, superseded_bad, unconfirmed = _superseded_by_merge(
+                conn,
+                backend.schema,
+                mapping,
+                ts,
+                run,
+                by_key,
+                provenance,
+                decisions.get(mapping.name, {}),
+                pg_records,
+                staged_cols,
             )
             expected_owned = sum(
                 1
                 for k, r in by_key.items()
                 if not r["meta"]["reject"]
+                and k not in superseded
                 and decisions.get(mapping.name, {}).get(k)
                 not in (LOST_MERGE, CONFLICT_NATIVE, LOAD_ERROR)
             )
@@ -2490,8 +2792,23 @@ def verify(
                 ],
                 "ok": not column_bad,
             }
+            if superseded or unconfirmed:
+                # Rows another source won after this run wrote them (#794):
+                # each holds its winner's payload and tool columns, and that
+                # winner beats this run's copy under the merge rule. A row
+                # whose claimed winner its own run and ledger do not back
+                # (``unconfirmed``) is compared with this run's snapshot by
+                # ``records`` and ``carried_state``, and listed here too.
+                model_checks["superseded_by_merge"] = {
+                    "compared": len(superseded),
+                    "mismatched": len(superseded_bad),
+                    "first_mismatches": superseded_bad[:VERIFY_MISMATCH_DETAIL],
+                    "unconfirmed": len(unconfirmed),
+                    "first_unconfirmed": unconfirmed[:VERIFY_MISMATCH_DETAIL],
+                    "ok": not superseded_bad and not unconfirmed,
+                }
             model_checks["carried_state"] = _verify_carried_state(
-                conn, backend.schema, mapping, ts, run, by_key, pg_records
+                conn, backend.schema, mapping, ts, run, by_key, pg_records, superseded
             )
             stream_check = _verify_event_stream(conn, backend.schema, mapping, ts, run)
             if stream_check is not None:
@@ -3143,7 +3460,7 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
         return MigrationReport(run_id=run_id, source_id=config.source_id, data=report)
     finally:
         if lock is not None:
-            lock.close()
+            _release_schema_lock(lock, schema)
 
 
 def _operator() -> str:

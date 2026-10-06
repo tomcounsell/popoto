@@ -334,7 +334,32 @@ through popoto on Postgres and compares it with the snapshot:
   row whose save committed without its carried state therefore fails the
   run instead of hiding behind a native-looking row. A row the run wrote
   and the application then changed before a resume fails it too; inspect
-  it.
+  it. A row another source has won since is left out here and checked by
+  **superseded by merge** instead.
+- **superseded by merge** (only when there is such a row): a row this run
+  wrote that another source then won under the merge rule. This happens
+  when a run is resumed after another store merged into the schema (see
+  *Resume*). The row no longer holds this run's snapshot, and it should
+  not. It is checked against the winner instead. A row is a candidate when
+  its `_migrated_from` names another source and lists this source's
+  snapshot of exactly this payload in `losers`, which is what the winning
+  run writes. `_migrated_from` cannot vouch for itself, so the candidate
+  counts as superseded only when the tool's own tables back the claimed
+  winner: its run is in `popoto_migration_run` with the same source and
+  snapshot, that run's ledger row for the key is `done` with a write
+  decision and the same `payload_sha`, the `updated_at` the ledger
+  recorded is the claimed one, and the row's `_updated_at` column holds it.
+  A superseded row must then hold exactly the winner's payload (values and
+  carried state), and the winner must beat this run's copy under the merge
+  rule, decided on the ledger's recorded `updated_at` and the run's source
+  id. Its `_created_at`, `_estimated_fields`, embedding hashes and staged
+  reads must be what the winner's ledger says it wrote. A candidate that
+  fails any of these is listed as `unconfirmed` and is not treated as
+  superseded: the `records` and `carried state` checks compare it with this
+  run's snapshot, so the run is a mismatch. So is a row popoto saved
+  natively (`_migrated_from` is `NULL`), which is never a candidate. A
+  ledger written before the `wrote` column existed has no recorded values,
+  so a row won by such a run is `unconfirmed`; inspect it.
 - **staged reads** match the inventory.
 - **`check_indexes()`** reports no drift.
 
@@ -436,7 +461,21 @@ A crash at any point, `kill -9` included, therefore leaves either none of
 the batch or all of it. There is no row without its carried state or its
 provenance. Re-run with `--resume` and the same `--run-dir`: it skips the
 committed batches and loads the rest. Without `--resume`, the committed
-batches make the target non-empty, and the run is refused. A deadlock or
+batches make the target non-empty, and the run is refused.
+
+A plain `--resume` continues only into a table that holds nothing but this
+run's rows. If it holds rows the run did not write, the resume is refused
+too, and the message says so and names `--resume --merge`. Those rows can
+have been there before the run started, when the run itself began with
+`--merge` into a table another store had already loaded. Or they were
+written while the run was down: by popoto saving one of the run's
+committed rows natively, which clears its `_migrated_from`, or by another
+store's `--merge`. Either way, re-run with `--resume --merge` and the same
+`--run-dir`. The batches still to load
+then go through the merge rule, which never overwrites a natively saved
+row. A row the run wrote and the application then changed is reported by
+`records` and `carried state` as a mismatch, so inspect it before you sign
+off. A deadlock or
 serialization failure rolls the batch back and runs it again, up to three
 times.
 
@@ -473,17 +512,30 @@ Adoption is narrow on purpose:
   the ledger's `payload_sha`. The resume then reports it as
   `conflict_native` and leaves it alone.
 
-One situation needs a manual step after a resume:
+**Another source merged while this run was down.** Say run A crashed after
+some of its batches committed, and source B then ran with `--merge`. B sees
+A's committed rows as ordinary migrated rows, and the merge rule decides
+each shared key. Where B's copy is newer, B wins the row (`won_merge`) and
+lists A's snapshot in the row's `_migrated_from.losers`. Resume A with
+`--resume --merge` and the same `--run-dir`. Its verification checks the
+rows B won against B's provenance, under **superseded by merge**, rather
+than against A's snapshot, so A reaches `clean` when the data is what the
+merge rule says. Earlier versions compared those rows with A's snapshot and
+reported a mismatch for every row B had won, although the data was correct.
 
-- **Another source merged while this run was down.** This applies only to
-  a run from before batches were atomic: an atomic batch leaves no
-  half-written rows. If source B ran with `--merge` after A crashed and
-  before A resumed, A's half-written rows looked native to B. B reported those keys as `conflict_native` and did
-  not write them, yet its verdict is still `clean`. After A's resume
-  finishes, run B again: the same snapshot, `--merge` and a **new**
-  `--run-dir`. Its rows then go through the merge rule (`won_merge`,
-  `lost_merge` or `deduplicated`). Do this for every source that ran in
-  between and reported `conflict_native`, in the order they first ran.
+One situation, which only a run from before batches were atomic can cause,
+needs a manual step after a resume:
+
+- **Half-written rows of an old run.** An atomic batch leaves no
+  half-written rows. If an older run A crashed between import and
+  provenance, and source B then ran with `--merge` before A resumed, A's
+  half-written rows looked native to B. B reported those keys as
+  `conflict_native` and did not write them, yet its verdict is still
+  `clean`. After A's resume finishes, run B again: the same snapshot,
+  `--merge` and a **new** `--run-dir`. Its rows then go through the merge
+  rule (`won_merge`, `lost_merge` or `deduplicated`). Do this for every
+  source that ran in between and reported `conflict_native`, in the order
+  they first ran.
 
 The tool keeps two tables in the target schema: `popoto_migration_run` (one
 row per run, with its status, progress and final report) and
@@ -495,7 +547,7 @@ row per run, with its status, progress and final report) and
 |---|---|
 | `0` | `clean`, or a finished `--dry-run`. |
 | `1` | The load finished but verification found a mismatch. Read `report.txt`. |
-| `2` | Refused before reading. The causes are: a bad RDB; a missing `redis-server`; a model Postgres cannot store (`DataFrameField`); a target schema that already holds rows (pass `--merge` or `--resume`); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing `--report-key`; or an empty snapshot (`--allow-empty`). |
+| `2` | Refused before reading. The causes are: a bad RDB; a missing `redis-server`; a model Postgres cannot store (`DataFrameField`); a target schema that already holds rows (pass `--merge` or `--resume`, or `--resume --merge` when a resumed run's table also holds rows it did not write); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing `--report-key`; or an empty snapshot (`--allow-empty`). |
 | `3` | The inventory stopped the run. Nothing was written. |
 | `130` | Interrupted by `SIGTERM`, `SIGHUP` or `SIGINT`. The throwaway server is stopped and its copies are removed. Continue with `--resume` and the same `--run-dir`. |
 
