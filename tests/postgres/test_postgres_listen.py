@@ -635,6 +635,182 @@ def test_a_slow_subscriber_write_does_not_stall_the_reconnect(pg, admin, tagged)
     fast.close()
 
 
+def _interpose_resume(monkeypatch, sub, during_insert, during_old_pid_delete):
+    """Run ``during_insert`` while ``sub``'s :meth:`_PubSubSink.resume`
+    inserts its snapshot, and ``during_old_pid_delete`` when it deletes the
+    rows under the old pid -- each to completion, on another thread, as a
+    subscriber's own calls would run against the hub's."""
+    from popoto.backends.postgres import pubsub as pubsub_module
+
+    original = pubsub_module._PubSubSink.resume
+    fired = threading.Event()
+
+    def on_thread(fn):
+        finished = threading.Event()
+
+        def run():
+            try:
+                fn()
+            finally:
+                finished.set()
+
+        threading.Thread(target=run, daemon=True).start()
+        assert finished.wait(10), "the subscriber's call did not finish"
+
+    class Cursor:
+        def __init__(self, cur):
+            self._cur = cur
+
+        def __enter__(self):
+            self._cur.__enter__()
+            return self
+
+        def __exit__(self, *exc):
+            return self._cur.__exit__(*exc)
+
+        def executemany(self, *args, **kwargs):
+            on_thread(during_insert)
+            return self._cur.executemany(*args, **kwargs)
+
+    class Conn:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def cursor(self, *args, **kwargs):
+            return Cursor(self._conn.cursor(*args, **kwargs))
+
+        def execute(self, sql, *args, **kwargs):
+            if "pid <> %s" in sql and not fired.is_set():
+                on_thread(during_old_pid_delete)
+                fired.set()
+            return self._conn.execute(sql, *args, **kwargs)
+
+    def resume(self, conn, backend_pid):
+        if self is sub._sink:
+            conn = Conn(conn)
+        return original(self, conn, backend_pid)
+
+    monkeypatch.setattr(pubsub_module._PubSubSink, "resume", resume)
+    return fired
+
+
+def _live_rows(admin, pg, token):
+    table = pg._events_ready()["popoto_pubsub_listener"]
+    admin.execute("SELECT pg_stat_clear_snapshot()")
+    return sorted(
+        admin.execute(
+            f"SELECT pattern, name FROM {table} WHERE token = %s AND pid IN "
+            "(SELECT pid FROM pg_stat_activity)",
+            (token,),
+        ).fetchall()
+    )
+
+
+def test_a_channel_resubscribed_during_the_reconnect_keeps_its_registration(
+    pg, admin, tagged, monkeypatch
+):
+    """The reconnect re-inserts a snapshot without the subscriber's lock. A
+    channel unsubscribed while that insert runs (so the insert puts a stale
+    row back) and subscribed again before the cleanup must keep its fresh
+    row: the cleanup decides under the lock, never on a stale snapshot. On
+    ``b4ec88d4`` the cleanup deleted the fresh row and ``publish`` counted 0
+    until the next reconnect (#803, reviewer's probe)."""
+    _, dsn = tagged
+    sub = _subscribed(pg, "keep", "x")
+    hub = hub_for(dsn)
+    assert pg.publish("x", b"0") == 1
+    fired = _interpose_resume(
+        monkeypatch,
+        sub,
+        during_insert=lambda: sub.unsubscribe("x"),
+        during_old_pid_delete=lambda: sub.subscribe("x"),
+    )
+    old_pid = hub.backend_pid
+    admin.execute("SELECT pg_terminate_backend(%s)", (old_pid,))
+    assert _eventually(
+        lambda: hub.backend_pid not in (None, old_pid) and fired.is_set(), 10
+    )
+    for _ in range(5):  # polls, as a subscriber makes after a reconnect
+        sub.get_message(timeout=0.05)
+    assert _live_rows(admin, pg, sub.token) == [(False, "keep"), (False, "x")]
+    assert pg.publish("x", b"after") == 1
+    assert b"after" in _drain(sub, 2.0)
+    sub.close()
+
+
+def test_a_busy_subscriber_sweeps_what_the_reconnect_left(
+    pg, admin, tagged, monkeypatch
+):
+    """When the subscriber holds its lock at cleanup time, the reconnect
+    does not wait for it (one slow subscriber never stalls the others): it
+    leaves the stale row, and the subscriber removes it as it releases the
+    lock."""
+    _, dsn = tagged
+    sub = _subscribed(pg, "keep", "x")
+    hub = hub_for(dsn)
+    holding = threading.Event()
+    release = threading.Event()
+
+    def hold_the_lock():
+        with sub._locked(sub._sink):
+            holding.set()
+            release.wait(10)
+
+    holder = threading.Thread(target=hold_the_lock, daemon=True)
+    fired = _interpose_resume(
+        monkeypatch,
+        sub,
+        during_insert=lambda: sub.unsubscribe("x"),
+        during_old_pid_delete=lambda: (holder.start(), holding.wait(5)),
+    )
+    old_pid = hub.backend_pid
+    try:
+        admin.execute("SELECT pg_terminate_backend(%s)", (old_pid,))
+        # The reconnect completes while the lock is held ...
+        assert _eventually(
+            lambda: hub.backend_pid not in (None, old_pid)
+            and fired.is_set()
+            and sub._sink.pid == hub.backend_pid,
+            10,
+        )
+        # ... leaving the stale row it could not judge.
+        assert (False, "x") in _live_rows(admin, pg, sub.token)
+    finally:
+        release.set()
+        holder.join(10)
+    assert _live_rows(admin, pg, sub.token) == [(False, "keep")]
+    assert pg.publish("x", b"gone") == 0
+    assert pg.publish("keep", b"kept") == 1
+    sub.close()
+
+
+def test_the_byte_cap_counts_utf8_bytes_not_characters():
+    """A payload is measured as the server sends it: in UTF-8 bytes."""
+    from popoto.backends.postgres.listen import QueueSink
+
+    sink = QueueSink(maxlen=10, maxbytes=200)
+    sink.push("é" * 60)  # 60 characters, 120 bytes
+    assert sink.queued_bytes == 120
+    sink.push("é" * 60)  # 240 > 200: the first goes
+    assert (sink.dropped, sink.dropped_bytes, sink.queued_bytes) == (1, 120, 120)
+    sink.push("a" * 80)  # ASCII: 200, which fits
+    assert (sink.dropped, sink.queued_bytes) == (1, 200)
+
+
+def test_a_foreign_non_ascii_notify_is_counted_in_bytes(pg, admin, tagged):
+    """Anyone may ``NOTIFY`` the schema's channel. A non-ASCII payload that
+    is not popoto's is never delivered, but while it is queued it counts
+    against the byte cap at its UTF-8 size."""
+    sub = _subscribed(pg, "foreign")
+    assert sub.get_message(timeout=0.1)["type"] == "subscribe"
+    payload = "日本" * 30  # 60 characters, 180 bytes
+    admin.execute("SELECT pg_notify(%s, %s)", (pubsub_channel(pg.schema), payload))
+    assert _eventually(lambda: sub.queued_bytes == 180)
+    assert _drain(sub, 0.5) == []  # not a popoto payload: dropped on delivery
+    assert sub.queued_bytes == 0
+    sub.close()
+
+
 class _Proxy:
     """A TCP forwarder to the Postgres server whose existing connections can
     be frozen -- every byte held, every socket left open -- the way a NAT

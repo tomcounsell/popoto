@@ -226,7 +226,9 @@ class TestDefaultsSync:
             # Postgres shared LISTEN session (#803): queue caps, TCP
             # keepalives and the liveness check, read from Defaults when a
             # subscriber is made or the hub connects/waits (the listen tests
-            # monkeypatch them short). Deployment knobs, not scores.
+            # monkeypatch them short). Tuning constants pinned in-repo (see
+            # the Defaults docstring), not user config, and not scores a
+            # benchmark sweep should move.
             "PG_LISTEN_QUEUE_MAX_MESSAGES",
             "PG_LISTEN_QUEUE_MAX_BYTES",
             "PG_LISTEN_KEEPALIVES",

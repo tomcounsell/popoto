@@ -1048,17 +1048,24 @@ session count.
   message published just after the drop can still count its subscribers
   (in a review run, 2 of 34 lost messages were counted). Read the count as
   advisory -- the subscriptions registered and alive as far as the server
-  knew -- never as a delivery receipt. Order is kept across the gap and nothing is delivered
-  twice. **Stream reads lose nothing**: an entry is a row, and the
-  reconnect wakes every blocked reader to read again (well before the
-  fallback poll). Re-registration works from a snapshot of each
+  knew -- never as a delivery receipt. Order is kept across the gap and
+  nothing is delivered twice. **Stream reads lose nothing**: an entry is a
+  row, and the reconnect wakes every blocked reader to read again (well
+  before the fallback poll). Re-registration works from a snapshot of each
   subscriber's subscriptions, never waiting on a subscriber's own lock, so
   one subscriber in the middle of a slow registration write cannot stall
-  the reconnect for the others (#803). Pinned by
+  the reconnect for the others (#803). Only the follow-up cleanup -- a
+  snapshot row for a channel unsubscribed meanwhile -- needs that lock,
+  because the channel may have been subscribed again since and its fresh
+  row is indistinguishable from the stale one. The hub takes the lock
+  without waiting; when it is busy, the subscriber holding it does the
+  cleanup as it lets go. Pinned by
   `test_postgres_listen.py::test_a_terminated_listen_session_reconnects_and_relistens`,
   `::test_a_reconnect_mid_stream_keeps_order_and_loses_only_the_gap`,
-  `::test_a_blocking_stream_read_loses_nothing_across_a_reconnect` and
-  `::test_a_slow_subscriber_write_does_not_stall_the_reconnect`.
+  `::test_a_blocking_stream_read_loses_nothing_across_a_reconnect`,
+  `::test_a_slow_subscriber_write_does_not_stall_the_reconnect`,
+  `::test_a_channel_resubscribed_during_the_reconnect_keeps_its_registration`
+  and `::test_a_busy_subscriber_sweeps_what_the_reconnect_left`.
 - **Dead connections** (#803). A session whose peer vanished without a FIN
   or RST -- a NAT or load-balancer entry that silently expired -- looks
   idle forever to a plain wait, so the hub checks. The session sets TCP
@@ -1090,8 +1097,9 @@ session count.
   payloads per stalled subscriber. Drops are logged at WARNING (the first,
   then every 10 000th) and counted: `pubsub.dropped` and
   `pubsub.dropped_bytes` per subscriber (`queued_bytes` is what it holds
-  unread now) and `hub.dropped` for every subscriber on the shared session
-  (`popoto.backends.postgres.listen.hub_for(dsn)`). Both caps are read when
+  unread now, in UTF-8 bytes, so a foreign non-ASCII `NOTIFY` on the
+  channel counts at its real size) and `hub.dropped` for every subscriber
+  on the shared session (`popoto.backends.postgres.listen.hub_for(dsn)`). Both caps are read when
   the subscriber is made. A stream reader only keeps which streams were
   notified, so it costs nothing while it is not waiting.
 

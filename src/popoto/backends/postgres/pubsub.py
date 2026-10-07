@@ -41,6 +41,7 @@ from __future__ import annotations
 import base64
 import binascii
 import collections
+import contextlib
 import hashlib
 import itertools
 import logging
@@ -298,6 +299,16 @@ class _PubSubSink(QueueSink):
     write never stalls the reconnect, or anyone else's re-registration
     (#803).
 
+    Only the snapshot's *insert* runs without ``lock``. Removing a row the
+    snapshot re-inserted for a channel unsubscribed meanwhile needs it: the
+    channel may have been subscribed again since, and its fresh row looks
+    exactly like the stale one. So :meth:`resume` records the snapshot's
+    keys in ``stale`` and :meth:`sweep`\\ s them under ``lock``, taken
+    without waiting; when a subscriber's write holds it, that subscriber
+    sweeps as it lets go (:meth:`PostgresPubSub._locked`). Either way the
+    check "is this channel still subscribed?" and its DELETE run with no
+    subscriber write in between.
+
     ``owner`` is the process that made the sink. A forked child that
     inherits it never deletes its rows: they are the parent's, still counted
     for a parent that is still subscribed (#803)."""
@@ -311,6 +322,9 @@ class _PubSubSink(QueueSink):
         self.token = uuid.uuid4().hex
         self.table: Optional[str] = None
         self.names: dict[tuple[bool, str], Optional[str]] = {}
+        self.stale: set[tuple[bool, str]] = set()
+        """Keys :meth:`resume` re-inserted that :meth:`sweep` has not yet
+        checked against ``names`` (guarded by ``state``)."""
 
     @property
     def inherited(self) -> bool:
@@ -342,19 +356,41 @@ class _PubSubSink(QueueSink):
                     self.rows(backend_pid, snapshot),
                 )
         with self.state:
-            # Unsubscribed (or closed) while the snapshot was inserted: the
-            # subscriber's own DELETE may have run before our INSERT.
-            gone = [key for key in snapshot if key not in self.names]
+            # Unsubscribed (or closed) while the snapshot was inserted, the
+            # subscriber's own DELETE may have run before our INSERT. Which
+            # keys that happened to is only decidable under ``lock``.
+            self.stale.update(snapshot)
         conn.execute(
             f"DELETE FROM {self.table} WHERE token = %s AND pid <> %s",
             [self.token, backend_pid],
         )
-        for pattern, name in gone:
-            conn.execute(
-                f"DELETE FROM {self.table} WHERE token = %s AND pattern = %s "
-                "AND name = %s",
-                [self.token, pattern, name],
-            )
+        # Never wait: a subscriber holding ``lock`` sweeps when it releases
+        # it, and it sees ``stale`` set above (PostgresPubSub._locked).
+        if self.lock.acquire(blocking=False):
+            try:
+                self.sweep(conn.execute)
+            finally:
+                self.lock.release()
+
+    def sweep(self, execute: Callable[[str, list[Any]], Any]) -> None:
+        """Delete the rows :meth:`resume` re-inserted for keys no longer
+        subscribed. The caller holds ``lock``, so no subscriber write can
+        re-register a key between the check and its DELETE (#803): a key
+        still in ``names`` keeps its row, which may be the subscriber's own."""
+        with self.state:
+            gone = [key for key in self.stale if key not in self.names]
+            self.stale.clear()
+        for i, (pattern, name) in enumerate(gone):
+            try:
+                execute(
+                    f"DELETE FROM {self.table} WHERE token = %s AND pattern = %s "
+                    "AND name = %s",
+                    [self.token, pattern, name],
+                )
+            except BaseException:
+                with self.state:
+                    self.stale.update(gone[i:])
+                raise
 
 
 class PostgresPubSub:
@@ -469,12 +505,32 @@ class PostgresPubSub:
         else:
             self._sink.take(0)
 
+    @contextlib.contextmanager
+    def _locked(self, sink: _PubSubSink) -> Iterator[None]:
+        """``sink.lock`` for a registration write, then the sweep a
+        reconnect's :meth:`_PubSubSink.resume` left to this subscriber
+        because the lock was busy. ``resume`` marks ``stale`` before it
+        tries the lock, so whenever its try fails the holder sees the mark
+        on release (#803)."""
+        with sink.lock:
+            yield
+        while sink.stale and not sink.inherited:
+            try:
+                with sink.lock:
+                    sink.sweep(self._execute)
+            except Exception as exc:  # the count is advisory; never fail on it
+                logger.warning("pub/sub registration sweep failed: %s", exc)
+                return
+
+    def _execute(self, sql: str, params: list[Any]) -> None:
+        self.backend._run(sql, params, write=True)
+
     def _sync_registration(self) -> None:
         """Register every subscription under the shared session's current
         pid when they are not (first use; a reconnect :meth:`_PubSubSink.resume`
         could not cover), sweeping registrations whose session is gone."""
         sink = self._sink
-        with sink.lock:
+        with self._locked(sink):
             with sink.state:
                 current = None if self._hub is None else self._hub.backend_pid
                 if current is None or current == sink.pid:
@@ -503,7 +559,7 @@ class PostgresPubSub:
         sink = self._sink
         text = name.decode("utf-8")
         regex = glob_to_regex(as_bytes_text(text)) if pattern else None
-        with sink.lock:
+        with self._locked(sink):
             with sink.state:
                 sink.names[(pattern, text)] = regex
                 pid = sink.pid
@@ -519,7 +575,7 @@ class PostgresPubSub:
             # by another thread at fork() stays held) and no row.
             sink.names.pop((pattern, text), None)
             return
-        with sink.lock:
+        with self._locked(sink):
             with sink.state:
                 sink.names.pop((pattern, text), None)
                 pid = sink.pid
@@ -696,7 +752,7 @@ class PostgresPubSub:
         self._compiled.clear()
 
     def _close_registrations(self, sink: _PubSubSink) -> None:
-        with sink.lock:
+        with self._locked(sink):
             # Forget first, then delete: a reconnect's resume() that inserted
             # meanwhile sees the names gone and deletes its rows itself.
             with sink.state:

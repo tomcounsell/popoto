@@ -117,6 +117,11 @@ class Sink:
         between are lost."""
 
 
+def _nbytes(payload: str) -> int:
+    """``payload``'s size in UTF-8 bytes, as the server counts it."""
+    return len(payload) if payload.isascii() else len(payload.encode("utf-8"))
+
+
 class QueueSink(Sink):
     """Every payload, in arrival order, for one reader (a ``PubSub``).
 
@@ -145,22 +150,23 @@ class QueueSink(Sink):
         )
         self._reconnected = False
         self.queued_bytes = 0
-        """Payload bytes queued unread now (payloads are ASCII: base64 and
-        hex, so characters are bytes)."""
+        """UTF-8 bytes of the payloads queued unread now. popoto's own are
+        ASCII (base64 and hex), but anyone may ``NOTIFY`` the channel with
+        any text, so a payload is measured in bytes, not characters."""
         self.dropped = 0
         self.dropped_bytes = 0
 
     def push(self, payload: str) -> None:
-        size = len(payload)
+        size = _nbytes(payload)
         with self._cond:
             while self._items and (
                 len(self._items) >= self._maxlen
                 or self.queued_bytes + size > self._maxbytes
             ):
-                old = self._items.popleft()
-                self.queued_bytes -= len(old)
+                old = _nbytes(self._items.popleft())
+                self.queued_bytes -= old
                 self.dropped += 1
-                self.dropped_bytes += len(old)
+                self.dropped_bytes += old
                 if self.dropped == 1 or self.dropped % 10000 == 0:
                     logger.warning(
                         "popoto pub/sub subscriber is not reading: %d message(s) "
