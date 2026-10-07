@@ -130,14 +130,26 @@ class TestRealDb4Client:
         with pytest.raises(Db0FlushRefusedError):
             client.flushall()
 
-    def test_flushdb_succeeds_on_real_db4_client(self):
-        pool = redis.ConnectionPool(host="127.0.0.1", port=6379, db=4)
+    def test_flushdb_succeeds_on_real_isolated_db_client(self):
+        """A real non-zero-db client's FLUSHDB is permitted by the guard.
+
+        The client is built on the plugin's own isolated database, never a
+        hard-coded one: a literal ``db=4`` here used to wipe whatever other
+        lanes kept on DB 4 (#806).
+        """
+        kw = popoto.get_redis().connection_pool.connection_kwargs
+        bound = kw.get("db", 0)
+        if not bound:
+            pytest.skip("plugin not active / bound to DB 0; refusing a real flush")
+        pool = redis.ConnectionPool(
+            host=kw.get("host", "127.0.0.1"), port=kw.get("port", 6379), db=bound
+        )
         client = GuardedRedis(connection_pool=pool)
         try:
             client.ping()
         except redis.exceptions.ConnectionError:
-            pytest.skip("no live Redis on localhost:6379 for db-4 flushdb check")
-        # Must not raise: db 4 is not database 0.
+            pytest.skip("no live Redis on localhost:6379 for flushdb check")
+        # Must not raise: the isolated db is not database 0.
         assert client.flushdb() is True
 
 
@@ -273,7 +285,11 @@ class TestClassPersistence:
         assert isinstance(redis_db.POPOTO_REDIS_DB, GuardedRedis)
 
     def test_swap_db_preserves_guarded_class(self, restore_popoto_redis_db):
-        _swap_db(4)
+        # _swap_db mutates the shared client in place, so swapping to a literal
+        # db would leave every later test (and the plugin's autouse flush) on
+        # that db after the restore fixture runs. Re-swap to the bound db (#806).
+        bound = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs["db"]
+        _swap_db(bound)
         assert isinstance(redis_db.POPOTO_REDIS_DB, GuardedRedis)
 
 
