@@ -14,6 +14,7 @@ import random
 import pytest
 
 from popoto import KeyField, Model, SortedField, StringField
+from popoto.backends import RecordId, get_backend
 from popoto.recipes.context_assembler import ContextAssembler
 from popoto.recipes.memory_telemetry import (
     DEFAULT_EVENT_TTL,
@@ -22,7 +23,7 @@ from popoto.recipes.memory_telemetry import (
     TelemetryRecorder,
     report_outcomes,
 )
-from popoto.redis_db import POPOTO_REDIS_DB
+from popoto.redis_db import get_REDIS_DB
 
 # Backend conformance (#759 M4, plan §5 M4 gate (b)): every test in this
 # module runs once per configured backend, and the `backend` fixture binds
@@ -39,6 +40,18 @@ class TeleMem(Model):
     # Plain SortedField with scores in [0, 1] so calibration buckets are
     # deterministic; partition_by exercises the partition-aware score capture.
     relevance = SortedField(type=float, partition_by="agent_id")
+
+
+def _remaining_ttl(instance):
+    """``TTL key`` through the bound backend's own means (as test_meta_ttl)."""
+    model = type(instance)
+    backend = get_backend(model)
+    key = instance.db_key.redis_key
+    if backend.name == "redis":
+        return get_REDIS_DB().ttl(key)
+    return backend.ttl_remaining(
+        model._meta.spec, [RecordId.from_key(model._meta.model_name, key)]
+    )[0]
 
 
 # Descending relevance so top-k selection is deterministic.
@@ -65,12 +78,6 @@ def _assembler(max_items=3):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_event_write_ids_only():
     _seed()
     rec = TelemetryRecorder(_assembler(), capture="ids")
@@ -104,7 +111,7 @@ def test_event_write_ids_only():
     assert ev.query_text is None
 
     # TTL is set (mandatory bound).
-    ttl = POPOTO_REDIS_DB.ttl(ev.db_key.redis_key)
+    ttl = _remaining_ttl(ev)
     assert 0 < ttl <= DEFAULT_EVENT_TTL
 
 
@@ -113,12 +120,6 @@ def test_event_write_ids_only():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_content_capture_opt_in():
     _seed()
     rec = TelemetryRecorder(_assembler(), capture="content")
@@ -131,12 +132,6 @@ def test_content_capture_opt_in():
     assert ev.injected[0]["content"]["content"].startswith("note")
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_ids_capture_never_leaks_content():
     _seed()
     rec = TelemetryRecorder(_assembler(), capture="ids")  # default is also ids
@@ -220,12 +215,6 @@ def test_recorder_is_fail_open(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_sample_rate_zero_records_nothing():
     _seed()
     rec = TelemetryRecorder(_assembler(), sample_rate=0.0)
@@ -234,12 +223,6 @@ def test_sample_rate_zero_records_nothing():
     assert len(list(AssemblyEvent.query.all())) == 0
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_sample_rate_one_records_every_call():
     _seed()
     rec = TelemetryRecorder(_assembler(), sample_rate=1.0)
@@ -248,12 +231,6 @@ def test_sample_rate_one_records_every_call():
     assert len(list(AssemblyEvent.query.all())) == 5
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_sample_rate_fractional_is_deterministic_with_seeded_rng():
     _seed()
     rec = TelemetryRecorder(_assembler(), sample_rate=0.5, rng=random.Random(1234))
@@ -284,12 +261,6 @@ def test_invalid_sample_rate_raises():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_report_outcomes_joins_injected_keys():
     _seed()
     rec = TelemetryRecorder(_assembler())
@@ -310,12 +281,6 @@ def test_report_outcomes_joins_injected_keys():
     assert all("at" in o for o in updated.outcomes)
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_report_outcomes_ignores_non_injected_keys():
     _seed()
     rec = TelemetryRecorder(_assembler())
@@ -326,12 +291,6 @@ def test_report_outcomes_ignores_non_injected_keys():
     assert updated.outcomes == []
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_report_outcomes_invalid_outcome_raises():
     _seed()
     rec = TelemetryRecorder(_assembler())
@@ -365,12 +324,6 @@ def _record_with_outcomes(agent, outcomes_by_rank):
     return injected
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_analyzer_injection_precision():
     _seed("a1")
     # ranks: 0.9->acted, 0.7->acted, 0.5->dismissed
@@ -387,12 +340,6 @@ def test_analyzer_injection_precision():
     assert prec["by_rank"][2]["acted_rate"] == 0.0
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_analyzer_confidence_calibration_buckets_by_score():
     _seed("a1")
     # scores 0.9 (bucket [0.8,inf)), 0.7 ([0.6,0.8)), 0.5 ([0.4,0.6))
@@ -408,12 +355,6 @@ def test_analyzer_confidence_calibration_buckets_by_score():
     assert buckets["[0.4, 0.6)"]["acted_rate"] == 0.0
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_analyzer_decay_regret():
     _seed("a1")
     _record_with_outcomes("a1", {0: "acted", 1: "contradicted", 2: "dismissed"})
@@ -425,12 +366,6 @@ def test_analyzer_decay_regret():
     assert regret["regret_rate"] == pytest.approx(2 / 3, abs=1e-4)
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_analyzer_report_is_markdown():
     _seed("a1")
     _record_with_outcomes("a1", {0: "acted", 1: "dismissed"})
@@ -441,12 +376,6 @@ def test_analyzer_report_is_markdown():
     assert "## Decay regret" in report
 
 
-@pytest.mark.redis_only(
-    reason=(
-        "writes an AssemblyEvent, which declares Meta.ttl: Postgres refuses "
-        "it until #759 M5 (record expiry), and the recorder fails open"
-    )
-)
 def test_analyzer_partition_scopes_events():
     _seed("a1")
     _seed("b2")
