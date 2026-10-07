@@ -223,6 +223,18 @@ class TestDefaultsSync:
             "PG_STATEMENT_TIMEOUT_MS",
             "PG_OUTAGE_LOG_WINDOW_SECONDS",
             "PG_TRANSACTION_RETRIES",
+            # Postgres shared LISTEN session (#803): queue caps, TCP
+            # keepalives and the liveness check, read from Defaults when a
+            # subscriber is made or the hub connects/waits (the listen tests
+            # monkeypatch them short). Deployment knobs, not scores.
+            "PG_LISTEN_QUEUE_MAX_MESSAGES",
+            "PG_LISTEN_QUEUE_MAX_BYTES",
+            "PG_LISTEN_KEEPALIVES",
+            "PG_LISTEN_KEEPALIVES_IDLE_SECONDS",
+            "PG_LISTEN_KEEPALIVES_INTERVAL_SECONDS",
+            "PG_LISTEN_KEEPALIVES_COUNT",
+            "PG_LISTEN_LIVENESS_INTERVAL_SECONDS",
+            "PG_LISTEN_LIVENESS_TIMEOUT_SECONDS",
             # Postgres search constants (#759 M2b): read from Defaults when a
             # search or save runs (tests monkeypatch them to force the HNSW
             # path or a short backfill budget), and they shape a Postgres

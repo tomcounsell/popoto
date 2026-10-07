@@ -518,3 +518,265 @@ def test_an_unreachable_listen_url_fails_subscribe_and_leaves_no_thread(
     hub = hub_for(bad)
     assert _eventually(lambda: hub._thread is None)
     assert hub.sink_count() == 0
+
+
+# -- #803: byte cap, fork-safe cleanup, slow-subscriber reconnect, dead sessions -----
+
+
+def test_an_unread_subscriber_is_capped_by_bytes_and_counts_what_it_drops(
+    pg, tagged, monkeypatch, caplog
+):
+    """A subscriber that stops reading keeps at most
+    ``Defaults.PG_LISTEN_QUEUE_MAX_BYTES`` of payload (as well as the
+    message-count cap): the oldest go, the newest stay in order, the drop is
+    logged, and both the subscriber and the hub count it."""
+    import logging
+
+    from popoto.fields.constants import Defaults
+
+    _, dsn = tagged
+    fast = _subscribed(pg, "bytes")  # made under the 32 MiB default
+    # The caps are read when a subscriber is made: only ``slow`` gets 20 KB.
+    monkeypatch.setattr(Defaults, "PG_LISTEN_QUEUE_MAX_BYTES", 20_000)
+    slow = _subscribed(pg, "bytes")  # never read until the end
+    hub = hub_for(dsn)
+    body = b"x" * 4000  # ~5.3 KB per notification once base64-encoded
+    sent = [str(i).encode() + body for i in range(12)]
+    with caplog.at_level(logging.WARNING, logger="POPOTO.postgres.listen"):
+        for message in sent:
+            assert pg.publish("bytes", message) == 2
+        assert _drain(fast, 3.0, want=12) == sent  # the reader loses nothing
+        assert _eventually(lambda: slow.dropped >= 9)
+    kept = _drain(slow, 2.0)
+    assert kept and kept == sent[-len(kept) :]  # the newest, in order
+    assert len(kept) + slow.dropped == len(sent)
+    assert slow.queued_bytes == 0  # drained
+    assert hub.dropped == slow.dropped and fast.dropped == 0
+    assert any("PG_LISTEN_QUEUE_MAX_BYTES" in r.getMessage() for r in caplog.records)
+    slow.close()
+    fast.close()
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="needs os.fork")
+@pytest.mark.parametrize("how", ["close", "unsubscribe"])
+def test_a_forked_child_never_drops_the_parents_registrations(pg, tagged, how):
+    """An inherited subscriber closed (or unsubscribed) in a forked child
+    before it ever polled there must not delete the rows ``publish`` counts
+    for the parent, which is still subscribed and still receiving."""
+    sub = _subscribed(pg, "fork-rows")
+    assert sub.get_message(timeout=0.1)["type"] == "subscribe"
+    assert pg.publish("fork-rows", b"before") == 1
+    assert _drain(sub, 2.0, want=1) == [b"before"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)  # fork with threads
+        child = os.fork()
+    if child == 0:  # pragma: no cover - runs in the child
+        code = 1
+        try:
+            if how == "close":
+                sub.close()
+            else:
+                sub.unsubscribe("fork-rows")
+            code = 0
+        finally:
+            os._exit(code)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 0
+    assert pg.publish("fork-rows", b"after") == 1
+    assert _drain(sub, 2.0, want=1) == [b"after"]
+    sub.close()
+
+
+def test_a_slow_subscriber_write_does_not_stall_the_reconnect(pg, admin, tagged):
+    """Re-registration after a reconnect works from a snapshot: a subscriber
+    whose own registration write is slow (here: a handler that subscribes,
+    with the write held for 4 s) neither delays the hub's reconnect nor the
+    other subscribers' counts and deliveries."""
+    _, dsn = tagged
+    hub = hub_for(dsn)
+    release = threading.Event()
+    in_write = threading.Event()
+
+    def slow_handler(message):
+        slow.subscribe("slow-b")  # its registration write is the slow part
+
+    slow = _subscribed(pg, "slow-a")
+    slow.subscribe(**{"slow-trigger": slow_handler})
+    fast = _subscribed(pg, "fast")
+    real_insert = slow._insert
+
+    def held_insert(row):
+        in_write.set()
+        release.wait(4.0)
+        real_insert(row)
+
+    slow._insert = held_insert
+    reader = threading.Thread(target=lambda: _drain(slow, 6.0))
+    reader.start()
+    try:
+        pg.publish("slow-trigger", b"go")
+        assert in_write.wait(3.0)
+        old_pid = hub.backend_pid
+        admin.execute("SELECT pg_terminate_backend(%s)", (old_pid,))
+        started = time.monotonic()
+        assert _eventually(
+            lambda: hub.backend_pid not in (None, old_pid)
+            and pg.publish("fast", b"probe") == 1,
+            timeout=2.0,
+        )
+        assert _drain(fast, 2.0, want=1) == [b"probe"]
+        assert time.monotonic() - started < 2.5  # well inside the held write
+        assert pg.publish("slow-a", b"x") == 1  # re-registered from the snapshot
+    finally:
+        release.set()
+        reader.join(10)
+    assert _eventually(lambda: pg.publish("slow-b", b"y") == 1)
+    slow.close()
+    fast.close()
+
+
+class _Proxy:
+    """A TCP forwarder to the Postgres server whose existing connections can
+    be frozen -- every byte held, every socket left open -- the way a NAT
+    entry that silently expired looks from the client: no FIN, no RST,
+    nothing. New connections are forwarded normally."""
+
+    def __init__(self, host, port):
+        import socket
+
+        self._upstream = (host, port)
+        self._listener = socket.socket()
+        self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._listener.bind(("127.0.0.1", 0))
+        self._listener.listen(16)
+        self.port = self._listener.getsockname()[1]
+        self._pairs = []
+        self._frozen = set()
+        self._closed = False
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def _accept(self):
+        import socket
+
+        while not self._closed:
+            try:
+                client, _ = self._listener.accept()
+            except OSError:
+                return
+            server = socket.create_connection(self._upstream)
+            pair = (client, server)
+            self._pairs.append(pair)
+            threading.Thread(target=self._pump, args=(pair,), daemon=True).start()
+
+    def _pump(self, pair):
+        import select
+
+        client, server = pair
+        while not self._closed:
+            if id(pair) in self._frozen:
+                time.sleep(0.05)
+                continue
+            try:
+                ready, _, _ = select.select([client, server], [], [], 0.05)
+                for sock in ready:
+                    data = sock.recv(65536)
+                    if not data:
+                        return self._shut(pair)
+                    (server if sock is client else client).sendall(data)
+            except OSError:
+                return self._shut(pair)
+
+    def _shut(self, pair):
+        for sock in pair:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+    def freeze(self):
+        self._frozen.update(id(p) for p in self._pairs)
+
+    def close(self):
+        self._closed = True
+        self._listener.close()
+        for pair in self._pairs:
+            self._shut(pair)
+
+
+@pytest.fixture
+def proxied(pg, admin, monkeypatch):
+    """``(application_name, dsn, proxy)``: the shared session reaches the
+    server through a :class:`_Proxy`."""
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    params = conninfo_to_dict(pg.dsn)
+    host = params.get("host") or "localhost"
+    if host.startswith("/"):
+        pytest.skip("the Postgres URL names a unix socket; the proxy needs TCP")
+    proxy = _Proxy(host, int(params.get("port") or 5432))
+    app = f"popoto_test_listen_{uuid.uuid4().hex[:8]}"
+    dsn = make_conninfo(
+        pg.dsn,
+        host="127.0.0.1",
+        hostaddr="127.0.0.1",
+        port=proxy.port,
+        application_name=app,
+    )
+    monkeypatch.setenv(events_module.LISTEN_URL_ENV, dsn)
+    try:
+        yield app, dsn, proxy
+    finally:
+        hub_for(dsn).close()
+        proxy.close()
+        admin.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE application_name = %s",
+            (app,),
+        )
+
+
+def test_the_shared_session_sets_tcp_keepalives(pg, proxied):
+    from popoto.fields.constants import Defaults
+
+    _, dsn, _ = proxied
+    sub = _subscribed(pg, "keepalive")
+    info = {
+        o.keyword.decode(): (o.val or b"").decode()
+        for o in hub_for(dsn)._conn.pgconn.info
+    }
+    assert info["keepalives"] == str(Defaults.PG_LISTEN_KEEPALIVES)
+    assert info["keepalives_idle"] == str(Defaults.PG_LISTEN_KEEPALIVES_IDLE_SECONDS)
+    assert info["keepalives_interval"] == str(
+        Defaults.PG_LISTEN_KEEPALIVES_INTERVAL_SECONDS
+    )
+    assert info["keepalives_count"] == str(Defaults.PG_LISTEN_KEEPALIVES_COUNT)
+    sub.close()
+
+
+def test_a_silently_dead_session_is_detected_and_replaced(
+    pg, admin, proxied, monkeypatch
+):
+    """A connection that goes silent (a NAT drop: no FIN, no RST) is noticed
+    by the hub's bounded liveness check -- a ``SELECT 1`` after
+    ``PG_LISTEN_LIVENESS_INTERVAL_SECONDS`` without traffic, answered within
+    ``PG_LISTEN_LIVENESS_TIMEOUT_SECONDS`` or the session is dropped -- and
+    replaced, re-registered and delivering again within that bound."""
+    from popoto.fields.constants import Defaults
+
+    monkeypatch.setattr(Defaults, "PG_LISTEN_LIVENESS_INTERVAL_SECONDS", 0.5)
+    monkeypatch.setattr(Defaults, "PG_LISTEN_LIVENESS_TIMEOUT_SECONDS", 0.5)
+    _, dsn, proxy = proxied
+    sub = _subscribed(pg, "nat")
+    hub = hub_for(dsn)
+    assert pg.publish("nat", b"before") == 1
+    assert _drain(sub, 2.0, want=1) == [b"before"]
+    old_pid = hub.backend_pid
+    proxy.freeze()
+    started = time.monotonic()
+    assert _eventually(lambda: hub.backend_pid not in (None, old_pid), timeout=5.0)
+    assert time.monotonic() - started < 3.0  # interval + timeout, plus slack
+    assert hub.reconnects == 1
+    assert _eventually(lambda: pg.publish("nat", b"probe") == 1)
+    got = _drain(sub, 2.0)
+    assert got and set(got) == {b"probe"}
+    sub.close()

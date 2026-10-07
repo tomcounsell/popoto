@@ -30,6 +30,14 @@ reconnect wakes every waiter to read again. Pub/sub loses what was published
 in the gap, as a Redis subscriber loses what was published while its
 connection was down.
 
+**Dead connections** (#803). A peer that vanished without a FIN or RST (a
+NAT entry expiring) never makes the socket readable, so the session sets
+TCP keepalives (``Defaults.PG_LISTEN_KEEPALIVES*``, unless the DSN names
+them) and the hub's wait is bounded: after
+``Defaults.PG_LISTEN_LIVENESS_INTERVAL_SECONDS`` without traffic it sends
+``SELECT 1`` and drops the session -- reconnecting as above -- when no reply
+comes within ``Defaults.PG_LISTEN_LIVENESS_TIMEOUT_SECONDS``.
+
 **Fork.** Hubs are per ``(dsn, pid)``: a child process never touches the
 parent's socket (it never even closes it -- closing would end the parent's
 session), and opens its own on first use. Sinks re-attach when they notice
@@ -37,7 +45,8 @@ the pid changed.
 
 **Threads.** Every hub method is safe from any thread; only the hub's own
 thread touches its connection. Sinks are called on the hub's thread and must
-not block.
+not block -- :meth:`Sink.resume` included, which is why pub/sub re-registers
+from a snapshot rather than behind a subscriber's own write lock.
 """
 
 from __future__ import annotations
@@ -48,6 +57,7 @@ import os
 import select
 import socket
 import threading
+import time
 import uuid
 from typing import Any, Optional
 
@@ -74,10 +84,6 @@ LISTEN_APPLICATION_NAME = "popoto_listen"
 """The ``application_name`` the shared session reports in
 ``pg_stat_activity`` when its DSN names none."""
 
-QUEUE_SINK_MAX_PENDING = 100_000
-"""Messages a pub/sub subscriber may leave unread before the oldest are
-dropped (:class:`QueueSink`)."""
-
 WAKE_SINK_MAX_PAYLOADS = 4096
 """Distinct stream digests a blocking read remembers between waits
 (:class:`WakeSink`); past it, the next wait wakes at once."""
@@ -91,6 +97,10 @@ other listener of the channel drops it as foreign."""
 class Sink:
     """Something a :class:`ListenHub` delivers to. Both methods run on the
     hub's thread: they must be quick and must not raise."""
+
+    dropped = 0
+    """Payloads this sink discarded unread (:class:`QueueSink`'s caps); the
+    hub adds every increase to :attr:`ListenHub.dropped`."""
 
     def push(self, payload: str) -> None:  # pragma: no cover - interface
         raise NotImplementedError
@@ -110,31 +120,59 @@ class Sink:
 class QueueSink(Sink):
     """Every payload, in arrival order, for one reader (a ``PubSub``).
 
-    Bounded at :data:`QUEUE_SINK_MAX_PENDING`: a subscriber that stops
-    reading loses its oldest messages (logged) rather than growing without
-    limit -- the analogue of Redis disconnecting a pub/sub client past its
-    ``client-output-buffer-limit``."""
+    Bounded by count (``Defaults.PG_LISTEN_QUEUE_MAX_MESSAGES``) and by
+    payload size (``Defaults.PG_LISTEN_QUEUE_MAX_BYTES``, Redis's 32 MiB
+    pub/sub output-buffer hard limit), both read when the sink is made: a
+    subscriber that stops reading loses its oldest messages rather than
+    growing without limit -- the analogue of Redis disconnecting a pub/sub
+    client past its ``client-output-buffer-limit``. Each drop is counted
+    (:attr:`dropped`, :attr:`dropped_bytes`, and the hub's
+    :attr:`ListenHub.dropped`) and logged at WARNING, on the first and then
+    every 10 000th."""
 
-    def __init__(self, maxlen: Optional[int] = None) -> None:
+    def __init__(
+        self, maxlen: Optional[int] = None, maxbytes: Optional[int] = None
+    ) -> None:
+        from ...fields.constants import Defaults
+
         self._cond = threading.Condition()
         self._items: collections.deque[str] = collections.deque()
-        self._maxlen = QUEUE_SINK_MAX_PENDING if maxlen is None else maxlen
+        self._maxlen = (
+            int(Defaults.PG_LISTEN_QUEUE_MAX_MESSAGES) if maxlen is None else maxlen
+        )
+        self._maxbytes = (
+            int(Defaults.PG_LISTEN_QUEUE_MAX_BYTES) if maxbytes is None else maxbytes
+        )
         self._reconnected = False
+        self.queued_bytes = 0
+        """Payload bytes queued unread now (payloads are ASCII: base64 and
+        hex, so characters are bytes)."""
         self.dropped = 0
+        self.dropped_bytes = 0
 
     def push(self, payload: str) -> None:
+        size = len(payload)
         with self._cond:
-            if len(self._items) >= self._maxlen:
-                self._items.popleft()
+            while self._items and (
+                len(self._items) >= self._maxlen
+                or self.queued_bytes + size > self._maxbytes
+            ):
+                old = self._items.popleft()
+                self.queued_bytes -= len(old)
                 self.dropped += 1
+                self.dropped_bytes += len(old)
                 if self.dropped == 1 or self.dropped % 10000 == 0:
                     logger.warning(
                         "popoto pub/sub subscriber is not reading: %d message(s) "
-                        "dropped (QUEUE_SINK_MAX_PENDING = %d)",
+                        "(%d bytes) dropped (PG_LISTEN_QUEUE_MAX_MESSAGES = %d, "
+                        "PG_LISTEN_QUEUE_MAX_BYTES = %d)",
                         self.dropped,
+                        self.dropped_bytes,
                         self._maxlen,
+                        self._maxbytes,
                     )
             self._items.append(payload)
+            self.queued_bytes += size
             self._cond.notify_all()
 
     def reconnected(self) -> None:
@@ -153,6 +191,7 @@ class QueueSink(Sink):
                 )
             items = list(self._items)
             self._items.clear()
+            self.queued_bytes = 0
             reconnected, self._reconnected = self._reconnected, False
             return items, reconnected
 
@@ -257,6 +296,12 @@ class ListenHub:
         """Bumped by every successful connect."""
         self.reconnects = 0
         self.connects = 0
+        self.dropped = 0
+        """Messages every sink of this hub has discarded unread (the
+        :class:`QueueSink` caps), summed over the hub's life."""
+        self._heard = 0.0
+        """``time.monotonic()`` when the session last proved alive (connect,
+        a command's reply, readable data, a liveness reply)."""
         self._wake_r, self._wake_w = socket.socketpair()
         self._wake_r.setblocking(False)
         self._wake_w.setblocking(False)
@@ -392,12 +437,23 @@ class ListenHub:
         psycopg = _import_psycopg()
         from psycopg.conninfo import conninfo_to_dict
 
-        extra: dict[str, Any] = {}
         try:
-            if "application_name" not in conninfo_to_dict(self.dsn):
-                extra["application_name"] = LISTEN_APPLICATION_NAME
+            named = conninfo_to_dict(self.dsn)
         except Exception:  # pragma: no cover - libpq parses it below anyway
-            pass
+            named = {}
+        extra: dict[str, Any] = {}
+        if "application_name" not in named:
+            extra["application_name"] = LISTEN_APPLICATION_NAME
+        # TCP keepalives, so the OS notices a peer that vanished without a
+        # FIN (a NAT entry expiring); a DSN that names one keeps its own.
+        for key, value in (
+            ("keepalives", Defaults.PG_LISTEN_KEEPALIVES),
+            ("keepalives_idle", Defaults.PG_LISTEN_KEEPALIVES_IDLE_SECONDS),
+            ("keepalives_interval", Defaults.PG_LISTEN_KEEPALIVES_INTERVAL_SECONDS),
+            ("keepalives_count", Defaults.PG_LISTEN_KEEPALIVES_COUNT),
+        ):
+            if key not in named:
+                extra[key] = int(value)
         conn = psycopg.connect(
             self.dsn,
             autocommit=True,
@@ -420,6 +476,7 @@ class ListenHub:
         reconnect = bool(channels)  # sinks were live on the session that dropped
         with self._cond:
             self._conn = conn
+            self._heard = time.monotonic()
             self.backend_pid = int(conn.info.backend_pid)
             self._listening = channels
             self.generation += 1
@@ -466,7 +523,10 @@ class ListenHub:
         with self._cond:
             sinks = list(self._sinks.get(channel, ()))
         for sink in sinks:
+            before = sink.dropped
             _call_quietly(sink.push, payload)
+            if sink.dropped != before:
+                self.dropped += sink.dropped - before
 
     def _run_command(self, cmd: _Command) -> None:
         conn = self._conn
@@ -555,6 +615,7 @@ class ListenHub:
                             cmd = self._commands.popleft()
                         try:
                             self._run_command(cmd)
+                            self._heard = time.monotonic()
                         except psycopg.OperationalError:
                             with self._cond:
                                 self._commands.appendleft(cmd)
@@ -574,7 +635,14 @@ class ListenHub:
                         continue
                     if self._commands:
                         continue
-                self._select()
+                wait = self._until_liveness_check()
+                if wait is not None and wait <= 0:
+                    try:
+                        self._check_liveness(psycopg)
+                    except psycopg.OperationalError as exc:
+                        self._drop(exc)
+                    continue
+                self._select(wait)
         except BaseException as exc:  # pragma: no cover - a bug, not an outage
             logger.exception("popoto LISTEN hub stopped: %s", exc)
             with self._cond:
@@ -601,26 +669,90 @@ class ListenHub:
         then whatever more is readable now."""
         conn = self._conn
         pgconn = conn.pgconn
-        enc = conn.info.encoding
         pgconn.consume_input()
+        self._deliver_notifies(pgconn, conn.info.encoding)
+        if pgconn.status != psycopg.pq.ConnStatus.OK:
+            raise psycopg.OperationalError("the LISTEN session is not OK")
+
+    def _deliver_notifies(self, pgconn: Any, enc: str) -> None:
         while True:
             n = pgconn.notifies()
             if n is None:
                 break
             self._on_notify(n.relname.decode(enc), n.extra.decode(enc))
+
+    def _until_liveness_check(self) -> Optional[float]:
+        """Seconds until the session is due a liveness check (``<= 0``: due
+        now); ``None`` when the check is disabled (interval ``<= 0``)."""
+        from ...fields.constants import Defaults
+
+        interval = float(Defaults.PG_LISTEN_LIVENESS_INTERVAL_SECONDS)
+        if interval <= 0:
+            return None
+        return self._heard + interval - time.monotonic()
+
+    def _check_liveness(self, psycopg: Any) -> None:
+        """``SELECT 1`` on the session, waiting at most
+        ``Defaults.PG_LISTEN_LIVENESS_TIMEOUT_SECONDS`` for the reply; raises
+        ``OperationalError`` (so the session is dropped and reopened) when
+        none comes. Run on the hub's thread, between commands, through libpq
+        directly so the wait is bounded: a blocking ``execute`` on a
+        connection whose peer silently vanished would wait for the kernel's
+        retransmission timeout -- many minutes. Notifications that arrive
+        meanwhile are delivered in order."""
+        from ...fields.constants import Defaults
+
+        timeout = float(Defaults.PG_LISTEN_LIVENESS_TIMEOUT_SECONDS)
+        conn = self._conn
+        pgconn = conn.pgconn
+        enc = conn.info.encoding
+        fd = pgconn.socket
+        deadline = time.monotonic() + timeout
+
+        def wait(write: bool) -> None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise psycopg.OperationalError(
+                    f"no reply to the LISTEN session's liveness check within "
+                    f"{timeout:g}s (PG_LISTEN_LIVENESS_TIMEOUT_SECONDS)"
+                )
+            try:
+                select.select(
+                    [] if write else [fd], [fd] if write else [], [], remaining
+                )
+            except (OSError, ValueError) as exc:
+                raise psycopg.OperationalError(str(exc)) from exc
+
+        pgconn.send_query(b"SELECT 1")
+        while pgconn.flush():  # 1 while output remains queued (non-blocking)
+            wait(write=True)
+        while True:
+            pgconn.consume_input()
+            self._deliver_notifies(pgconn, enc)
+            if not pgconn.is_busy():
+                break
+            wait(write=False)
+        while pgconn.get_result() is not None:
+            pass  # any reply proves the peer is there
+        self._deliver_notifies(pgconn, enc)
         if pgconn.status != psycopg.pq.ConnStatus.OK:
             raise psycopg.OperationalError("the LISTEN session is not OK")
+        self._heard = time.monotonic()
 
-    def _select(self) -> None:
+    def _select(self, timeout: Optional[float] = None) -> None:
+        """Wait for the server's traffic or a wake-up, at most ``timeout``
+        seconds (``None``: indefinitely)."""
         conn = self._conn
         try:
             fd = conn.fileno()
         except Exception:  # closed under us
             return
         try:
-            select.select([fd, self._wake_r], [], [])
+            readable, _, _ = select.select([fd, self._wake_r], [], [], timeout)
         except (OSError, ValueError):
             return
+        if fd in readable:
+            self._heard = time.monotonic()
         self._drain_wake()
 
     def _sleep(self, seconds: float) -> None:

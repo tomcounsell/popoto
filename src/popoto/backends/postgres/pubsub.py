@@ -288,39 +288,73 @@ class _PubSubSink(QueueSink):
     ``popoto_pubsub_listener`` rows name the shared session's backend pid,
     so they stop counting when it drops. :meth:`resume` re-inserts them
     under the new pid on the hub's own connection the moment it reconnects
-    (before any subscriber polls); ``lock`` serialises that against the
-    subscriber's own registration writes."""
+    (before any subscriber polls).
+
+    Two locks. ``lock`` serialises the subscriber's own registration writes
+    (its thread's I/O on the pool) and is held across them. ``state`` guards
+    only ``names`` and ``pid`` and is never held across I/O, so
+    :meth:`resume` -- run on the hub's thread for every subscriber in turn --
+    takes ``state`` alone and works from a snapshot: one subscriber's slow
+    write never stalls the reconnect, or anyone else's re-registration
+    (#803).
+
+    ``owner`` is the process that made the sink. A forked child that
+    inherits it never deletes its rows: they are the parent's, still counted
+    for a parent that is still subscribed (#803)."""
 
     def __init__(self) -> None:
         super().__init__()
         self.lock = threading.Lock()
+        self.state = threading.Lock()
+        self.owner = os.getpid()
         self.pid: Optional[int] = None
         self.token = uuid.uuid4().hex
         self.table: Optional[str] = None
         self.names: dict[tuple[bool, str], Optional[str]] = {}
 
-    def rows(self, pid: int) -> list[list[Any]]:
+    @property
+    def inherited(self) -> bool:
+        """Made by another process (this one is a forked child)."""
+        return self.owner != os.getpid()
+
+    def rows(
+        self, pid: int, names: Optional[dict[tuple[bool, str], Optional[str]]] = None
+    ) -> list[list[Any]]:
+        source = self.names if names is None else names
         return [
             [pid, self.token, pattern, name, regex]
-            for (pattern, name), regex in self.names.items()
+            for (pattern, name), regex in source.items()
         ]
 
     def resume(self, conn: Any, backend_pid: int) -> None:
-        with self.lock:
-            if self.table is None or self.pid == backend_pid:
+        with self.state:
+            if self.table is None or self.pid == backend_pid or self.inherited:
                 return
-            if self.names:
-                with conn.cursor() as cur:
-                    cur.executemany(
-                        f"INSERT INTO {self.table} (pid, token, pattern, name, "
-                        "regex) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                        self.rows(backend_pid),
-                    )
-            conn.execute(
-                f"DELETE FROM {self.table} WHERE token = %s AND pid <> %s",
-                [self.token, backend_pid],
-            )
+            # From here a concurrent _register reads the new pid and inserts
+            # its own row; one it added before is in the snapshot.
+            snapshot = dict(self.names)
             self.pid = backend_pid
+        if snapshot:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    f"INSERT INTO {self.table} (pid, token, pattern, name, "
+                    "regex) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    self.rows(backend_pid, snapshot),
+                )
+        with self.state:
+            # Unsubscribed (or closed) while the snapshot was inserted: the
+            # subscriber's own DELETE may have run before our INSERT.
+            gone = [key for key in snapshot if key not in self.names]
+        conn.execute(
+            f"DELETE FROM {self.table} WHERE token = %s AND pid <> %s",
+            [self.token, backend_pid],
+        )
+        for pattern, name in gone:
+            conn.execute(
+                f"DELETE FROM {self.table} WHERE token = %s AND pattern = %s "
+                "AND name = %s",
+                [self.token, pattern, name],
+            )
 
 
 class PostgresPubSub:
@@ -367,6 +401,23 @@ class PostgresPubSub:
         return self._sink.token
 
     @property
+    def dropped(self) -> int:
+        """Messages discarded unread because this subscriber fell behind
+        (``Defaults.PG_LISTEN_QUEUE_MAX_MESSAGES`` /
+        ``PG_LISTEN_QUEUE_MAX_BYTES``). The process-wide total is the
+        shared session's ``hub.dropped``."""
+        return self._sink.dropped
+
+    @property
+    def dropped_bytes(self) -> int:
+        return self._sink.dropped_bytes
+
+    @property
+    def queued_bytes(self) -> int:
+        """Payload bytes received but not yet read."""
+        return self._sink.queued_bytes
+
+    @property
     def hub(self) -> Any:
         return self._hub
 
@@ -388,6 +439,7 @@ class PostgresPubSub:
                 if self._finalizer is not None:
                     self._finalizer.detach()
                     self._finalizer = None
+                # No lock: one another thread held at fork() stays held here.
                 names = dict(self._sink.names)
                 self._sink = _PubSubSink()
                 self._sink.names = names
@@ -407,7 +459,15 @@ class PostgresPubSub:
         if self._attached():
             self._hub.detach(self._channel(), self._sink)
         self._hub = None
-        self._sink.take(0)
+        if self._sink.inherited:
+            # A forked child: start from a sink of its own rather than touch
+            # the inherited one's lock (the parent's hub thread may have held
+            # it at fork()). What it had queued was the parent's anyway.
+            fresh = _PubSubSink()
+            fresh.names = dict(self._sink.names)
+            self._sink = fresh
+        else:
+            self._sink.take(0)
 
     def _sync_registration(self) -> None:
         """Register every subscription under the shared session's current
@@ -415,17 +475,19 @@ class PostgresPubSub:
         could not cover), sweeping registrations whose session is gone."""
         sink = self._sink
         with sink.lock:
-            current = None if self._hub is None else self._hub.backend_pid
-            if current is None or current == sink.pid:
-                return
+            with sink.state:
+                current = None if self._hub is None else self._hub.backend_pid
+                if current is None or current == sink.pid:
+                    return
+                sink.pid = current
+                rows = sink.rows(current)
             t = self.backend._events_ready()
             self.backend._run(
                 f"DELETE FROM {t['popoto_pubsub_listener']} WHERE pid NOT IN "
                 "(SELECT pid FROM pg_stat_activity)",
                 write=True,
             )
-            sink.pid = current
-            for row in sink.rows(current):
+            for row in rows:
                 self._insert(row)
 
     def _insert(self, row: list[Any]) -> None:
@@ -442,16 +504,26 @@ class PostgresPubSub:
         text = name.decode("utf-8")
         regex = glob_to_regex(as_bytes_text(text)) if pattern else None
         with sink.lock:
-            sink.names[(pattern, text)] = regex
-            if sink.pid is not None:
-                self._insert([sink.pid, sink.token, pattern, text, regex])
+            with sink.state:
+                sink.names[(pattern, text)] = regex
+                pid = sink.pid
+            if pid is not None:
+                self._insert([pid, sink.token, pattern, text, regex])
 
     def _unregister(self, name: bytes, *, pattern: bool) -> None:
         sink = self._sink
         text = name.decode("utf-8")
-        with sink.lock:
+        if sink.inherited:
+            # A forked child: the row is the parent's, and the parent may
+            # still be subscribed. Forget it locally, touch no lock (one held
+            # by another thread at fork() stays held) and no row.
             sink.names.pop((pattern, text), None)
-            if sink.pid is None:
+            return
+        with sink.lock:
+            with sink.state:
+                sink.names.pop((pattern, text), None)
+                pid = sink.pid
+            if pid is None:
                 return
             t = self.backend._events_ready()
             self.backend._run(
@@ -610,8 +682,27 @@ class PostgresPubSub:
 
     def close(self) -> None:
         sink = self._sink
+        if sink.inherited:
+            # A forked child: the rows are the parent's, and the parent may
+            # still be subscribed (#803). Forget them locally, touching no
+            # lock (one held by another thread at fork() stays held here).
+            sink.names.clear()
+            sink.pid = None
+        else:
+            self._close_registrations(sink)
+        self._detach()
+        self.channels.clear()
+        self.patterns.clear()
+        self._compiled.clear()
+
+    def _close_registrations(self, sink: _PubSubSink) -> None:
         with sink.lock:
-            if sink.pid is not None:
+            # Forget first, then delete: a reconnect's resume() that inserted
+            # meanwhile sees the names gone and deletes its rows itself.
+            with sink.state:
+                pid, sink.pid = sink.pid, None
+                sink.names.clear()
+            if pid is not None:
                 try:
                     t = self.backend._events_ready()
                     self.backend._run(
@@ -623,12 +714,6 @@ class PostgresPubSub:
                     logger.warning(
                         "pub/sub close could not drop its registrations: %s", exc
                     )
-            sink.names.clear()
-            sink.pid = None
-        self._detach()
-        self.channels.clear()
-        self.patterns.clear()
-        self._compiled.clear()
 
     reset = close
 
