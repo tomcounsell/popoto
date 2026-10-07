@@ -38,9 +38,15 @@ DSN the lock and the tool's DDL use the main DSN, which is right for a
 direct connection. Before taking the lock, the tool checks that the
 maintenance DSN reaches the same database as the main one. If it does not,
 the run is refused before anything is written. When the two DSNs run as
-different roles, the main role is granted read and write on the tool's
-tables, as on the model tables (see [two
+different roles, the main role gets nothing on the tables the run creates
+unless you opt in, as for the library itself (see [two
 roles](postgres-backend.md#two-roles-an-application-role-and-an-owner-role)).
+Pass `grant_main_role=True` in `MigrationConfig`, or set
+`POPOTO_POSTGRES_GRANT_MAIN_ROLE=1`. The run then grants the main role read
+and write on exactly the tables it creates, its own and the model tables, and
+`SELECT` on the `popoto_schema` registry. Without the flag, set up the grants that section
+describes before the run, creating the schema up front, or the run fails
+with `permission denied` on its first write.
 
 ## Safety model
 

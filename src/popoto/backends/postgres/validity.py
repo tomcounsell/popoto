@@ -230,15 +230,25 @@ def pointer_table(ts: TableSpec, field: str) -> str:
     return f"{quote_ident(ts.schema)}.{quote_ident(name)}"
 
 
-def ensure_validity_tables(conn: Any, ts: TableSpec, spec: ModelSpec) -> None:
+def ensure_validity_tables(
+    conn: Any, ts: TableSpec, spec: ModelSpec, grant_to: Optional[str] = None
+) -> None:
     """Create each ``ValidityField``'s pointer table if it is missing, on
     ``conn`` and in its own transaction, under the DDL advisory lock: run at
     the model's first use, right after its table is created or checked, so
     no supersede ever has to create one inside a transaction that already
     holds the model table's locks. ``CREATE … IF NOT EXISTS`` is idempotent,
-    so a process that finds the table does nothing."""
+    so a process that finds the table does nothing. ``grant_to`` (#800,
+    opt-in) is granted access to a pointer table this creates, in its
+    transaction (:func:`~.schema.grant_created`)."""
     from . import _schema_auto
-    from .schema import _bounded, set_ddl_timeouts, table_lock_key
+    from .schema import (
+        _bounded,
+        catalog_before,
+        grant_created,
+        set_ddl_timeouts,
+        table_lock_key,
+    )
 
     for field in validity_field_names(spec):
         qualified = pointer_table(ts, field)
@@ -261,6 +271,7 @@ def ensure_validity_tables(conn: Any, ts: TableSpec, spec: ModelSpec) -> None:
                 "SELECT pg_advisory_xact_lock(hashtext(%s))",
                 (table_lock_key(ts.schema, ts.table),),
             )
+            before = catalog_before(cur, ts.schema) if grant_to is not None else None
             set_ddl_timeouts(cur)
             cur.execute(
                 f"CREATE TABLE IF NOT EXISTS {qualified} ("
@@ -269,6 +280,8 @@ def ensure_validity_tables(conn: Any, ts: TableSpec, spec: ModelSpec) -> None:
             )
             index = quote_ident(_bounded(f"{name}__member"))
             cur.execute(f"CREATE INDEX IF NOT EXISTS {index} ON {qualified} (member)")
+            if grant_to is not None and before is not None:
+                grant_created(cur, ts.schema, grant_to, before)
 
 
 # -- the exclusion rule -----------------------------------------------------------

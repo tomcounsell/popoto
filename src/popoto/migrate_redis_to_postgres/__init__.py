@@ -711,8 +711,12 @@ class MigrationConfig:
     same database (#800); unset, it is ``POPOTO_POSTGRES_MAINTENANCE_URL``
     when the main DSN also comes from the environment. The run's session
     lock and the tool's own table DDL hold a connection on it (else on the
-    main DSN) for the whole run. There is no Redis URL: the source is
-    ``rdb_path``."""
+    main DSN) for the whole run. ``grant_main_role`` (#800) opts in to
+    granting the main DSN's role access to exactly the tables the run's DDL
+    creates on the maintenance DSN, as ``PostgresBackend(grant_main_role=
+    True)`` does; unset (``None``) it is ``POPOTO_POSTGRES_GRANT_MAIN_ROLE``,
+    and without either nothing is granted. There is no Redis URL: the source
+    is ``rdb_path``."""
 
     rdb_path: Path
     run_dir: Path
@@ -722,6 +726,7 @@ class MigrationConfig:
     postgres_dsn: Optional[str] = None
     postgres_schema: Optional[str] = None
     postgres_maintenance_dsn: Optional[str] = None
+    grant_main_role: Optional[bool] = None
     source_db: int = 0
     merge: bool = False
     resume: bool = False
@@ -1495,26 +1500,21 @@ def _connect(dsn: str) -> Any:
 def _ensure_tool_tables(conn: Any, schema: str, grant_to: Optional[str] = None) -> None:
     """Create the tool's run and ledger tables in one transaction on
     ``conn`` (the run's lock session, autocommit). When ``grant_to`` names a
-    role other than ``conn``'s, it is granted read/write on the schema's
-    tables, as the backend grants the main role after its own DDL (#800)."""
-    from ..backends.postgres.schema import (
-        grant_app_role_statements,
-        schema_lock_key,
-    )
+    role other than ``conn``'s (opt-in, ``MigrationConfig.grant_main_role``),
+    it is granted read/write on exactly the tables this transaction creates
+    -- and ``USAGE`` on the schema if it creates that -- as the backend does
+    after its own first-use DDL (#800). Tables already there get nothing."""
+    from ..backends.postgres.schema import catalog_before, grant_created
 
+    if grant_to is not None:
+        (own,) = conn.execute("SELECT current_user").fetchone()
+        if own == grant_to:
+            grant_to = None
     with conn.transaction():
+        before = catalog_before(conn, schema) if grant_to is not None else None
         _create_tool_tables(conn, schema)
-    if grant_to is None:
-        return
-    (own,) = conn.execute("SELECT current_user").fetchone()
-    if own == grant_to:
-        return
-    with conn.transaction():
-        conn.execute(
-            "SELECT pg_advisory_xact_lock(hashtext(%s))", [schema_lock_key(schema)]
-        )
-        for statement in grant_app_role_statements(schema, grant_to):
-            conn.execute(statement)
+        if grant_to is not None and before is not None:
+            grant_created(conn, schema, grant_to, before)
 
 
 def _main_role(dsn: str) -> str:
@@ -3246,7 +3246,7 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
     :class:`InventoryStop` (the snapshot was read, nothing written), or the
     underlying error of a failed load -- after which ``--resume`` with the
     same run directory continues where the last committed batch ended."""
-    from ..backends.postgres import PostgresBackend
+    from ..backends.postgres import PostgresBackend, grant_main_role_from_env
 
     started = time.time()
     mappings = list(config.mappings)
@@ -3259,6 +3259,13 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
         None
         if config.postgres_dsn
         else os.environ.get("POPOTO_POSTGRES_MAINTENANCE_URL", "").strip() or None
+    )
+    # Grants to the main role are opt-in (#800): the config, else the
+    # library's own variable; never by default.
+    grant_main_role = (
+        config.grant_main_role
+        if config.grant_main_role is not None
+        else grant_main_role_from_env()
     )
     schema = (
         config.postgres_schema
@@ -3449,7 +3456,10 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
                         report["verdict"] = "dry-run"
                     else:
                         backend = PostgresBackend(
-                            dsn=dsn, schema=schema, maintenance_dsn=maintenance_dsn
+                            dsn=dsn,
+                            schema=schema,
+                            maintenance_dsn=maintenance_dsn,
+                            grant_main_role=grant_main_role,
                         )
                         run = {
                             "run_id": run_id,
@@ -3464,10 +3474,18 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
                         }
                         errors: list[str] = []
                         # The tool's DDL runs on the lock's own session --
-                        # the maintenance DSN when there is one -- and the
-                        # main role is granted its tables when that DSN's
-                        # role is another (#800).
-                        _ensure_tool_tables(lock, schema, grant_to=_main_role(dsn))
+                        # the maintenance DSN when there is one -- and, only
+                        # when asked (#800), the main role is granted the
+                        # tables it creates when that DSN's role is another.
+                        _ensure_tool_tables(
+                            lock,
+                            schema,
+                            grant_to=(
+                                _main_role(dsn)
+                                if grant_main_role and maintenance_dsn
+                                else None
+                            ),
+                        )
                         conn = _connect(dsn)
                         try:
                             conn.execute(

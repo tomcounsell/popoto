@@ -57,7 +57,7 @@ export POPOTO_POSTGRES_MAINTENANCE_URL=postgresql://db.internal:5432/agents  # o
 
 | Component | Reads | Never reads |
 |---|---|---|
-| the library (`popoto`) | `POPOTO_BACKEND`, `POPOTO_POSTGRES_URL`, `POPOTO_POSTGRES_SCHEMA`, `POPOTO_SCHEMA_AUTO`, and optionally `POPOTO_POSTGRES_MAINTENANCE_URL` ([maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode)) and `POPOTO_POSTGRES_LISTEN_URL` | `POSTGRES_URL`, `DATABASE_URL` |
+| the library (`popoto`) | `POPOTO_BACKEND`, `POPOTO_POSTGRES_URL`, `POPOTO_POSTGRES_SCHEMA`, `POPOTO_SCHEMA_AUTO`, and optionally `POPOTO_POSTGRES_MAINTENANCE_URL` ([maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode)), `POPOTO_POSTGRES_GRANT_MAIN_ROLE` ([two roles](#two-roles-an-application-role-and-an-owner-role)) and `POPOTO_POSTGRES_LISTEN_URL` | `POSTGRES_URL`, `DATABASE_URL` |
 | the pytest conformance harness | `POSTGRES_URL`, for its throwaway `popoto_test_<hex>` schema (see [Testing](../testing.md)) | — |
 
 Popoto never picks Postgres up from a generic variable. Selecting Postgres
@@ -66,7 +66,9 @@ raises `BackendUnavailableError` naming what is missing. You can also pass
 the DSN directly:
 `popoto.backends.set_backend(PostgresBackend(dsn=..., schema=...))`, plus
 `maintenance_dsn=...` for the optional
-[maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode).
+[maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode) and
+`grant_main_role=True` to opt in to [per-object
+grants](#two-roles-an-application-role-and-an-owner-role).
 
 **Laziness.** `import popoto` never imports `psycopg`. Defining a
 `Meta.backend = "postgres"` model never touches the network either: class
@@ -1905,28 +1907,12 @@ use raises the error and writes nothing.
 
 The example above runs the main DSN as `app` and the maintenance DSN as
 `owner`. When the two DSNs run as different roles, the tables first-use DDL
-creates belong to `owner`, and `app` could not otherwise use them. So popoto
-grants `app` what it needs. The identity check learns each DSN's
-`current_user` (through a pooler, the server role it maps to). After
-first-use DDL on the maintenance DSN, once per backend, it runs this as the
-owner role, under the schema's DDL advisory lock:
-
-```sql
-GRANT USAGE ON SCHEMA popoto TO app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA popoto TO app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA popoto TO app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA popoto
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA popoto
-    GRANT USAGE, SELECT ON SEQUENCES TO app;
-```
-
-The default privileges cover every table `owner` creates in the schema later,
-in any process. `app` never gets `CREATE` on the schema, `TRUNCATE` or
-ownership. Every statement is idempotent. If the grant fails, popoto logs a
-warning naming these grants and tries again on the next first use. It does
-not fail the DDL that succeeded. The application role's own statement then
-fails with `permission denied`. The roles need only this:
+creates belong to `owner`, and `app` cannot use them until it is granted
+access. **Popoto grants nothing by default.** On the first save, `app` fails
+loudly with `popoto.backends.postgres.MainRolePermissionError` (a
+`PermissionError`). The message carries the server's own `permission denied`
+text and links to this section. It is not an outage, so `health` is
+untouched. The roles need only this:
 
 ```sql
 CREATE ROLE owner LOGIN PASSWORD '...';
@@ -1934,10 +1920,80 @@ CREATE ROLE app LOGIN PASSWORD '...';
 GRANT CREATE ON DATABASE agents TO owner;   -- creates the popoto schema on first use
 ```
 
-To create the schema yourself, make `owner` its owner instead
-(`CREATE SCHEMA popoto AUTHORIZATION owner`). If you set `POPOTO_SCHEMA_AUTO=0`
-and run the DDL yourself, run the grants above as well. Popoto runs no DDL
-then, so it grants nothing.
+**The default: grant it yourself.** Once a first use has created the schema
+(the failing first save does), run this as `owner`, or as a superuser:
+
+```sql
+GRANT USAGE ON SCHEMA popoto TO app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA popoto TO app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA popoto TO app;
+-- the registry: app reads it to check a table is current; only owner writes it
+REVOKE INSERT, UPDATE, DELETE ON popoto.popoto_schema FROM app;
+-- tables a later first use creates (a new model, a new field's side table)
+ALTER DEFAULT PRIVILEGES FOR ROLE owner IN SCHEMA popoto
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;
+ALTER DEFAULT PRIVILEGES FOR ROLE owner IN SCHEMA popoto
+    GRANT USAGE, SELECT ON SEQUENCES TO app;
+```
+
+`app` never gets `CREATE` on the schema, `TRUNCATE`, or ownership. Read the
+scope of these statements before you run them:
+
+- **Give popoto a schema of its own.** `ON ALL TABLES IN SCHEMA` reaches every
+  table in the schema, not only popoto's, and the default privileges reach
+  every table `owner` creates there later, by hand included. In a schema
+  shared with other tables (`POPOTO_POSTGRES_SCHEMA=public`, say) they hand
+  `app` all of them. There, grant per table instead
+  (`GRANT ... ON TABLE popoto.<table> TO app`).
+- **Do not run them as a superuser for a superuser `owner`.** Run as a
+  superuser, `ON ALL TABLES IN SCHEMA` also grants on tables other roles own.
+  Keep the `FOR ROLE owner` in the default privileges: without it they apply
+  to whichever role runs the statement.
+- **Behind PgBouncer, `app` is the server role.** When the pooler maps clients
+  to a server role (`[databases] ... user=`), that mapped role is the one
+  that needs the grants, and other services using the same mapping get them
+  too.
+
+To create the schema up front instead, make `owner` its owner
+(`CREATE SCHEMA popoto AUTHORIZATION owner`) and run the `USAGE` grant and
+the two default privileges before the first deploy. Then run the `REVOKE` on
+`popoto_schema` once the first use has created it.
+
+**Opt in: `grant_main_role=True`.** `PostgresBackend(..., grant_main_role=True)`
+or `POPOTO_POSTGRES_GRANT_MAIN_ROLE=1` (read by the environment-configured
+backend, next to the other variables) makes popoto grant `app` access to what
+its own DDL creates, and nothing else. The identity check learns each DSN's
+`current_user` (through a pooler, the server role it maps to). When they
+differ, each first-use DDL transaction on the maintenance DSN grants, in that
+same transaction and only on the objects that transaction created:
+
+| Created by that transaction | Granted to `app` |
+|---|---|
+| a popoto table (a model's, a side table, a validity pointer table, an engine table) | `SELECT, INSERT, UPDATE, DELETE` on that table |
+| its sequences | `USAGE, SELECT` on each |
+| the `popoto_schema` registry | `SELECT` only |
+| the schema itself | `USAGE` on it |
+
+"Created by that transaction" is checked in the catalog: the object's
+`pg_class` (or `pg_namespace`) row was written by this transaction and was not
+there when it began. A table only altered (`ADD COLUMN`) is not created, and
+an object another session made, at any moment, never qualifies. So popoto
+never grants on a table you create by hand, on another role's table, or on a
+schema it did not create. It runs no `ALTER DEFAULT PRIVILEGES` and no
+`ON ALL TABLES`. Once the tables exist, a process's first use creates nothing
+and grants nothing. A `REVOKE` you run stays revoked across restarts, and the
+next save fails with `MainRolePermissionError` instead of quietly regaining
+access. If the schema already existed when popoto first ran (you made it, or
+an earlier deploy without the flag did), grant `app` `USAGE` on it yourself.
+Tables created before the flag was turned on are never granted either: use
+the statements above.
+
+The Redis-to-Postgres migration tool follows the same setting. It reads
+`MigrationConfig(grant_main_role=...)`, falling back to
+`POPOTO_POSTGRES_GRANT_MAIN_ROLE`, and grants nothing otherwise.
+
+If you set `POPOTO_SCHEMA_AUTO=0` and run the DDL yourself, popoto runs no
+DDL and so grants nothing, whatever the flag says. Run the grants above.
 
 The reverse case is an existing deployment whose tables were created by
 `app`, before the maintenance DSN was set. There `REINDEX` and additive
@@ -1952,10 +2008,16 @@ REASSIGN OWNED BY app TO owner;
 ```
 
 Then run the grants above, so that `app` keeps its access.
-`tests/postgres/test_postgres_maintenance_dsn.py::test_an_app_role_and_an_owner_role_work_end_to_end`
-runs the whole setup with two real roles: a first save, queries, a model
-first used later inside a unit, `rebuild_indexes()` and `LISTEN`/`NOTIFY`. Its
-control test switches the grant off and gets `permission denied for schema`.
+
+`tests/postgres/test_postgres_maintenance_dsn.py` runs these setups with real
+roles. By default the first save fails with the docs link, and the SQL above
+(the test checks its statements against this page) fixes it. With the flag, the test runs
+a first save, queries, a model first used later inside a unit,
+`rebuild_indexes()` and `LISTEN`/`NOTIFY`, directly and through
+transaction-mode PgBouncer. It also checks that a hand-made table after the
+first save is not granted, that a superuser `owner` does not grant on another
+role's table, that a `REVOKE` survives a new process, and that
+injection-shaped role names are quoted.
 
 `POPOTO_POSTGRES_MAINTENANCE_URL` is read only next to `POPOTO_POSTGRES_URL`,
 by the environment-configured backend. A `PostgresBackend(dsn=...)` you

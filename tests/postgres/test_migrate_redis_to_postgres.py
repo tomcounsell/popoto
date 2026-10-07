@@ -2681,3 +2681,114 @@ def test_behind_transaction_mode_pgbouncer_the_run_lock_is_a_real_session(
     )
     assert again.clean, again.summary()
     assert _lock_holders(admin) == []
+
+
+@pytest.fixture
+def two_roles_target(pg):
+    """``(main, maint, app, schema)``: an app login role on the main DSN and
+    an owner role allowed to create schemas on the maintenance DSN, over a
+    fresh schema (#800). Needs a superuser; dropped afterwards."""
+    import uuid
+
+    import psycopg
+
+    admin = psycopg.connect(pg.dsn, autocommit=True)
+    (superuser,) = admin.execute(
+        "SELECT rolsuper FROM pg_roles WHERE rolname = current_user"
+    ).fetchone()
+    if not superuser:
+        admin.close()
+        pytest.skip("creating roles needs a superuser")
+    tag = uuid.uuid4().hex[:8]
+    prefix = os.environ.get("POPOTO_TEST_ROLE_PREFIX", "").strip() or "popoto_t800"
+    app, owner = f"{prefix}_tool_app_{tag}", f"{prefix}_tool_owner_{tag}"
+    schemas = [f"popoto_t800_tool_{tag}_{n}" for n in ("off", "on")]
+    (database,) = admin.execute("SELECT current_database()").fetchone()
+    for role in (app, owner):
+        admin.execute(f"CREATE ROLE \"{role}\" LOGIN PASSWORD 'popoto-t800-pw'")
+    admin.execute(f'GRANT CREATE ON DATABASE "{database}" TO "{owner}"')
+    main = _with(pg.dsn, user=app, password="popoto-t800-pw")
+    maint = _with(pg.dsn, user=owner, password="popoto-t800-pw")
+    try:
+        yield main, maint, app, schemas, admin
+    finally:
+        from popoto.backends.postgres import _pools
+
+        for (dsn, _pid), pool in list(_pools.items()):
+            if dsn in (main, maint):
+                _pools.pop((dsn, _pid)).close()
+        for role in (app, owner):
+            admin.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE usename = %s",
+                (role,),
+            )
+        for schema in schemas:
+            admin.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        for role in (app, owner):
+            admin.execute(f'DROP OWNED BY "{role}"')
+            admin.execute(f'DROP ROLE "{role}"')
+        admin.close()
+
+
+def test_two_roles_the_run_grants_only_when_asked(
+    tmp_path, monkeypatch, pg, two_roles_target
+):
+    """#800: the tool grants the main role nothing unless asked -- without
+    the flag (and with ``POPOTO_POSTGRES_GRANT_MAIN_ROLE`` unset) its first
+    write as the main role is refused -- and with ``grant_main_role=True``
+    it grants exactly the tables the run created: read/write on the tool's
+    and the model tables, ``SELECT`` only on the registry."""
+    main, maint, app, (off, on), admin = two_roles_target
+    monkeypatch.delenv("POPOTO_POSTGRES_GRANT_MAIN_ROLE", raising=False)
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    with pytest.raises(Exception, match="permission denied"):
+        run_migration(
+            _config(
+                tmp_path / "off",
+                pg,
+                rdb,
+                content,
+                postgres_dsn=main,
+                postgres_maintenance_dsn=maint,
+                postgres_schema=off,
+            )
+        )
+    (granted,) = admin.execute(
+        "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = "
+        "c.relnamespace, aclexplode(c.relacl) a WHERE n.nspname = %s AND "
+        "a.grantee = (SELECT oid FROM pg_roles WHERE rolname = %s)",
+        (off, app),
+    ).fetchone()
+    assert granted == 0
+
+    report = run_migration(
+        _config(
+            tmp_path / "on",
+            pg,
+            rdb,
+            content,
+            postgres_dsn=main,
+            postgres_maintenance_dsn=maint,
+            postgres_schema=on,
+            grant_main_role=True,
+        )
+    )
+    assert report.clean, report.summary()
+    rows = admin.execute(
+        "SELECT c.relname, has_table_privilege(%s, c.oid, 'INSERT'), "
+        "has_table_privilege(%s, c.oid, 'SELECT') FROM pg_class c JOIN "
+        "pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = %s "
+        "AND c.relkind = 'r'",
+        (app, app, on),
+    ).fetchall()
+    assert rows
+    for name, insert, select in rows:
+        assert select, name
+        assert insert is (name != "popoto_schema"), name
+    (default_acls,) = admin.execute(
+        "SELECT count(*) FROM pg_default_acl d JOIN pg_namespace n "
+        "ON n.oid = d.defaclnamespace WHERE n.nspname = %s",
+        (on,),
+    ).fetchone()
+    assert default_acls == 0

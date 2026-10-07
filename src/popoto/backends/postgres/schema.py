@@ -529,175 +529,247 @@ def engine_table_ddl(schema: str, table: str, body: str) -> tuple[str, list[str]
     )
 
 
-def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
+def ensure_table(
+    conn: Any, ts: TableSpec, *, auto: bool, grant_to: Optional[str] = None
+) -> str:
     """Create or check ``ts`` on ``conn`` inside one transaction, under an
     advisory transaction lock (PgBouncer transaction-mode safe). Returns what
     it did: ``"created"``, ``"migrated"`` or ``"current"``.
 
     Raises :class:`SchemaDriftError` for every case it will not reconcile.
+
+    ``grant_to`` (#800, opt-in ``grant_main_role``) names a role to grant
+    access to what this call creates -- the schema, the registry, the table
+    and its companions and sequences -- in the same transaction
+    (:func:`grant_created`). A ``"current"`` table grants nothing.
     """
-    schema_q = quote_ident(ts.schema)
-    registry = f"{schema_q}.{POPOTO_SCHEMA_TABLE}"
     with conn.transaction():
         cur = conn.cursor()
-        # Waiting for another process's DDL is not bounded by the short DDL
-        # lock timeout (a current table never needs it): see ddl_timeout_sql.
+        before = catalog_before(cur, ts.schema) if grant_to is not None else None
+        outcome = _ensure_table_in(cur, ts, auto=auto)
+        if grant_to is not None and before is not None and outcome != "current":
+            grant_created(cur, ts.schema, grant_to, before)
+        return outcome
+
+
+def _ensure_table_in(cur: Any, ts: TableSpec, *, auto: bool) -> str:
+    """:func:`ensure_table`'s work, on ``cur`` inside its transaction."""
+    schema_q = quote_ident(ts.schema)
+    registry = f"{schema_q}.{POPOTO_SCHEMA_TABLE}"
+    # Waiting for another process's DDL is not bounded by the short DDL
+    # lock timeout (a current table never needs it): see ddl_timeout_sql.
+    set_ddl_timeouts(cur, waiting=True)
+    cur.execute(
+        "SELECT pg_advisory_xact_lock(hashtext(%s))", (schema_lock_key(ts.schema),)
+    )
+    exists = cur.execute(
+        "SELECT 1 FROM pg_namespace WHERE nspname = %s", (ts.schema,)
+    ).fetchone()
+    if not exists:
+        if not auto:
+            raise SchemaDriftError(
+                f"schema {ts.schema!r} does not exist and POPOTO_SCHEMA_AUTO=0"
+            )
+        set_ddl_timeouts(cur)
+        cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_q}")
         set_ddl_timeouts(cur, waiting=True)
-        cur.execute(
-            "SELECT pg_advisory_xact_lock(hashtext(%s))", (schema_lock_key(ts.schema),)
-        )
-        exists = cur.execute(
-            "SELECT 1 FROM pg_namespace WHERE nspname = %s", (ts.schema,)
-        ).fetchone()
-        if not exists:
-            if not auto:
-                raise SchemaDriftError(
-                    f"schema {ts.schema!r} does not exist and POPOTO_SCHEMA_AUTO=0"
-                )
-            set_ddl_timeouts(cur)
-            cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_q}")
-            set_ddl_timeouts(cur, waiting=True)
-        cur.execute(_registry_sql(ts.schema))
-        cur.execute(
-            "SELECT pg_advisory_xact_lock(hashtext(%s))",
-            (table_lock_key(ts.schema, ts.table),),
-        )
-        row = cur.execute(
-            f"SELECT model, fingerprint, columns, indexes, format_version, "
-            f"popoto_version FROM {registry} WHERE table_name = %s",
-            (ts.table,),
-        ).fetchone()
-        table_exists = cur.execute(
-            "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
-            (ts.schema, ts.table),
-        ).fetchone()
+    cur.execute(_registry_sql(ts.schema))
+    cur.execute(
+        "SELECT pg_advisory_xact_lock(hashtext(%s))",
+        (table_lock_key(ts.schema, ts.table),),
+    )
+    row = cur.execute(
+        f"SELECT model, fingerprint, columns, indexes, format_version, "
+        f"popoto_version FROM {registry} WHERE table_name = %s",
+        (ts.table,),
+    ).fetchone()
+    table_exists = cur.execute(
+        "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
+        (ts.schema, ts.table),
+    ).fetchone()
 
-        if row is None:
-            if table_exists:
-                raise SchemaDriftError(
-                    f"{ts.schema}.{ts.table} exists but popoto_schema has no record "
-                    f"for it; popoto will not adopt a table it did not create "
-                    f"(model {ts.model})"
-                )
-            if not auto:
-                raise SchemaDriftError(
-                    f"{ts.schema}.{ts.table} does not exist and POPOTO_SCHEMA_AUTO=0 "
-                    f"(model {ts.model})"
-                )
-            ddl = ts.create_sql()
-            set_ddl_timeouts(cur)
-            for stmt in ddl:
-                cur.execute(stmt)
-            _record(cur, ts, ddl, insert=True)
-            return "created"
-
-        stored_model, fingerprint, stored_cols, stored_idx, fmt, version = row
-        if fmt > SCHEMA_FORMAT_VERSION:
+    if row is None:
+        if table_exists:
             raise SchemaDriftError(
-                f"{ts.schema}.{ts.table} was written by popoto {version} with schema "
-                f"format {fmt}; this client understands format "
-                f"{SCHEMA_FORMAT_VERSION} and will not write to it. Upgrade popoto."
-            )
-        if stored_model != ts.model:
-            raise SchemaDriftError(
-                f"{ts.schema}.{ts.table} belongs to model {stored_model!r}, not "
-                f"{ts.model!r}: two models map to one table"
-            )
-        if fingerprint == ts.fingerprint():
-            return "current"
-
-        ours = ts.column_map()
-        theirs = dict(stored_cols)
-        our_idx = {tuple(i) for i in ts.indexes}
-        their_idx = {tuple(i) for i in stored_idx}
-        problems = []
-        for name, sql_type in theirs.items():
-            if name not in ours:
-                problems.append(
-                    f"column {name} ({sql_type}) exists in the database but not in "
-                    "this model: a field was removed, or a newer client extended "
-                    "the table"
-                )
-            elif ours[name] != sql_type:
-                problems.append(
-                    f"column {name} is {sql_type}, model wants {ours[name]}"
-                )
-        for idx in their_idx - our_idx:
-            problems.append(
-                f"index {idx[0]} ({idx[1]}) exists in the database but not in this "
-                "model (key or sorted-field change)"
-            )
-        if problems:
-            raise SchemaDriftError(
-                f"{ts.schema}.{ts.table} (model {ts.model}) differs from the stored "
-                f"schema (written by popoto {version}) in ways popoto will not "
-                "change automatically; migrate it by hand:\n  " + "\n  ".join(problems)
+                f"{ts.schema}.{ts.table} exists but popoto_schema has no record "
+                f"for it; popoto will not adopt a table it did not create "
+                f"(model {ts.model})"
             )
         if not auto:
             raise SchemaDriftError(
-                f"{ts.schema}.{ts.table} needs an additive change and "
-                "POPOTO_SCHEMA_AUTO=0"
+                f"{ts.schema}.{ts.table} does not exist and POPOTO_SCHEMA_AUTO=0 "
+                f"(model {ts.model})"
             )
-        ddl = [
-            f"ALTER TABLE {ts.qualified} ADD COLUMN IF NOT EXISTS "
-            f"{quote_ident(c.name)} {c.sql_type}"
-            for c in ts.columns
-            if c.name not in theirs
-        ]
-        ddl += [ts.index_sql(i) for i in ts.indexes if tuple(i) not in their_idx]
-        # Engine columns added since the table was created (M2b's
-        # _migrated_from / _estimated_fields), and companion tables: both
-        # idempotent, so re-issuing an existing one is a no-op.
-        ddl += [
-            f"ALTER TABLE {ts.qualified} ADD COLUMN IF NOT EXISTS "
-            f"{quote_ident(name)} {decl}"
-            for name, decl in ENGINE_COLUMNS
-        ]
-        ddl += ts.companion_sql()
+        ddl = ts.create_sql()
         set_ddl_timeouts(cur)
         for stmt in ddl:
             cur.execute(stmt)
-        _record(cur, ts, ddl, insert=False)
-        return "migrated"
+        _record(cur, ts, ddl, insert=True)
+        return "created"
+
+    stored_model, fingerprint, stored_cols, stored_idx, fmt, version = row
+    if fmt > SCHEMA_FORMAT_VERSION:
+        raise SchemaDriftError(
+            f"{ts.schema}.{ts.table} was written by popoto {version} with schema "
+            f"format {fmt}; this client understands format "
+            f"{SCHEMA_FORMAT_VERSION} and will not write to it. Upgrade popoto."
+        )
+    if stored_model != ts.model:
+        raise SchemaDriftError(
+            f"{ts.schema}.{ts.table} belongs to model {stored_model!r}, not "
+            f"{ts.model!r}: two models map to one table"
+        )
+    if fingerprint == ts.fingerprint():
+        return "current"
+
+    ours = ts.column_map()
+    theirs = dict(stored_cols)
+    our_idx = {tuple(i) for i in ts.indexes}
+    their_idx = {tuple(i) for i in stored_idx}
+    problems = []
+    for name, sql_type in theirs.items():
+        if name not in ours:
+            problems.append(
+                f"column {name} ({sql_type}) exists in the database but not in "
+                "this model: a field was removed, or a newer client extended "
+                "the table"
+            )
+        elif ours[name] != sql_type:
+            problems.append(f"column {name} is {sql_type}, model wants {ours[name]}")
+    for idx in their_idx - our_idx:
+        problems.append(
+            f"index {idx[0]} ({idx[1]}) exists in the database but not in this "
+            "model (key or sorted-field change)"
+        )
+    if problems:
+        raise SchemaDriftError(
+            f"{ts.schema}.{ts.table} (model {ts.model}) differs from the stored "
+            f"schema (written by popoto {version}) in ways popoto will not "
+            "change automatically; migrate it by hand:\n  " + "\n  ".join(problems)
+        )
+    if not auto:
+        raise SchemaDriftError(
+            f"{ts.schema}.{ts.table} needs an additive change and "
+            "POPOTO_SCHEMA_AUTO=0"
+        )
+    ddl = [
+        f"ALTER TABLE {ts.qualified} ADD COLUMN IF NOT EXISTS "
+        f"{quote_ident(c.name)} {c.sql_type}"
+        for c in ts.columns
+        if c.name not in theirs
+    ]
+    ddl += [ts.index_sql(i) for i in ts.indexes if tuple(i) not in their_idx]
+    # Engine columns added since the table was created (M2b's
+    # _migrated_from / _estimated_fields), and companion tables: both
+    # idempotent, so re-issuing an existing one is a no-op.
+    ddl += [
+        f"ALTER TABLE {ts.qualified} ADD COLUMN IF NOT EXISTS "
+        f"{quote_ident(name)} {decl}"
+        for name, decl in ENGINE_COLUMNS
+    ]
+    ddl += ts.companion_sql()
+    set_ddl_timeouts(cur)
+    for stmt in ddl:
+        cur.execute(stmt)
+    _record(cur, ts, ddl, insert=False)
+    return "migrated"
 
 
-#: What the main role needs on objects another role creates (#800): read and
-#: write every popoto table, draw from its sequences. Never DDL, TRUNCATE or
-#: ownership -- those stay with the role that made them.
+#: What the main role is granted on a table popoto's DDL creates, when the
+#: backend is asked to (``grant_main_role``, #800): read and write it, draw
+#: from its sequences. Never DDL, TRUNCATE or ownership -- those stay with
+#: the role that made it.
 APP_TABLE_PRIVILEGES = "SELECT, INSERT, UPDATE, DELETE"
 APP_SEQUENCE_PRIVILEGES = "USAGE, SELECT"
+#: The schema registry is read on the main DSN (the warm-start check,
+#: ``PostgresBackend._table_if_current``) and written only by first-use DDL,
+#: which runs on the maintenance DSN: the main role gets ``SELECT`` on it and
+#: nothing more, so it cannot rewrite the records DDL decides from.
+APP_REGISTRY_PRIVILEGES = "SELECT"
 
 
-def grant_app_role_statements(schema: str, role: str) -> list[str]:
-    """The idempotent statements of :func:`grant_app_role_sql`, without its
-    transaction and lock."""
-    s = quote_ident(schema)
-    # A role name is whatever the server reports, not a field name, so it is
-    # quoted as Postgres quotes any identifier rather than refused.
-    r = '"' + role.replace('"', '""') + '"'
-    return [
-        f"GRANT USAGE ON SCHEMA {s} TO {r}",
-        f"GRANT {APP_TABLE_PRIVILEGES} ON ALL TABLES IN SCHEMA {s} TO {r}",
-        f"GRANT {APP_SEQUENCE_PRIVILEGES} ON ALL SEQUENCES IN SCHEMA {s} TO {r}",
-        f"ALTER DEFAULT PRIVILEGES IN SCHEMA {s} "
-        f"GRANT {APP_TABLE_PRIVILEGES} ON TABLES TO {r}",
-        f"ALTER DEFAULT PRIVILEGES IN SCHEMA {s} "
-        f"GRANT {APP_SEQUENCE_PRIVILEGES} ON SEQUENCES TO {r}",
-    ]
+def quote_role(role: str) -> str:
+    """Double-quote a role name as Postgres quotes any identifier. A role
+    name is whatever the server reports (``current_user``), not a field
+    name, so it is escaped rather than refused (:func:`quote_ident`)."""
+    return '"' + role.replace('"', '""') + '"'
 
 
-def grant_app_role_sql(schema: str, role: str) -> str:
-    """One transaction granting ``role`` what the main DSN needs on
-    ``schema`` when another role (the maintenance DSN's) creates its objects
-    (#800): ``USAGE`` on the schema, :data:`APP_TABLE_PRIVILEGES` on every
-    table and :data:`APP_SEQUENCE_PRIVILEGES` on every sequence already
-    there, and the same as ``ALTER DEFAULT PRIVILEGES`` for whatever the
-    creating role makes in the schema later. Every statement is idempotent.
+@dataclass(frozen=True)
+class CatalogBefore:
+    """What :func:`grant_created` compares against: the relations already
+    in the schema, and whether the schema itself existed, when the DDL
+    transaction began."""
 
-    It runs under :func:`schema_lock_key`'s advisory lock (its one
-    parameter, so it needs client-side binding): two sessions granting on
-    one object at once can fail with "tuple concurrently updated".
-    Statements on objects the creating role does not own only warn, so this
-    never fails a first use for lack of ownership."""
-    body = "; ".join(grant_app_role_statements(schema, role))
-    return f"BEGIN; SELECT pg_advisory_xact_lock(hashtext(%s)); {body}; COMMIT"
+    relations: frozenset[int]
+    schema_existed: bool
+
+
+def catalog_before(conn: Any, schema: str) -> CatalogBefore:
+    """Read :class:`CatalogBefore` for ``schema`` on ``conn`` (a connection
+    or cursor), inside the DDL transaction it precedes."""
+    rows = conn.execute(
+        "SELECT c.oid FROM pg_class c JOIN pg_namespace n "
+        "ON n.oid = c.relnamespace WHERE n.nspname = %s",
+        (schema,),
+    ).fetchall()
+    (existed,) = conn.execute(
+        "SELECT to_regnamespace(%s) IS NOT NULL", (schema,)
+    ).fetchone()
+    return CatalogBefore(frozenset(int(r[0]) for r in rows), bool(existed))
+
+
+def grant_created(
+    conn: Any, schema: str, role: str, before: CatalogBefore
+) -> list[str]:
+    """Grant ``role`` access to exactly what this transaction created in
+    ``schema`` (#800): run on ``conn`` after the DDL and before its commit.
+
+    "Created here" is two facts together: the object's catalog row was
+    written by this transaction (its ``xmin`` is this transaction's id), and
+    it was not there when the transaction began (``before``). The first
+    excludes everything another session made, however concurrently; the
+    second excludes a table this transaction only altered (``ADD COLUMN``
+    rewrites its ``pg_class`` row). So nothing an admin made by hand, no
+    other role's table and no object a previous process created is ever
+    granted on, and a warm start -- nothing created -- grants nothing, which
+    leaves any ``REVOKE`` an admin has run in place.
+
+    Tables get :data:`APP_TABLE_PRIVILEGES` (the registry only
+    :data:`APP_REGISTRY_PRIVILEGES`), sequences
+    :data:`APP_SEQUENCE_PRIVILEGES`, and the schema ``USAGE`` only when this
+    transaction created it. No ``ALTER DEFAULT PRIVILEGES``, no ``ON ALL
+    TABLES``. Returns the statements it ran."""
+    rows = conn.execute(
+        "SELECT c.oid, c.relkind, c.relname FROM pg_class c JOIN pg_namespace n "
+        "ON n.oid = c.relnamespace WHERE n.nspname = %s "
+        "AND c.relkind IN ('r', 'p', 'S') "
+        "AND c.xmin = pg_current_xact_id_if_assigned()::xid ORDER BY c.oid",
+        (schema,),
+    ).fetchall()
+    (schema_created,) = conn.execute(
+        "SELECT xmin = pg_current_xact_id_if_assigned()::xid "
+        "FROM pg_namespace WHERE nspname = %s",
+        (schema,),
+    ).fetchone() or (False,)
+    s, r = quote_role(schema), quote_role(role)
+    statements: list[str] = []
+    if schema_created and not before.schema_existed:
+        statements.append(f"GRANT USAGE ON SCHEMA {s} TO {r}")
+    for oid, kind, name in rows:
+        if int(oid) in before.relations:
+            continue
+        target = f"{s}.{quote_role(str(name))}"
+        if kind == "S":
+            statements.append(
+                f"GRANT {APP_SEQUENCE_PRIVILEGES} ON SEQUENCE {target} TO {r}"
+            )
+        elif name == POPOTO_SCHEMA_TABLE:
+            statements.append(
+                f"GRANT {APP_REGISTRY_PRIVILEGES} ON TABLE {target} TO {r}"
+            )
+        else:
+            statements.append(f"GRANT {APP_TABLE_PRIVILEGES} ON TABLE {target} TO {r}")
+    for statement in statements:
+        conn.execute(statement)
+    return statements
