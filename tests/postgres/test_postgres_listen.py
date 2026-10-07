@@ -956,3 +956,262 @@ def test_a_silently_dead_session_is_detected_and_replaced(
     got = _drain(sub, 2.0)
     assert got and set(got) == {b"probe"}
     sub.close()
+
+
+# -- a write that read the superseded pid (#803, review of d6e9fede) ---------------
+
+
+def _rows_by_pid(admin, pg, token):
+    table = pg._events_ready()["popoto_pubsub_listener"]
+    return sorted(
+        admin.execute(
+            f"SELECT pid, name FROM {table} WHERE token = %s", (token,)
+        ).fetchall()
+    )
+
+
+def _listed(admin, pid):
+    admin.execute("SELECT pg_stat_clear_snapshot()")
+    (n,) = admin.execute(
+        "SELECT count(*) FROM pg_stat_activity WHERE pid = %s", (pid,)
+    ).fetchone()
+    return n == 1
+
+
+def _is_local_postgres(pid):
+    """Whether ``pid`` is a Postgres process this test may signal: the
+    server runs on this host as a process we can see (never a service
+    container's pid that happens to name one of the runner's)."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "postgres" in out
+
+
+@pytest.mark.parametrize("how", ["freeze", "sigstop"])
+def test_a_subscribe_that_read_the_old_pid_leaves_no_row_under_it(
+    pg, admin, monkeypatch, request, how
+):
+    """``subscribe("z")`` reads the session's pid, then its INSERT is held
+    while the session goes silent and the liveness check replaces it. The
+    reconnect re-registers ``z`` under the new pid and deletes the old pid's
+    rows -- before the held INSERT lands under the old pid. The old backend
+    is still listed in ``pg_stat_activity`` (stopped, as a partitioned peer
+    stays until the server's keepalive gives up), so that row is counted.
+
+    On ``d6e9fede`` the row stayed (the sweep keeps a key still subscribed)
+    and ``publish("z")`` returned 2 for one subscriber. Now the sweep the
+    subscriber runs as it releases its lock deletes its rows under any pid
+    but the current one. ``sigstop`` is the reviewer's reproduction (the old
+    backend stopped); ``freeze`` holds the session's bytes in a proxy, which
+    needs no access to the server's processes."""
+    import signal
+
+    from popoto.backends.postgres import pubsub as pubsub_module
+    from popoto.fields.constants import Defaults
+
+    monkeypatch.setattr(Defaults, "PG_LISTEN_LIVENESS_INTERVAL_SECONDS", 0.3)
+    monkeypatch.setattr(Defaults, "PG_LISTEN_LIVENESS_TIMEOUT_SECONDS", 0.3)
+    if how == "freeze":
+        _, dsn, proxy = request.getfixturevalue("proxied")
+    else:
+        _, dsn = request.getfixturevalue("tagged")
+    sub = _subscribed(pg, "keep")
+    hub = hub_for(dsn)
+    old = hub.backend_pid
+    assert sub.pid == old
+    if how == "sigstop" and not _is_local_postgres(old):
+        sub.close()
+        pytest.skip("the server's backends are not processes this test can stop")
+
+    in_insert, release = threading.Event(), threading.Event()
+    read_pids = []
+    real_insert = sub._insert
+
+    def held_insert(row):
+        if row[3] == "z":
+            read_pids.append(row[0])
+            in_insert.set()
+            assert release.wait(10)
+        real_insert(row)
+
+    sub._insert = held_insert
+    resumed = threading.Event()
+    original = pubsub_module._PubSubSink.resume
+
+    def resume(self, conn, backend_pid):
+        try:
+            return original(self, conn, backend_pid)
+        finally:
+            if self is sub._sink:
+                resumed.set()
+
+    monkeypatch.setattr(pubsub_module._PubSubSink, "resume", resume)
+    done, errors = threading.Event(), []
+
+    def subscribe_z():
+        try:
+            sub.subscribe("z")
+        except BaseException as exc:  # pragma: no cover - reported below
+            errors.append(exc)
+        finally:
+            done.set()
+
+    threading.Thread(target=subscribe_z, daemon=True).start()
+    assert in_insert.wait(5)
+    if how == "freeze":
+        proxy.freeze()
+    else:
+        os.kill(old, signal.SIGSTOP)
+    try:
+        # The reconnect's resume ran to the end (its cleanup included)
+        # while the INSERT that read the old pid was still held.
+        assert resumed.wait(10)
+        new = hub.backend_pid
+        assert new not in (None, old)
+        assert not done.is_set()
+        release.set()
+        assert done.wait(10) and not errors
+        assert read_pids == [old]
+        assert _listed(admin, old)  # so a row left under it would count
+        assert _rows_by_pid(admin, pg, sub.token) == [(new, "keep"), (new, "z")]
+        assert pg.publish("z", b"1") == 1
+        assert pg.publish("keep", b"1") == 1
+    finally:
+        release.set()
+        if how == "sigstop":
+            os.kill(old, signal.SIGCONT)
+        admin.execute("SELECT pg_terminate_backend(%s)", (old,))
+    sub.close()
+
+
+def test_a_subscriber_stuck_through_twenty_reconnects_ends_with_one_row_each(
+    pg, admin, tagged
+):
+    """A subscriber whose registration write is held (having read the first
+    pid) through 20 reconnects: none of them waits for it, its rows stay
+    bounded meanwhile, and once the write lands its rows are exactly one per
+    channel under the latest pid -- none under the 20 superseded ones, every
+    one of which is still a live session here."""
+    import psycopg
+    from psycopg.conninfo import make_conninfo
+
+    app, _ = tagged
+    sub = _subscribed(pg, "keep", "x")
+    sink = sub._sink
+    first = sink.pid
+    in_insert, release = threading.Event(), threading.Event()
+    real_insert = sub._insert
+
+    def held_insert(row):
+        if row[3] == "z":
+            assert row[0] == first
+            in_insert.set()
+            assert release.wait(30)
+        real_insert(row)
+
+    sub._insert = held_insert
+    done = threading.Event()
+
+    def subscribe_z():
+        try:
+            sub.subscribe("z")
+        finally:
+            done.set()
+
+    threading.Thread(target=subscribe_z, daemon=True).start()
+    assert in_insert.wait(5)
+    sessions = []
+    try:
+        for _ in range(20):
+            conn = psycopg.connect(
+                make_conninfo(pg.dsn, application_name=app), autocommit=True
+            )
+            sessions.append(conn)
+            started = time.monotonic()
+            sink.resume(conn, conn.info.backend_pid)  # as the hub's thread does
+            assert time.monotonic() - started < 1.0
+            assert sink.stale <= {(False, "keep"), (False, "x"), (False, "z")}
+            assert len(_rows_by_pid(admin, pg, sub.token)) <= 3
+        release.set()
+        assert done.wait(10)
+        latest = sessions[-1].info.backend_pid
+        assert not sink.stale and not sink.lock.locked()
+        assert _rows_by_pid(admin, pg, sub.token) == [
+            (latest, "keep"),
+            (latest, "x"),
+            (latest, "z"),
+        ]
+        assert all(_listed(admin, c.info.backend_pid) for c in sessions)
+        assert pg.publish("z", b"1") == 1
+    finally:
+        release.set()
+        sub.close()
+        for conn in sessions:
+            conn.close()
+
+
+# -- undecodable payloads (#803) ---------------------------------------------------
+
+
+def test_the_hub_survives_a_payload_its_session_cannot_decode(
+    pg, admin, monkeypatch, caplog
+):
+    """On a ``SQL_ASCII`` session psycopg's ``ascii`` codec cannot decode a
+    non-ASCII ``NOTIFY``; on ``d6e9fede`` the first one killed the hub's
+    thread, and with it every subscriber's delivery. Now it is decoded as
+    UTF-8 with replacement characters, logged once, and the hub carries on.
+    ``client_encoding=SQL_ASCII`` on the listen session gives it the same
+    encoding a ``SQL_ASCII`` database does."""
+    import logging
+
+    from psycopg.conninfo import make_conninfo
+
+    app = f"popoto_test_listen_{uuid.uuid4().hex[:8]}"
+    dsn = make_conninfo(pg.dsn, application_name=app, client_encoding="SQL_ASCII")
+    monkeypatch.setenv(events_module.LISTEN_URL_ENV, dsn)
+    try:
+        sub = _subscribed(pg, "after")
+        hub = hub_for(dsn)
+        assert hub._conn.info.encoding == "ascii"
+        channel = pubsub_channel(pg.schema)
+        sink = listen_module.QueueSink()
+        hub.attach(channel, sink)
+        with caplog.at_level(logging.WARNING, logger="POPOTO.postgres.listen"):
+            for _ in range(2):  # valid UTF-8, but not ASCII
+                admin.execute("SELECT pg_notify(%s, %s)", (channel, "日本"))
+            assert pg.publish("after", b"still here") == 1
+            assert _drain(sub, 2.0, want=1) == [b"still here"]
+
+            # What psycopg reads while a statement runs on the hub's
+            # connection reaches the hub through the libpq-level handler,
+            # which decodes the same way.
+            class Raw:
+                relname = channel.encode()
+                extra = b"\xe9\xff"  # not UTF-8 either
+                be_pid = 0
+
+            hub._conn.pgconn.notify_handler(Raw())
+        items, _ = sink.take(0)
+        assert items.count("日本") == 2
+        assert items[-1] == "��"
+        assert hub._thread is not None and hub._thread.is_alive()
+        undecodable = [r for r in caplog.records if "cannot decode" in r.message]
+        assert len(undecodable) == 1
+        hub.detach(channel, sink)
+        sub.close()
+    finally:
+        hub_for(dsn).close()
+        admin.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE application_name = %s",
+            (app,),
+        )

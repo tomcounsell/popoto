@@ -38,6 +38,17 @@ them) and the hub's wait is bounded: after
 ``SELECT 1`` and drops the session -- reconnecting as above -- when no reply
 comes within ``Defaults.PG_LISTEN_LIVENESS_TIMEOUT_SECONDS``.
 
+**Undecodable payloads.** A notification is decoded with the session's
+encoding. Bytes it cannot decode -- possible only on a ``SQL_ASCII``
+database, where the server stores bytes unchecked, so any non-ASCII
+``NOTIFY`` (even valid UTF-8) fails the ``ascii`` codec -- are decoded as
+UTF-8 with ``errors="replace"`` (U+FFFD for each invalid sequence) and
+delivered as ``str``, the sink contract; the first is logged at WARNING,
+once per hub. popoto's own payloads are ASCII and never take that path, and
+pub/sub drops a foreign payload anyway, so this only keeps a stranger's
+``NOTIFY`` from stopping the hub's thread. A replaced payload is measured
+by its decoded form, so its byte size may differ from the server's.
+
 **Fork.** Hubs are per ``(dsn, pid)``: a child process never touches the
 parent's socket (it never even closes it -- closing would end the parent's
 session), and opens its own on first use. Sinks re-attach when they notice
@@ -305,6 +316,7 @@ class ListenHub:
         self.dropped = 0
         """Messages every sink of this hub has discarded unread (the
         :class:`QueueSink` caps), summed over the hub's life."""
+        self._warned_undecodable = False
         self._heard = 0.0
         """``time.monotonic()`` when the session last proved alive (connect,
         a command's reply, readable data, a liveness reply)."""
@@ -469,7 +481,16 @@ class ListenHub:
             **extra,
         )
         try:
-            conn.add_notify_handler(lambda n: self._on_notify(n.channel, n.payload))
+            # The hub decodes notifications itself (``_decode``) rather than
+            # through ``add_notify_handler``: psycopg decodes strictly, so one
+            # undecodable payload arriving during an ``execute`` would raise
+            # out of it (and lose the command). Replacing the libpq-level
+            # handler also bypasses psycopg's own backlog, which the hub never
+            # reads.
+            enc = conn.info.encoding
+            conn.pgconn.notify_handler = lambda n: self._on_notify(
+                self._decode(n.relname, enc), self._decode(n.extra, enc)
+            )
             with self._cond:
                 channels = set(self._sinks) | {
                     c.channel for c in self._barriers.values()
@@ -685,7 +706,24 @@ class ListenHub:
             n = pgconn.notifies()
             if n is None:
                 break
-            self._on_notify(n.relname.decode(enc), n.extra.decode(enc))
+            self._on_notify(self._decode(n.relname, enc), self._decode(n.extra, enc))
+
+    def _decode(self, raw: bytes, enc: str) -> str:
+        """``raw`` in the session's encoding; when it is not valid there,
+        UTF-8 with replacement characters (module docstring), logged once."""
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError) as exc:
+            if not self._warned_undecodable:
+                self._warned_undecodable = True
+                logger.warning(
+                    "popoto LISTEN session received a notification it cannot "
+                    "decode as %s (%s); delivering it with replacement "
+                    "characters (logged once per session hub)",
+                    enc,
+                    exc,
+                )
+            return raw.decode("utf-8", errors="replace")
 
     def _until_liveness_check(self) -> Optional[float]:
         """Seconds until the session is due a liveness check (``<= 0``: due

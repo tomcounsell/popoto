@@ -1059,13 +1059,30 @@ session count.
   because the channel may have been subscribed again since and its fresh
   row is indistinguishable from the stale one. The hub takes the lock
   without waiting; when it is busy, the subscriber holding it does the
-  cleanup as it lets go. Pinned by
+  cleanup as it lets go. That cleanup also deletes the subscriber's rows
+  under any pid but the current one: a registration write that read the
+  old pid can land after the reconnect's own delete, and the old backend
+  may still be listed in `pg_stat_activity` (a partitioned peer stays until
+  the server's keepalive gives up -- about 2 h by default), where its row
+  would count the subscriber twice. A write that raises skips the cleanup
+  until the subscriber's next poll. Pinned by
   `test_postgres_listen.py::test_a_terminated_listen_session_reconnects_and_relistens`,
   `::test_a_reconnect_mid_stream_keeps_order_and_loses_only_the_gap`,
   `::test_a_blocking_stream_read_loses_nothing_across_a_reconnect`,
   `::test_a_slow_subscriber_write_does_not_stall_the_reconnect`,
-  `::test_a_channel_resubscribed_during_the_reconnect_keeps_its_registration`
-  and `::test_a_busy_subscriber_sweeps_what_the_reconnect_left`.
+  `::test_a_channel_resubscribed_during_the_reconnect_keeps_its_registration`,
+  `::test_a_busy_subscriber_sweeps_what_the_reconnect_left`,
+  `::test_a_subscribe_that_read_the_old_pid_leaves_no_row_under_it` and
+  `::test_a_subscriber_stuck_through_twenty_reconnects_ends_with_one_row_each`.
+- **Undecodable payloads** (#803). A notification is decoded with the
+  session's encoding. On a `SQL_ASCII` database (or session) that is the
+  `ascii` codec, so any non-ASCII `NOTIFY` -- even valid UTF-8 -- used to
+  raise on the hub's thread and stop every subscriber's delivery. Such a
+  payload is now decoded as UTF-8 with U+FFFD for invalid sequences, logged
+  once per hub at WARNING, and delivered as text like any other; popoto's
+  own payloads are ASCII and never take this path, and pub/sub drops a
+  foreign payload anyway. Pinned by
+  `::test_the_hub_survives_a_payload_its_session_cannot_decode`.
 - **Dead connections** (#803). A session whose peer vanished without a FIN
   or RST -- a NAT or load-balancer entry that silently expired -- looks
   idle forever to a plain wait, so the hub checks. The session sets TCP
