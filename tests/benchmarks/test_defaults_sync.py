@@ -269,6 +269,11 @@ class TestDefaultsSync:
             "PG_DDL_LOCK_TIMEOUT_MS",
             "PG_DDL_SCHEMA_LOCK_TIMEOUT_MS",
             "PG_DDL_STATEMENT_TIMEOUT_MS",
+            # ExistenceFilter v2 rebuild lock expiry (#775, PR #801 review):
+            # read from Defaults each time a conversion takes or renews its
+            # lock (the rebuild-lock tests monkeypatch it short). It bounds
+            # how long a crashed rebuild blocks the next, not a score.
+            "BLOOM_REBUILD_LOCK_TTL_MS",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

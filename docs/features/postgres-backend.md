@@ -1404,8 +1404,14 @@ result = Memory.check_indexes()
 # {'class_set': 0, 'partial_writes': 0, 'key_fields': {...}, 'sorted_fields': {...},
 #  'geo_fields': {}, 'composite_indexes': {},
 #  'side_tables': {'lexical': {'orphans': 0, 'missing': 0, 'stale': 1}, ...},
-#  'invalid_indexes': 0, 'total': 1}
+#  'invalid_indexes': 0, 'legacy_hash': [], 'stale_bloom_staging': [],
+#  'total': 1}
 ```
+
+`legacy_hash` and `stale_bloom_staging` are always `[]` here. They describe
+Redis bloom filters (v1-hash filters, and staging keys left by a dead v2
+conversion), and Postgres keeps an exact token table instead of a bit array.
+`rebuild_indexes(bloom_hash_version=2)` is accepted and has no further effect.
 
 `total` sums `partial_writes`, `invalid_indexes` and every `side_tables`
 count.
