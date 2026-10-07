@@ -535,11 +535,11 @@ class ExistenceFilter(Field):
         class_name = type(model_instance).__name__
         return f"$EF:{class_name}:{self.name}"
 
-    def _class_bloom_key(self, model_class) -> str:
+    def _class_bloom_key(self, model_class: Any) -> str:
         """``$EF:{ClassName}:{field_name}`` from the model class."""
         return f"$EF:{model_class.__name__}:{self.name}"  # type: ignore[attr-defined]
 
-    def hash_version(self, model_class) -> "int | None":
+    def hash_version(self, model_class: Any) -> "int | None":
         """The hash version this field's Redis filter is built with (#775).
 
         ``2`` for a filter created since #775, ``1`` for a legacy filter
@@ -558,7 +558,7 @@ class ExistenceFilter(Field):
             return 2
         return 1 if client.exists(key) else None
 
-    def _begin_v2_rebuild(self, model_class) -> "str | None":
+    def _begin_v2_rebuild(self, model_class: Any) -> "str | None":
         """Open a v2 staging key when this field's filter is legacy v1.
 
         Returns the staging key (the caller re-saves every record, which
@@ -577,7 +577,7 @@ class ExistenceFilter(Field):
         pipe.execute()
         return staging
 
-    def _finish_v2_rebuild(self, model_class, staging: str) -> None:
+    def _finish_v2_rebuild(self, model_class: Any, staging: str) -> None:
         """Swap the finished v2 staging key over the v1 filter in one RENAME.
 
         Readers see the complete v1 filter up to this command and the

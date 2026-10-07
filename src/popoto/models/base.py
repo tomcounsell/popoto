@@ -3499,14 +3499,14 @@ class Model(metaclass=ModelBase):
         return RebuildIndexesResult(count, diverged_keys)
 
     @classmethod
-    def _bloom_fields(cls) -> list:
+    def _bloom_fields(cls) -> "list[Any]":
         """The model's ``ExistenceFilter`` fields, in declaration order."""
         from ..fields.existence_filter import ExistenceFilter
 
         return [f for f in cls._meta.fields.values() if isinstance(f, ExistenceFilter)]
 
     @classmethod
-    def _begin_bloom_rebuilds(cls) -> list:
+    def _begin_bloom_rebuilds(cls) -> "list[tuple[Any, str]]":
         """``[(field, staging_key)]`` for each legacy-hash (v1) bloom filter."""
         out = []
         for field in cls._bloom_fields():
@@ -3516,7 +3516,7 @@ class Model(metaclass=ModelBase):
         return out
 
     @classmethod
-    def _rebuild_from_records(cls, batch_size: int) -> "tuple[int, list]":
+    def _rebuild_from_records(cls, batch_size: int) -> "tuple[int, list[str]]":
         """Step 2 of :meth:`rebuild_indexes`: re-run every record's hooks.
 
         Returns ``(count, diverged_keys)``.
@@ -3526,7 +3526,7 @@ class Model(metaclass=ModelBase):
         # Step 2: SCAN all instance keys and rebuild indexes
         instance_pattern = cls._meta.db_class_key.redis_key + ":*"
         count = 0
-        diverged_keys: list = []
+        diverged_keys: "list[str]" = []
         pipeline = get_REDIS_DB().pipeline()
         batch_count = 0
 
@@ -3839,7 +3839,7 @@ class Model(metaclass=ModelBase):
                     break
             return values
 
-        result = {
+        result: dict[str, Any] = {
             "class_set": 0,
             "partial_writes": 0,
             "key_fields": {},
