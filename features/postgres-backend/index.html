@@ -4969,9 +4969,11 @@ there. A rolled-back write leaves no entry, and a Postgres-bound journal and
 its reconciler send Redis no command at all. Pinned by
 <code>tests/postgres/test_postgres_journal.py</code> and
 <code>tests/postgres/test_postgres_events.py::test_a_postgres_journal_and_its_reconciler_send_redis_nothing</code>.</p>
-<p><strong>Not on Postgres yet.</strong> <code>MemoryTelemetry</code>'s <code>AssemblyEvent</code> declares
-<code>Meta.ttl</code>, refused until M5, so a Postgres-bound telemetry recorder fails
-open (it records nothing). <code>SubconsciousMemory(auditable_extraction=…)</code> keeps
+<p><strong>Memory telemetry</strong> runs on Postgres since M5's record expiry:
+<code>AssemblyEvent</code> declares <code>Meta.ttl</code>, so its events expire there as on Redis,
+and <code>report_outcomes()</code> and <code>TelemetryAnalyzer</code> read them back. Pinned by
+<code>tests/test_memory_telemetry.py</code>, whose every test runs on both legs.</p>
+<p><strong>Not on Postgres yet.</strong> <code>SubconsciousMemory(auditable_extraction=…)</code> keeps
 its decision log in Redis (<code>extraction/decision_log.py</code> is Redis-only, plan
 §1), so on a Postgres-bound model it raises <code>BackendCapabilityError</code> at
 construction.</p>
@@ -5098,9 +5100,14 @@ streams), else the process default; <code>reconciliation_consumer</code> names
   (<code>STREAM_WAIT_POLL_SECONDS</code>), after which the read runs again anyway --
   the fallback poll that bounds a lost notification. Cancelling the task
   awaiting a read wakes its worker thread at once, and the thread returns
-  without reading again, so a cancelled read claims nothing it had not
-  already claimed. <code>consumer.close()</code> (or the end of <code>run()</code>) detaches the
-  consumer's waiter.</li>
+  without reading again: a cancel that lands while the thread is <em>waiting</em>
+  claims nothing. One that lands while a read is already running in the
+  thread cannot stop it -- that read commits, and the entries it claimed
+  stay pending under the consumer, their reply discarded with the cancelled
+  task. They are not lost: <code>XPENDING</code> lists them and <code>XCLAIM</code>/<code>XAUTOCLAIM</code>
+  (or the consumer's own <code>0</code>-id re-read) recovers them, as for any consumer
+  that died holding entries. <code>consumer.close()</code> (or the end of <code>run()</code>)
+  detaches the consumer's waiter.</li>
 </ul>
 <p><strong>Pub/sub.</strong> <code>Publisher.publish</code> is one <code>pg_notify</code> and <code>Subscriber</code> polls a
 <code>PostgresPubSub</code>, a redis-py-shaped <code>PubSub</code> (<code>subscribe</code>, <code>psubscribe</code>,
@@ -5182,26 +5189,85 @@ session count.</p>
   (0.2 s doubling to 5 s), re-<code>LISTEN</code>s every channel and re-registers every
   subscription under the new pid on its own session, before any subscriber
   polls. <strong>A pub/sub message published while the session is down is lost</strong>
-  -- <code>NOTIFY</code> keeps nothing for a session that is not listening -- and
-  <code>publish</code> counts 0 for it (the registrations name a dead pid). That is
+  -- <code>NOTIFY</code> keeps nothing for a session that is not listening. That is
   the same gap, in kind, as a Redis subscriber's: messages published while
-  its connection is down are not delivered. Order is kept across the gap
-  and nothing is delivered twice. <strong>Stream reads lose nothing</strong>: an entry is
-  a row, and the reconnect wakes every blocked reader to read again
-  (well before the fallback poll). Pinned by
+  its connection is down are not delivered. <code>publish</code>'s count for such a
+  message is <em>usually</em> 0, because the registrations name a dead pid, but
+  not always: <code>pg_stat_activity</code> lags a killed backend by a moment, so a
+  message published just after the drop can still count its subscribers
+  (in a review run, 2 of 34 lost messages were counted). Read the count as
+  advisory -- the subscriptions registered and alive as far as the server
+  knew -- never as a delivery receipt. Order is kept across the gap and
+  nothing is delivered twice. <strong>Stream reads lose nothing</strong>: an entry is a
+  row, and the reconnect wakes every blocked reader to read again (well
+  before the fallback poll). Re-registration works from a snapshot of each
+  subscriber's subscriptions, never waiting on a subscriber's own lock, so
+  one subscriber in the middle of a slow registration write cannot stall
+  the reconnect for the others (#803). Only the follow-up cleanup -- a
+  snapshot row for a channel unsubscribed meanwhile -- needs that lock,
+  because the channel may have been subscribed again since and its fresh
+  row is indistinguishable from the stale one. The hub takes the lock
+  without waiting; when it is busy, the subscriber holding it does the
+  cleanup as it lets go. That cleanup also deletes the subscriber's rows
+  under any pid but the current one: a registration write that read the
+  old pid can land after the reconnect's own delete, and the old backend
+  may still be listed in <code>pg_stat_activity</code> (a partitioned peer stays until
+  the server's keepalive gives up -- about 2 h by default), where its row
+  would count the subscriber twice. A write that raises skips the cleanup
+  until the subscriber's next poll. Pinned by
   <code>test_postgres_listen.py::test_a_terminated_listen_session_reconnects_and_relistens</code>,
-  <code>::test_a_reconnect_mid_stream_keeps_order_and_loses_only_the_gap</code> and
-  <code>::test_a_blocking_stream_read_loses_nothing_across_a_reconnect</code>.</li>
+  <code>::test_a_reconnect_mid_stream_keeps_order_and_loses_only_the_gap</code>,
+  <code>::test_a_blocking_stream_read_loses_nothing_across_a_reconnect</code>,
+  <code>::test_a_slow_subscriber_write_does_not_stall_the_reconnect</code>,
+  <code>::test_a_channel_resubscribed_during_the_reconnect_keeps_its_registration</code>,
+  <code>::test_a_busy_subscriber_sweeps_what_the_reconnect_left</code>,
+  <code>::test_a_subscribe_that_read_the_old_pid_leaves_no_row_under_it</code> and
+  <code>::test_a_subscriber_stuck_through_twenty_reconnects_ends_with_one_row_each</code>.</li>
+<li><strong>Undecodable payloads</strong> (#803). A notification is decoded with the
+  session's encoding. On a <code>SQL_ASCII</code> database (or session) that is the
+  <code>ascii</code> codec, so any non-ASCII <code>NOTIFY</code> -- even valid UTF-8 -- used to
+  raise on the hub's thread and stop every subscriber's delivery. Such a
+  payload is now decoded as UTF-8 with U+FFFD for invalid sequences, logged
+  once per hub at WARNING, and delivered as text like any other; popoto's
+  own payloads are ASCII and never take this path, and pub/sub drops a
+  foreign payload anyway. Pinned by
+  <code>::test_the_hub_survives_a_payload_its_session_cannot_decode</code>.</li>
+<li><strong>Dead connections</strong> (#803). A session whose peer vanished without a FIN
+  or RST -- a NAT or load-balancer entry that silently expired -- looks
+  idle forever to a plain wait, so the hub checks. The session sets TCP
+  keepalives (<code>keepalives</code>, <code>keepalives_idle</code>, <code>keepalives_interval</code>,
+  <code>keepalives_count</code> from <code>Defaults.PG_LISTEN_KEEPALIVES*</code>: probe after
+  30 s idle, every 10 s, give up after 3) unless its DSN names them, and the
+  hub's wait is bounded: after <code>Defaults.PG_LISTEN_LIVENESS_INTERVAL_SECONDS</code>
+  (30 s) without traffic it sends <code>SELECT 1</code> and, if no reply arrives within
+  <code>Defaults.PG_LISTEN_LIVENESS_TIMEOUT_SECONDS</code> (10 s), drops the session
+  and reconnects as above. A silent drop is therefore noticed within about
+  40 s, on any platform, whether or not the OS honours the keepalive
+  parameters. Pinned by
+  <code>::test_a_silently_dead_session_is_detected_and_replaced</code>, which freezes
+  the session's traffic in a TCP proxy.</li>
 <li><strong>Fork.</strong> The session belongs to the process that opened it: a forked
   child opens its own on first use and never touches (or closes) the
   parent's, and a subscriber the child inherited re-attaches there with a
-  fresh registration token.</li>
+  fresh registration token. An inherited subscriber that the child closes
+  or unsubscribes before it ever polls there forgets its subscriptions
+  locally and leaves the parent's <code>popoto_pubsub_listener</code> rows alone, so
+  the parent's <code>publish</code> count is unchanged (#803;
+  <code>::test_a_forked_child_never_drops_the_parents_registrations</code>).</li>
 <li><strong>Back-pressure.</strong> A subscriber that stops reading keeps at most 100 000
-  unread messages (<code>listen.QUEUE_SINK_MAX_PENDING</code>); past that the oldest
-  are dropped and logged -- the analogue of Redis disconnecting a pub/sub
-  client past its <code>client-output-buffer-limit</code>. A stream reader only keeps
-  which streams were notified, so it costs nothing while it is not
-  waiting.</li>
+  unread messages (<code>Defaults.PG_LISTEN_QUEUE_MAX_MESSAGES</code>) <strong>and</strong> at most
+  32 MiB of unread payload (<code>Defaults.PG_LISTEN_QUEUE_MAX_BYTES</code>, Redis's
+  default pub/sub <code>client-output-buffer-limit</code> hard cap); past either, the
+  oldest are dropped -- the analogue of Redis disconnecting a pub/sub client
+  past that limit. The count cap alone allowed about 800 MB of near-limit
+  payloads per stalled subscriber. Drops are logged at WARNING (the first,
+  then every 10 000th) and counted: <code>pubsub.dropped</code> and
+  <code>pubsub.dropped_bytes</code> per subscriber (<code>queued_bytes</code> is what it holds
+  unread now, in UTF-8 bytes, so a foreign non-ASCII <code>NOTIFY</code> on the
+  channel counts at its real size) and <code>hub.dropped</code> for every subscriber
+  on the shared session (<code>popoto.backends.postgres.listen.hub_for(dsn)</code>). Both caps are read when
+  the subscriber is made. A stream reader only keeps which streams were
+  notified, so it costs nothing while it is not waiting.</li>
 </ul>
 <p><strong>Divergences</strong> (stream and pub/sub; Redis behaviour unchanged):</p>
 <table>
