@@ -20,15 +20,18 @@ names a transaction-mode PgBouncer in front of the database
 """
 
 import os
+import socket
+import threading
 import time
 import uuid
 
 import pytest
 
 import popoto
-from popoto.backends import _swap_instance, set_backend
+from popoto.backends import BackendUnavailableError, _swap_instance, set_backend
 from popoto.backends.postgres import (
     MAINTENANCE_URL_ENV,
+    MaintenanceConnectionError,
     MaintenanceDsnMismatchError,
     PostgresBackend,
     _pools,
@@ -62,6 +65,21 @@ def test_unset_or_same_as_main_means_the_main_dsn(monkeypatch):
         # No connection is opened to decide it: there is nothing to verify.
         assert backend._session_dsn() == "postgresql://h/db"
         assert backend.listen_dsn == "postgresql://h/db"
+
+
+def test_a_dsn_differing_only_in_order_or_password_is_the_main_dsn(monkeypatch):
+    monkeypatch.delenv(events_module.LISTEN_URL_ENV, raising=False)
+    main = "host=h port=5432 dbname=db user=app"
+    for same in (
+        "dbname=db user=app host=h port=5432",
+        "postgresql://app@h:5432/db",
+        "host=h port=5432 dbname=db user=app password=other",
+    ):
+        backend = PostgresBackend(dsn=main, maintenance_dsn=same)
+        assert backend.maintenance_dsn is None, same
+        assert backend._session_dsn() == main
+    for other in ("host=h port=5432 dbname=db user=owner", "host=direct dbname=db"):
+        assert PostgresBackend(dsn=main, maintenance_dsn=other).maintenance_dsn
 
 
 def test_backend_from_env_reads_the_maintenance_url(monkeypatch):
@@ -349,3 +367,204 @@ def test_behind_transaction_mode_pgbouncer(bouncer, ddl_log, pg):
         assert got in ("hello", b"hello")
     finally:
         sub.close()
+
+
+def test_concurrent_first_uses_check_the_identity_once(split, monkeypatch):
+    backend, _, _ = split
+    calls = []
+    real = backend._database_identity
+
+    def counted(dsn):
+        calls.append(dsn)
+        time.sleep(0.05)  # widen the window two unguarded checks would share
+        return real(dsn)
+
+    monkeypatch.setattr(backend, "_database_identity", counted)
+    barrier = threading.Barrier(8)
+    results = []
+
+    def first_use():
+        barrier.wait()
+        results.append(backend._session_dsn())
+
+    threads = [threading.Thread(target=first_use) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert results == [backend.maintenance_dsn] * 8
+    assert len(calls) == 2  # main + maintenance, once
+
+
+def _closed_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def test_an_unreachable_maintenance_dsn_is_not_an_outage(pg, monkeypatch):
+    """Only the work that needs the maintenance DSN fails, with an error
+    naming it; the main backend stays healthy and no write is counted as
+    dropped (#800 review)."""
+    monkeypatch.delenv(events_module.LISTEN_URL_ENV, raising=False)
+    down = _conninfo(
+        pg.dsn,
+        host="127.0.0.1",
+        hostaddr="127.0.0.1",
+        port=str(_closed_port()),
+        password="s3cret-800-down",
+    )
+    backend = PostgresBackend(dsn=pg.dsn, schema=pg.schema, maintenance_dsn=down)
+    previous = set_backend(backend)
+    previous_instance = _swap_instance("postgres", backend)
+    try:
+        with pytest.raises(MaintenanceConnectionError) as caught:
+            DsnDoc(name="a").save()
+        with pytest.raises(MaintenanceConnectionError):
+            backend.listen_dsn
+    finally:
+        _swap_instance("postgres", previous_instance)
+        set_backend(previous)
+        _close_pool(pg.dsn)
+    assert not isinstance(caught.value, BackendUnavailableError)
+    assert isinstance(caught.value, ConnectionError)
+    message = str(caught.value)
+    assert "maintenance DSN" in message and "s3cret-800-down" not in message
+    assert backend.health.ok
+    assert backend.health.consecutive_failures == 0
+    assert backend.health.dropped_writes == 0
+
+
+# -- two roles: an app role on the main DSN, an owner role on the maintenance one ----
+
+
+@pytest.fixture
+def two_roles(pg, admin, monkeypatch):
+    """``(backend, app, owner, schema)``: the documented split -- a login
+    role with no DDL rights on the main DSN (through
+    ``POPOTO_TEST_PGBOUNCER_URL`` when set, whose auth file must then list
+    ``popoto_t800_app`` and ``popoto_t800_owner``) and a role allowed to
+    create schemas on the maintenance DSN -- over a schema neither has seen.
+    Needs a superuser to create the roles; skips otherwise. Drops both roles
+    and everything they own afterwards."""
+    (superuser,) = admin.execute(
+        "SELECT rolsuper FROM pg_roles WHERE rolname = current_user"
+    ).fetchone()
+    if not superuser:
+        pytest.skip("creating roles needs a superuser")
+    monkeypatch.delenv(events_module.LISTEN_URL_ENV, raising=False)
+    bouncer = os.environ.get("POPOTO_TEST_PGBOUNCER_URL", "").strip()
+    tag = uuid.uuid4().hex[:8]
+    if bouncer:
+        app, owner = "popoto_t800_app", "popoto_t800_owner"
+    else:
+        app, owner = f"popoto_t800_app_{tag}", f"popoto_t800_owner_{tag}"
+    password = "popoto-t800-pw"
+    schema = f"popoto_t800_roles_{tag}"
+    (database,) = admin.execute("SELECT current_database()").fetchone()
+
+    def drop():
+        for role in (app, owner):
+            admin.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE usename = %s",
+                (role,),
+            )
+        admin.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        for role in (app, owner):
+            exists = admin.execute(
+                "SELECT 1 FROM pg_roles WHERE rolname = %s", (role,)
+            ).fetchone()
+            if exists:
+                admin.execute(f'DROP OWNED BY "{role}"')
+                admin.execute(f'DROP ROLE "{role}"')
+
+    drop()  # a previous run interrupted before its cleanup
+    admin.execute(f"CREATE ROLE \"{app}\" LOGIN PASSWORD '{password}'")
+    admin.execute(f"CREATE ROLE \"{owner}\" LOGIN PASSWORD '{password}'")
+    admin.execute(f'GRANT CREATE ON DATABASE "{database}" TO "{owner}"')
+    main = _conninfo(bouncer or pg.dsn, user=app, password=password)
+    maint = _conninfo(
+        pg.dsn,
+        user=owner,
+        password=password,
+        application_name=f"popoto_t800_owner_{tag}",
+    )
+    backend = PostgresBackend(dsn=main, schema=schema, maintenance_dsn=maint)
+    previous = set_backend(backend)
+    previous_instance = _swap_instance("postgres", backend)
+    try:
+        yield backend, app, owner, schema
+    finally:
+        _swap_instance("postgres", previous_instance)
+        set_backend(previous)
+        hub_for(maint).close()
+        _close_pool(main)
+        drop()
+
+
+def _privileges(admin, role, schema, table):
+    return admin.execute(
+        "SELECT has_schema_privilege(%s, %s, 'USAGE'), "
+        "has_schema_privilege(%s, %s, 'CREATE'), "
+        "has_table_privilege(%s, %s, 'SELECT, INSERT, UPDATE, DELETE'), "
+        "(SELECT tableowner FROM pg_tables WHERE schemaname = %s "
+        "AND tablename = %s)",
+        (role, schema, role, schema, role, f'"{schema}"."{table}"', schema, table),
+    ).fetchone()
+
+
+def test_an_app_role_and_an_owner_role_work_end_to_end(two_roles, admin):
+    """The documented two-role setup: first-use DDL runs as the owner role,
+    which grants the app role what it needs (now and, by default, for what
+    it creates later), so saves, queries, ``rebuild_indexes`` and
+    ``LISTEN``/``NOTIFY`` all work as the app role (#800 review)."""
+    backend, app, owner, schema = two_roles
+
+    DsnDoc(name="a", score=1.0).save()
+    DsnDoc(name="b", score=2.0).save()
+    assert backend._grant_to == app and backend._granted
+    # The app role may read and write the table, never create in the schema.
+    assert _privileges(admin, app, schema, DOC_TABLE) == (True, False, True, owner)
+    assert [d.name for d in DsnDoc.query.filter(order_by="score")] == ["a", "b"]
+    doc = DsnDoc.query.get(name="a")
+    doc.score = 3.0
+    doc.save()
+    assert DsnDoc.query.get(name="a").score == 3.0
+
+    # A model first used later, inside a unit: its table is covered by the
+    # default privileges the first grant set.
+    with backend.transaction() as tx:
+        DsnLater(name="x", note="n").save(pipeline=tx)
+    later = table_name_for("DsnLater")
+    assert _privileges(admin, app, schema, later) == (True, False, True, owner)
+    assert DsnLater.query.get(name="x").note == "n"
+
+    DsnDoc.rebuild_indexes()  # REINDEX as the owner of the table
+
+    sub = backend.pubsub()
+    try:
+        sub.subscribe("dsn800roles")
+        backend.publish("dsn800roles", "hello")
+        deadline = time.monotonic() + 5
+        got = None
+        while time.monotonic() < deadline and got is None:
+            message = sub.get_message(timeout=0.1)
+            if message is not None and message["type"] == "message":
+                got = message["data"]
+        assert got in ("hello", b"hello")
+    finally:
+        sub.close()
+
+    DsnDoc.query.get(name="b").delete()
+    assert [d.name for d in DsnDoc.query.all()] == ["a"]
+    assert backend.health.ok and backend.health.dropped_writes == 0
+
+
+def test_without_the_grant_the_app_role_is_refused(two_roles, monkeypatch):
+    """The control for the test above: with the grant switched off the first
+    save fails exactly as the review found it."""
+    backend, _, _, schema = two_roles
+    monkeypatch.setattr(backend, "_grant_main_role", lambda conn: None)
+    with pytest.raises(Exception, match="permission denied for schema"):
+        DsnDoc(name="a").save()

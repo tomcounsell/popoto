@@ -659,3 +659,45 @@ def ensure_table(conn: Any, ts: TableSpec, *, auto: bool) -> str:
             cur.execute(stmt)
         _record(cur, ts, ddl, insert=False)
         return "migrated"
+
+
+#: What the main role needs on objects another role creates (#800): read and
+#: write every popoto table, draw from its sequences. Never DDL, TRUNCATE or
+#: ownership -- those stay with the role that made them.
+APP_TABLE_PRIVILEGES = "SELECT, INSERT, UPDATE, DELETE"
+APP_SEQUENCE_PRIVILEGES = "USAGE, SELECT"
+
+
+def grant_app_role_statements(schema: str, role: str) -> list[str]:
+    """The idempotent statements of :func:`grant_app_role_sql`, without its
+    transaction and lock."""
+    s = quote_ident(schema)
+    # A role name is whatever the server reports, not a field name, so it is
+    # quoted as Postgres quotes any identifier rather than refused.
+    r = '"' + role.replace('"', '""') + '"'
+    return [
+        f"GRANT USAGE ON SCHEMA {s} TO {r}",
+        f"GRANT {APP_TABLE_PRIVILEGES} ON ALL TABLES IN SCHEMA {s} TO {r}",
+        f"GRANT {APP_SEQUENCE_PRIVILEGES} ON ALL SEQUENCES IN SCHEMA {s} TO {r}",
+        f"ALTER DEFAULT PRIVILEGES IN SCHEMA {s} "
+        f"GRANT {APP_TABLE_PRIVILEGES} ON TABLES TO {r}",
+        f"ALTER DEFAULT PRIVILEGES IN SCHEMA {s} "
+        f"GRANT {APP_SEQUENCE_PRIVILEGES} ON SEQUENCES TO {r}",
+    ]
+
+
+def grant_app_role_sql(schema: str, role: str) -> str:
+    """One transaction granting ``role`` what the main DSN needs on
+    ``schema`` when another role (the maintenance DSN's) creates its objects
+    (#800): ``USAGE`` on the schema, :data:`APP_TABLE_PRIVILEGES` on every
+    table and :data:`APP_SEQUENCE_PRIVILEGES` on every sequence already
+    there, and the same as ``ALTER DEFAULT PRIVILEGES`` for whatever the
+    creating role makes in the schema later. Every statement is idempotent.
+
+    It runs under :func:`schema_lock_key`'s advisory lock (its one
+    parameter, so it needs client-side binding): two sessions granting on
+    one object at once can fail with "tuple concurrently updated".
+    Statements on objects the creating role does not own only warn, so this
+    never fails a first use for lack of ownership."""
+    body = "; ".join(grant_app_role_statements(schema, role))
+    return f"BEGIN; SELECT pg_advisory_xact_lock(hashtext(%s)); {body}; COMMIT"

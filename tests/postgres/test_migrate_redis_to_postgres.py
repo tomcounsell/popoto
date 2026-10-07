@@ -2514,3 +2514,170 @@ def test_a_refusal_without_resume_names_both_options(tmp_path, monkeypatch, pg):
         )
     message = str(refused.value)
     assert "Pass --merge" in message and "--resume --merge" in message, message
+
+
+# -- #800 review: the run lock needs a real session ---------------------------------
+
+
+def _with(dsn, **extra):
+    from psycopg.conninfo import make_conninfo
+
+    return make_conninfo(dsn, **extra)
+
+
+def _lock_holders(admin):
+    admin.execute("SELECT pg_stat_clear_snapshot()")
+    return admin.execute(
+        "SELECT a.application_name FROM pg_locks l JOIN pg_stat_activity a "
+        "USING (pid) WHERE l.locktype = 'advisory' AND l.classid = %s",
+        (mig._LOCK_CLASS,),
+    ).fetchall()
+
+
+def test_the_run_lock_and_the_tool_ddl_hold_the_maintenance_dsn(
+    tmp_path, monkeypatch, pg
+):
+    """With a maintenance DSN the run's session lock and the tool's own
+    table DDL run on one connection to it, held for the run; the main DSN
+    serves everything else."""
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    main = _with(pg.dsn, application_name="popoto_t800_tool_main")
+    maint = _with(pg.dsn, application_name="popoto_t800_tool_maint")
+    seen = {}
+    real_lock, real_ddl = mig._lock_target_schema, mig._ensure_tool_tables
+
+    def lock(dsn, schema):
+        seen["lock_dsn"] = dsn
+        conn = real_lock(dsn, schema)
+        seen["lock_conn"] = conn
+        return conn
+
+    def ddl(conn, schema, grant_to=None):
+        seen["ddl_conn"] = conn
+        (seen["ddl_app"],) = conn.execute(
+            "SELECT current_setting('application_name')"
+        ).fetchone()
+        return real_ddl(conn, schema, grant_to=grant_to)
+
+    monkeypatch.setattr(mig, "_lock_target_schema", lock)
+    monkeypatch.setattr(mig, "_ensure_tool_tables", ddl)
+    report = run_migration(
+        _config(
+            tmp_path,
+            pg,
+            rdb,
+            content,
+            postgres_dsn=main,
+            postgres_maintenance_dsn=maint,
+        )
+    )
+    assert report.clean, report.summary()
+    assert seen["lock_dsn"] == maint
+    assert seen["ddl_conn"] is seen["lock_conn"]
+    assert seen["ddl_app"] == "popoto_t800_tool_maint"
+    assert seen["lock_conn"].closed
+
+
+def test_a_maintenance_dsn_to_another_database_refuses_the_run(
+    tmp_path, monkeypatch, pg, started
+):
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    other = _with(pg.dsn, dbname="template1")
+    with pytest.raises(mig.MigrationRefused, match="different database"):
+        run_migration(
+            _config(tmp_path, pg, rdb, content, postgres_maintenance_dsn=other)
+        )
+    assert started == []
+
+
+@pytest.fixture
+def pgbouncer_url(pg):
+    url = os.environ.get("POPOTO_TEST_PGBOUNCER_URL", "").strip()
+    if not url:
+        pytest.skip("POPOTO_TEST_PGBOUNCER_URL is unset (a transaction-mode PgBouncer)")
+    return url
+
+
+def test_behind_transaction_mode_pgbouncer_the_run_lock_is_a_real_session(
+    tmp_path, monkeypatch, pg, admin, pgbouncer_url
+):
+    """Main DSN through a transaction-mode PgBouncer, maintenance DSN
+    direct: a second run is refused while the first holds the lock, the lock
+    goes with the first run when it is killed and when a run ends, and a
+    fresh run then proceeds. (On the main DSN the lock stayed with the
+    pooled server session: #800 review.)"""
+    rdb, content, _ = build_snapshot(tmp_path, monkeypatch)
+    maint = _with(pg.dsn, application_name="popoto_t800_lock_direct")
+    config = dict(postgres_dsn=pgbouncer_url, postgres_maintenance_dsn=maint)
+
+    driver = tmp_path / "kill_driver.py"
+    driver.write_text(_KILL_DRIVER)
+    marker = tmp_path / "held.json"
+    tool = subprocess.Popen(
+        [
+            sys.executable,
+            str(driver),
+            str(marker),
+            "MigMemory",
+            "1",
+            "locked",
+            "--rdb",
+            str(rdb),
+            "--content-dir",
+            str(content),
+            "--run-dir",
+            str(tmp_path / "run"),
+            "--source-id",
+            "laptop-a",
+            "--mapping",
+            "tests.postgres.migrate_fixtures:MAPPINGS",
+            "--redis-server",
+            REDIS_SERVER,
+            "--batch-size",
+            "4",
+        ],
+        cwd=REPO_ROOT,
+        env=_cli_env(
+            POPOTO_POSTGRES_URL=pgbouncer_url,
+            POPOTO_POSTGRES_MAINTENANCE_URL=maint,
+            POPOTO_POSTGRES_SCHEMA=pg.schema,
+        ),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 120
+        while not marker.exists():
+            assert tool.poll() is None, tool.stderr.read().decode()
+            assert time.monotonic() < deadline, "the first run never took its lock"
+            time.sleep(0.05)
+        # The lock is held on the direct session, not a pooled one.
+        assert _lock_holders(admin) == [("popoto_t800_lock_direct",)]
+        with pytest.raises(mig.MigrationRefused, match="holds the lock"):
+            run_migration(
+                _config(tmp_path, pg, rdb, content, run_dir=tmp_path / "b", **config)
+            )
+        os.kill(tool.pid, signal.SIGKILL)
+        tool.wait(timeout=60)
+    finally:
+        if tool.poll() is None:
+            tool.kill()
+            tool.wait()
+
+    # The crash released it: the server ends the dead direct session.
+    deadline = time.monotonic() + 30
+    while _lock_holders(admin):
+        assert time.monotonic() < deadline, "the killed run's lock outlived it"
+        time.sleep(0.1)
+    report = run_migration(_config(tmp_path, pg, rdb, content, resume=True, **config))
+    assert report.clean, report.summary()
+    # A run that ends releases it too, so the next run proceeds.
+    assert _lock_holders(admin) == []
+    again = run_migration(
+        _config(
+            tmp_path, pg, rdb, content, run_dir=tmp_path / "c", merge=True, **config
+        )
+    )
+    assert again.clean, again.summary()
+    assert _lock_holders(admin) == []

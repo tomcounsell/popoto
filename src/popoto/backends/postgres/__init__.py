@@ -100,7 +100,9 @@ from .schema import (
     TableSpec,
     compile_table,
     ensure_table,
+    grant_app_role_sql,
     quote_ident,
+    schema_lock_key,
 )
 from .search import (
     SearchMixin,
@@ -129,6 +131,7 @@ __all__ = [
     "POSTGRES_URL_ENV",
     "POSTGRES_SCHEMA_ENV",
     "MAINTENANCE_URL_ENV",
+    "MaintenanceConnectionError",
     "MaintenanceDsnMismatchError",
     "MIN_SERVER_VERSION_NUM",
     "Health",
@@ -192,6 +195,15 @@ class MaintenanceDsnMismatchError(BackendError, ValueError):
     database names, never a password."""
 
 
+class MaintenanceConnectionError(BackendError, ConnectionError):
+    """The maintenance DSN could not be connected to (#800) -- refused,
+    timed out, or its credentials rejected -- while the work that needs it
+    (first-use DDL, ``REINDEX``, the identity check, ``LISTEN``) was being
+    set up. Only that work fails: the main DSN may be perfectly healthy, so
+    the backend's ``health`` is untouched and no write is counted as
+    dropped. The message names the host and database, never a password."""
+
+
 def backend_from_env() -> "PostgresBackend":
     """The process backend for ``POPOTO_BACKEND=postgres`` /
     ``Meta.backend = "postgres"``: DSN from ``POPOTO_POSTGRES_URL`` only."""
@@ -205,6 +217,24 @@ def backend_from_env() -> "PostgresBackend":
     schema = os.environ.get(POSTGRES_SCHEMA_ENV, "").strip() or DEFAULT_SCHEMA
     maintenance = os.environ.get(MAINTENANCE_URL_ENV, "").strip() or None
     return PostgresBackend(dsn=dsn, schema=schema, maintenance_dsn=maintenance)
+
+
+def _same_dsn(a: str, b: str) -> bool:
+    """Whether two DSNs name the same connection (#800): equal once parsed,
+    so ``host=x dbname=y`` equals ``dbname=y host=x`` and the URL form of
+    either. The password is left out: it authenticates a connection, it
+    does not choose one. A DSN that does not parse is compared as text."""
+    if a == b:
+        return True
+    try:
+        from psycopg.conninfo import conninfo_to_dict
+
+        left, right = conninfo_to_dict(a), conninfo_to_dict(b)
+    except Exception:  # noqa: BLE001 - no driver, or unparseable
+        return False
+    for parts in (left, right):
+        parts.pop("password", None)
+    return left == right
 
 
 def _describe_dsn(dsn: str) -> str:
@@ -678,9 +708,16 @@ class PostgresBackend(
         # the main DSN, exactly as before the setting existed.
         maintenance = (maintenance_dsn or "").strip() or None
         self.maintenance_dsn: Optional[str] = (
-            None if maintenance == dsn else maintenance
+            None if maintenance is None or _same_dsn(maintenance, dsn) else maintenance
         )
         self._maintenance_verified = False
+        # Serialises the first identity check between threads, so concurrent
+        # first uses verify once (re-entrant: bridge greenlets share a thread).
+        self._maintenance_lock = threading.RLock()
+        # The main DSN's role when the maintenance DSN's differs: first-use
+        # DDL then grants it what it needs on the new objects (#800).
+        self._grant_to: Optional[str] = None
+        self._granted = False
         self.health = Health()
         self._tables: dict[str, tuple[ModelSpec, TableSpec]] = {}
         self._server_checked = False
@@ -1029,6 +1066,16 @@ class PostgresBackend(
             else:
                 conn = psycopg.connect(dsn, **kwargs)
         except psycopg.OperationalError as exc:
+            if self.maintenance_dsn is not None and dsn == self.maintenance_dsn:
+                # Only the maintenance DSN is down: not an outage of the
+                # backend, and no write was dropped (#800 review).
+                raise MaintenanceConnectionError(
+                    f"could not connect to the Postgres maintenance DSN "
+                    f"({_describe_dsn(dsn)}; {MAINTENANCE_URL_ENV} or "
+                    f"maintenance_dsn=): {type(exc).__name__}: {exc}. First-use "
+                    "DDL, REINDEX and LISTEN need it; the main DSN is not "
+                    "affected"
+                ) from exc
             raise self._fail(exc, write=False) from exc
         try:
             yield conn
@@ -1052,17 +1099,20 @@ class PostgresBackend(
         if maintenance is None:
             return self.dsn
         if not self._maintenance_verified:
-            self._verify_maintenance_dsn(maintenance)
+            with self._maintenance_lock:
+                if not self._maintenance_verified:
+                    self._verify_maintenance_dsn(maintenance)
         return maintenance
 
-    def _database_identity(self, dsn: str) -> dict[str, Any]:
+    def _database_identity(self, dsn: str) -> tuple[dict[str, Any], str]:
         """What identifies the database ``dsn`` reaches: its name and OID,
         the cluster's start time and version, and -- where the role may read
         it -- the cluster's ``system_identifier``. Server addresses are
         deliberately not compared: through a pooler, a proxy or another
         interface the same server reports a different one. The start time
         also tells a primary from its physical replica, which share the
-        system identifier (DDL there would fail anyway)."""
+        system identifier (DDL there would fail anyway). Returned beside it,
+        never compared: the role the DSN's sessions run as."""
         timeout = float(Defaults.PG_CONNECT_TIMEOUT_SECONDS)
         kwargs: dict[str, Any] = {
             "autocommit": True,
@@ -1075,7 +1125,7 @@ class PostgresBackend(
                 "SELECT current_database(), "
                 "(SELECT oid FROM pg_database WHERE datname = current_database()), "
                 "pg_postmaster_start_time(), "
-                "current_setting('server_version_num')::int"
+                "current_setting('server_version_num')::int, current_user"
             ).fetchone()
             identity: dict[str, Any] = {
                 "database": row[0],
@@ -1090,14 +1140,14 @@ class PostgresBackend(
                 identity["system_identifier"] = int(system)
             except psycopg.Error:  # not granted to this role: compare the rest
                 pass
-        return identity
+        return identity, str(row[4])
 
     def _verify_maintenance_dsn(self, maintenance: str) -> None:
         """Refuse a maintenance DSN that reaches another database than the
         main one (:class:`MaintenanceDsnMismatchError`), before anything runs
         on it; on a match, remember it for this backend's lifetime."""
-        main = self._database_identity(self.dsn)
-        other = self._database_identity(maintenance)
+        main, main_role = self._database_identity(self.dsn)
+        other, other_role = self._database_identity(maintenance)
         differ = [k for k in main if k in other and main[k] != other[k]]
         if differ:
             shown = ", ".join(f"{k}: {main[k]!r} vs {other[k]!r}" for k in differ)
@@ -1110,7 +1160,51 @@ class PostgresBackend(
                 "point it at the same database (directly or through a "
                 "session-mode pool)"
             )
+        self._grant_to = main_role if main_role != other_role else None
         self._maintenance_verified = True
+
+    def _grant_main_role(self, conn: Any) -> None:
+        """After first-use DDL on the maintenance DSN, when its role is not
+        the main DSN's (#800): grant the main role ``USAGE`` on the schema
+        and read/write on its tables and sequences, now and by default for
+        what the maintenance role creates there later
+        (:func:`~.schema.grant_app_role_sql`). Once per backend; a failure
+        is logged and retried on the next first use, never raised over the
+        DDL that just succeeded (the main role's own statement then names
+        the missing privilege)."""
+        role = self._grant_to
+        if role is None or self._granted or not _schema_auto():
+            # POPOTO_SCHEMA_AUTO=0: whoever runs the DDL runs the grants.
+            return
+        psycopg = _import_psycopg()
+        try:
+            (present,) = conn.execute(
+                "SELECT to_regnamespace(%s) IS NOT NULL", [self.schema]
+            ).fetchone()
+            if not present:
+                return
+            cur = conn.execute(
+                grant_app_role_sql(self.schema, role), [schema_lock_key(self.schema)]
+            )
+            while cur.nextset():
+                pass
+        except psycopg.Error as exc:
+            try:
+                conn.execute("ROLLBACK")
+            except psycopg.Error:
+                pass
+            logger.warning(
+                "popoto could not grant the main Postgres role %r access to "
+                "schema %r after DDL on the maintenance DSN (%s: %s); grant it "
+                "USAGE on the schema and SELECT, INSERT, UPDATE, DELETE on its "
+                "tables",
+                role,
+                self.schema,
+                type(exc).__name__,
+                exc,
+            )
+            return
+        self._granted = True
 
     @contextlib.contextmanager
     def _maintenance_connection(self, lock_timeout_ms: int) -> Iterator[Any]:
@@ -1180,6 +1274,8 @@ class PostgresBackend(
                     conn.execute(f"SET lock_timeout = {lock_ms}")
                     conn.execute(f"SET statement_timeout = {statement_ms}")
                     yield conn
+                    if self.maintenance_dsn is not None:
+                        self._grant_main_role(conn)
         except _rollback_errors(psycopg) as exc:
             raise _retryable(exc) from exc
         except (psycopg.errors.LockNotAvailable, psycopg.errors.QueryCanceled) as exc:

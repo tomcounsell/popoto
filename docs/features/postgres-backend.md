@@ -1865,7 +1865,8 @@ or `PostgresBackend(dsn=..., schema=..., maintenance_dsn=...)`. When it is set:
 | the shared `LISTEN` session | `POPOTO_POSTGRES_LISTEN_URL` if set, else the maintenance DSN |
 
 Unset, or equal to the main DSN, everything runs exactly as it did before the
-setting existed. The dedicated connections are opened per call and closed
+setting existed. "Equal" compares the parsed DSNs, without their passwords, so
+`host=h dbname=db` equals `dbname=db host=h` and `postgresql://h/db`. The dedicated connections are opened per call and closed
 after it. First-use DDL with a maintenance DSN therefore always costs one
 connect, paid once per model per process. Without one, DDL outside a unit
 reuses a pool slot. `LISTEN` falls back to the maintenance DSN because a
@@ -1886,13 +1887,85 @@ popoto raises `popoto.backends.postgres.MaintenanceDsnMismatchError` (a
 So DDL and `REINDEX` never land on the wrong database. The error names hosts,
 ports, users and database names, never a password. It is a configuration
 error, not an outage: `health` is untouched, and the check runs again on the
-next use. A passing check is remembered for the backend's lifetime.
+next use. A passing check is remembered for the backend's lifetime. Threads
+that make their first use at the same moment run the check once between them.
+
+**If the maintenance DSN is unreachable** (refused, timed out, or its
+credentials rejected), only the work that needs it fails. First-use DDL,
+`rebuild_indexes()` and `LISTEN` raise
+`popoto.backends.postgres.MaintenanceConnectionError` (a `ConnectionError`,
+not a `BackendUnavailableError`). The message names the maintenance host and
+database, never a password. The main DSN may be healthy, so `health` stays
+`ok` and no write is counted as dropped. Once a model's table is set up in
+this process, its saves and queries never touch the maintenance DSN. A model's
+first use in a process does, even when its table already exists. That first
+use raises the error and writes nothing.
+
+#### Two roles: an application role and an owner role
+
+The example above runs the main DSN as `app` and the maintenance DSN as
+`owner`. When the two DSNs run as different roles, the tables first-use DDL
+creates belong to `owner`, and `app` could not otherwise use them. So popoto
+grants `app` what it needs. The identity check learns each DSN's
+`current_user` (through a pooler, the server role it maps to). After
+first-use DDL on the maintenance DSN, once per backend, it runs this as the
+owner role, under the schema's DDL advisory lock:
+
+```sql
+GRANT USAGE ON SCHEMA popoto TO app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA popoto TO app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA popoto TO app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA popoto
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA popoto
+    GRANT USAGE, SELECT ON SEQUENCES TO app;
+```
+
+The default privileges cover every table `owner` creates in the schema later,
+in any process. `app` never gets `CREATE` on the schema, `TRUNCATE` or
+ownership. Every statement is idempotent. If the grant fails, popoto logs a
+warning naming these grants and tries again on the next first use. It does
+not fail the DDL that succeeded. The application role's own statement then
+fails with `permission denied`. The roles need only this:
+
+```sql
+CREATE ROLE owner LOGIN PASSWORD '...';
+CREATE ROLE app LOGIN PASSWORD '...';
+GRANT CREATE ON DATABASE agents TO owner;   -- creates the popoto schema on first use
+```
+
+To create the schema yourself, make `owner` its owner instead
+(`CREATE SCHEMA popoto AUTHORIZATION owner`). If you set `POPOTO_SCHEMA_AUTO=0`
+and run the DDL yourself, run the grants above as well. Popoto runs no DDL
+then, so it grants nothing.
+
+The reverse case is an existing deployment whose tables were created by
+`app`, before the maintenance DSN was set. There `REINDEX` and additive
+`ALTER TABLE` need the maintenance role to own the tables. On PostgreSQL 17
+and later, the `MAINTAIN` privilege is enough for `REINDEX`. Move the
+ownership once, as a superuser (or a role with the privileges of both):
+
+```sql
+-- every object app owns in this database, not only popoto's
+REASSIGN OWNED BY app TO owner;
+-- or, per table: ALTER TABLE popoto.<table> OWNER TO owner;
+```
+
+Then run the grants above, so that `app` keeps its access.
+`tests/postgres/test_postgres_maintenance_dsn.py::test_an_app_role_and_an_owner_role_work_end_to_end`
+runs the whole setup with two real roles: a first save, queries, a model
+first used later inside a unit, `rebuild_indexes()` and `LISTEN`/`NOTIFY`. Its
+control test switches the grant off and gets `permission denied for schema`.
 
 `POPOTO_POSTGRES_MAINTENANCE_URL` is read only next to `POPOTO_POSTGRES_URL`,
 by the environment-configured backend. A `PostgresBackend(dsn=...)` you
 construct takes `maintenance_dsn=` explicitly. The Redis-to-Postgres
-migration tool honours the variable when its target DSN also comes from the
-environment. `tests/postgres/test_postgres_maintenance_dsn.py` pins the
+migration tool takes `postgres_maintenance_dsn=`. It also reads the variable
+when its target DSN comes from the environment. It holds its run lock (a
+session advisory lock) and runs its own table DDL on one direct connection
+to that DSN for the whole run. Behind a transaction-mode pooler, the tool
+needs the maintenance DSN for that lock (see [the migration
+guide](redis-to-postgres-migration.md)). `tests/postgres/test_postgres_maintenance_dsn.py` pins the
 routing. The test points both DSNs at one server under two `application_name`s,
 and an event trigger records which one each DDL and `REINDEX` came from. It
 also has an optional test against a real transaction-mode PgBouncer, which

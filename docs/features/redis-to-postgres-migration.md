@@ -16,9 +16,31 @@ python -m popoto.migrate_redis_to_postgres \
 ```
 
 The target is the library's own setting: `POPOTO_POSTGRES_URL` and
-`POPOTO_POSTGRES_SCHEMA` (and `POPOTO_POSTGRES_MAINTENANCE_URL`, for the
-tool's table DDL, when the URL comes from the environment). The source is the RDB file. The tool has no Redis
+`POPOTO_POSTGRES_SCHEMA`. The source is the RDB file. The tool has no Redis
 URL, host or port option.
+
+If `POPOTO_POSTGRES_URL` points at PgBouncer in transaction mode, also set
+`POPOTO_POSTGRES_MAINTENANCE_URL` to a direct (or session-mode) DSN to the
+same database. When calling `run_migration()`, pass
+`postgres_maintenance_dsn=`; the variable is read only when the main URL
+also comes from the environment. The tool opens one connection to that DSN,
+outside any pool, and holds it for the whole run. On it, the tool:
+
+- takes the run lock, a session advisory lock that refuses a second run into
+  the same schema;
+- creates its run and ledger tables.
+
+The model tables' first-use DDL also goes to that DSN, through the backend.
+A session lock needs a real session. Through a transaction-mode pooler it
+would stay with the pooled server connection after the run ended or the
+process died, and every later run would be refused. Without a maintenance
+DSN the lock and the tool's DDL use the main DSN, which is right for a
+direct connection. Before taking the lock, the tool checks that the
+maintenance DSN reaches the same database as the main one. If it does not,
+the run is refused before anything is written. When the two DSNs run as
+different roles, the main role is granted read and write on the tool's
+tables, as on the model tables (see [two
+roles](postgres-backend.md#two-roles-an-application-role-and-an-owner-role)).
 
 ## Safety model
 
