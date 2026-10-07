@@ -13,10 +13,11 @@ Design:
     - No Redis modules — only core Streams commands (Valkey compatible)
     - Backend-neutral (#759 M5): a stream written by a Postgres-bound
       ``EventStreamMixin`` model lives in that backend's events tables, and
-      the same commands run there (``FOR UPDATE SKIP LOCKED`` claims, blocking
-      reads on a dedicated ``LISTEN`` session) with the same replies; the
-      consumer finds the backend from ``backend=``/``model=``, else from the
-      models that write ``stream_key``, else the process default.
+      the same commands run there (``FOR UPDATE SKIP LOCKED`` claims,
+      blocking reads on the process's shared ``LISTEN`` session) with the
+      same replies; the consumer finds the backend from
+      ``backend=``/``model=``, else from the models that write
+      ``stream_key``, else the process default.
 
 Redis Commands Used:
     - XGROUP CREATE — create consumer group (idempotent with BUSYGROUP handling)
@@ -120,7 +121,8 @@ class StreamConsumer:
         """The stream client for this consumer: the async Redis client on
         Redis (the exact call this class always made), or -- when the
         stream's backend is not Redis -- that backend's awaitable stream
-        store, created once with its own ``LISTEN`` session."""
+        store, created once with its own waiter on the shared ``LISTEN``
+        session."""
         if self._native is not None:
             return self._native
         from . import resolve_stream_backend
@@ -158,7 +160,7 @@ class StreamConsumer:
         return await redis.hdel(self._attempts_key(), *entry_ids)
 
     def close(self) -> None:
-        """Close the ``LISTEN`` session a Postgres-backed consumer holds
+        """Detach the ``LISTEN`` waiter a Postgres-backed consumer holds
         (nothing to do on Redis). ``run()`` calls it on exit."""
         native, self._native = self._native, None
         if native is not None:

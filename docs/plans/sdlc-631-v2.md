@@ -1417,7 +1417,10 @@ fields, `DateField`/`TimeField`, `Meta.indexes`, the unique-conflict text.
     cost"). A per-process multiplexer -- one `LISTEN` session per schema
     fanning notifications out to in-process waiters -- would make that one
     session per process. Related: `publish()` reads `pg_stat_activity` for
-    its count on every call.
+    its count on every call. **Shipped in #799**: one session per process
+    and DSN (`backends/postgres/listen.py`), with a commit-order barrier for
+    late subscribers, reconnect + re-`LISTEN` + re-registration, and a
+    documented pub/sub gap across a reconnect (streams lose nothing).
 
 ## 6. Carried forward from the POC
 

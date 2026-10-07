@@ -1,0 +1,520 @@
+"""``[PG-only]`` the shared per-process ``LISTEN`` session (#799,
+``backends/postgres/listen.py``).
+
+Every Postgres subscriber and blocking stream read in a process rides one
+dedicated session per DSN. These tests count sessions by an
+``application_name`` of their own (the ``POPOTO_POSTGRES_LISTEN_URL`` they
+set), so the pool's connections and other clients of the server never move
+the number; each test terminates whatever it left.
+"""
+
+import asyncio
+import os
+import threading
+import time
+import uuid
+import warnings
+
+import pytest
+
+from popoto.backends.postgres import events as events_module
+from popoto.backends.postgres import listen as listen_module
+from popoto.backends.postgres.listen import ListenHub, hub_for
+from popoto.backends.postgres.pubsub import pubsub_channel
+
+KEY = "stream:listen799"
+
+
+@pytest.fixture
+def tagged(pg, admin, monkeypatch):
+    """``(application_name, listen dsn)``: every ``LISTEN`` session this
+    test opens reports that name."""
+    from psycopg.conninfo import make_conninfo
+
+    app = f"popoto_test_listen_{uuid.uuid4().hex[:8]}"
+    dsn = make_conninfo(pg.dsn, application_name=app)
+    monkeypatch.setenv(events_module.LISTEN_URL_ENV, dsn)
+    try:
+        yield app, dsn
+    finally:
+        hub_for(dsn).close()
+        admin.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE application_name = %s",
+            (app,),
+        )
+
+
+def _sessions(admin, app):
+    admin.execute("SELECT pg_stat_clear_snapshot()")
+    (n,) = admin.execute(
+        "SELECT count(*) FROM pg_stat_activity WHERE application_name = %s", (app,)
+    ).fetchone()
+    return n
+
+
+def _eventually(predicate, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return predicate()
+
+
+def _drain(sub, timeout=0.6, want=None):
+    out = []
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        message = sub.get_message(timeout=0.05)
+        if message is not None and message["type"] in ("message", "pmessage"):
+            out.append(message["data"])
+            if want is not None and len(out) >= want:
+                break
+    return out
+
+
+def _subscribed(pg, *channels):
+    sub = pg.pubsub()
+    sub.subscribe(*channels)
+    return sub
+
+
+# -- one session, however many subscribers ------------------------------------------
+
+
+def test_fifty_subscribers_hold_one_listen_session(pg, admin, tagged):
+    """N subscribers used to hold N sessions; now one, and every subscriber
+    gets every message, in publish order."""
+    app, dsn = tagged
+    subs = [_subscribed(pg, "fan") for _ in range(50)]
+    assert _sessions(admin, app) == 1
+    hub = hub_for(dsn)
+    assert hub.sink_count(pubsub_channel(pg.schema)) == 50
+    assert all(s.pid == hub.backend_pid for s in subs)
+    counts = [pg.publish("fan", f"m{i}".encode()) for i in range(5)]
+    assert counts == [50] * 5  # every subscription counted, under one pid
+    want = [f"m{i}".encode() for i in range(5)]
+    for sub in subs:
+        assert _drain(sub, 2.0, want=5) == want
+    assert _sessions(admin, app) == 1
+    for sub in subs:
+        sub.close()
+
+
+def test_the_last_subscriber_to_leave_frees_the_channel_and_the_session(
+    pg, admin, tagged
+):
+    app, dsn = tagged
+    hub = hub_for(dsn)
+    a, b = _subscribed(pg, "free"), _subscribed(pg, "free")
+    waiter = events_module.EventListener(dsn, pg.events_channel())
+    waiter.ensure()
+    channel = pubsub_channel(pg.schema)
+    assert hub.listening() == {channel, pg.events_channel()}
+    a.close()
+    assert hub.sink_count(channel) == 1 and channel in hub.listening()
+    assert pg.publish("free", b"x") == 1
+    b.close()
+    # The pub/sub channel is UNLISTENed; the stream waiter keeps the session.
+    assert _eventually(lambda: hub.listening() == {pg.events_channel()})
+    admin.execute("SELECT pg_stat_clear_snapshot()")
+    (query,) = admin.execute(
+        "SELECT query FROM pg_stat_activity WHERE application_name = %s", (app,)
+    ).fetchone()
+    assert query == f'UNLISTEN "{channel}"'  # the session's last statement
+    assert pg.publish("free", b"y") == 0
+    waiter.close()
+    # Nothing left to deliver to: the session closes.
+    assert _eventually(lambda: _sessions(admin, app) == 0)
+    assert not hub.connected
+    # ... and opens again on the next subscription.
+    c = _subscribed(pg, "free")
+    assert _sessions(admin, app) == 1
+    assert pg.publish("free", b"z") == 1
+    assert _drain(c, want=1) == [b"z"]
+    c.close()
+
+
+def test_unsubscribing_everything_detaches_and_resubscribing_reattaches(pg, tagged):
+    _, dsn = tagged
+    hub = hub_for(dsn)
+    channel = pubsub_channel(pg.schema)
+    sub = _subscribed(pg, "re.a")
+    assert hub.sink_count(channel) == 1
+    sub.unsubscribe()
+    assert hub.sink_count(channel) == 0
+    assert pg.publish("re.a", b"while-away") == 0
+    sub.subscribe("re.a")
+    assert pg.publish("re.a", b"back") == 1
+    assert _drain(sub, want=1) == [b"back"]
+    sub.close()
+
+
+def test_a_later_subscriber_never_sees_an_earlier_message(pg, tagged):
+    """The barrier: a subscriber that joins a channel the session already
+    listens on is live from a point in the notification stream, so a
+    message published before it subscribed is not handed to it -- as a
+    Redis ``SUBSCRIBE`` never receives an earlier ``PUBLISH``."""
+    first = _subscribed(pg, "early")
+    for i in range(20):
+        pg.publish("early", f"before{i}".encode())
+        late = _subscribed(pg, "early")
+        assert _drain(late, 0.1) == []
+        late.close()
+    assert _drain(first, 2.0, want=20) == [f"before{i}".encode() for i in range(20)]
+    first.close()
+
+
+def test_nonce_dedup_and_order_survive_the_fan_out(pg, tagged):
+    """``dup, dup, other, dup`` in one transaction reaches every subscriber
+    as all four, in order (#787 blocker 2), through one shared session."""
+    subs = [_subscribed(pg, "dups") for _ in range(5)]
+    with pg.transaction() as uow:
+        for message in (b"dup", b"dup", b"other", b"dup"):
+            pg.publish("dups", message, uow=uow)
+    for sub in subs:
+        assert _drain(sub, 2.0, want=4) == [b"dup", b"dup", b"other", b"dup"]
+        sub.close()
+
+
+# -- reconnecting ---------------------------------------------------------------------
+
+
+@pytest.fixture
+def held_reconnect(monkeypatch):
+    """Hold every reconnect (not the first connect) until ``release()``:
+    the window a dropped session is down for, made as wide as a test needs."""
+    gate = threading.Event()
+    real = ListenHub._connect
+
+    def gated(self):
+        if self.connects > 0:
+            gate.wait(10)
+        return real(self)
+
+    monkeypatch.setattr(ListenHub, "_connect", gated)
+    return gate
+
+
+def test_a_terminated_listen_session_reconnects_and_relistens(
+    pg, admin, tagged, held_reconnect
+):
+    """The documented gap: a message published while the shared session is
+    down is lost (and counted 0 -- its registrations name a dead pid), as a
+    Redis subscriber loses what was published while it was disconnected.
+    Once the hub reconnects and re-LISTENs, every later message arrives."""
+    app, dsn = tagged
+    hub = hub_for(dsn)
+    subs = [_subscribed(pg, "gap") for _ in range(3)]
+    assert pg.publish("gap", b"before") == 3
+    old_pid = hub.backend_pid
+    admin.execute("SELECT pg_terminate_backend(%s)", (old_pid,))
+    assert _eventually(lambda: hub.backend_pid is None)
+    assert pg.publish("gap", b"in-the-gap") == 0
+    held_reconnect.set()
+    assert _eventually(lambda: hub.backend_pid not in (None, old_pid))
+    assert hub.reconnects == 1
+    assert _sessions(admin, app) == 1
+    # The hub re-registers every subscription under its new pid itself, on
+    # its own session: no subscriber has polled since the drop.
+    new_pid = hub.backend_pid
+
+    def registered():
+        admin.execute("SELECT pg_stat_clear_snapshot()")
+        (n,) = admin.execute(
+            f'SELECT count(*) FROM "{pg.schema}"."popoto_pubsub_listener" '
+            "WHERE pid = %s",
+            (new_pid,),
+        ).fetchone()
+        return n
+
+    assert _eventually(lambda: registered() == 3)
+    assert pg.publish("gap", b"after") == 3
+    for sub in subs:
+        assert _drain(sub, 2.0, want=2) == [b"before", b"after"]
+        assert sub.pid == hub.backend_pid
+        sub.close()
+
+
+def test_a_reconnect_mid_stream_keeps_order_and_loses_only_the_gap(pg, admin, tagged):
+    """Terminate the session while a publisher is mid-stream: what arrives
+    is in publish order with no duplicate, and everything published after
+    the reconnect arrives."""
+    _, dsn = tagged
+    hub = hub_for(dsn)
+    sub = _subscribed(pg, "stream")
+    published = []
+    reconnected_at = []
+
+    def publisher():
+        for i in range(60):
+            if i == 20:
+                admin_conn = pg_admin()
+                admin_conn.execute(
+                    "SELECT pg_terminate_backend(%s)", (hub.backend_pid,)
+                )
+                admin_conn.close()
+            if not reconnected_at and hub.reconnects >= 1 and hub.backend_pid:
+                reconnected_at.append(i)
+            pg.publish("stream", str(i).encode())
+            published.append(i)
+            time.sleep(0.01)
+
+    def pg_admin():
+        import psycopg
+
+        return psycopg.connect(pg.dsn, autocommit=True)
+
+    t = threading.Thread(target=publisher)
+    t.start()
+    got = []
+    while t.is_alive():
+        got.extend(int(d) for d in _drain(sub, 0.05))
+    t.join()
+    got.extend(int(d) for d in _drain(sub, 0.5))
+    assert got == sorted(set(got))  # in order, no duplicate
+    assert reconnected_at, "the hub never reconnected"
+    # Every message after the reconnect was seen (registration catches up
+    # on the subscriber's next call, delivery does not wait for it).
+    assert set(range(reconnected_at[0] + 1, 60)) <= set(got)
+    assert set(range(0, 20)) <= set(got)
+    sub.close()
+
+
+def test_a_blocking_stream_read_loses_nothing_across_a_reconnect(
+    pg, admin, tagged, held_reconnect, monkeypatch
+):
+    """Streams have no gap: the entry appended while the session was down
+    is a row, and the reconnect wakes the waiter to read it -- well before
+    the fallback poll (stretched to 30 s here) would."""
+    monkeypatch.setattr(events_module, "STREAM_WAIT_POLL_SECONDS", 30.0)
+    _, dsn = tagged
+    hub = hub_for(dsn)
+    store = pg.streams()
+    store.xgroup_create(KEY, "g", id="$", mkstream=True)
+    listener = events_module.EventListener(dsn, pg.events_channel())
+    out = {}
+
+    def reader():
+        t0 = time.monotonic()
+        out["reply"] = store.xreadgroup(
+            "g", "w", {KEY: ">"}, block=20000, listener=listener
+        )
+        out["elapsed"] = time.monotonic() - t0
+
+    t = threading.Thread(target=reader)
+    t.start()
+    assert _eventually(lambda: hub.sink_count(pg.events_channel()) == 1)
+    time.sleep(0.2)  # the reader is waiting
+    old_pid = hub.backend_pid
+    admin.execute("SELECT pg_terminate_backend(%s)", (old_pid,))
+    assert _eventually(lambda: hub.backend_pid is None)
+    store.xadd(KEY, {"during": 1})
+    held_reconnect.set()
+    t.join(10)
+    assert out["reply"] and out["reply"][0][1][0][1] == {b"during": b"1"}
+    assert out["elapsed"] < 5.0
+    assert listener.reconnects == 1
+    listener.close()
+
+
+# -- fork ----------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="needs os.fork")
+def test_a_forked_child_opens_its_own_session_and_leaves_the_parents(pg, admin, tagged):
+    app, dsn = tagged
+    sub = _subscribed(pg, "forked")
+    assert sub.get_message(timeout=0.1)["type"] == "subscribe"
+    parent_hub = hub_for(dsn)
+    parent_pid = parent_hub.backend_pid
+    read_fd, write_fd = os.pipe()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)  # fork with threads
+        child = os.fork()
+    if child == 0:  # pragma: no cover - runs in the child
+        code = 1
+        try:
+            # The inherited subscriber re-attaches to the child's own hub.
+            assert sub.get_message(timeout=0.1) is None
+            mine = hub_for(dsn)
+            assert mine is not parent_hub and mine.backend_pid != parent_pid
+            assert sub.pid == mine.backend_pid
+            assert pg.publish("forked", b"from-child") == 2
+            got = _drain(sub, 3.0, want=1)
+            os.write(write_fd, repr((mine.backend_pid, got)).encode())
+            sub.close()
+            code = 0
+        except BaseException:
+            import traceback
+
+            os.write(write_fd, traceback.format_exc().encode())
+        finally:
+            os._exit(code)
+    os.close(write_fd)
+    _, status = os.waitpid(child, 0)
+    report = os.read(read_fd, 4096).decode()
+    os.close(read_fd)
+    assert os.waitstatus_to_exitcode(status) == 0, report
+    child_pid, child_got = eval(report)
+    assert child_got == [b"from-child"]
+    assert child_pid != parent_pid
+    # The parent's session survived the child (which never closed it).
+    assert parent_hub.backend_pid == parent_pid
+    assert _eventually(lambda: _sessions(admin, app) == 1)
+    assert pg.publish("forked", b"from-parent") == 1
+    assert _drain(sub, 2.0, want=2) == [b"from-child", b"from-parent"]
+    sub.close()
+
+
+# -- async, and sync and async together -----------------------------------------------
+
+
+def test_fifty_async_stream_readers_hold_one_listen_session(pg, admin, tagged):
+    app, dsn = tagged
+    store = pg.streams()
+    for i in range(50):
+        store.xgroup_create(KEY, f"g{i}", id="$", mkstream=True)
+
+    async def go():
+        clients = [pg.async_streams() for _ in range(50)]
+        tasks = [
+            asyncio.create_task(c.xreadgroup(f"g{i}", "w", {KEY: ">"}, block=10000))
+            for i, c in enumerate(clients)
+        ]
+        await asyncio.sleep(0.5)
+        sessions = _sessions(admin, app)
+        store.xadd(KEY, {"to": "all"})  # not to_thread: the readers fill its pool
+        replies = await asyncio.wait_for(asyncio.gather(*tasks), 20)
+        for c in clients:
+            c.close()
+        return sessions, replies
+
+    sessions, replies = asyncio.run(go())
+    assert sessions == 1
+    bad = [
+        (i, r)
+        for i, r in enumerate(replies)
+        if not (r and r[0][1][0][1] == {b"to": b"all"})
+    ]
+    assert not bad, bad[:3]
+
+
+def test_cancelling_an_async_read_ends_its_wait_without_claiming(
+    pg, tagged, monkeypatch
+):
+    """Cancellation safety: the worker thread is woken at once and returns
+    without reading again, so an entry appended after the cancel stays in
+    the group for the next reader instead of being claimed by nobody."""
+    monkeypatch.setattr(events_module, "STREAM_WAIT_POLL_SECONDS", 30.0)
+    store = pg.streams()
+    store.xgroup_create(KEY, "g", id="$", mkstream=True)
+    finished = []
+    real = events_module.StreamStore.xreadgroup
+
+    def tracked(self, *args, **kwargs):
+        try:
+            return real(self, *args, **kwargs)
+        finally:
+            finished.append(time.monotonic())
+
+    monkeypatch.setattr(events_module.StreamStore, "xreadgroup", tracked)
+
+    async def go():
+        client = pg.async_streams()
+        task = asyncio.create_task(client.xreadgroup("g", "w", {KEY: ">"}, block=20000))
+        await asyncio.sleep(0.3)
+        task.cancel()
+        t0 = time.monotonic()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(0.3)
+        client.close()
+        return t0
+
+    t0 = asyncio.run(go())
+    assert finished and finished[0] - t0 < 1.0
+    store.xadd(KEY, {"after": "cancel"})
+    assert store.xpending(KEY, "g")["pending"] == 0
+    reply = store.xreadgroup("g", "w2", {KEY: ">"})
+    assert reply[0][1][0][1] == {b"after": b"cancel"}
+
+
+def test_sync_subscribers_and_async_readers_share_the_session(pg, admin, tagged):
+    app, dsn = tagged
+    store = pg.streams()
+    for i in range(10):
+        store.xgroup_create(KEY, f"m{i}", id="$", mkstream=True)
+    subs = [_subscribed(pg, "mixed") for _ in range(10)]
+    sync_replies = []
+
+    def sync_reader(i):
+        sync_replies.append(store.xreadgroup(f"m{i}", "w", {KEY: ">"}, block=10000))
+
+    threads = [threading.Thread(target=sync_reader, args=(i,)) for i in range(5)]
+    for t in threads:
+        t.start()
+
+    async def go():
+        clients = [pg.async_streams() for _ in range(5)]
+        tasks = [
+            asyncio.create_task(c.xreadgroup(f"m{i + 5}", "w", {KEY: ">"}, block=10000))
+            for i, c in enumerate(clients)
+        ]
+        await asyncio.sleep(0.5)
+        sessions = _sessions(admin, app)
+        store.xadd(KEY, {"mixed": 1})
+        pg.publish("mixed", b"hello")
+        replies = await asyncio.wait_for(asyncio.gather(*tasks), 20)
+        for c in clients:
+            c.close()
+        return sessions, replies
+
+    sessions, async_replies = asyncio.run(go())
+    for t in threads:
+        t.join(10)
+    assert sessions == 1
+    assert len(sync_replies) == 5 and all(sync_replies)
+    assert all(async_replies)
+    for sub in subs:
+        assert _drain(sub, 2.0, want=1) == [b"hello"]
+        sub.close()
+
+
+def test_a_dead_subscriber_detaches_when_collected(pg, tagged):
+    import gc
+
+    _, dsn = tagged
+    hub = hub_for(dsn)
+    channel = pubsub_channel(pg.schema)
+    sub = _subscribed(pg, "gc")
+    assert hub.sink_count(channel) == 1
+    del sub
+    gc.collect()
+    assert hub.sink_count(channel) == 0
+
+
+def test_hubs_are_per_dsn_and_per_process(pg, tagged):
+    _, dsn = tagged
+    assert hub_for(dsn) is hub_for(dsn)
+    assert hub_for(dsn) is not hub_for(dsn + " ")
+    assert hub_for(dsn).pid == os.getpid()
+    assert listen_module._hubs[(dsn, os.getpid())] is hub_for(dsn)
+
+
+def test_an_unreachable_listen_url_fails_subscribe_and_leaves_no_thread(
+    pg, monkeypatch
+):
+    """``subscribe`` raises the connection's error, as a direct connect did,
+    and a hub nobody could attach to stops its thread."""
+    import psycopg
+
+    bad = "postgresql://localhost:1/nowhere?connect_timeout=1"
+    monkeypatch.setenv(events_module.LISTEN_URL_ENV, bad)
+    sub = pg.pubsub()
+    with pytest.raises(psycopg.OperationalError):
+        sub.subscribe("nowhere")
+    hub = hub_for(bad)
+    assert _eventually(lambda: hub._thread is None)
+    assert hub.sink_count() == 0
