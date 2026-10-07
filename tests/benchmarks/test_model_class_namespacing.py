@@ -77,7 +77,9 @@ def _build_recipe():
 
     # RecipeScenario.__init__ builds self._prefix as f"bench_{self._prefix}"
     # from Scenario.__init__'s own f"bench:{uuid4().hex[:8]}:" -- the factory
-    # itself sanitizes with .replace(":", "").replace("-", "")[:8].
+    # itself sanitizes with .replace(":", "").replace("-", ""). (It used to
+    # truncate that to [:8], leaving 3 hex digits: two recipe classes built
+    # here collided 1 time in 4096 -- #772.)
     prefix = _real_sanitized_prefix()
     return _build_recipe_model_class(prefix, overrides={})
 
@@ -185,19 +187,35 @@ EXPECTED_FIELDS = {
 }
 
 
+def _class_keys(cls) -> set:
+    """Every key in the database that belongs to ``cls``.
+
+    SCAN's glob is only a coarse pre-filter: ``*{name}*`` also matches any key
+    in which the name is merely a substring of a longer token (#772). A key
+    belongs to the class only when the exact class name is one of its
+    ``:``-delimited segments -- ``ExtMem<hash>:<key>`` records,
+    ``$Class:ExtMem<hash>``, ``$SortedF:ExtMem<hash>:<field>`` indexes alike.
+    """
+    class_name = cls.__name__
+    found: set = set()
+    cursor = 0
+    while True:
+        cursor, keys = get_REDIS_DB().scan(cursor, match=f"*{class_name}*", count=200)
+        for k in keys:
+            key_str = k if isinstance(k, str) else k.decode()
+            if class_name in key_str.split(":"):
+                found.add(key_str)
+        if cursor == 0:
+            break
+    return found
+
+
 def _cleanup(cls):
     """Best-effort key cleanup for a per-item class built in a test."""
-    class_name = cls.__name__
     try:
-        cursor = 0
-        while True:
-            cursor, keys = get_REDIS_DB().scan(
-                cursor, match=f"*{class_name}*", count=200
-            )
-            if keys:
-                get_REDIS_DB().delete(*keys)
-            if cursor == 0:
-                break
+        keys = _class_keys(cls)
+        if keys:
+            get_REDIS_DB().delete(*keys)
     except Exception:
         pass
 
@@ -304,25 +322,14 @@ def test_two_instances_from_same_factory_have_disjoint_keyspaces(factory_name):
         instance_b = cls_b(**kwargs_b)
         instance_b.save()
 
-        def _scan(match):
-            cursor = 0
-            found: list = []
-            while True:
-                cursor, keys = get_REDIS_DB().scan(cursor, match=match, count=200)
-                found.extend(keys)
-                if cursor == 0:
-                    break
-            return set(found)
-
-        keys_a = _scan(f"*{cls_a.__name__}*")
-        keys_b = _scan(f"*{cls_b.__name__}*")
+        keys_a = _class_keys(cls_a)
+        keys_b = _class_keys(cls_b)
 
         assert keys_a, "expected at least one key written for instance_a"
         assert keys_b, "expected at least one key written for instance_b"
         assert keys_a.isdisjoint(keys_b)
 
-        for k in keys_a | keys_b:
-            key_str = k if isinstance(k, str) else k.decode()
+        for key_str in keys_a | keys_b:
             assert "ExternalBenchmarkMemory" not in key_str
     finally:
         _cleanup(cls_a)

@@ -31,6 +31,7 @@ from popoto.privacy.never_record import NeverRecordMixin
 from popoto.recipes import default_memory as dm_module
 from popoto.recipes.default_memory import EVICTION_COUNTER_PREFIX, DefaultMemory
 from popoto.recipes.memory_lifecycle import MemoryLifecycle
+from tests.ttl_lapse import SHORT, lapse
 
 ENV_VAR = "POPOTO_DEFAULT_MEMORY_MAX_RECORDS"
 
@@ -754,10 +755,10 @@ class RecLedgerTtl(AppendOnlyMixin, popoto.Model):
 def test_idle_seconds_of_an_expired_record_is_none(pg):
     """``OBJECT IDLETIME`` of a key Redis expired is nil."""
     r = RecIdleTtl(name="a")
-    r._ttl = 1
+    r._ttl = SHORT
     r.save()
     assert RecIdleTtl.idle_seconds(name="a") == 0.0
-    time.sleep(1.6)
+    lapse(pg, r)
     assert RecIdleTtl.idle_seconds(name="a") is None
 
 
@@ -786,9 +787,9 @@ def test_a_caught_violation_in_a_batch_keeps_the_first_write(pg):
 def test_append_only_treats_an_expired_record_as_gone(pg):
     """As on Redis, where the expired key no longer EXISTS."""
     first = RecLedgerTtl(entry="e", amount=1.0)
-    first._ttl = 1
+    first._ttl = SHORT
     first.save()
-    time.sleep(1.6)
+    lapse(pg, first)
     with popoto.batch() as pipe:
         RecLedgerTtl(entry="e", amount=2.0).save(pipeline=pipe)
         pipe.execute()

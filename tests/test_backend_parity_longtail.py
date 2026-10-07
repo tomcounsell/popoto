@@ -23,7 +23,6 @@ Where the legs legitimately differ, the test pins both behaviours
 
 import logging
 import math
-import time
 from decimal import Decimal
 
 import msgpack
@@ -36,6 +35,7 @@ from popoto.backends import RecordId
 from popoto.backends.routing import non_redis_backend
 from popoto.fields.prediction_ledger import PredictionLedgerMixin
 from popoto.fields.td_value_field import TDValueField
+from tests.ttl_lapse import SHORT, lapse
 
 pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
 
@@ -79,11 +79,6 @@ class LtTtl(PredictionLedgerMixin, popoto.Model):
 
     class Meta:
         ttl = 3600
-
-
-#: A short-lived record's TTL, and how long a test waits past it.
-SHORT = 1
-PAST = 1.6
 
 
 @pytest.fixture(autouse=True)
@@ -496,14 +491,14 @@ def _expiring(name, **values):
     return record
 
 
-def test_the_ledger_treats_an_expired_record_as_absent():
+def test_the_ledger_treats_an_expired_record_as_absent(backend):
     """Redis's ``EXISTS`` guard misses an expired key: ``record`` and
     ``resolve`` raise ``TypeError``, ``auto_resolve`` returns ``None`` and
     nothing is resolved. The entry recorded while the record lived stays
     (the ``$PL:`` keys carry no TTL; the ledger table is not the row)."""
     record = _expiring("ledger")
     PredictionLedgerMixin.record_prediction(record, predicted={"x": 1.0})
-    time.sleep(PAST)
+    lapse(backend, record)
     with pytest.raises(TypeError, match="saved model instance"):
         PredictionLedgerMixin.record_prediction(record, predicted={"x": 2.0})
     with pytest.raises(TypeError, match="saved model instance"):
@@ -514,13 +509,13 @@ def test_the_ledger_treats_an_expired_record_as_absent():
     assert entry["predicted"] == {"x": 1.0} and entry["resolved"] is False
 
 
-def test_td_update_on_an_expired_record_reads_q_as_zero():
+def test_td_update_on_an_expired_record_reads_q_as_zero(backend):
     """The script's ``HGET`` of an expired key is ``nil``, so ``Q = 0``: the
     reply ignores the value stored while the record lived. (Redis then
     ``HSET``s a hash holding only the value; Postgres writes nothing --
     the documented "record that no longer exists" row.)"""
     record = _expiring("td", q_value=Decimal("0.5"))
-    time.sleep(PAST)
+    lapse(backend, record)
     reply = TDValueField.td_update(record, "q_value", reward=1.0, alpha=0.5)
     assert reply == 1.0  # 1.0 - 0, not 1.0 - 0.5
 
@@ -533,7 +528,7 @@ def test_cycle_state_of_an_expired_record_is_a_documented_divergence(backend):
     record, and a save over the expired key starts from the declaration."""
     record = _expiring("cyc")
     assert record.strengthen_cycle("relevance", factor=1.5) == [[86400, 3.0, 0.0]]
-    time.sleep(PAST)
+    lapse(backend, record)
     adjusted = record.strengthen_cycle("relevance", factor=2.0)
     exported = CyclicDecayField.export_state(record, "relevance", None)
     again = LtTtl(name="cyc")
