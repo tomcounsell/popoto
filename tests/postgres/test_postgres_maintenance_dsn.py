@@ -242,23 +242,28 @@ def test_the_listen_session_uses_the_maintenance_dsn(split, admin):
 
 @pytest.fixture
 def other_database(pg):
-    """A DSN to a *different* database on the same server, read-only so
-    that even a broken refusal could not run DDL there:
-    ``POPOTO_TEST_OTHER_PG_DSN`` when set, else ``template1``."""
+    """``(dsn, password)``: a DSN to a *different* database on the same
+    server, read-only so that even a broken refusal could not run DDL there
+    (``POPOTO_TEST_OTHER_PG_DSN`` when set, else ``template1``), and the
+    password it carries -- its own when it has one (CI's does, and the server
+    checks it), else a dummy one a trust-auth server never asks for."""
+    from psycopg.conninfo import conninfo_to_dict
+
     other = os.environ.get("POPOTO_TEST_OTHER_PG_DSN", "").strip()
     if not other:
         other = _conninfo(pg.dsn, dbname="template1")
-    return _conninfo(
+    password = conninfo_to_dict(other).get("password") or "s3cret-800"
+    dsn = _conninfo(
         other,
-        password="s3cret-800",
+        password=password,
         options="-c default_transaction_read_only=on",
     )
+    return dsn, password
 
 
 def test_a_maintenance_dsn_to_another_database_is_refused(pg, other_database, admin):
-    backend = PostgresBackend(
-        dsn=pg.dsn, schema=pg.schema, maintenance_dsn=other_database
-    )
+    other, password = other_database
+    backend = PostgresBackend(dsn=pg.dsn, schema=pg.schema, maintenance_dsn=other)
     previous = set_backend(backend)
     previous_instance = _swap_instance("postgres", backend)
     try:
@@ -270,7 +275,7 @@ def test_a_maintenance_dsn_to_another_database_is_refused(pg, other_database, ad
         _swap_instance("postgres", previous_instance)
         set_backend(previous)
     message = str(caught.value)
-    assert "database" in message and "s3cret-800" not in message
+    assert "database" in message and password not in message
     assert isinstance(caught.value, ValueError)
     assert backend._maintenance_verified is False
     # Not an outage, and nothing was created anywhere.
