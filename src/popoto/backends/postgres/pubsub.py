@@ -31,7 +31,8 @@ like ``PUBLISH``: each subscriber registers its subscriptions in
 keeps the rows whose pid is a live session (``pg_stat_activity``). A
 subscriber that closes deletes its rows; one that dies leaves rows that stop
 counting when its session ends and are swept by the next subscriber to
-connect. The ``LISTEN`` session is dedicated, never pooled (§3 Topology), and
+connect. The ``LISTEN`` session is never pooled (§3 Topology): every
+subscriber in a process shares one per DSN (:mod:`.listen`, #799), and it
 must reach the same server as the backend's DSN.
 """
 
@@ -43,14 +44,17 @@ import collections
 import hashlib
 import itertools
 import logging
+import os
 import re
+import threading
 import uuid
 import weakref
 from typing import Any, Callable, Iterator, Optional, Union
 
 from ...exceptions import PublisherException
 from ..types import UnitOfWork
-from .events import _close_quietly, _text, encode_value
+from .events import _text, encode_value
+from .listen import QueueSink
 
 __all__ = [
     "NOTIFY_PAYLOAD_LIMIT",
@@ -278,16 +282,62 @@ def _async_unit_outside_bridge(uow: Any) -> bool:
     return not _in_bridge()
 
 
+class _PubSubSink(QueueSink):
+    """A subscriber's queue, plus the registrations ``publish`` counts.
+
+    ``popoto_pubsub_listener`` rows name the shared session's backend pid,
+    so they stop counting when it drops. :meth:`resume` re-inserts them
+    under the new pid on the hub's own connection the moment it reconnects
+    (before any subscriber polls); ``lock`` serialises that against the
+    subscriber's own registration writes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.lock = threading.Lock()
+        self.pid: Optional[int] = None
+        self.token = uuid.uuid4().hex
+        self.table: Optional[str] = None
+        self.names: dict[tuple[bool, str], Optional[str]] = {}
+
+    def rows(self, pid: int) -> list[list[Any]]:
+        return [
+            [pid, self.token, pattern, name, regex]
+            for (pattern, name), regex in self.names.items()
+        ]
+
+    def resume(self, conn: Any, backend_pid: int) -> None:
+        with self.lock:
+            if self.table is None or self.pid == backend_pid:
+                return
+            if self.names:
+                with conn.cursor() as cur:
+                    cur.executemany(
+                        f"INSERT INTO {self.table} (pid, token, pattern, name, "
+                        "regex) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                        self.rows(backend_pid),
+                    )
+            conn.execute(
+                f"DELETE FROM {self.table} WHERE token = %s AND pid <> %s",
+                [self.token, backend_pid],
+            )
+            self.pid = backend_pid
+
+
 class PostgresPubSub:
-    """redis-py's ``PubSub`` on a dedicated ``LISTEN`` session.
+    """redis-py's ``PubSub`` on the process's shared ``LISTEN`` session.
 
     ``subscribe``/``psubscribe``/``unsubscribe``/``punsubscribe``,
     ``get_message(ignore_subscribe_messages=, timeout=)`` (``0.0`` polls,
     ``None`` waits), ``listen()`` and ``close()``, with the same message
     dicts (``type``, ``pattern``, ``channel``, ``data``; ``bytes`` values).
-    A subscription is live when the call returns. If the session drops it is
-    reopened, and its subscriptions re-registered, on the next call;
-    messages published meanwhile are lost, as on a Redis reconnect."""
+    A subscription is live when the call returns.
+
+    Every subscriber in a process shares one session per DSN
+    (:mod:`.listen`, #799): each is a sink on the schema's channel, attached
+    on its first subscription and detached when it has none left. If the
+    session drops it is reopened at once, re-``LISTEN``\\ s and re-registers
+    every subscription under its new pid; messages published while it was
+    down are lost, as on a Redis reconnect."""
 
     def __init__(self, backend: Any, ignore_subscribe_messages: bool = False) -> None:
         self.backend = backend
@@ -296,9 +346,8 @@ class PostgresPubSub:
         self.patterns: dict[bytes, Optional[Callable[[dict[str, Any]], Any]]] = {}
         self._compiled: dict[bytes, re.Pattern[str]] = {}
         self._pending: collections.deque[dict[str, Any]] = collections.deque()
-        self.token = uuid.uuid4().hex
-        self.conn: Any = None
-        self.pid: Optional[int] = None
+        self._sink = _PubSubSink()
+        self._hub: Any = None
         self._finalizer: Any = None
 
     # -- the session ----------------------------------------------------------------
@@ -307,67 +356,110 @@ class PostgresPubSub:
     def subscribed(self) -> bool:
         return bool(self.channels or self.patterns)
 
-    def _ensure(self) -> Any:
-        conn = self.conn
-        if conn is not None and not conn.closed and not conn.broken:
-            return conn
-        _close_quietly(conn)
-        from . import _import_psycopg
-        from ...fields.constants import Defaults
+    @property
+    def pid(self) -> Optional[int]:
+        """The shared session's server pid this subscriber's
+        ``popoto_pubsub_listener`` rows are registered under."""
+        return self._sink.pid
 
-        psycopg = _import_psycopg()
-        conn = psycopg.connect(
-            self.backend.listen_dsn,
-            autocommit=True,
-            connect_timeout=max(
-                1, int(round(float(Defaults.PG_CONNECT_TIMEOUT_SECONDS)))
-            ),
-        )
-        conn.execute(f'LISTEN "{pubsub_channel(self.backend.schema)}"')
-        self.conn = conn
-        self.pid = int(conn.info.backend_pid)
+    @property
+    def token(self) -> str:
+        return self._sink.token
+
+    @property
+    def hub(self) -> Any:
+        return self._hub
+
+    def _channel(self) -> str:
+        return pubsub_channel(self.backend.schema)
+
+    def _attached(self) -> bool:
+        return self._hub is not None and self._hub.pid == os.getpid()
+
+    def _ensure(self) -> None:
+        """Attach to the shared session (again in a forked child, which
+        never shares the parent's socket, with a fresh token so it never
+        touches the parent's registrations), then make sure the
+        registrations name the session's current pid."""
+        from .listen import hub_for
+
+        if not self._attached():
+            if self._hub is not None:  # inherited across a fork: start clean
+                if self._finalizer is not None:
+                    self._finalizer.detach()
+                    self._finalizer = None
+                names = dict(self._sink.names)
+                self._sink = _PubSubSink()
+                self._sink.names = names
+            self._sink.table = self.backend._events_ready()["popoto_pubsub_listener"]
+            hub = hub_for(self.backend.listen_dsn)
+            hub.attach(self._channel(), self._sink, barrier=True)
+            self._hub = hub
+            self._finalizer = weakref.finalize(
+                self, hub.detach, self._channel(), self._sink
+            )
+        self._sync_registration()
+
+    def _detach(self) -> None:
         if self._finalizer is not None:
             self._finalizer.detach()
-        self._finalizer = weakref.finalize(self, _close_quietly, conn)
-        t = self.backend._events_ready()
-        # Sweep registrations whose session is gone, then (re)register ours.
-        self.backend._run(
-            f"DELETE FROM {t['popoto_pubsub_listener']} WHERE pid NOT IN "
-            "(SELECT pid FROM pg_stat_activity)",
-            write=True,
-        )
-        for name in self.channels:
-            self._register(name, pattern=False)
-        for name in self.patterns:
-            self._register(name, pattern=True)
-        return conn
+            self._finalizer = None
+        if self._attached():
+            self._hub.detach(self._channel(), self._sink)
+        self._hub = None
+        self._sink.take(0)
 
-    def _register(self, name: bytes, *, pattern: bool) -> None:
+    def _sync_registration(self) -> None:
+        """Register every subscription under the shared session's current
+        pid when they are not (first use; a reconnect :meth:`_PubSubSink.resume`
+        could not cover), sweeping registrations whose session is gone."""
+        sink = self._sink
+        with sink.lock:
+            current = None if self._hub is None else self._hub.backend_pid
+            if current is None or current == sink.pid:
+                return
+            t = self.backend._events_ready()
+            self.backend._run(
+                f"DELETE FROM {t['popoto_pubsub_listener']} WHERE pid NOT IN "
+                "(SELECT pid FROM pg_stat_activity)",
+                write=True,
+            )
+            sink.pid = current
+            for row in sink.rows(current):
+                self._insert(row)
+
+    def _insert(self, row: list[Any]) -> None:
         t = self.backend._events_ready()
-        text = name.decode("utf-8")
         self.backend._run(
             f"INSERT INTO {t['popoto_pubsub_listener']} (pid, token, pattern, name, "
             "regex) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-            [
-                self.pid,
-                self.token,
-                pattern,
-                text,
-                glob_to_regex(as_bytes_text(text)) if pattern else None,
-            ],
+            row,
             write=True,
         )
 
+    def _register(self, name: bytes, *, pattern: bool) -> None:
+        sink = self._sink
+        text = name.decode("utf-8")
+        regex = glob_to_regex(as_bytes_text(text)) if pattern else None
+        with sink.lock:
+            sink.names[(pattern, text)] = regex
+            if sink.pid is not None:
+                self._insert([sink.pid, sink.token, pattern, text, regex])
+
     def _unregister(self, name: bytes, *, pattern: bool) -> None:
-        if self.pid is None:
-            return
-        t = self.backend._events_ready()
-        self.backend._run(
-            f"DELETE FROM {t['popoto_pubsub_listener']} WHERE pid = %s AND token = %s "
-            "AND pattern = %s AND name = %s",
-            [self.pid, self.token, pattern, name.decode("utf-8")],
-            write=True,
-        )
+        sink = self._sink
+        text = name.decode("utf-8")
+        with sink.lock:
+            sink.names.pop((pattern, text), None)
+            if sink.pid is None:
+                return
+            t = self.backend._events_ready()
+            self.backend._run(
+                f"DELETE FROM {t['popoto_pubsub_listener']} WHERE token = %s "
+                "AND pattern = %s AND name = %s",
+                [sink.token, pattern, text],
+                write=True,
+            )
 
     # -- subscriptions --------------------------------------------------------------
 
@@ -426,6 +518,10 @@ class PostgresPubSub:
                 except Exception as exc:  # the count is advisory; never fail on it
                     logger.warning("pub/sub unregister of %r failed: %s", name, exc)
             self._confirm(kind, name)
+        if not self.subscribed:
+            # Nothing left to match: stop receiving (and queueing) the
+            # schema's traffic until the next subscription.
+            self._detach()
 
     def unsubscribe(self, *args: Any) -> None:
         self._unsubscribe(args, pattern=False)
@@ -462,12 +558,18 @@ class PostgresPubSub:
 
         psycopg = _import_psycopg()
         try:
-            conn = self._ensure()
-            for notify in conn.notifies(timeout=timeout, stop_after=1):
-                self._deliver(notify.payload)
-        except psycopg.OperationalError as exc:
-            logger.warning("popoto pub/sub LISTEN session dropped (%s); reopening", exc)
-            _close_quietly(self.conn)
+            self._ensure()
+        except (psycopg.OperationalError, TimeoutError) as exc:
+            logger.warning("popoto pub/sub LISTEN session unavailable (%s)", exc)
+            return
+        payloads, reconnected = self._sink.take(timeout)
+        if reconnected:
+            try:
+                self._sync_registration()
+            except Exception as exc:  # the count is advisory; never fail on it
+                logger.warning("pub/sub re-registration failed: %s", exc)
+        for payload in payloads:
+            self._deliver(payload)
 
     def _handle(self, message: dict[str, Any]) -> Optional[dict[str, Any]]:
         kind = message["type"]
@@ -507,24 +609,23 @@ class PostgresPubSub:
                 yield message
 
     def close(self) -> None:
-        if self.pid is not None:
-            try:
-                t = self.backend._events_ready()
-                self.backend._run(
-                    f"DELETE FROM {t['popoto_pubsub_listener']} WHERE pid = %s AND "
-                    "token = %s",
-                    [self.pid, self.token],
-                    write=True,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "pub/sub close could not drop its registrations: %s", exc
-                )
-        if self._finalizer is not None:
-            self._finalizer.detach()
-            self._finalizer = None
-        _close_quietly(self.conn)
-        self.conn = None
+        sink = self._sink
+        with sink.lock:
+            if sink.pid is not None:
+                try:
+                    t = self.backend._events_ready()
+                    self.backend._run(
+                        f"DELETE FROM {t['popoto_pubsub_listener']} WHERE token = %s",
+                        [sink.token],
+                        write=True,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "pub/sub close could not drop its registrations: %s", exc
+                    )
+            sink.names.clear()
+            sink.pid = None
+        self._detach()
         self.channels.clear()
         self.patterns.clear()
         self._compiled.clear()

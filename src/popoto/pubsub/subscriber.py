@@ -52,8 +52,8 @@ Usage Example:
 Backends (#759 M5):
     A subscriber listens on ``backend=`` (a name or instance) when given,
     else the process default. On Postgres ``self.pubsub`` is a
-    ``PostgresPubSub`` on a dedicated ``LISTEN`` session, polled the same way;
-    call ``self.pubsub.close()`` to end it.
+    ``PostgresPubSub`` on the process's shared ``LISTEN`` session (#799),
+    polled the same way; call ``self.pubsub.close()`` to end it.
 
 See Also:
     - Publisher: The counterpart that emits messages to channels
@@ -148,8 +148,8 @@ class Subscriber(ABC):
         self._pubsub_backend = kwargs.pop("backend", None)
         backend = _native_backend(self)
         if backend is not None:
-            # #759 M5: LISTEN on a dedicated Postgres session, with the same
-            # message dicts redis-py's PubSub returns.
+            # #759 M5 / #799: LISTEN on the process's shared Postgres
+            # session, with the same message dicts redis-py's PubSub returns.
             self.pubsub = backend.pubsub()
         else:
             self.pubsub = get_REDIS_DB().pubsub()
