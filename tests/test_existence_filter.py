@@ -117,6 +117,7 @@ class StatisticalBloomModel(popoto.Model):
         error_rate=0.05,
         capacity=10_000,
         fingerprint_fn=lambda inst: inst.topic,
+        hash_version=2,  # #775: opt-in; v1 packs similar tokens onto few bits
     )
 
 
@@ -1266,3 +1267,45 @@ class TestMembershipExactness:
         freq.save()
         freq.delete()
         assert FreqModel.freq.get_frequency(FreqModel, "durable") == 1
+
+
+class TestSimilarTokensBothBackends:
+    """#775: the pre-fix Redis hash packed similar tokens onto a few bits, so
+    a filter of shared-prefix tokens answered "maybe" for nearly any probe of
+    the same shape. Postgres was never affected (exact table); on Redis the
+    v2 hash brings the rate back to the configured target. Both legs: no
+    false negatives, and the version/legacy reporting has one shape."""
+
+    def test_similar_tokens_bounded_false_positives(self, backend_is_redis):
+        tokens = [f"ytopic{i:04d}" for i in range(400)]
+        for i, token in enumerate(tokens):
+            StatisticalBloomModel(name=f"sim-{i}", topic=token).save()
+        bloom = StatisticalBloomModel.bloom
+        assert all(bloom.might_exist_batch(StatisticalBloomModel, tokens).values())
+        unseen = [f"ytopic{i:04d}" for i in range(400, 2400)]
+        hits = bloom.might_exist_batch(StatisticalBloomModel, unseen)
+        false_positives = sum(1 for v in hits.values() if v)
+        if backend_is_redis:
+            # 400 items in a filter sized for 10,000 at 5%: the theoretical
+            # rate is ~2e-6, so effectively none of 2,000 probes may hit.
+            assert false_positives <= 2
+            assert bloom.hash_version(StatisticalBloomModel) == 2
+        else:
+            assert false_positives == 0
+            assert bloom.hash_version(StatisticalBloomModel) is None
+
+    def test_check_indexes_reports_no_legacy_hash(self):
+        StatisticalBloomModel(name="li-1", topic="fresh").save()
+        report = StatisticalBloomModel.check_indexes()
+        assert report["legacy_hash"] == []
+        assert report["stale_bloom_staging"] == []
+
+    def test_rebuild_bloom_hash_version_both_backends(self):
+        """The opt-in conversion is accepted on both legs (a no-op on
+        Postgres, which has no bit array), and other values are refused."""
+        StatisticalBloomModel(name="rb-1", topic="converted").save()
+        assert StatisticalBloomModel.rebuild_indexes(bloom_hash_version=2) == 1
+        bloom = StatisticalBloomModel.bloom
+        assert bloom.might_exist(StatisticalBloomModel, "converted")
+        with pytest.raises(ValueError):
+            StatisticalBloomModel.rebuild_indexes(bloom_hash_version=1)
