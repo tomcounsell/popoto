@@ -223,9 +223,8 @@ class BloomLockRenewer:
             self._thread.start()
         return self
 
-    def __exit__(self, *exc: Any) -> bool:
+    def __exit__(self, *exc: Any) -> None:
         self.stop()
-        return False
 
     def stop(self) -> None:
         """Stop renewing and wait for the thread to end. Idempotent."""
