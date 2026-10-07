@@ -68,6 +68,9 @@ def test_unset_or_same_as_main_means_the_main_dsn(monkeypatch):
 
 
 def test_a_dsn_differing_only_in_order_or_password_is_the_main_dsn(monkeypatch):
+    # Parsing a DSN takes the driver; without it (where no connection could
+    # be made either) DSNs compare as text.
+    pytest.importorskip("psycopg")
     monkeypatch.delenv(events_module.LISTEN_URL_ENV, raising=False)
     main = "host=h port=5432 dbname=db user=app"
     for same in (
