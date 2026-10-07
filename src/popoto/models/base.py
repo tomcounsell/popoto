@@ -3366,7 +3366,9 @@ class Model(metaclass=ModelBase):
     # Index rebuild operations
 
     @classmethod
-    def rebuild_indexes(cls, batch_size: int = 1000) -> "RebuildIndexesResult":
+    def rebuild_indexes(
+        cls, batch_size: int = 1000, bloom_hash_version: "int | None" = None
+    ) -> "RebuildIndexesResult":
         """Delete all secondary indexes and reconstruct them from source hash data.
 
         This method is useful for repairing corrupted indexes, after bulk data
@@ -3381,6 +3383,26 @@ class Model(metaclass=ModelBase):
                via pipeline to reconstruct all indexes
             4. Re-add each instance key to the class set
 
+        ``ExistenceFilter`` filters keep their hash version by default: each
+        is re-saved into in place, exactly as before #775. Pass
+        ``bloom_hash_version=2`` to convert v1 (and missing) filters to the
+        v2 hash (#775). **Only do that once every process that reads or
+        writes this model runs popoto with #775**: older code reads a v2
+        filter with the v1 hash, so its reads of tokens added since give
+        false negatives and its writes land where v2 reads never look.
+
+        A conversion takes the filter's rebuild lock before anything else
+        is changed, fills a staging filter from the records (every save that
+        races it also writes there), and swaps it over the old filter in one
+        compare-and-rename that succeeds only while the lock still holds its
+        token. A background thread renews the lock every third of its TTL
+        for the whole time it is held, step 1 included. Readers see the complete old filter
+        until that step and the complete v2 filter after it. One conversion
+        of a filter runs at a time: a second raises
+        ``BloomRebuildInProgressError`` before it has deleted any index. If
+        a conversion raises or dies, the old filter is untouched and its
+        staging key expires. v2 filters are never converted back.
+
         Rows whose derived key disagrees with the key they are stored under are
         **skipped, not indexed** (#537/#538). Rebuild reconstructs indexes from
         the *decoded* values, so for such a row it would faithfully write an
@@ -3393,6 +3415,17 @@ class Model(metaclass=ModelBase):
             batch_size: Number of instances to process per pipeline batch.
                 Default is 1000. Lower values use less memory but require
                 more round-trips.
+            bloom_hash_version: ``None`` (default) keeps every bloom
+                filter's hash version; ``2`` converts v1 filters to v2.
+                Ignored off Redis, where there is no bit array.
+
+        Raises:
+            ValueError: ``bloom_hash_version`` is neither ``None`` nor ``2``.
+            BloomRebuildInProgressError: another conversion of one of this
+                model's filters is running. Nothing was changed.
+            BloomRebuildLostLockError: a conversion lost its lock before its
+                swap (it stalled past ``Defaults.BLOOM_REBUILD_LOCK_TTL_MS``).
+                Every other index was rebuilt; that filter is unchanged.
 
         Returns:
             A :class:`RebuildIndexesResult` -- an ``int`` subclass equal to the
@@ -3413,6 +3446,12 @@ class Model(metaclass=ModelBase):
             if result.diverged_count:
                 print(Event.audit_datetime_keys())
         """
+        if bloom_hash_version not in (None, 2):
+            raise ValueError(
+                f"bloom_hash_version must be None (keep each filter's hash) or 2 "
+                f"(convert v1 filters to v2), got {bloom_hash_version!r}; a v2 "
+                f"filter is never converted back"
+            )
         backend = get_backend(cls)
         if backend.name != "redis":
             # #759 M5: another backend recomputes its own derived state
@@ -3423,10 +3462,60 @@ class Model(metaclass=ModelBase):
             )
             return RebuildIndexesResult(count, diverged)
 
-        from .encoding import decode_popoto_model_hashmap
-
         model_name = cls._meta.model_name
 
+        # Opt-in v2 bloom conversion (#775): take every filter's lock first,
+        # so a refusal (another conversion running) leaves the store exactly
+        # as it was. The saves below dual-write each staging key; each is
+        # swapped in by a compare-and-rename once every record is re-saved.
+        # The locks are renewed on a timer from the moment they are taken
+        # until just before the swap (PR #801 review, N1): renewal must not
+        # depend on the rebuild visiting a record, because step 1 visits none.
+        from ..fields.existence_filter import BloomLockRenewer
+
+        blooms = cls._begin_bloom_rebuilds() if bloom_hash_version == 2 else []
+        renewer = BloomLockRenewer(cls, blooms)
+        try:
+            with renewer:
+                count, diverged_keys = cls._rebuild_indexes_redis(batch_size)
+        except BaseException:
+            for bloom, token in blooms:
+                bloom._abort_v2_rebuild(cls, token)
+            raise
+        # The renewer is stopped; its last renewal left at least two thirds
+        # of the TTL, ample for the swaps.
+        lost = []
+        for bloom, token in blooms:
+            try:
+                if any(f is bloom for f in renewer.lost):
+                    # A renewal already saw the lock gone: refuse without
+                    # asking (the compare-and-rename would refuse too).
+                    bloom._refuse_v2_swap(cls, token)
+                bloom._finish_v2_rebuild(cls, token)
+            except BaseException as exc:
+                lost.append(exc)
+
+        if diverged_keys:
+            logger.warning(
+                "%s.rebuild_indexes() skipped %d row(s) whose stored key does not "
+                "match the key derived from their decoded values; they were left "
+                "unindexed rather than indexed to a nonexistent key. Run "
+                "%s.audit_datetime_keys() to see them and "
+                "%s.migrate_datetime_keys() to repair them. First skipped: %s",
+                model_name,
+                len(diverged_keys),
+                model_name,
+                model_name,
+                diverged_keys[0],
+            )
+        if lost:
+            raise lost[0]
+
+        return RebuildIndexesResult(count, diverged_keys)
+
+    @classmethod
+    def _rebuild_indexes_redis(cls, batch_size: int) -> "tuple[int, list[str]]":
+        """Steps 1 and 2 of :meth:`rebuild_indexes` on Redis."""
         # Step 1: Delete all secondary index keys
 
         # Delete class set
@@ -3464,10 +3553,47 @@ class Model(metaclass=ModelBase):
             index_key = cls._meta.get_index_key(tuple(field_names))
             get_REDIS_DB().delete(index_key)
 
+        return cls._rebuild_from_records(batch_size)
+
+    @classmethod
+    def _bloom_fields(cls) -> "list[Any]":
+        """The model's ``ExistenceFilter`` fields, in declaration order."""
+        from ..fields.existence_filter import ExistenceFilter
+
+        return [f for f in cls._meta.fields.values() if isinstance(f, ExistenceFilter)]
+
+    @classmethod
+    def _begin_bloom_rebuilds(cls) -> "list[tuple[Any, str]]":
+        """``[(field, token)]``: a v2 rebuild lock for each non-v2 filter.
+
+        All or nothing: if any filter's lock is held elsewhere, the ones
+        already taken are released and ``BloomRebuildInProgressError``
+        propagates before anything has been changed.
+        """
+        out: "list[tuple[Any, str]]" = []
+        try:
+            for field in cls._bloom_fields():
+                token = field._begin_v2_rebuild(cls)
+                if token is not None:
+                    out.append((field, token))
+        except BaseException:
+            for field, token in out:
+                field._abort_v2_rebuild(cls, token)
+            raise
+        return out
+
+    @classmethod
+    def _rebuild_from_records(cls, batch_size: int) -> "tuple[int, list[str]]":
+        """Step 2 of :meth:`rebuild_indexes`: re-run every record's hooks.
+
+        Returns ``(count, diverged_keys)``.
+        """
+        from .encoding import decode_popoto_model_hashmap
+
         # Step 2: SCAN all instance keys and rebuild indexes
         instance_pattern = cls._meta.db_class_key.redis_key + ":*"
         count = 0
-        diverged_keys = []
+        diverged_keys: "list[str]" = []
         pipeline = get_REDIS_DB().pipeline()
         batch_count = 0
 
@@ -3542,21 +3668,7 @@ class Model(metaclass=ModelBase):
         if batch_count > 0:
             pipeline.execute()
 
-        if diverged_keys:
-            logger.warning(
-                "%s.rebuild_indexes() skipped %d row(s) whose stored key does not "
-                "match the key derived from their decoded values; they were left "
-                "unindexed rather than indexed to a nonexistent key. Run "
-                "%s.audit_datetime_keys() to see them and "
-                "%s.migrate_datetime_keys() to repair them. First skipped: %s",
-                model_name,
-                len(diverged_keys),
-                model_name,
-                model_name,
-                diverged_keys[0],
-            )
-
-        return RebuildIndexesResult(count, diverged_keys)
+        return count, diverged_keys
 
     @classmethod
     def _get_auto_key_field_name(cls) -> "str | None":
@@ -3715,8 +3827,23 @@ class Model(metaclass=ModelBase):
                     'sorted_fields': {field_name: int, ...},
                     'geo_fields': {field_name: int, ...},
                     'composite_indexes': {index_key: int, ...},
+                    'legacy_hash': [field_name, ...],  # informational, below
+                    'stale_bloom_staging': [redis_key, ...],  # likewise
                     'total': int,             # sum of all the above
                 }
+
+            ``legacy_hash`` names the ``ExistenceFilter`` fields whose filter
+            is built with the v1 hash (#775). They answer correctly for every
+            token they hold -- this is not an orphan count and is not in
+            ``total`` -- but v1 packs similar tokens onto few bits, so their
+            false-positive rate is far above ``error_rate``. Once every
+            process runs popoto with #775, ``rebuild_indexes(
+            bloom_hash_version=2)`` converts them.
+
+            ``stale_bloom_staging`` lists staging keys a v2 bloom rebuild
+            left behind when it died. Nothing reads or writes them; they
+            expire on their own and the next v2 rebuild deletes them. Also
+            informational and not in ``total``.
 
         Example:
             result = User.check_indexes()
@@ -3786,13 +3913,15 @@ class Model(metaclass=ModelBase):
                     break
             return values
 
-        result = {
+        result: dict[str, Any] = {
             "class_set": 0,
             "partial_writes": 0,
             "key_fields": {},
             "sorted_fields": {},
             "geo_fields": {},
             "composite_indexes": {},
+            "legacy_hash": [],
+            "stale_bloom_staging": [],
             "total": 0,
         }
 
@@ -3856,6 +3985,18 @@ class Model(metaclass=ModelBase):
             if values:
                 index_orphans = _count_orphans(values)
             result["composite_indexes"][index_key] = index_orphans
+
+        # 6. Bloom filters on the v1 hash (#775), and staging keys a dead v2
+        #    rebuild left. Informational: a v1 filter answers correctly for
+        #    every token it holds, and a stale staging key is read by nothing,
+        #    so neither is an orphan and both stay out of the total.
+        blooms = cls._bloom_fields()
+        result["legacy_hash"] = [
+            field.name for field in blooms if field.hash_version(cls) == 1
+        ]
+        result["stale_bloom_staging"] = [
+            key for field in blooms for key in field.stale_rebuild_staging(cls)
+        ]
 
         # Compute total (includes partial-write orphans).
         result["total"] = (
@@ -4203,7 +4344,9 @@ class Model(metaclass=ModelBase):
         return await _off_loop(cls, cls.clean_indexes, batch_size=batch_size)
 
     @classmethod
-    async def async_rebuild_indexes(cls, batch_size: int = 1000) -> int:
+    async def async_rebuild_indexes(
+        cls, batch_size: int = 1000, bloom_hash_version: "int | None" = None
+    ) -> int:
         """Async version of rebuild_indexes().
 
         Runs the synchronous rebuild_indexes() method off the event loop: in a
@@ -4211,11 +4354,19 @@ class Model(metaclass=ModelBase):
 
         Args:
             batch_size: Number of instances to process per pipeline batch.
+            bloom_hash_version: As for :meth:`rebuild_indexes`: ``2``
+                converts v1 bloom filters to v2 (only once every process runs
+                popoto with #775), ``None`` keeps them.
 
         Returns:
             Number of instances processed.
         """
-        return await _off_loop(cls, cls.rebuild_indexes, batch_size=batch_size)
+        return await _off_loop(
+            cls,
+            cls.rebuild_indexes,
+            batch_size=batch_size,
+            bloom_hash_version=bloom_hash_version,
+        )
 
     @classmethod
     def raw_update(
