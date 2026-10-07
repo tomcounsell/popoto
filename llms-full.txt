@@ -20437,8 +20437,9 @@ On the Postgres backend (`Meta.backend = "postgres"` or
 `POPOTO_BACKEND=postgres`), `Publisher` and `Subscriber` keep this API and
 these message shapes over Postgres `NOTIFY`/`LISTEN`, with no Redis
 connection. A subscriber holds a dedicated `LISTEN` session (never a pooled
-connection; set `POPOTO_POSTGRES_LISTEN_URL` to reach the server past a
-transaction-mode pooler) and is polled the same way; call
+connection; set `POPOTO_POSTGRES_LISTEN_URL`, or the maintenance DSN
+`POPOTO_POSTGRES_MAINTENANCE_URL` it falls back to, to reach the server past
+a transaction-mode pooler) and is polled the same way; call
 `subscriber.pubsub.close()` to end it. Pass `backend="postgres"` to a
 standalone `Publisher` or `Subscriber` to choose it explicitly.
 
@@ -21896,20 +21897,25 @@ class Note(popoto.Model):
 export POPOTO_BACKEND=postgres                                  # process default
 export POPOTO_POSTGRES_URL=postgresql://db.internal:5432/agents  # the DSN
 export POPOTO_POSTGRES_SCHEMA=popoto                             # optional; default "popoto"
+export POPOTO_POSTGRES_MAINTENANCE_URL=postgresql://db.internal:5432/agents  # optional; see below
 ```
 
 **Which variable each component reads:**
 
 | Component | Reads | Never reads |
 |---|---|---|
-| the library (`popoto`) | `POPOTO_BACKEND`, `POPOTO_POSTGRES_URL`, `POPOTO_POSTGRES_SCHEMA`, `POPOTO_SCHEMA_AUTO` | `POSTGRES_URL`, `DATABASE_URL` |
+| the library (`popoto`) | `POPOTO_BACKEND`, `POPOTO_POSTGRES_URL`, `POPOTO_POSTGRES_SCHEMA`, `POPOTO_SCHEMA_AUTO`, and optionally `POPOTO_POSTGRES_MAINTENANCE_URL` ([maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode)), `POPOTO_POSTGRES_GRANT_MAIN_ROLE` ([two roles](#two-roles-an-application-role-and-an-owner-role)) and `POPOTO_POSTGRES_LISTEN_URL` | `POSTGRES_URL`, `DATABASE_URL` |
 | the pytest conformance harness | `POSTGRES_URL`, for its throwaway `popoto_test_<hex>` schema (see [Testing](../testing.md)) | — |
 
 Popoto never picks Postgres up from a generic variable. Selecting Postgres
 without `POPOTO_POSTGRES_URL`, or without the `postgres` extra installed,
 raises `BackendUnavailableError` naming what is missing. You can also pass
 the DSN directly:
-`popoto.backends.set_backend(PostgresBackend(dsn=..., schema=...))`.
+`popoto.backends.set_backend(PostgresBackend(dsn=..., schema=...))`, plus
+`maintenance_dsn=...` for the optional
+[maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode) and
+`grant_main_role=True` to opt in to [per-object
+grants](#two-roles-an-application-role-and-an-owner-role).
 
 **Laziness.** `import popoto` never imports `psycopg`. Defining a
 `Meta.backend = "postgres"` model never touches the network either: class
@@ -22791,7 +22797,9 @@ streams), else the process default; `reconciliation_consumer` names
   never a pooled connection -- PgBouncer in transaction mode would hand a
   pooled connection to another client between statements (§3 Topology). Its
   DSN is `POPOTO_POSTGRES_LISTEN_URL` when set (point it past a
-  transaction-mode pooler at the server), else the backend's own. The
+  transaction-mode pooler at the server), else the
+  [maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode) when
+  one is configured, else the backend's own. The
   waiter is attached before the read it backs up, so an append that commits
   in between is not missed. A wait is capped at one second
   (`STREAM_WAIT_POLL_SECONDS`), after which the read runs again anyway --
@@ -23255,12 +23263,11 @@ wait from hanging the call or being mistaken for an outage:
    `lock_timeout`, `statement_timeout` and `client_connection_check_interval`
    can leak into other clients' transactions, and the `REINDEX` itself may
    run on a server connection that never got them, and wait without a bound
-   again. Run maintenance on a direct or session-mode connection. There is
-   no separate setting yet: maintenance uses the DSN popoto is configured
-   with (`POPOTO_POSTGRES_URL`, or the `dsn` of `PostgresBackend`). So run it
-   from a maintenance process configured with a direct DSN, such as
-   `set_backend(PostgresBackend(dsn=<direct DSN>, schema=...))`. A
-   *maintenance DSN* setting is a follow-up.
+   again. Run maintenance on a direct or session-mode connection: set
+   `POPOTO_POSTGRES_MAINTENANCE_URL` (or `maintenance_dsn=`), and this
+   connection, and the one `clean_indexes()` drops leftover indexes on, opens
+   through it while every other query keeps the pooled DSN (see
+   [A maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode)).
 3. **Stopping early is not an outage.** A lock timeout (`55P03`), a
    statement timeout or cancel (`57014`), a deadlock or any SQL error raises
    `MaintenanceIncompleteError`. It is a `BackendRetryableError`, because
@@ -23676,6 +23683,208 @@ report the outage when their statements fail. Pinned by
 `test_slow_connects_to_a_reachable_server_are_contention_not_an_outage`,
 `test_a_wait_behind_a_slow_checkout_check_is_contention_not_an_outage` and
 `test_a_busy_sync_pool_is_not_an_outage`.
+
+### A maintenance DSN (for PgBouncer transaction mode)
+
+Ordinary queries are safe behind PgBouncer in transaction mode, because they
+hold no session state. Three things need a real session, and a
+transaction-mode pooler cannot give them one:
+
+- **`REINDEX ... CONCURRENTLY` / `DROP INDEX CONCURRENTLY`**
+  (`rebuild_indexes()`, `clean_indexes()`). They cannot run in a transaction
+  block, so their `lock_timeout`/`statement_timeout` are session `SET`s. Behind
+  the pooler those settings leak to other clients and may not reach the
+  `REINDEX` at all (see [How a rebuild's `REINDEX` is
+  bounded](#how-a-rebuilds-reindex-is-bounded)).
+- **First-use DDL.** It runs on a dedicated connection with session timeouts
+  when a unit of work is open. It also often needs a role that the
+  application's role is not, such as the schema owner.
+- **The shared `LISTEN` session** (blocking stream reads, `Subscriber`). A
+  `LISTEN` belongs to a session.
+
+Point one optional second DSN at the same database, directly or through a
+session-mode pool:
+
+```bash
+export POPOTO_POSTGRES_URL=postgresql://app@pgbouncer:6432/agents                 # transaction mode
+export POPOTO_POSTGRES_MAINTENANCE_URL=postgresql://owner@db.internal:5432/agents  # direct
+```
+
+or `PostgresBackend(dsn=..., schema=..., maintenance_dsn=...)`. When it is set:
+
+| Work | Connects through |
+|---|---|
+| saves, loads, queries, `transaction()`, `check_indexes()`, the TTL reaper | the pool, on `POPOTO_POSTGRES_URL` |
+| `rebuild_indexes()`'s `REINDEX`/`ANALYZE`, `clean_indexes()`'s `DROP INDEX CONCURRENTLY` | a dedicated connection on the maintenance DSN |
+| first-use DDL (model tables, validity pointer tables, engine side tables), inside a unit or not | a dedicated connection on the maintenance DSN |
+| the shared `LISTEN` session | `POPOTO_POSTGRES_LISTEN_URL` if set, else the maintenance DSN |
+
+Unset, or equal to the main DSN, everything runs exactly as it did before the
+setting existed. "Equal" compares the parsed DSNs, without their passwords, so
+`host=h dbname=db` equals `dbname=db host=h` and `postgresql://h/db`. The dedicated connections are opened per call and closed
+after it. First-use DDL with a maintenance DSN therefore always costs one
+connect, paid once per model per process. Without one, DDL outside a unit
+reuses a pool slot. `LISTEN` falls back to the maintenance DSN because a
+`LISTEN` needs exactly the session that DSN exists to provide, and it is one
+connection per process (#799). `POPOTO_POSTGRES_LISTEN_URL` still wins when
+you want `LISTEN` on a third DSN, such as a role with fewer privileges than
+the one that runs DDL.
+
+**It must reach the same database.** On its first use (lazily, like
+everything else here, so constructing the backend touches no network) popoto
+connects through both DSNs and compares `current_database()`, the database
+OID, `pg_postmaster_start_time()` and `server_version_num`, plus
+`pg_control_system().system_identifier` where both roles may read it. Server
+addresses are not compared, because a pooler or a different interface reports
+a different address for the same server. If any of these facts differ,
+popoto raises `popoto.backends.postgres.MaintenanceDsnMismatchError` (a
+`ValueError`) before it runs a single statement through the maintenance DSN.
+So DDL and `REINDEX` never land on the wrong database. The error names hosts,
+ports, users and database names, never a password. It is a configuration
+error, not an outage: `health` is untouched, and the check runs again on the
+next use. A passing check is remembered for the backend's lifetime. Threads
+that make their first use at the same moment run the check once between them.
+
+**If the maintenance DSN is unreachable** (refused, timed out, or its
+credentials rejected), only the work that needs it fails. First-use DDL,
+`rebuild_indexes()` and `LISTEN` raise
+`popoto.backends.postgres.MaintenanceConnectionError` (a `ConnectionError`,
+not a `BackendUnavailableError`). The message names the maintenance host and
+database, never a password. The main DSN may be healthy, so `health` stays
+`ok` and no write is counted as dropped. Once a model's table is set up in
+this process, its saves and queries never touch the maintenance DSN. A model's
+first use in a process does, even when its table already exists. That first
+use raises the error and writes nothing.
+
+#### Two roles: an application role and an owner role
+
+The example above runs the main DSN as `app` and the maintenance DSN as
+`owner`. When the two DSNs run as different roles, the tables first-use DDL
+creates belong to `owner`, and `app` cannot use them until it is granted
+access. **Popoto grants nothing by default.** On the first save, `app` fails
+loudly with `popoto.backends.postgres.MainRolePermissionError` (a
+`PermissionError`). The message carries the server's own `permission denied`
+text and links to this section. It is not an outage, so `health` is
+untouched. The roles need only this:
+
+```sql
+CREATE ROLE owner LOGIN PASSWORD '...';
+CREATE ROLE app LOGIN PASSWORD '...';
+GRANT CREATE ON DATABASE agents TO owner;   -- creates the popoto schema on first use
+```
+
+**The default: grant it yourself.** Once a first use has created the schema
+(the failing first save does), run this as `owner`, or as a superuser:
+
+```sql
+GRANT USAGE ON SCHEMA popoto TO app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA popoto TO app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA popoto TO app;
+-- the registry: app reads it to check a table is current; only owner writes it
+REVOKE INSERT, UPDATE, DELETE ON popoto.popoto_schema FROM app;
+-- tables a later first use creates (a new model, a new field's side table)
+ALTER DEFAULT PRIVILEGES FOR ROLE owner IN SCHEMA popoto
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;
+ALTER DEFAULT PRIVILEGES FOR ROLE owner IN SCHEMA popoto
+    GRANT USAGE, SELECT ON SEQUENCES TO app;
+```
+
+`app` never gets `CREATE` on the schema, `TRUNCATE`, or ownership. Read the
+scope of these statements before you run them:
+
+- **Give popoto a schema of its own.** `ON ALL TABLES IN SCHEMA` reaches every
+  table in the schema, not only popoto's, and the default privileges reach
+  every table `owner` creates there later, by hand included. In a schema
+  shared with other tables (`POPOTO_POSTGRES_SCHEMA=public`, say) they hand
+  `app` all of them. There, grant per table instead
+  (`GRANT ... ON TABLE popoto.<table> TO app`).
+- **Do not run them as a superuser for a superuser `owner`.** Run as a
+  superuser, `ON ALL TABLES IN SCHEMA` also grants on tables other roles own.
+  Keep the `FOR ROLE owner` in the default privileges: without it they apply
+  to whichever role runs the statement.
+- **Behind PgBouncer, `app` is the server role.** When the pooler maps clients
+  to a server role (`[databases] ... user=`), that mapped role is the one
+  that needs the grants, and other services using the same mapping get them
+  too.
+
+To create the schema up front instead, make `owner` its owner
+(`CREATE SCHEMA popoto AUTHORIZATION owner`) and run the `USAGE` grant and
+the two default privileges before the first deploy. Then run the `REVOKE` on
+`popoto_schema` once the first use has created it.
+
+**Opt in: `grant_main_role=True`.** `PostgresBackend(..., grant_main_role=True)`
+or `POPOTO_POSTGRES_GRANT_MAIN_ROLE=1` (read by the environment-configured
+backend, next to the other variables) makes popoto grant `app` access to what
+its own DDL creates, and nothing else. The identity check learns each DSN's
+`current_user` (through a pooler, the server role it maps to). When they
+differ, each first-use DDL transaction on the maintenance DSN grants, in that
+same transaction and only on the objects that transaction created:
+
+| Created by that transaction | Granted to `app` |
+|---|---|
+| a popoto table (a model's, a side table, a validity pointer table, an engine table) | `SELECT, INSERT, UPDATE, DELETE` on that table |
+| its sequences | `USAGE, SELECT` on each |
+| the `popoto_schema` registry | `SELECT` only |
+| the schema itself | `USAGE` on it |
+
+"Created by that transaction" is checked in the catalog: the object's
+`pg_class` (or `pg_namespace`) row was written by this transaction and was not
+there when it began. A table only altered (`ADD COLUMN`) is not created, and
+an object another session made, at any moment, never qualifies. So popoto
+never grants on a table you create by hand, on another role's table, or on a
+schema it did not create. It runs no `ALTER DEFAULT PRIVILEGES` and no
+`ON ALL TABLES`. Once the tables exist, a process's first use creates nothing
+and grants nothing. A `REVOKE` you run stays revoked across restarts, and the
+next save fails with `MainRolePermissionError` instead of quietly regaining
+access. If the schema already existed when popoto first ran (you made it, or
+an earlier deploy without the flag did), grant `app` `USAGE` on it yourself.
+Tables created before the flag was turned on are never granted either: use
+the statements above.
+
+The Redis-to-Postgres migration tool follows the same setting. It reads
+`MigrationConfig(grant_main_role=...)`, falling back to
+`POPOTO_POSTGRES_GRANT_MAIN_ROLE`, and grants nothing otherwise.
+
+If you set `POPOTO_SCHEMA_AUTO=0` and run the DDL yourself, popoto runs no
+DDL and so grants nothing, whatever the flag says. Run the grants above.
+
+The reverse case is an existing deployment whose tables were created by
+`app`, before the maintenance DSN was set. There `REINDEX` and additive
+`ALTER TABLE` need the maintenance role to own the tables. On PostgreSQL 17
+and later, the `MAINTAIN` privilege is enough for `REINDEX`. Move the
+ownership once, as a superuser (or a role with the privileges of both):
+
+```sql
+-- every object app owns in this database, not only popoto's
+REASSIGN OWNED BY app TO owner;
+-- or, per table: ALTER TABLE popoto.<table> OWNER TO owner;
+```
+
+Then run the grants above, so that `app` keeps its access.
+
+`tests/postgres/test_postgres_maintenance_dsn.py` runs these setups with real
+roles. By default the first save fails with the docs link, and the SQL above
+(the test checks its statements against this page) fixes it. With the flag, the test runs
+a first save, queries, a model first used later inside a unit,
+`rebuild_indexes()` and `LISTEN`/`NOTIFY`, directly and through
+transaction-mode PgBouncer. It also checks that a hand-made table after the
+first save is not granted, that a superuser `owner` does not grant on another
+role's table, that a `REVOKE` survives a new process, and that
+injection-shaped role names are quoted.
+
+`POPOTO_POSTGRES_MAINTENANCE_URL` is read only next to `POPOTO_POSTGRES_URL`,
+by the environment-configured backend. A `PostgresBackend(dsn=...)` you
+construct takes `maintenance_dsn=` explicitly. The Redis-to-Postgres
+migration tool takes `postgres_maintenance_dsn=`. It also reads the variable
+when its target DSN comes from the environment. It holds its run lock (a
+session advisory lock) and runs its own table DDL on one direct connection
+to that DSN for the whole run. Behind a transaction-mode pooler, the tool
+needs the maintenance DSN for that lock (see [the migration
+guide](redis-to-postgres-migration.md)). `tests/postgres/test_postgres_maintenance_dsn.py` pins the
+routing. The test points both DSNs at one server under two `application_name`s,
+and an event trigger records which one each DDL and `REINDEX` came from. It
+also has an optional test against a real transaction-mode PgBouncer, which
+runs when `POPOTO_TEST_PGBOUNCER_URL` is set.
 
 ## Transactions
 
@@ -24528,6 +24737,35 @@ python -m popoto.migrate_redis_to_postgres \
 The target is the library's own setting: `POPOTO_POSTGRES_URL` and
 `POPOTO_POSTGRES_SCHEMA`. The source is the RDB file. The tool has no Redis
 URL, host or port option.
+
+If `POPOTO_POSTGRES_URL` points at PgBouncer in transaction mode, also set
+`POPOTO_POSTGRES_MAINTENANCE_URL` to a direct (or session-mode) DSN to the
+same database. When calling `run_migration()`, pass
+`postgres_maintenance_dsn=`; the variable is read only when the main URL
+also comes from the environment. The tool opens one connection to that DSN,
+outside any pool, and holds it for the whole run. On it, the tool:
+
+- takes the run lock, a session advisory lock that refuses a second run into
+  the same schema;
+- creates its run and ledger tables.
+
+The model tables' first-use DDL also goes to that DSN, through the backend.
+A session lock needs a real session. Through a transaction-mode pooler it
+would stay with the pooled server connection after the run ended or the
+process died, and every later run would be refused. Without a maintenance
+DSN the lock and the tool's DDL use the main DSN, which is right for a
+direct connection. Before taking the lock, the tool checks that the
+maintenance DSN reaches the same database as the main one. If it does not,
+the run is refused before anything is written. When the two DSNs run as
+different roles, the main role gets nothing on the tables the run creates
+unless you opt in, as for the library itself (see [two
+roles](postgres-backend.md#two-roles-an-application-role-and-an-owner-role)).
+Pass `grant_main_role=True` in `MigrationConfig`, or set
+`POPOTO_POSTGRES_GRANT_MAIN_ROLE=1`. The run then grants the main role read
+and write on exactly the tables it creates, its own and the model tables, and
+`SELECT` on the `popoto_schema` registry. Without the flag, set up the grants that section
+describes before the run, creating the schema up front, or the run fails
+with `permission denied` on its first write.
 
 ## Safety model
 

@@ -3368,6 +3368,34 @@ database.</p>
 <p>The target is the library's own setting: <code>POPOTO_POSTGRES_URL</code> and
 <code>POPOTO_POSTGRES_SCHEMA</code>. The source is the RDB file. The tool has no Redis
 URL, host or port option.</p>
+<p>If <code>POPOTO_POSTGRES_URL</code> points at PgBouncer in transaction mode, also set
+<code>POPOTO_POSTGRES_MAINTENANCE_URL</code> to a direct (or session-mode) DSN to the
+same database. When calling <code>run_migration()</code>, pass
+<code>postgres_maintenance_dsn=</code>; the variable is read only when the main URL
+also comes from the environment. The tool opens one connection to that DSN,
+outside any pool, and holds it for the whole run. On it, the tool:</p>
+<ul>
+<li>takes the run lock, a session advisory lock that refuses a second run into
+  the same schema;</li>
+<li>creates its run and ledger tables.</li>
+</ul>
+<p>The model tables' first-use DDL also goes to that DSN, through the backend.
+A session lock needs a real session. Through a transaction-mode pooler it
+would stay with the pooled server connection after the run ended or the
+process died, and every later run would be refused. Without a maintenance
+DSN the lock and the tool's DDL use the main DSN, which is right for a
+direct connection. Before taking the lock, the tool checks that the
+maintenance DSN reaches the same database as the main one. If it does not,
+the run is refused before anything is written. When the two DSNs run as
+different roles, the main role gets nothing on the tables the run creates
+unless you opt in, as for the library itself (see <a href="../postgres-backend/#two-roles-an-application-role-and-an-owner-role">two
+roles</a>).
+Pass <code>grant_main_role=True</code> in <code>MigrationConfig</code>, or set
+<code>POPOTO_POSTGRES_GRANT_MAIN_ROLE=1</code>. The run then grants the main role read
+and write on exactly the tables it creates, its own and the model tables, and
+<code>SELECT</code> on the <code>popoto_schema</code> registry. Without the flag, set up the grants that section
+describes before the run, creating the schema up front, or the run fails
+with <code>permission denied</code> on its first write.</p>
 <h2 id="safety-model">Safety model<a class="headerlink" href="#safety-model" title="Permanent link">&para;</a></h2>
 <p><strong>The tool never connects to a live Redis.</strong> You freeze the writers, take a
 <code>BGSAVE</code>, and copy the RDB file and the content directory. The tool copies

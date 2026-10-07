@@ -3568,8 +3568,9 @@ production, INFO level shows subscription setup without the per-message noise.</
 <code>POPOTO_BACKEND=postgres</code>), <code>Publisher</code> and <code>Subscriber</code> keep this API and
 these message shapes over Postgres <code>NOTIFY</code>/<code>LISTEN</code>, with no Redis
 connection. A subscriber holds a dedicated <code>LISTEN</code> session (never a pooled
-connection; set <code>POPOTO_POSTGRES_LISTEN_URL</code> to reach the server past a
-transaction-mode pooler) and is polled the same way; call
+connection; set <code>POPOTO_POSTGRES_LISTEN_URL</code>, or the maintenance DSN
+<code>POPOTO_POSTGRES_MAINTENANCE_URL</code> it falls back to, to reach the server past
+a transaction-mode pooler) and is polled the same way; call
 <code>subscriber.pubsub.close()</code> to end it. Pass <code>backend="postgres"</code> to a
 standalone <code>Publisher</code> or <code>Subscriber</code> to choose it explicitly.</p>
 <p>Three things differ:</p>

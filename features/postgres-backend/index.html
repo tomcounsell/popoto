@@ -3250,6 +3250,40 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Topology and the outage contract">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-maintenance-dsn-for-pgbouncer-transaction-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A maintenance DSN (for PgBouncer transaction mode)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="A maintenance DSN (for PgBouncer transaction mode)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-roles-an-application-role-and-an-owner-role" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two roles: an application role and an owner role
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3759,6 +3793,40 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Topology and the outage contract">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-maintenance-dsn-for-pgbouncer-transaction-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A maintenance DSN (for PgBouncer transaction mode)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="A maintenance DSN (for PgBouncer transaction mode)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-roles-an-application-role-and-an-owner-role" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two roles: an application role and an owner role
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3962,6 +4030,7 @@ fail halfway through.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_BACKEND</span><span class="o">=</span>postgres<span class="w">                                  </span><span class="c1"># process default</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://db.internal:5432/agents<span class="w">  </span><span class="c1"># the DSN</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_POSTGRES_SCHEMA</span><span class="o">=</span>popoto<span class="w">                             </span><span class="c1"># optional; default "popoto"</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_POSTGRES_MAINTENANCE_URL</span><span class="o">=</span>postgresql://db.internal:5432/agents<span class="w">  </span><span class="c1"># optional; see below</span>
 </code></pre></div>
 <p><strong>Which variable each component reads:</strong></p>
 <table>
@@ -3975,7 +4044,7 @@ fail halfway through.</p>
 <tbody>
 <tr>
 <td>the library (<code>popoto</code>)</td>
-<td><code>POPOTO_BACKEND</code>, <code>POPOTO_POSTGRES_URL</code>, <code>POPOTO_POSTGRES_SCHEMA</code>, <code>POPOTO_SCHEMA_AUTO</code></td>
+<td><code>POPOTO_BACKEND</code>, <code>POPOTO_POSTGRES_URL</code>, <code>POPOTO_POSTGRES_SCHEMA</code>, <code>POPOTO_SCHEMA_AUTO</code>, and optionally <code>POPOTO_POSTGRES_MAINTENANCE_URL</code> (<a href="#a-maintenance-dsn-for-pgbouncer-transaction-mode">maintenance DSN</a>), <code>POPOTO_POSTGRES_GRANT_MAIN_ROLE</code> (<a href="#two-roles-an-application-role-and-an-owner-role">two roles</a>) and <code>POPOTO_POSTGRES_LISTEN_URL</code></td>
 <td><code>POSTGRES_URL</code>, <code>DATABASE_URL</code></td>
 </tr>
 <tr>
@@ -3989,7 +4058,11 @@ fail halfway through.</p>
 without <code>POPOTO_POSTGRES_URL</code>, or without the <code>postgres</code> extra installed,
 raises <code>BackendUnavailableError</code> naming what is missing. You can also pass
 the DSN directly:
-<code>popoto.backends.set_backend(PostgresBackend(dsn=..., schema=...))</code>.</p>
+<code>popoto.backends.set_backend(PostgresBackend(dsn=..., schema=...))</code>, plus
+<code>maintenance_dsn=...</code> for the optional
+<a href="#a-maintenance-dsn-for-pgbouncer-transaction-mode">maintenance DSN</a> and
+<code>grant_main_role=True</code> to opt in to <a href="#two-roles-an-application-role-and-an-owner-role">per-object
+grants</a>.</p>
 <p><strong>Laziness.</strong> <code>import popoto</code> never imports <code>psycopg</code>. Defining a
 <code>Meta.backend = "postgres"</code> model never touches the network either: class
 creation only checks the model's fields against a static capability table.
@@ -5017,7 +5090,9 @@ streams), else the process default; <code>reconciliation_consumer</code> names
   never a pooled connection -- PgBouncer in transaction mode would hand a
   pooled connection to another client between statements (§3 Topology). Its
   DSN is <code>POPOTO_POSTGRES_LISTEN_URL</code> when set (point it past a
-  transaction-mode pooler at the server), else the backend's own. The
+  transaction-mode pooler at the server), else the
+  <a href="#a-maintenance-dsn-for-pgbouncer-transaction-mode">maintenance DSN</a> when
+  one is configured, else the backend's own. The
   waiter is attached before the read it backs up, so an append that commits
   in between is not missed. A wait is capped at one second
   (<code>STREAM_WAIT_POLL_SECONDS</code>), after which the read runs again anyway --
@@ -5539,12 +5614,11 @@ wait from hanging the call or being mistaken for an outage:</p>
    <code>lock_timeout</code>, <code>statement_timeout</code> and <code>client_connection_check_interval</code>
    can leak into other clients' transactions, and the <code>REINDEX</code> itself may
    run on a server connection that never got them, and wait without a bound
-   again. Run maintenance on a direct or session-mode connection. There is
-   no separate setting yet: maintenance uses the DSN popoto is configured
-   with (<code>POPOTO_POSTGRES_URL</code>, or the <code>dsn</code> of <code>PostgresBackend</code>). So run it
-   from a maintenance process configured with a direct DSN, such as
-   <code>set_backend(PostgresBackend(dsn=&lt;direct DSN&gt;, schema=...))</code>. A
-   <em>maintenance DSN</em> setting is a follow-up.</li>
+   again. Run maintenance on a direct or session-mode connection: set
+   <code>POPOTO_POSTGRES_MAINTENANCE_URL</code> (or <code>maintenance_dsn=</code>), and this
+   connection, and the one <code>clean_indexes()</code> drops leftover indexes on, opens
+   through it while every other query keeps the pooled DSN (see
+   <a href="#a-maintenance-dsn-for-pgbouncer-transaction-mode">A maintenance DSN</a>).</li>
 <li><strong>Stopping early is not an outage.</strong> A lock timeout (<code>55P03</code>), a
    statement timeout or cancel (<code>57014</code>), a deadlock or any SQL error raises
    <code>MaintenanceIncompleteError</code>. It is a <code>BackendRetryableError</code>, because
@@ -6011,12 +6085,226 @@ report the outage when their statements fail. Pinned by
 <code>test_slow_connects_to_a_reachable_server_are_contention_not_an_outage</code>,
 <code>test_a_wait_behind_a_slow_checkout_check_is_contention_not_an_outage</code> and
 <code>test_a_busy_sync_pool_is_not_an_outage</code>.</p>
+<h3 id="a-maintenance-dsn-for-pgbouncer-transaction-mode">A maintenance DSN (for PgBouncer transaction mode)<a class="headerlink" href="#a-maintenance-dsn-for-pgbouncer-transaction-mode" title="Permanent link">&para;</a></h3>
+<p>Ordinary queries are safe behind PgBouncer in transaction mode, because they
+hold no session state. Three things need a real session, and a
+transaction-mode pooler cannot give them one:</p>
+<ul>
+<li><strong><code>REINDEX ... CONCURRENTLY</code> / <code>DROP INDEX CONCURRENTLY</code></strong>
+  (<code>rebuild_indexes()</code>, <code>clean_indexes()</code>). They cannot run in a transaction
+  block, so their <code>lock_timeout</code>/<code>statement_timeout</code> are session <code>SET</code>s. Behind
+  the pooler those settings leak to other clients and may not reach the
+  <code>REINDEX</code> at all (see <a href="#how-a-rebuilds-reindex-is-bounded">How a rebuild's <code>REINDEX</code> is
+  bounded</a>).</li>
+<li><strong>First-use DDL.</strong> It runs on a dedicated connection with session timeouts
+  when a unit of work is open. It also often needs a role that the
+  application's role is not, such as the schema owner.</li>
+<li><strong>The shared <code>LISTEN</code> session</strong> (blocking stream reads, <code>Subscriber</code>). A
+  <code>LISTEN</code> belongs to a session.</li>
+</ul>
+<p>Point one optional second DSN at the same database, directly or through a
+session-mode pool:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://app@pgbouncer:6432/agents<span class="w">                 </span><span class="c1"># transaction mode</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_POSTGRES_MAINTENANCE_URL</span><span class="o">=</span>postgresql://owner@db.internal:5432/agents<span class="w">  </span><span class="c1"># direct</span>
+</code></pre></div>
+<p>or <code>PostgresBackend(dsn=..., schema=..., maintenance_dsn=...)</code>. When it is set:</p>
+<table>
+<thead>
+<tr>
+<th>Work</th>
+<th>Connects through</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>saves, loads, queries, <code>transaction()</code>, <code>check_indexes()</code>, the TTL reaper</td>
+<td>the pool, on <code>POPOTO_POSTGRES_URL</code></td>
+</tr>
+<tr>
+<td><code>rebuild_indexes()</code>'s <code>REINDEX</code>/<code>ANALYZE</code>, <code>clean_indexes()</code>'s <code>DROP INDEX CONCURRENTLY</code></td>
+<td>a dedicated connection on the maintenance DSN</td>
+</tr>
+<tr>
+<td>first-use DDL (model tables, validity pointer tables, engine side tables), inside a unit or not</td>
+<td>a dedicated connection on the maintenance DSN</td>
+</tr>
+<tr>
+<td>the shared <code>LISTEN</code> session</td>
+<td><code>POPOTO_POSTGRES_LISTEN_URL</code> if set, else the maintenance DSN</td>
+</tr>
+</tbody>
+</table>
+<p>Unset, or equal to the main DSN, everything runs exactly as it did before the
+setting existed. "Equal" compares the parsed DSNs, without their passwords, so
+<code>host=h dbname=db</code> equals <code>dbname=db host=h</code> and <code>postgresql://h/db</code>. The dedicated connections are opened per call and closed
+after it. First-use DDL with a maintenance DSN therefore always costs one
+connect, paid once per model per process. Without one, DDL outside a unit
+reuses a pool slot. <code>LISTEN</code> falls back to the maintenance DSN because a
+<code>LISTEN</code> needs exactly the session that DSN exists to provide, and it is one
+connection per process (#799). <code>POPOTO_POSTGRES_LISTEN_URL</code> still wins when
+you want <code>LISTEN</code> on a third DSN, such as a role with fewer privileges than
+the one that runs DDL.</p>
+<p><strong>It must reach the same database.</strong> On its first use (lazily, like
+everything else here, so constructing the backend touches no network) popoto
+connects through both DSNs and compares <code>current_database()</code>, the database
+OID, <code>pg_postmaster_start_time()</code> and <code>server_version_num</code>, plus
+<code>pg_control_system().system_identifier</code> where both roles may read it. Server
+addresses are not compared, because a pooler or a different interface reports
+a different address for the same server. If any of these facts differ,
+popoto raises <code>popoto.backends.postgres.MaintenanceDsnMismatchError</code> (a
+<code>ValueError</code>) before it runs a single statement through the maintenance DSN.
+So DDL and <code>REINDEX</code> never land on the wrong database. The error names hosts,
+ports, users and database names, never a password. It is a configuration
+error, not an outage: <code>health</code> is untouched, and the check runs again on the
+next use. A passing check is remembered for the backend's lifetime. Threads
+that make their first use at the same moment run the check once between them.</p>
+<p><strong>If the maintenance DSN is unreachable</strong> (refused, timed out, or its
+credentials rejected), only the work that needs it fails. First-use DDL,
+<code>rebuild_indexes()</code> and <code>LISTEN</code> raise
+<code>popoto.backends.postgres.MaintenanceConnectionError</code> (a <code>ConnectionError</code>,
+not a <code>BackendUnavailableError</code>). The message names the maintenance host and
+database, never a password. The main DSN may be healthy, so <code>health</code> stays
+<code>ok</code> and no write is counted as dropped. Once a model's table is set up in
+this process, its saves and queries never touch the maintenance DSN. A model's
+first use in a process does, even when its table already exists. That first
+use raises the error and writes nothing.</p>
+<h4 id="two-roles-an-application-role-and-an-owner-role">Two roles: an application role and an owner role<a class="headerlink" href="#two-roles-an-application-role-and-an-owner-role" title="Permanent link">&para;</a></h4>
+<p>The example above runs the main DSN as <code>app</code> and the maintenance DSN as
+<code>owner</code>. When the two DSNs run as different roles, the tables first-use DDL
+creates belong to <code>owner</code>, and <code>app</code> cannot use them until it is granted
+access. <strong>Popoto grants nothing by default.</strong> On the first save, <code>app</code> fails
+loudly with <code>popoto.backends.postgres.MainRolePermissionError</code> (a
+<code>PermissionError</code>). The message carries the server's own <code>permission denied</code>
+text and links to this section. It is not an outage, so <code>health</code> is
+untouched. The roles need only this:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="k">owner</span><span class="w"> </span><span class="n">LOGIN</span><span class="w"> </span><span class="n">PASSWORD</span><span class="w"> </span><span class="s1">'...'</span><span class="p">;</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="n">app</span><span class="w"> </span><span class="n">LOGIN</span><span class="w"> </span><span class="n">PASSWORD</span><span class="w"> </span><span class="s1">'...'</span><span class="p">;</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="k">GRANT</span><span class="w"> </span><span class="k">CREATE</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DATABASE</span><span class="w"> </span><span class="n">agents</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="k">owner</span><span class="p">;</span><span class="w">   </span><span class="c1">-- creates the popoto schema on first use</span>
+</code></pre></div>
+<p><strong>The default: grant it yourself.</strong> Once a first use has created the schema
+(the failing first save does), run this as <code>owner</code>, or as a superuser:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="k">GRANT</span><span class="w"> </span><span class="k">USAGE</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">SCHEMA</span><span class="w"> </span><span class="n">popoto</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">app</span><span class="p">;</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="k">GRANT</span><span class="w"> </span><span class="k">SELECT</span><span class="p">,</span><span class="w"> </span><span class="k">INSERT</span><span class="p">,</span><span class="w"> </span><span class="k">UPDATE</span><span class="p">,</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">ALL</span><span class="w"> </span><span class="n">TABLES</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="k">SCHEMA</span><span class="w"> </span><span class="n">popoto</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">app</span><span class="p">;</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="k">GRANT</span><span class="w"> </span><span class="k">USAGE</span><span class="p">,</span><span class="w"> </span><span class="k">SELECT</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">ALL</span><span class="w"> </span><span class="n">SEQUENCES</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="k">SCHEMA</span><span class="w"> </span><span class="n">popoto</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">app</span><span class="p">;</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="c1">-- the registry: app reads it to check a table is current; only owner writes it</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="k">REVOKE</span><span class="w"> </span><span class="k">INSERT</span><span class="p">,</span><span class="w"> </span><span class="k">UPDATE</span><span class="p">,</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="n">popoto_schema</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">app</span><span class="p">;</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="c1">-- tables a later first use creates (a new model, a new field's side table)</span>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="k">ALTER</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">PRIVILEGES</span><span class="w"> </span><span class="k">FOR</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="k">owner</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="k">SCHEMA</span><span class="w"> </span><span class="n">popoto</span>
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="w">    </span><span class="k">GRANT</span><span class="w"> </span><span class="k">SELECT</span><span class="p">,</span><span class="w"> </span><span class="k">INSERT</span><span class="p">,</span><span class="w"> </span><span class="k">UPDATE</span><span class="p">,</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">TABLES</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">app</span><span class="p">;</span>
+<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a><span class="k">ALTER</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">PRIVILEGES</span><span class="w"> </span><span class="k">FOR</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="k">owner</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="k">SCHEMA</span><span class="w"> </span><span class="n">popoto</span>
+<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a><span class="w">    </span><span class="k">GRANT</span><span class="w"> </span><span class="k">USAGE</span><span class="p">,</span><span class="w"> </span><span class="k">SELECT</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">SEQUENCES</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">app</span><span class="p">;</span>
+</code></pre></div>
+<p><code>app</code> never gets <code>CREATE</code> on the schema, <code>TRUNCATE</code>, or ownership. Read the
+scope of these statements before you run them:</p>
+<ul>
+<li><strong>Give popoto a schema of its own.</strong> <code>ON ALL TABLES IN SCHEMA</code> reaches every
+  table in the schema, not only popoto's, and the default privileges reach
+  every table <code>owner</code> creates there later, by hand included. In a schema
+  shared with other tables (<code>POPOTO_POSTGRES_SCHEMA=public</code>, say) they hand
+  <code>app</code> all of them. There, grant per table instead
+  (<code>GRANT ... ON TABLE popoto.&lt;table&gt; TO app</code>).</li>
+<li><strong>Do not run them as a superuser for a superuser <code>owner</code>.</strong> Run as a
+  superuser, <code>ON ALL TABLES IN SCHEMA</code> also grants on tables other roles own.
+  Keep the <code>FOR ROLE owner</code> in the default privileges: without it they apply
+  to whichever role runs the statement.</li>
+<li><strong>Behind PgBouncer, <code>app</code> is the server role.</strong> When the pooler maps clients
+  to a server role (<code>[databases] ... user=</code>), that mapped role is the one
+  that needs the grants, and other services using the same mapping get them
+  too.</li>
+</ul>
+<p>To create the schema up front instead, make <code>owner</code> its owner
+(<code>CREATE SCHEMA popoto AUTHORIZATION owner</code>) and run the <code>USAGE</code> grant and
+the two default privileges before the first deploy. Then run the <code>REVOKE</code> on
+<code>popoto_schema</code> once the first use has created it.</p>
+<p><strong>Opt in: <code>grant_main_role=True</code>.</strong> <code>PostgresBackend(..., grant_main_role=True)</code>
+or <code>POPOTO_POSTGRES_GRANT_MAIN_ROLE=1</code> (read by the environment-configured
+backend, next to the other variables) makes popoto grant <code>app</code> access to what
+its own DDL creates, and nothing else. The identity check learns each DSN's
+<code>current_user</code> (through a pooler, the server role it maps to). When they
+differ, each first-use DDL transaction on the maintenance DSN grants, in that
+same transaction and only on the objects that transaction created:</p>
+<table>
+<thead>
+<tr>
+<th>Created by that transaction</th>
+<th>Granted to <code>app</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a popoto table (a model's, a side table, a validity pointer table, an engine table)</td>
+<td><code>SELECT, INSERT, UPDATE, DELETE</code> on that table</td>
+</tr>
+<tr>
+<td>its sequences</td>
+<td><code>USAGE, SELECT</code> on each</td>
+</tr>
+<tr>
+<td>the <code>popoto_schema</code> registry</td>
+<td><code>SELECT</code> only</td>
+</tr>
+<tr>
+<td>the schema itself</td>
+<td><code>USAGE</code> on it</td>
+</tr>
+</tbody>
+</table>
+<p>"Created by that transaction" is checked in the catalog: the object's
+<code>pg_class</code> (or <code>pg_namespace</code>) row was written by this transaction and was not
+there when it began. A table only altered (<code>ADD COLUMN</code>) is not created, and
+an object another session made, at any moment, never qualifies. So popoto
+never grants on a table you create by hand, on another role's table, or on a
+schema it did not create. It runs no <code>ALTER DEFAULT PRIVILEGES</code> and no
+<code>ON ALL TABLES</code>. Once the tables exist, a process's first use creates nothing
+and grants nothing. A <code>REVOKE</code> you run stays revoked across restarts, and the
+next save fails with <code>MainRolePermissionError</code> instead of quietly regaining
+access. If the schema already existed when popoto first ran (you made it, or
+an earlier deploy without the flag did), grant <code>app</code> <code>USAGE</code> on it yourself.
+Tables created before the flag was turned on are never granted either: use
+the statements above.</p>
+<p>The Redis-to-Postgres migration tool follows the same setting. It reads
+<code>MigrationConfig(grant_main_role=...)</code>, falling back to
+<code>POPOTO_POSTGRES_GRANT_MAIN_ROLE</code>, and grants nothing otherwise.</p>
+<p>If you set <code>POPOTO_SCHEMA_AUTO=0</code> and run the DDL yourself, popoto runs no
+DDL and so grants nothing, whatever the flag says. Run the grants above.</p>
+<p>The reverse case is an existing deployment whose tables were created by
+<code>app</code>, before the maintenance DSN was set. There <code>REINDEX</code> and additive
+<code>ALTER TABLE</code> need the maintenance role to own the tables. On PostgreSQL 17
+and later, the <code>MAINTAIN</code> privilege is enough for <code>REINDEX</code>. Move the
+ownership once, as a superuser (or a role with the privileges of both):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="c1">-- every object app owns in this database, not only popoto's</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="n">REASSIGN</span><span class="w"> </span><span class="n">OWNED</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">app</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="k">owner</span><span class="p">;</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="c1">-- or, per table: ALTER TABLE popoto.&lt;table&gt; OWNER TO owner;</span>
+</code></pre></div>
+<p>Then run the grants above, so that <code>app</code> keeps its access.</p>
+<p><code>tests/postgres/test_postgres_maintenance_dsn.py</code> runs these setups with real
+roles. By default the first save fails with the docs link, and the SQL above
+(the test checks its statements against this page) fixes it. With the flag, the test runs
+a first save, queries, a model first used later inside a unit,
+<code>rebuild_indexes()</code> and <code>LISTEN</code>/<code>NOTIFY</code>, directly and through
+transaction-mode PgBouncer. It also checks that a hand-made table after the
+first save is not granted, that a superuser <code>owner</code> does not grant on another
+role's table, that a <code>REVOKE</code> survives a new process, and that
+injection-shaped role names are quoted.</p>
+<p><code>POPOTO_POSTGRES_MAINTENANCE_URL</code> is read only next to <code>POPOTO_POSTGRES_URL</code>,
+by the environment-configured backend. A <code>PostgresBackend(dsn=...)</code> you
+construct takes <code>maintenance_dsn=</code> explicitly. The Redis-to-Postgres
+migration tool takes <code>postgres_maintenance_dsn=</code>. It also reads the variable
+when its target DSN comes from the environment. It holds its run lock (a
+session advisory lock) and runs its own table DDL on one direct connection
+to that DSN for the whole run. Behind a transaction-mode pooler, the tool
+needs the maintenance DSN for that lock (see <a href="../redis-to-postgres-migration/">the migration
+guide</a>). <code>tests/postgres/test_postgres_maintenance_dsn.py</code> pins the
+routing. The test points both DSNs at one server under two <code>application_name</code>s,
+and an event trigger records which one each DDL and <code>REINDEX</code> came from. It
+also has an optional test against a real transaction-mode PgBouncer, which
+runs when <code>POPOTO_TEST_PGBOUNCER_URL</code> is set.</p>
 <h2 id="transactions">Transactions<a class="headerlink" href="#transactions" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">backends</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="n">Note</span><span class="p">)</span>
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>      <span class="c1"># one READ COMMITTED transaction</span>
-<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>    <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
-<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>    <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
-<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="c1"># both committed, or (on an exception) neither</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">backends</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="n">Note</span><span class="p">)</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>      <span class="c1"># one READ COMMITTED transaction</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>    <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>    <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a><span class="c1"># both committed, or (on an exception) neither</span>
 </code></pre></div>
 <p><code>bulk_create</code>, <code>bulk_update</code> and <code>bulk_delete</code> on a Postgres model each run
 inside one <code>transaction()</code>. A unique conflict anywhere in the batch rolls back
@@ -6026,15 +6314,15 @@ statements, which then raise <code>popoto.backends.BackendRetryableError</code>.
 <code>transaction()</code> -- including at its commit -- the whole unit rolls back and
 <code>BackendRetryableError</code> is raised at once, chained from the driver error;
 popoto does not retry a block it does not own:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">BackendRetryableError</span>
-<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>
-<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
-<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>        <span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>
-<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>            <span class="o">...</span>
-<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a>        <span class="k">break</span>
-<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a>    <span class="k">except</span> <span class="n">BackendRetryableError</span><span class="p">:</span>
-<a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a>        <span class="k">continue</span>  <span class="c1"># rolled back by a concurrent transaction; safe to rerun</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">BackendRetryableError</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>        <span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>            <span class="o">...</span>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>        <span class="k">break</span>
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>    <span class="k">except</span> <span class="n">BackendRetryableError</span><span class="p">:</span>
+<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>        <span class="k">continue</span>  <span class="c1"># rolled back by a concurrent transaction; safe to rerun</span>
 </code></pre></div>
 <p><strong>After-commit hook.</strong> <code>uow.after_commit(fn)</code> registers a no-argument
 callable to run once this transaction has committed. Callbacks run in
@@ -6063,10 +6351,10 @@ unknown (SQLSTATE 40003) is not retryable -- it may have committed -- and is
 reported as <code>BackendUnavailableError</code>.</p>
 <h3 id="popotobatch-m5"><code>popoto.batch()</code> (M5)<a class="headerlink" href="#popotobatch-m5" title="Permanent link">&para;</a></h3>
 <p>The same code opens a batch on either backend:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">batch</span><span class="p">()</span>
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>   <span class="c1"># returns pipe, as on Redis</span>
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
-<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="n">pipe</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>                                  <span class="c1"># both, or neither</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">batch</span><span class="p">()</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>   <span class="c1"># returns pipe, as on Redis</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="n">pipe</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>                                  <span class="c1"># both, or neither</span>
 </code></pre></div>
 <p><code>batch()</code> still returns a real <code>redis.client.Pipeline</code> (a subclass, so every
 <code>isinstance</code> gate and every Redis byte is what it was). The first write from
@@ -6163,17 +6451,17 @@ model, as they refuse any Redis pipeline; pass <code>backend.transaction()</code
 unit of work there. (<code>ProvenanceJournal</code>, which calls them, accepts a batch:
 it hands them the batch's unit of work.)</p>
 <h2 id="record-expiry-m5">Record expiry (M5)<a class="headerlink" href="#record-expiry-m5" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Session</span><span class="p">(</span><span class="n">popoto</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>    <span class="n">token</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>    <span class="n">user</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>
-<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
-<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="s2">"postgres"</span>
-<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="mi">3600</span>            <span class="c1"># every save sets the record to expire in an hour</span>
-<a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a>
-<a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a><span class="n">s</span> <span class="o">=</span> <span class="n">Session</span><span class="p">(</span><span class="n">token</span><span class="o">=</span><span class="s2">"t"</span><span class="p">,</span> <span class="n">user</span><span class="o">=</span><span class="s2">"u"</span><span class="p">)</span>
-<a id="__codelineno-26-10" name="__codelineno-26-10" href="#__codelineno-26-10"></a><span class="n">s</span><span class="o">.</span><span class="n">_ttl</span> <span class="o">=</span> <span class="mi">60</span>                   <span class="c1"># or an instance override, as on Redis</span>
-<a id="__codelineno-26-11" name="__codelineno-26-11" href="#__codelineno-26-11"></a><span class="n">s</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Session</span><span class="p">(</span><span class="n">popoto</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>    <span class="n">token</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>    <span class="n">user</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">StringField</span><span class="p">()</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="s2">"postgres"</span>
+<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="mi">3600</span>            <span class="c1"># every save sets the record to expire in an hour</span>
+<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>
+<a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a><span class="n">s</span> <span class="o">=</span> <span class="n">Session</span><span class="p">(</span><span class="n">token</span><span class="o">=</span><span class="s2">"t"</span><span class="p">,</span> <span class="n">user</span><span class="o">=</span><span class="s2">"u"</span><span class="p">)</span>
+<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a><span class="n">s</span><span class="o">.</span><span class="n">_ttl</span> <span class="o">=</span> <span class="mi">60</span>                   <span class="c1"># or an instance override, as on Redis</span>
+<a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a><span class="n">s</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
 <p>A <code>Meta.ttl</code> model's table has one more engine column, <code>_expires_at double
 precision</code> (epoch seconds; <code>NULL</code> never expires), with a partial B-tree on
@@ -6251,9 +6539,9 @@ Postgres side alone it also freezes the clock at, just before and just after
 each expiry instant and checks visibility against an exact model of the
 sequence. Its documented classes are the TTL rows in the divergence table
 below; <code>tests/postgres/test_postgres_ttl.py</code> runs a 40-shape slice.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/probe_ttl_parity.py<span class="w"> </span>--seeds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--shapes<span class="w"> </span><span class="m">120</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/probe_ttl_parity.py<span class="w"> </span>--seeds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--shapes<span class="w"> </span><span class="m">120</span>
 </code></pre></div>
 <h2 id="async-m5">Async (M5)<a class="headerlink" href="#async-m5" title="Permanent link">&para;</a></h2>
 <p>On a Postgres-bound model every <code>async_*</code> method -- <code>async_save</code>,
@@ -6264,16 +6552,16 @@ below; <code>tests/postgres/test_postgres_ttl.py</code> runs a 40-shape slice.</
 <code>psycopg.AsyncConnection</code> on the running event loop. Before M5 they ran the
 sync call in a worker thread. A Redis-bound model's <code>async_*</code> methods are
 unchanged, command for command (<code>scripts/trace_async_redis_wire.py</code>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends.postgres.aio</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_async_backend</span>
-<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="n">note</span> <span class="o">=</span> <span class="k">await</span> <span class="n">Note</span><span class="o">.</span><span class="n">async_create</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span>
-<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="n">rows</span> <span class="o">=</span> <span class="k">await</span> <span class="n">Note</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">async_filter</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">)</span>
-<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>
-<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">get_async_backend</span><span class="p">(</span><span class="n">Note</span><span class="p">)</span>          <span class="c1"># Postgres-bound models only</span>
-<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="k">async</span> <span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>   <span class="c1"># one READ COMMITTED transaction</span>
-<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>    <span class="k">await</span> <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
-<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>    <span class="k">await</span> <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"3"</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
-<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a><span class="c1"># both committed, or (on an exception) neither</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends.postgres.aio</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_async_backend</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="n">note</span> <span class="o">=</span> <span class="k">await</span> <span class="n">Note</span><span class="o">.</span><span class="n">async_create</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="n">rows</span> <span class="o">=</span> <span class="k">await</span> <span class="n">Note</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">async_filter</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">)</span>
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a>
+<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">get_async_backend</span><span class="p">(</span><span class="n">Note</span><span class="p">)</span>          <span class="c1"># Postgres-bound models only</span>
+<a id="__codelineno-32-7" name="__codelineno-32-7" href="#__codelineno-32-7"></a><span class="k">async</span> <span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>   <span class="c1"># one READ COMMITTED transaction</span>
+<a id="__codelineno-32-8" name="__codelineno-32-8" href="#__codelineno-32-8"></a>    <span class="k">await</span> <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
+<a id="__codelineno-32-9" name="__codelineno-32-9" href="#__codelineno-32-9"></a>    <span class="k">await</span> <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"3"</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
+<a id="__codelineno-32-10" name="__codelineno-32-10" href="#__codelineno-32-10"></a><span class="c1"># both committed, or (on an exception) neither</span>
 </code></pre></div>
 <p><strong>One implementation.</strong> The async backend does not reimplement the sync one.
 It runs the sync backend's own code in a greenlet on the loop thread (the
@@ -6293,10 +6581,10 @@ for the <code>async_*</code> methods: handing it to a sync <code>save(pipeline=u
 joins it as a sync write does (<a href="#popotobatch-m5"><code>popoto.batch()</code></a>), but
 the batch's transaction is then opened on the loop's async pool, so commit
 it from the coroutine:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">batch</span><span class="p">()</span>
-<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="k">await</span> <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
-<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="k">await</span> <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
-<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="k">await</span> <span class="n">pipe</span><span class="o">.</span><span class="n">async_execute</span><span class="p">()</span>     <span class="c1"># COMMIT on the loop; then the XADDs, in order</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">batch</span><span class="p">()</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="k">await</span> <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a><span class="k">await</span> <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a><span class="k">await</span> <span class="n">pipe</span><span class="o">.</span><span class="n">async_execute</span><span class="p">()</span>     <span class="c1"># COMMIT on the loop; then the XADDs, in order</span>
 </code></pre></div>
 <p><code>pipe.execute()</code> on such a batch raises <code>BridgeMisuseError</code> naming
 <code>async_execute()</code>; <code>await pipe.async_reset()</code> rolls it back. A plain
@@ -6381,17 +6669,17 @@ followed by one <code>load</code> of the ranked rows, in rank order; a model wit
 <p><strong><code>rank_decayed</code></strong> is <code>DECAY_SCORE_LUA</code> as a <code>SELECT</code>, operation for
 operation in <code>double precision</code>, so the platform's <code>pow</code> behind <code>power()</code>
 gives the Lua's bits:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="ss">"_pk"</span><span class="p">,</span>
-<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="w">       </span><span class="p">((</span><span class="k">CASE</span><span class="w"> </span><span class="k">WHEN</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">THEN</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="k">ELSE</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">END</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">abs</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
-<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">        </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="n">greatest</span><span class="p">((</span><span class="err">$</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">86400</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">01</span><span class="p">),</span><span class="w"> </span><span class="o">-</span><span class="err">$</span><span class="n">rate</span><span class="p">))</span>
-<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="w">       </span><span class="c1">-- with confidence modulation:</span>
-<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a><span class="w">       </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="n">greatest</span><span class="p">(</span><span class="n">greatest</span><span class="p">((</span><span class="err">$</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">86400</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">01</span><span class="p">),</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span>
-<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="w">               </span><span class="o">-</span><span class="p">(</span><span class="err">$</span><span class="n">rate</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">s2</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="err">$</span><span class="n">c0</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">greatest</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">least</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">t</span><span class="p">.</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">)))))</span>
-<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a><span class="w">                 </span><span class="o">-</span><span class="w"> </span><span class="err">$</span><span class="n">rate</span><span class="p">))</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="ss">"_score"</span>
-<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a><span class="w">  </span><span class="k">FROM</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="o">&lt;</span><span class="n">model</span><span class="o">&gt;</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">t</span>
-<a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="o">&lt;</span><span class="n">partition</span><span class="w"> </span><span class="n">filters</span><span class="o">&gt;</span>
-<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a><span class="w"> </span><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="p">(</span><span class="ss">"_score"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'NaN'</span><span class="p">),</span><span class="w"> </span><span class="ss">"_score"</span><span class="w"> </span><span class="k">DESC</span><span class="p">,</span><span class="w"> </span><span class="ss">"_pk"</span><span class="w"> </span><span class="k">COLLATE</span><span class="w"> </span><span class="ss">"C"</span>
-<a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a><span class="w"> </span><span class="k">LIMIT</span><span class="w"> </span><span class="err">$</span><span class="n">n</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="ss">"_pk"</span><span class="p">,</span>
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="w">       </span><span class="p">((</span><span class="k">CASE</span><span class="w"> </span><span class="k">WHEN</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">THEN</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="k">ELSE</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">END</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">abs</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a><span class="w">        </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="n">greatest</span><span class="p">((</span><span class="err">$</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">86400</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">01</span><span class="p">),</span><span class="w"> </span><span class="o">-</span><span class="err">$</span><span class="n">rate</span><span class="p">))</span>
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a><span class="w">       </span><span class="c1">-- with confidence modulation:</span>
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a><span class="w">       </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="n">greatest</span><span class="p">(</span><span class="n">greatest</span><span class="p">((</span><span class="err">$</span><span class="n">now</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">86400</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">01</span><span class="p">),</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span>
+<a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a><span class="w">               </span><span class="o">-</span><span class="p">(</span><span class="err">$</span><span class="n">rate</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">power</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">s2</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="err">$</span><span class="n">c0</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">greatest</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">least</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">t</span><span class="p">.</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">)))))</span>
+<a id="__codelineno-34-7" name="__codelineno-34-7" href="#__codelineno-34-7"></a><span class="w">                 </span><span class="o">-</span><span class="w"> </span><span class="err">$</span><span class="n">rate</span><span class="p">))</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="ss">"_score"</span>
+<a id="__codelineno-34-8" name="__codelineno-34-8" href="#__codelineno-34-8"></a><span class="w">  </span><span class="k">FROM</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="o">&lt;</span><span class="n">model</span><span class="o">&gt;</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">t</span>
+<a id="__codelineno-34-9" name="__codelineno-34-9" href="#__codelineno-34-9"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">f</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="o">&lt;</span><span class="n">partition</span><span class="w"> </span><span class="n">filters</span><span class="o">&gt;</span>
+<a id="__codelineno-34-10" name="__codelineno-34-10" href="#__codelineno-34-10"></a><span class="w"> </span><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="p">(</span><span class="ss">"_score"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'NaN'</span><span class="p">),</span><span class="w"> </span><span class="ss">"_score"</span><span class="w"> </span><span class="k">DESC</span><span class="p">,</span><span class="w"> </span><span class="ss">"_pk"</span><span class="w"> </span><span class="k">COLLATE</span><span class="w"> </span><span class="ss">"C"</span>
+<a id="__codelineno-34-11" name="__codelineno-34-11" href="#__codelineno-34-11"></a><span class="w"> </span><span class="k">LIMIT</span><span class="w"> </span><span class="err">$</span><span class="n">n</span>
 </code></pre></div>
 <p><code>b</code> is the base-score column (<code>1.0</code> when there is none, or it is <code>NULL</code>, a
 string or a boolean, as the script's <code>HGET</code> + <code>cmsgpack</code> rule gives; a
@@ -6412,14 +6700,14 @@ clamp saturates where the exact value is still finite; that is the only place
 the two legs can differ. Scores come back rounded through <code>%.14g</code>, which is
 what the Lua's <code>tostring</code> replies with.</p>
 <p><strong><code>update_confidence</code></strong> is <code>CAPPED_BAYESIAN_UPDATE_LUA</code> as one <code>UPDATE</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="k">UPDATE</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="o">&lt;</span><span class="n">model</span><span class="o">&gt;</span><span class="w"> </span><span class="k">SET</span>
-<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="w">  </span><span class="n">c__conf</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">greatest</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">least</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">)</span>
-<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="w">              </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">))</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="n">least</span><span class="p">(</span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">cap</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">))),</span>
-<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="w">  </span><span class="n">c__n</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a><span class="w">  </span><span class="n">c__corr</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__corr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&lt;</span><span class="mi">1</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="o">&gt;</span><span class="p">,</span>
-<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a><span class="w">  </span><span class="n">c__contra</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__contra</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&lt;</span><span class="mi">1</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="o">&gt;</span>
-<a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="ss">"_pk"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">pk</span>
-<a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a><span class="n">RETURNING</span><span class="w"> </span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="n">c__corr</span><span class="p">,</span><span class="w"> </span><span class="n">c__contra</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="k">UPDATE</span><span class="w"> </span><span class="n">popoto</span><span class="p">.</span><span class="o">&lt;</span><span class="n">model</span><span class="o">&gt;</span><span class="w"> </span><span class="k">SET</span>
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="w">  </span><span class="n">c__conf</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">greatest</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">least</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">)</span>
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a><span class="w">              </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">c0</span><span class="p">))</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="n">least</span><span class="p">(</span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="err">$</span><span class="n">cap</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">))),</span>
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="w">  </span><span class="n">c__n</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="w">  </span><span class="n">c__corr</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__corr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&lt;</span><span class="mi">1</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a><span class="w">  </span><span class="n">c__contra</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">coalesce</span><span class="p">(</span><span class="n">c__contra</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&lt;</span><span class="mi">1</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="err">$</span><span class="n">signal</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">.</span><span class="mi">5</span><span class="o">&gt;</span>
+<a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="ss">"_pk"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="err">$</span><span class="n">pk</span>
+<a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a><span class="n">RETURNING</span><span class="w"> </span><span class="n">c__conf</span><span class="p">,</span><span class="w"> </span><span class="n">c__n</span><span class="p">,</span><span class="w"> </span><span class="n">c__corr</span><span class="p">,</span><span class="w"> </span><span class="n">c__contra</span>
 </code></pre></div>
 <p>The arithmetic is the script's, so the stored confidence is bit-identical to
 the Redis one; the returned value is rounded through <code>%.14g</code> as the script's
@@ -6446,9 +6734,9 @@ reads -- and compares <code>rank_decayed</code>, <code>top_by_decay</code>, conf
 read tracking and <code>composite_score</code> between the legs. Its classes and the
 two documented NaN rows are in the PR that introduced M2a;
 <code>tests/postgres/test_memory_probe.py</code> runs a 40-shape slice of it in CI.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/probe_memory_parity.py<span class="w"> </span>--seeds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--shapes<span class="w"> </span><span class="m">200</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/probe_memory_parity.py<span class="w"> </span>--seeds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--shapes<span class="w"> </span><span class="m">200</span>
 </code></pre></div>
 <p><strong><code>ObservationProtocol.on_context_used</code></strong> applies all five outcomes for a
 batch in one transaction: the batch's rows are locked <code>FOR UPDATE</code> in <code>_pk</code>
@@ -7218,9 +7506,9 @@ and deletes on both backends, comparing every return value and exception
 read at the interval ends, <code>±inf</code>, <code>1e308</code> and NaN. Its documented classes are
 the M3 rows of the table above; <code>tests/postgres/test_validity_probe.py</code> runs a
 25-shape slice in CI.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/probe_validity_parity.py<span class="w"> </span>--seeds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--shapes<span class="w"> </span><span class="m">200</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/probe_validity_parity.py<span class="w"> </span>--seeds<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--shapes<span class="w"> </span><span class="m">200</span>
 </code></pre></div>
 <h2 id="performance-m1-m2a-and-m3-exit-criteria">Performance (M1, M2a and M3 exit criteria)<a class="headerlink" href="#performance-m1-m2a-and-m3-exit-criteria" title="Permanent link">&para;</a></h2>
 <p><code>scripts/bench_backend_seam.py</code> measures the public API on both backends. It
@@ -7234,9 +7522,9 @@ hydration is measured beside it. M3 adds the same ranking with a validity gate
 (a tenth of the records superseded, a twentieth not yet started): Postgres
 p50 at most 1x Redis. The PRs that introduced each milestone
 record the measured numbers and the environment they were taken on.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/14<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_backend_seam.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/14<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_backend_seam.py
 </code></pre></div>
 <h3 id="recall-m2b-exit-criterion"><code>recall()</code> (M2b exit criterion)<a class="headerlink" href="#recall-m2b-exit-criterion" title="Permanent link">&para;</a></h3>
 <p><code>scripts/bench_recall.py</code> seeds a 20,000-row, 1536-dimension corpus through
@@ -7285,8 +7573,8 @@ same index-only count statement went from 0.4 ms to 1.0 ms p50 and every
 arm doubled together. Run alone in one window, the exact arm on the record
 table (TOAST) took p50 7.9 ms, p95 9.1 ms, and on the narrow table p50
 2.9 ms, p95 3.6 ms.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/popoto_bench<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_recall.py<span class="w"> </span><span class="o">[</span>--n<span class="w"> </span><span class="m">20000</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--dim<span class="w"> </span><span class="m">1536</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--keep<span class="w"> </span><span class="p">|</span><span class="w"> </span>--reuse<span class="w"> </span>SCHEMA<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/popoto_bench<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a><span class="w">    </span>python<span class="w"> </span>scripts/bench_recall.py<span class="w"> </span><span class="o">[</span>--n<span class="w"> </span><span class="m">20000</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--dim<span class="w"> </span><span class="m">1536</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--keep<span class="w"> </span><span class="p">|</span><span class="w"> </span>--reuse<span class="w"> </span>SCHEMA<span class="o">]</span>
 </code></pre></div>
 
 
