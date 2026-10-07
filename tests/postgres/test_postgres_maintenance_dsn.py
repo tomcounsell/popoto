@@ -275,7 +275,15 @@ def test_a_maintenance_dsn_to_another_database_is_refused(pg, other_database, ad
         _swap_instance("postgres", previous_instance)
         set_backend(previous)
     message = str(caught.value)
-    assert "database" in message and password not in message
+    assert "database" in message and "password" not in message.lower()
+    # CI's password is "postgres", also its user and database name, which the
+    # message does show: look for the password itself only when it is not one.
+    from psycopg.conninfo import conninfo_to_dict
+
+    shown = [str(v) for k, v in conninfo_to_dict(other).items() if k != "password"]
+    shown += [str(v) for k, v in conninfo_to_dict(pg.dsn).items() if k != "password"]
+    if not any(password in value for value in shown):
+        assert password not in message
     assert isinstance(caught.value, ValueError)
     assert backend._maintenance_verified is False
     # Not an outage, and nothing was created anywhere.
