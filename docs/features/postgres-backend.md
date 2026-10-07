@@ -840,9 +840,12 @@ its reconciler send Redis no command at all. Pinned by
 `tests/postgres/test_postgres_journal.py` and
 `tests/postgres/test_postgres_events.py::test_a_postgres_journal_and_its_reconciler_send_redis_nothing`.
 
-**Not on Postgres yet.** `MemoryTelemetry`'s `AssemblyEvent` declares
-`Meta.ttl`, refused until M5, so a Postgres-bound telemetry recorder fails
-open (it records nothing). `SubconsciousMemory(auditable_extraction=…)` keeps
+**Memory telemetry** runs on Postgres since M5's record expiry:
+`AssemblyEvent` declares `Meta.ttl`, so its events expire there as on Redis,
+and `report_outcomes()` and `TelemetryAnalyzer` read them back. Pinned by
+`tests/test_memory_telemetry.py`, whose every test runs on both legs.
+
+**Not on Postgres yet.** `SubconsciousMemory(auditable_extraction=…)` keeps
 its decision log in Redis (`extraction/decision_log.py` is Redis-only, plan
 §1), so on a Postgres-bound model it raises `BackendCapabilityError` at
 construction.
