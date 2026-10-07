@@ -706,8 +706,17 @@ class MigrationConfig:
     """One run: one snapshot of one store into one Postgres schema.
 
     ``postgres_dsn`` and ``postgres_schema`` default to the library's own
-    variables, ``POPOTO_POSTGRES_URL`` and ``POPOTO_POSTGRES_SCHEMA``. There is
-    no Redis URL: the source is ``rdb_path``."""
+    variables, ``POPOTO_POSTGRES_URL`` and ``POPOTO_POSTGRES_SCHEMA``.
+    ``postgres_maintenance_dsn`` is the direct (or session-mode) DSN to the
+    same database (#800); unset, it is ``POPOTO_POSTGRES_MAINTENANCE_URL``
+    when the main DSN also comes from the environment. The run's session
+    lock and the tool's own table DDL hold a connection on it (else on the
+    main DSN) for the whole run. ``grant_main_role`` (#800) opts in to
+    granting the main DSN's role access to exactly the tables the run's DDL
+    creates on the maintenance DSN, as ``PostgresBackend(grant_main_role=
+    True)`` does; unset (``None``) it is ``POPOTO_POSTGRES_GRANT_MAIN_ROLE``,
+    and without either nothing is granted. There is no Redis URL: the source
+    is ``rdb_path``."""
 
     rdb_path: Path
     run_dir: Path
@@ -716,6 +725,8 @@ class MigrationConfig:
     content_dir: Optional[Path] = None
     postgres_dsn: Optional[str] = None
     postgres_schema: Optional[str] = None
+    postgres_maintenance_dsn: Optional[str] = None
+    grant_main_role: Optional[bool] = None
     source_db: int = 0
     merge: bool = False
     resume: bool = False
@@ -1486,7 +1497,59 @@ def _connect(dsn: str) -> Any:
     return psycopg.connect(dsn, autocommit=False)
 
 
-def _ensure_tool_tables(conn: Any, schema: str) -> None:
+def _ensure_tool_tables(conn: Any, schema: str, grant_to: Optional[str] = None) -> None:
+    """Create the tool's run and ledger tables in one transaction on
+    ``conn`` (the run's lock session, autocommit). When ``grant_to`` names a
+    role other than ``conn``'s (opt-in, ``MigrationConfig.grant_main_role``),
+    it is granted read/write on exactly the tables this transaction creates
+    -- and ``USAGE`` on the schema if it creates that -- as the backend does
+    after its own first-use DDL (#800). Tables already there get nothing."""
+    from ..backends.postgres.schema import catalog_before, grant_created
+
+    if grant_to is not None:
+        (own,) = conn.execute("SELECT current_user").fetchone()
+        if own == grant_to:
+            grant_to = None
+    with conn.transaction():
+        before = catalog_before(conn, schema) if grant_to is not None else None
+        _create_tool_tables(conn, schema)
+        if grant_to is not None and before is not None:
+            grant_created(conn, schema, grant_to, before)
+
+
+def _main_role(dsn: str) -> str:
+    """The role the main DSN's sessions run as (through a pooler, the server
+    role it maps to)."""
+    conn = _connect_autocommit(dsn)
+    try:
+        return str(conn.execute("SELECT current_user").fetchone()[0])
+    finally:
+        conn.close()
+
+
+def _check_maintenance_dsn(
+    dsn: str, schema: str, maintenance_dsn: Optional[str]
+) -> None:
+    """Refuse a maintenance DSN that reaches another database before its
+    session takes the run's lock: a lock taken elsewhere would exclude no
+    one (the backend's own identity check, #800)."""
+    if maintenance_dsn is None:
+        return
+    from ..backends.postgres import (
+        MaintenanceConnectionError,
+        MaintenanceDsnMismatchError,
+        PostgresBackend,
+    )
+
+    try:
+        PostgresBackend(
+            dsn=dsn, schema=schema, maintenance_dsn=maintenance_dsn
+        )._session_dsn()
+    except (MaintenanceDsnMismatchError, MaintenanceConnectionError) as exc:
+        raise MigrationRefused(str(exc)) from exc
+
+
+def _create_tool_tables(conn: Any, schema: str) -> None:
     s = _qi(schema)
     conn.execute(f"CREATE SCHEMA IF NOT EXISTS {s}")
     conn.execute(
@@ -1522,7 +1585,6 @@ def _ensure_tool_tables(conn: Any, schema: str) -> None:
         f"CREATE INDEX IF NOT EXISTS {_qi(LEDGER_TABLE + '__pending')} ON "
         f"{s}.{_qi(LEDGER_TABLE)} (model, _pk) WHERE state = 'pending'"
     )
-    conn.commit()
 
 
 def _table_exists(conn: Any, schema: str, table: str) -> bool:
@@ -1550,8 +1612,12 @@ def _lock_target_schema(dsn: str, schema: str) -> Any:
     A second run into the same schema -- another machine's store, or the
     same command started twice -- is refused here, before preflight, instead
     of racing the first through ``CREATE SCHEMA`` and the merge decisions.
-    The lock lives as long as the returned connection; closing it (or the
-    process dying) releases it."""
+    ``dsn`` must reach the database directly or through a session-mode
+    pool -- the maintenance DSN when one is configured (#800): behind a
+    transaction-mode pooler the lock would stay with the pooled server
+    session after this run ended. On a real session the lock lives as long
+    as the returned connection; closing it (or the process dying) releases
+    it. The connection is opened outside any pool and held for the run."""
     conn = _connect_autocommit(dsn)
     try:
         held = conn.execute(
@@ -3180,13 +3246,27 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
     :class:`InventoryStop` (the snapshot was read, nothing written), or the
     underlying error of a failed load -- after which ``--resume`` with the
     same run directory continues where the last committed batch ended."""
-    from ..backends.postgres import PostgresBackend
+    from ..backends.postgres import PostgresBackend, grant_main_role_from_env
 
     started = time.time()
     mappings = list(config.mappings)
     _check_models(mappings)
     models = [m.model for m in mappings]
     dsn = config.postgres_dsn or os.environ.get("POPOTO_POSTGRES_URL", "")
+    # The maintenance DSN pairs with the main one it was configured beside
+    # (#800): read from the environment only when the main DSN is.
+    maintenance_dsn = (config.postgres_maintenance_dsn or "").strip() or (
+        None
+        if config.postgres_dsn
+        else os.environ.get("POPOTO_POSTGRES_MAINTENANCE_URL", "").strip() or None
+    )
+    # Grants to the main role are opt-in (#800): the config, else the
+    # library's own variable; never by default.
+    grant_main_role = (
+        config.grant_main_role
+        if config.grant_main_role is not None
+        else grant_main_role_from_env()
+    )
     schema = (
         config.postgres_schema
         or os.environ.get("POPOTO_POSTGRES_SCHEMA", "")
@@ -3211,7 +3291,13 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
     rdb_sha = _file_sha(rdb)
     run_record = _load_run_record(run_dir, rdb_sha, config.source_id, config.resume)
     run_id = str(run_record["run_id"])
-    lock = _lock_target_schema(dsn, schema) if not config.dry_run else None
+    lock = None
+    if not config.dry_run:
+        _check_maintenance_dsn(dsn, schema, maintenance_dsn)
+        # A session lock needs a real session: on a transaction-mode pooler
+        # it would stay with whichever server connection ran it, outliving
+        # this run (#800 review). The maintenance DSN is the direct one.
+        lock = _lock_target_schema(maintenance_dsn or dsn, schema)
     try:
         target_facts: dict[str, Any] = {}
         if not config.dry_run:
@@ -3369,7 +3455,12 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
                     if config.dry_run:
                         report["verdict"] = "dry-run"
                     else:
-                        backend = PostgresBackend(dsn=dsn, schema=schema)
+                        backend = PostgresBackend(
+                            dsn=dsn,
+                            schema=schema,
+                            maintenance_dsn=maintenance_dsn,
+                            grant_main_role=grant_main_role,
+                        )
                         run = {
                             "run_id": run_id,
                             "source_id": config.source_id,
@@ -3382,9 +3473,21 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
                             m.name: {} for m in mappings
                         }
                         errors: list[str] = []
+                        # The tool's DDL runs on the lock's own session --
+                        # the maintenance DSN when there is one -- and, only
+                        # when asked (#800), the main role is granted the
+                        # tables it creates when that DSN's role is another.
+                        _ensure_tool_tables(
+                            lock,
+                            schema,
+                            grant_to=(
+                                _main_role(dsn)
+                                if grant_main_role and maintenance_dsn
+                                else None
+                            ),
+                        )
                         conn = _connect(dsn)
                         try:
-                            _ensure_tool_tables(conn, schema)
                             conn.execute(
                                 f"INSERT INTO {_qi(schema)}.{_qi(RUN_TABLE)} (run_id, source_id, "
                                 "rdb_sha256, status) VALUES (%s, %s, %s, 'loading') ON CONFLICT "

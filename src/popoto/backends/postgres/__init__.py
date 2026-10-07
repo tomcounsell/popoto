@@ -14,6 +14,17 @@ Selection (plan §4): ``Meta.backend = "postgres"`` on a model, or
 ``popoto.backends.set_backend``). ``POSTGRES_URL`` and ``DATABASE_URL`` are
 never read. ``POPOTO_POSTGRES_SCHEMA`` names the schema (default ``popoto``);
 ``POPOTO_SCHEMA_AUTO=0`` turns off automatic create/additive DDL.
+``POPOTO_POSTGRES_MAINTENANCE_URL`` (or ``PostgresBackend(...,
+maintenance_dsn=…)``) optionally names a second DSN to the *same* database --
+a direct or session-mode connection past a transaction-mode PgBouncer -- for
+everything that needs a session (#800): ``rebuild_indexes()``'s ``REINDEX``,
+``clean_indexes()``'s ``DROP INDEX CONCURRENTLY``, first-use DDL, and the
+shared ``LISTEN`` session. Unset, all of it uses the main DSN, as before.
+When the two DSNs run as different roles, the main role gets nothing on the
+tables the maintenance role creates unless ``POPOTO_POSTGRES_GRANT_MAIN_ROLE=1``
+(or ``grant_main_role=True``) asks for per-object grants on exactly what
+first-use DDL creates; otherwise an administrator grants it
+(``MainRolePermissionError`` names the documented SQL).
 
 Nothing here touches the network until a model's first operation (``bind``
 itself only compiles the table spec; the server and table checks run inside
@@ -30,7 +41,8 @@ transaction mode. Advisory locks are ``pg_advisory_xact_lock`` only. The one
 exception is ``rebuild_indexes()``'s ``REINDEX``/``DROP INDEX
 CONCURRENTLY``, which cannot run in any transaction block: it sets a session
 ``lock_timeout``/``statement_timeout`` on a dedicated connection it opens and
-closes (:meth:`PostgresBackend._maintenance_connection`).
+closes (:meth:`PostgresBackend._maintenance_connection`) -- on the
+maintenance DSN when one is configured (:meth:`PostgresBackend._session_dsn`).
 
 Outage contract (``[PG-only]``): an unreachable server, a connect timeout or
 a statement timeout raises :class:`BackendUnavailableError`; the backend's
@@ -57,6 +69,7 @@ from ...fields.constants import Defaults
 from ..types import (
     BackendBusyError,
     BackendCapabilityError,
+    BackendError,
     BackendRetryableError,
     BackendUnavailableError,
     Capabilities,
@@ -92,6 +105,8 @@ from .schema import (
     TableSpec,
     compile_table,
     ensure_table,
+    catalog_before,
+    grant_created,
     quote_ident,
 )
 from .search import (
@@ -120,6 +135,11 @@ from .validity import (
 __all__ = [
     "POSTGRES_URL_ENV",
     "POSTGRES_SCHEMA_ENV",
+    "MAINTENANCE_URL_ENV",
+    "GRANT_MAIN_ROLE_ENV",
+    "MainRolePermissionError",
+    "MaintenanceConnectionError",
+    "MaintenanceDsnMismatchError",
     "MIN_SERVER_VERSION_NUM",
     "Health",
     "PostgresBackend",
@@ -132,6 +152,26 @@ logger = logging.getLogger("POPOTO.postgres")
 
 POSTGRES_URL_ENV = "POPOTO_POSTGRES_URL"
 POSTGRES_SCHEMA_ENV = "POPOTO_POSTGRES_SCHEMA"
+MAINTENANCE_URL_ENV = "POPOTO_POSTGRES_MAINTENANCE_URL"
+"""An optional second DSN, to the same database as ``POPOTO_POSTGRES_URL``,
+for the work that needs a real session (#800): ``REINDEX``/``DROP INDEX
+CONCURRENTLY`` with their session timeouts, first-use DDL, and the shared
+``LISTEN`` session (unless ``POPOTO_POSTGRES_LISTEN_URL`` names its own).
+Point it at the server directly, or at a session-mode pool, when the main
+DSN goes through PgBouncer in transaction mode. Read only by
+:func:`backend_from_env`, alongside the main DSN it pairs with."""
+GRANT_MAIN_ROLE_ENV = "POPOTO_POSTGRES_GRANT_MAIN_ROLE"
+"""``1`` opts in to per-object grants (#800): when the maintenance DSN's role
+is not the main DSN's, first-use DDL grants the main role read/write on
+exactly the tables and sequences it creates (``SELECT`` only on the
+``popoto_schema`` registry), and ``USAGE`` on the schema when it creates
+that, in the same transaction. Unset -- the default -- nothing is ever
+granted. Read only by :func:`backend_from_env`; the constructor takes
+``grant_main_role=``."""
+GRANT_DOCS_URL = (
+    "https://popoto.io/features/postgres-backend/"
+    "#two-roles-an-application-role-and-an-owner-role"
+)
 SCHEMA_AUTO_ENV = "POPOTO_SCHEMA_AUTO"
 DEFAULT_SCHEMA = "popoto"
 MIN_SERVER_VERSION_NUM = 180000
@@ -165,6 +205,35 @@ class SecondConnectionError(AssertionError):
     Postgres unit of work open (``STRICT_UNIT_CONNECTION``, #776)."""
 
 
+class MaintenanceDsnMismatchError(BackendError, ValueError):
+    """The maintenance DSN (``POPOTO_POSTGRES_MAINTENANCE_URL`` or
+    ``maintenance_dsn=``) reaches a different database than the main DSN
+    (#800). Raised before any statement runs on it, so no DDL or ``REINDEX``
+    ever lands on the wrong database. A configuration error, not an outage:
+    the backend's ``health`` is untouched. The message names hosts and
+    database names, never a password."""
+
+
+class MainRolePermissionError(BackendError, PermissionError):
+    """The main DSN's role was refused a privilege on a popoto object
+    (SQLSTATE ``42501``, #800). The usual cause is the two-role setup: the
+    maintenance DSN's role created the tables, and the main role was never
+    granted access to them -- popoto grants nothing unless asked
+    (``grant_main_role=True`` / ``POPOTO_POSTGRES_GRANT_MAIN_ROLE=1``). The
+    message carries the server's own text and points at the documented SQL.
+    Not an outage: ``health`` is untouched. The original
+    ``psycopg.errors.InsufficientPrivilege`` is its ``__cause__``."""
+
+
+class MaintenanceConnectionError(BackendError, ConnectionError):
+    """The maintenance DSN could not be connected to (#800) -- refused,
+    timed out, or its credentials rejected -- while the work that needs it
+    (first-use DDL, ``REINDEX``, the identity check, ``LISTEN``) was being
+    set up. Only that work fails: the main DSN may be perfectly healthy, so
+    the backend's ``health`` is untouched and no write is counted as
+    dropped. The message names the host and database, never a password."""
+
+
 def backend_from_env() -> "PostgresBackend":
     """The process backend for ``POPOTO_BACKEND=postgres`` /
     ``Meta.backend = "postgres"``: DSN from ``POPOTO_POSTGRES_URL`` only."""
@@ -176,7 +245,55 @@ def backend_from_env() -> "PostgresBackend":
             "and DATABASE_URL are deliberately not read)"
         )
     schema = os.environ.get(POSTGRES_SCHEMA_ENV, "").strip() or DEFAULT_SCHEMA
-    return PostgresBackend(dsn=dsn, schema=schema)
+    maintenance = os.environ.get(MAINTENANCE_URL_ENV, "").strip() or None
+    return PostgresBackend(
+        dsn=dsn,
+        schema=schema,
+        maintenance_dsn=maintenance,
+        grant_main_role=grant_main_role_from_env(),
+    )
+
+
+def grant_main_role_from_env() -> bool:
+    """Whether ``POPOTO_POSTGRES_GRANT_MAIN_ROLE`` opts in (#800): ``1``,
+    ``true``, ``yes`` or ``on``; anything else, or unset, is no."""
+    value = os.environ.get(GRANT_MAIN_ROLE_ENV, "").strip().lower()
+    return value in ("1", "true", "yes", "on")
+
+
+def _same_dsn(a: str, b: str) -> bool:
+    """Whether two DSNs name the same connection (#800): equal once parsed,
+    so ``host=x dbname=y`` equals ``dbname=y host=x`` and the URL form of
+    either. The password is left out: it authenticates a connection, it
+    does not choose one. A DSN that does not parse is compared as text."""
+    if a == b:
+        return True
+    try:
+        from psycopg.conninfo import conninfo_to_dict
+
+        left, right = conninfo_to_dict(a), conninfo_to_dict(b)
+    except Exception:  # noqa: BLE001 - no driver, or unparseable
+        return False
+    for parts in (left, right):
+        parts.pop("password", None)
+    return left == right
+
+
+def _describe_dsn(dsn: str) -> str:
+    """``host=… port=… dbname=… user=…`` for an error message: never the
+    password, nor any other option a DSN may carry."""
+    try:
+        from psycopg.conninfo import conninfo_to_dict
+
+        parts = conninfo_to_dict(dsn)
+    except Exception:  # noqa: BLE001 - unparseable: say nothing about it
+        return "<unparseable DSN>"
+    shown = [
+        f"{key}={parts[key]}"
+        for key in ("host", "hostaddr", "port", "dbname", "user")
+        if parts.get(key)
+    ]
+    return " ".join(shown) or "<libpq defaults>"
 
 
 def _schema_auto() -> bool:
@@ -620,9 +737,32 @@ class PostgresBackend(
 
     name = "postgres"
 
-    def __init__(self, dsn: str, schema: str = DEFAULT_SCHEMA) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        schema: str = DEFAULT_SCHEMA,
+        maintenance_dsn: Optional[str] = None,
+        grant_main_role: bool = False,
+    ) -> None:
         self.dsn = dsn
         self.schema = schema
+        # #800: the DSN for work that needs a session (REINDEX, first-use
+        # DDL, LISTEN). None -- unset, blank, or the main DSN itself -- means
+        # the main DSN, exactly as before the setting existed.
+        maintenance = (maintenance_dsn or "").strip() or None
+        self.maintenance_dsn: Optional[str] = (
+            None if maintenance is None or _same_dsn(maintenance, dsn) else maintenance
+        )
+        self._maintenance_verified = False
+        # Serialises the first identity check between threads, so concurrent
+        # first uses verify once (re-entrant: bridge greenlets share a thread).
+        self._maintenance_lock = threading.RLock()
+        # #800, opt-in: grant the main DSN's role access to exactly what
+        # first-use DDL on the maintenance DSN creates. Off by default.
+        self.grant_main_role = bool(grant_main_role)
+        # The main DSN's role, set by the identity check when grants are
+        # asked for and the maintenance DSN's role differs; else None.
+        self._grant_to: Optional[str] = None
         self.health = Health()
         self._tables: dict[str, tuple[ModelSpec, TableSpec]] = {}
         self._server_checked = False
@@ -954,12 +1094,33 @@ class PostgresBackend(
                 else psycopg.ClientCursor
             )
         kwargs.update(extra)
+        dsn = self._session_dsn()
+        with self._open_dedicated(dsn, kwargs) as conn:
+            yield conn
+
+    @contextlib.contextmanager
+    def _open_dedicated(self, dsn: str, kwargs: dict[str, Any]) -> Iterator[Any]:
+        """Open ``dsn`` outside the pool (an ``AsyncConnection`` inside the
+        async bridge) for the block, and close it after: the connect half of
+        :meth:`_dedicated_connection`. Failing to open is an outage."""
+        psycopg = _import_psycopg()
+        bridge = _bridged()
         try:
             if bridge is not None:
-                conn = bridge.connect(self.dsn, **kwargs)
+                conn = bridge.connect(dsn, **kwargs)
             else:
-                conn = psycopg.connect(self.dsn, **kwargs)
+                conn = psycopg.connect(dsn, **kwargs)
         except psycopg.OperationalError as exc:
+            if self.maintenance_dsn is not None and dsn == self.maintenance_dsn:
+                # Only the maintenance DSN is down: not an outage of the
+                # backend, and no write was dropped (#800 review).
+                raise MaintenanceConnectionError(
+                    f"could not connect to the Postgres maintenance DSN "
+                    f"({_describe_dsn(dsn)}; {MAINTENANCE_URL_ENV} or "
+                    f"maintenance_dsn=): {type(exc).__name__}: {exc}. First-use "
+                    "DDL, REINDEX and LISTEN need it; the main DSN is not "
+                    "affected"
+                ) from exc
             raise self._fail(exc, write=False) from exc
         try:
             yield conn
@@ -971,6 +1132,96 @@ class PostgresBackend(
                     conn.pgconn.finish()
                 except Exception:  # noqa: BLE001 - already gone
                     pass
+
+    def _session_dsn(self) -> str:
+        """The DSN a connection that needs a *session* opens (#800): the
+        maintenance DSN when one is configured -- checked, once per backend,
+        to reach the same database as the main DSN -- else the main DSN.
+        Used by :meth:`_dedicated_connection` (``REINDEX``, ``DROP INDEX
+        CONCURRENTLY``, first-use DDL) and by the shared ``LISTEN`` session
+        (:attr:`~.events.EventsMixin.listen_dsn`)."""
+        maintenance = self.maintenance_dsn
+        if maintenance is None:
+            return self.dsn
+        if not self._maintenance_verified:
+            with self._maintenance_lock:
+                if not self._maintenance_verified:
+                    self._verify_maintenance_dsn(maintenance)
+        return maintenance
+
+    def _database_identity(self, dsn: str) -> tuple[dict[str, Any], str]:
+        """What identifies the database ``dsn`` reaches: its name and OID,
+        the cluster's start time and version, and -- where the role may read
+        it -- the cluster's ``system_identifier``. Server addresses are
+        deliberately not compared: through a pooler, a proxy or another
+        interface the same server reports a different one. The start time
+        also tells a primary from its physical replica, which share the
+        system identifier (DDL there would fail anyway). Returned beside it,
+        never compared: the role the DSN's sessions run as."""
+        timeout = float(Defaults.PG_CONNECT_TIMEOUT_SECONDS)
+        kwargs: dict[str, Any] = {
+            "autocommit": True,
+            "prepare_threshold": None,
+            "connect_timeout": max(1, int(round(timeout))),
+        }
+        psycopg = _import_psycopg()
+        with self._open_dedicated(dsn, kwargs) as conn:
+            row = conn.execute(
+                "SELECT current_database(), "
+                "(SELECT oid FROM pg_database WHERE datname = current_database()), "
+                "pg_postmaster_start_time(), "
+                "current_setting('server_version_num')::int, current_user"
+            ).fetchone()
+            identity: dict[str, Any] = {
+                "database": row[0],
+                "database_oid": int(row[1]),
+                "started": row[2],
+                "server_version_num": int(row[3]),
+            }
+            try:
+                (system,) = conn.execute(
+                    "SELECT system_identifier FROM pg_control_system()"
+                ).fetchone()
+                identity["system_identifier"] = int(system)
+            except psycopg.Error:  # not granted to this role: compare the rest
+                pass
+        return identity, str(row[4])
+
+    def _verify_maintenance_dsn(self, maintenance: str) -> None:
+        """Refuse a maintenance DSN that reaches another database than the
+        main one (:class:`MaintenanceDsnMismatchError`), before anything runs
+        on it; on a match, remember it for this backend's lifetime."""
+        main, main_role = self._database_identity(self.dsn)
+        other, other_role = self._database_identity(maintenance)
+        differ = [k for k in main if k in other and main[k] != other[k]]
+        if differ:
+            shown = ", ".join(f"{k}: {main[k]!r} vs {other[k]!r}" for k in differ)
+            raise MaintenanceDsnMismatchError(
+                f"the Postgres maintenance DSN ({_describe_dsn(maintenance)}; "
+                f"{MAINTENANCE_URL_ENV} or maintenance_dsn=) reaches a "
+                f"different database than the main DSN "
+                f"({_describe_dsn(self.dsn)}; {POSTGRES_URL_ENV} or dsn=): "
+                f"{shown}. Refusing to run DDL, REINDEX or LISTEN through it; "
+                "point it at the same database (directly or through a "
+                "session-mode pool)"
+            )
+        self._grant_to = (
+            main_role if self.grant_main_role and main_role != other_role else None
+        )
+        self._maintenance_verified = True
+
+    def _main_role_permission_error(self, exc: BaseException) -> Exception:
+        """Wrap a ``permission denied`` on the main DSN
+        (:class:`MainRolePermissionError`) with where to find the grants."""
+        return MainRolePermissionError(
+            f"the main Postgres role was refused access in schema "
+            f"{self.schema!r}: {exc}. When the tables are created by another "
+            f"role (a maintenance DSN, {MAINTENANCE_URL_ENV}), popoto grants "
+            "the main role nothing unless asked: run the SQL in "
+            f'{GRANT_DOCS_URL} (docs/features/postgres-backend.md, "Two roles: '
+            'an application role and an owner role"), or opt in with '
+            f"PostgresBackend(..., grant_main_role=True) / {GRANT_MAIN_ROLE_ENV}=1"
+        )
 
     @contextlib.contextmanager
     def _maintenance_connection(self, lock_timeout_ms: int) -> Iterator[Any]:
@@ -1013,12 +1264,19 @@ class PostgresBackend(
         :class:`~popoto.backends.BackendRetryableError` -- contention, not an
         outage: health is untouched -- and nothing is memoised, so the next
         use runs the check again. A lock the open unit itself holds is
-        refused before any DDL by :meth:`_refuse_ddl_under_own_lock`."""
+        refused before any DDL by :meth:`_refuse_ddl_under_own_lock`.
+
+        When a maintenance DSN is configured (#800) the dedicated connection
+        is always used, unit or not, and it connects through that DSN."""
         psycopg = _import_psycopg()
         lock_ms = max(1, int(Defaults.PG_DDL_LOCK_TIMEOUT_MS))
         statement_ms = max(1, int(Defaults.PG_DDL_STATEMENT_TIMEOUT_MS))
         try:
-            if not self._unit_open_here():
+            # With a maintenance DSN (#800) first-use DDL always runs there,
+            # on a dedicated connection: the main DSN may be a
+            # transaction-mode pooler, and the maintenance role may be the
+            # only one allowed to run DDL.
+            if self.maintenance_dsn is None and not self._unit_open_here():
                 # Pooled. The timeouts are SET LOCAL inside each DDL
                 # transaction (schema.ddl_timeout_sql), so this connection
                 # goes back to the pool unmodified.
@@ -1088,9 +1346,20 @@ class PostgresBackend(
         # _ddl_connection, so a wait on another session's lock ends in
         # BackendRetryableError whether or not a unit is open here.
         with self._write_intent(True), self._ddl_connection() as conn:
-            cur = conn.execute(sql, ddl_params)
-            while cur.nextset():
-                pass
+            grant_to = self._grant_to
+            if grant_to is None:
+                cur = conn.execute(sql, ddl_params)
+                while cur.nextset():
+                    pass
+                return
+            # #800, opt-in: the DDL and the grants on what it created commit
+            # together (one explicit transaction around the one message).
+            with conn.transaction():
+                before = catalog_before(conn, self.schema)
+                cur = conn.execute(sql, ddl_params)
+                while cur.nextset():
+                    pass
+                grant_created(conn, self.schema, grant_to, before)
 
     def _note_open_scope(self) -> None:
         """Record the running task in :data:`_ancestor_scopes` of its own
@@ -1148,6 +1417,8 @@ class PostgresBackend(
                 # The caller owns the transaction, so it decides whether to
                 # run it again: no internal retry, one popoto type.
                 raise _retryable(exc) from exc
+            except psycopg.errors.InsufficientPrivilege as exc:
+                raise self._main_role_permission_error(exc) from exc
             except psycopg.OperationalError as exc:
                 raise self._fail(exc, write=write) from exc
             # A multi-statement message (a lock, then the statement) replies
@@ -1179,6 +1450,8 @@ class PostgresBackend(
                 if attempt >= attempts:
                     raise _retryable(exc, attempt) from exc
                 _sleep(random.uniform(0.005, 0.05) * attempt)
+            except psycopg.errors.InsufficientPrivilege as exc:
+                raise self._main_role_permission_error(exc) from exc
             except psycopg.OperationalError as exc:
                 busy = _busy(exc)
                 if busy is not None:  # contention, not an outage
@@ -1285,10 +1558,12 @@ class PostgresBackend(
                 self._refuse_ddl_under_own_lock(conn, ts, spec)
                 self._check_server(PostgresUnitOfWork(conn))
                 require_extensions(conn, ts)
-                ensure_table(conn, ts, auto=_schema_auto())
+                # #800: _grant_to is set (by the identity check opening this
+                # connection) only when grants were asked for.
+                ensure_table(conn, ts, auto=_schema_auto(), grant_to=self._grant_to)
                 # M3: a ValidityField's open-pointer table, outside any
                 # transaction that will later hold the model table's locks.
-                ensure_validity_tables(conn, ts, spec)
+                ensure_validity_tables(conn, ts, spec, grant_to=self._grant_to)
             self._ok()
             self._tables[spec.name] = (spec, ts)
             return ts

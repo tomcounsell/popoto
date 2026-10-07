@@ -240,8 +240,9 @@ On the Postgres backend (`Meta.backend = "postgres"` or
 `POPOTO_BACKEND=postgres`), `Publisher` and `Subscriber` keep this API and
 these message shapes over Postgres `NOTIFY`/`LISTEN`, with no Redis
 connection. A subscriber holds a dedicated `LISTEN` session (never a pooled
-connection; set `POPOTO_POSTGRES_LISTEN_URL` to reach the server past a
-transaction-mode pooler) and is polled the same way; call
+connection; set `POPOTO_POSTGRES_LISTEN_URL`, or the maintenance DSN
+`POPOTO_POSTGRES_MAINTENANCE_URL` it falls back to, to reach the server past
+a transaction-mode pooler) and is polled the same way; call
 `subscriber.pubsub.close()` to end it. Pass `backend="postgres"` to a
 standalone `Publisher` or `Subscriber` to choose it explicitly.
 
