@@ -706,8 +706,10 @@ class MigrationConfig:
     """One run: one snapshot of one store into one Postgres schema.
 
     ``postgres_dsn`` and ``postgres_schema`` default to the library's own
-    variables, ``POPOTO_POSTGRES_URL`` and ``POPOTO_POSTGRES_SCHEMA``. There is
-    no Redis URL: the source is ``rdb_path``."""
+    variables, ``POPOTO_POSTGRES_URL`` and ``POPOTO_POSTGRES_SCHEMA``; when the
+    DSN comes from the environment, ``POPOTO_POSTGRES_MAINTENANCE_URL`` is
+    honoured beside it (#800). There is no Redis URL: the source is
+    ``rdb_path``."""
 
     rdb_path: Path
     run_dir: Path
@@ -3187,6 +3189,13 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
     _check_models(mappings)
     models = [m.model for m in mappings]
     dsn = config.postgres_dsn or os.environ.get("POPOTO_POSTGRES_URL", "")
+    # The maintenance DSN pairs with the main one it was configured beside
+    # (#800): read from the environment only when the main DSN is.
+    maintenance_dsn = (
+        None
+        if config.postgres_dsn
+        else os.environ.get("POPOTO_POSTGRES_MAINTENANCE_URL", "").strip() or None
+    )
     schema = (
         config.postgres_schema
         or os.environ.get("POPOTO_POSTGRES_SCHEMA", "")
@@ -3369,7 +3378,9 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
                     if config.dry_run:
                         report["verdict"] = "dry-run"
                     else:
-                        backend = PostgresBackend(dsn=dsn, schema=schema)
+                        backend = PostgresBackend(
+                            dsn=dsn, schema=schema, maintenance_dsn=maintenance_dsn
+                        )
                         run = {
                             "run_id": run_id,
                             "source_id": config.source_id,

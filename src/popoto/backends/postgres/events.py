@@ -85,8 +85,10 @@ logger = logging.getLogger("POPOTO.postgres.events")
 
 LISTEN_URL_ENV = "POPOTO_POSTGRES_LISTEN_URL"
 """A DSN for the process's shared ``LISTEN`` session (blocking stream reads
-and ``Subscriber``; one per process and DSN, :mod:`.listen`). Point it past a transaction-mode pooler at the server, or a
-session-mode pool; unset, the backend's own DSN is used."""
+and ``Subscriber``; one per process and DSN, :mod:`.listen`). Point it past a
+transaction-mode pooler at the server, or a session-mode pool; unset, the
+backend's maintenance DSN is used when it has one
+(``POPOTO_POSTGRES_MAINTENANCE_URL``, #800), else its own DSN."""
 
 STREAM_WAIT_POLL_SECONDS = 1.0
 """The fallback poll: a blocking read waits at most this long for a
@@ -1817,6 +1819,7 @@ class EventsMixin:
 
     schema: str
     dsn: str
+    _session_dsn: Callable[[], str]
     _run: Callable[..., tuple[list[tuple[Any, ...]], int]]
     _atomically: Callable[..., Any]
     _ensure_engine_table: Callable[..., None]
@@ -1873,7 +1876,11 @@ class EventsMixin:
 
     @property
     def listen_dsn(self) -> str:
-        return os.environ.get(LISTEN_URL_ENV, "").strip() or self.dsn
+        """The DSN of the shared ``LISTEN`` session: ``POPOTO_POSTGRES_LISTEN_URL``
+        when set, else the maintenance DSN when one is configured (#800:
+        ``LISTEN`` needs a session, which is what that DSN is for, and it is
+        checked to reach the same database), else the main DSN."""
+        return os.environ.get(LISTEN_URL_ENV, "").strip() or self._session_dsn()
 
     def events_channel(self) -> str:
         return "popoto_events_" + hashlib.md5(self.schema.encode()).hexdigest()[:20]

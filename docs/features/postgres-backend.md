@@ -50,20 +50,23 @@ class Note(popoto.Model):
 export POPOTO_BACKEND=postgres                                  # process default
 export POPOTO_POSTGRES_URL=postgresql://db.internal:5432/agents  # the DSN
 export POPOTO_POSTGRES_SCHEMA=popoto                             # optional; default "popoto"
+export POPOTO_POSTGRES_MAINTENANCE_URL=postgresql://db.internal:5432/agents  # optional; see below
 ```
 
 **Which variable each component reads:**
 
 | Component | Reads | Never reads |
 |---|---|---|
-| the library (`popoto`) | `POPOTO_BACKEND`, `POPOTO_POSTGRES_URL`, `POPOTO_POSTGRES_SCHEMA`, `POPOTO_SCHEMA_AUTO` | `POSTGRES_URL`, `DATABASE_URL` |
+| the library (`popoto`) | `POPOTO_BACKEND`, `POPOTO_POSTGRES_URL`, `POPOTO_POSTGRES_SCHEMA`, `POPOTO_SCHEMA_AUTO`, and optionally `POPOTO_POSTGRES_MAINTENANCE_URL` ([maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode)) and `POPOTO_POSTGRES_LISTEN_URL` | `POSTGRES_URL`, `DATABASE_URL` |
 | the pytest conformance harness | `POSTGRES_URL`, for its throwaway `popoto_test_<hex>` schema (see [Testing](../testing.md)) | — |
 
 Popoto never picks Postgres up from a generic variable. Selecting Postgres
 without `POPOTO_POSTGRES_URL`, or without the `postgres` extra installed,
 raises `BackendUnavailableError` naming what is missing. You can also pass
 the DSN directly:
-`popoto.backends.set_backend(PostgresBackend(dsn=..., schema=...))`.
+`popoto.backends.set_backend(PostgresBackend(dsn=..., schema=...))`, plus
+`maintenance_dsn=...` for the optional
+[maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode).
 
 **Laziness.** `import popoto` never imports `psycopg`. Defining a
 `Meta.backend = "postgres"` model never touches the network either: class
@@ -945,7 +948,9 @@ streams), else the process default; `reconciliation_consumer` names
   never a pooled connection -- PgBouncer in transaction mode would hand a
   pooled connection to another client between statements (§3 Topology). Its
   DSN is `POPOTO_POSTGRES_LISTEN_URL` when set (point it past a
-  transaction-mode pooler at the server), else the backend's own. The
+  transaction-mode pooler at the server), else the
+  [maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode) when
+  one is configured, else the backend's own. The
   waiter is attached before the read it backs up, so an append that commits
   in between is not missed. A wait is capped at one second
   (`STREAM_WAIT_POLL_SECONDS`), after which the read runs again anyway --
@@ -1403,12 +1408,11 @@ wait from hanging the call or being mistaken for an outage:
    `lock_timeout`, `statement_timeout` and `client_connection_check_interval`
    can leak into other clients' transactions, and the `REINDEX` itself may
    run on a server connection that never got them, and wait without a bound
-   again. Run maintenance on a direct or session-mode connection. There is
-   no separate setting yet: maintenance uses the DSN popoto is configured
-   with (`POPOTO_POSTGRES_URL`, or the `dsn` of `PostgresBackend`). So run it
-   from a maintenance process configured with a direct DSN, such as
-   `set_backend(PostgresBackend(dsn=<direct DSN>, schema=...))`. A
-   *maintenance DSN* setting is a follow-up.
+   again. Run maintenance on a direct or session-mode connection: set
+   `POPOTO_POSTGRES_MAINTENANCE_URL` (or `maintenance_dsn=`), and this
+   connection, and the one `clean_indexes()` drops leftover indexes on, opens
+   through it while every other query keeps the pooled DSN (see
+   [A maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode)).
 3. **Stopping early is not an outage.** A lock timeout (`55P03`), a
    statement timeout or cancel (`57014`), a deadlock or any SQL error raises
    `MaintenanceIncompleteError`. It is a `BackendRetryableError`, because
@@ -1824,6 +1828,75 @@ report the outage when their statements fail. Pinned by
 `test_slow_connects_to_a_reachable_server_are_contention_not_an_outage`,
 `test_a_wait_behind_a_slow_checkout_check_is_contention_not_an_outage` and
 `test_a_busy_sync_pool_is_not_an_outage`.
+
+### A maintenance DSN (for PgBouncer transaction mode)
+
+Ordinary queries are safe behind PgBouncer in transaction mode, because they
+hold no session state. Three things need a real session, and a
+transaction-mode pooler cannot give them one:
+
+- **`REINDEX ... CONCURRENTLY` / `DROP INDEX CONCURRENTLY`**
+  (`rebuild_indexes()`, `clean_indexes()`). They cannot run in a transaction
+  block, so their `lock_timeout`/`statement_timeout` are session `SET`s. Behind
+  the pooler those settings leak to other clients and may not reach the
+  `REINDEX` at all (see [How a rebuild's `REINDEX` is
+  bounded](#how-a-rebuilds-reindex-is-bounded)).
+- **First-use DDL.** It runs on a dedicated connection with session timeouts
+  when a unit of work is open. It also often needs a role that the
+  application's role is not, such as the schema owner.
+- **The shared `LISTEN` session** (blocking stream reads, `Subscriber`). A
+  `LISTEN` belongs to a session.
+
+Point one optional second DSN at the same database, directly or through a
+session-mode pool:
+
+```bash
+export POPOTO_POSTGRES_URL=postgresql://app@pgbouncer:6432/agents                 # transaction mode
+export POPOTO_POSTGRES_MAINTENANCE_URL=postgresql://owner@db.internal:5432/agents  # direct
+```
+
+or `PostgresBackend(dsn=..., schema=..., maintenance_dsn=...)`. When it is set:
+
+| Work | Connects through |
+|---|---|
+| saves, loads, queries, `transaction()`, `check_indexes()`, the TTL reaper | the pool, on `POPOTO_POSTGRES_URL` |
+| `rebuild_indexes()`'s `REINDEX`/`ANALYZE`, `clean_indexes()`'s `DROP INDEX CONCURRENTLY` | a dedicated connection on the maintenance DSN |
+| first-use DDL (model tables, validity pointer tables, engine side tables), inside a unit or not | a dedicated connection on the maintenance DSN |
+| the shared `LISTEN` session | `POPOTO_POSTGRES_LISTEN_URL` if set, else the maintenance DSN |
+
+Unset, or equal to the main DSN, everything runs exactly as it did before the
+setting existed. The dedicated connections are opened per call and closed
+after it. First-use DDL with a maintenance DSN therefore always costs one
+connect, paid once per model per process. Without one, DDL outside a unit
+reuses a pool slot. `LISTEN` falls back to the maintenance DSN because a
+`LISTEN` needs exactly the session that DSN exists to provide, and it is one
+connection per process (#799). `POPOTO_POSTGRES_LISTEN_URL` still wins when
+you want `LISTEN` on a third DSN, such as a role with fewer privileges than
+the one that runs DDL.
+
+**It must reach the same database.** On its first use (lazily, like
+everything else here, so constructing the backend touches no network) popoto
+connects through both DSNs and compares `current_database()`, the database
+OID, `pg_postmaster_start_time()` and `server_version_num`, plus
+`pg_control_system().system_identifier` where both roles may read it. Server
+addresses are not compared, because a pooler or a different interface reports
+a different address for the same server. If any of these facts differ,
+popoto raises `popoto.backends.postgres.MaintenanceDsnMismatchError` (a
+`ValueError`) before it runs a single statement through the maintenance DSN.
+So DDL and `REINDEX` never land on the wrong database. The error names hosts,
+ports, users and database names, never a password. It is a configuration
+error, not an outage: `health` is untouched, and the check runs again on the
+next use. A passing check is remembered for the backend's lifetime.
+
+`POPOTO_POSTGRES_MAINTENANCE_URL` is read only next to `POPOTO_POSTGRES_URL`,
+by the environment-configured backend. A `PostgresBackend(dsn=...)` you
+construct takes `maintenance_dsn=` explicitly. The Redis-to-Postgres
+migration tool honours the variable when its target DSN also comes from the
+environment. `tests/postgres/test_postgres_maintenance_dsn.py` pins the
+routing. The test points both DSNs at one server under two `application_name`s,
+and an event trigger records which one each DDL and `REINDEX` came from. It
+also has an optional test against a real transaction-mode PgBouncer, which
+runs when `POPOTO_TEST_PGBOUNCER_URL` is set.
 
 ## Transactions
 

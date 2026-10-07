@@ -16,7 +16,8 @@ python -m popoto.migrate_redis_to_postgres \
 ```
 
 The target is the library's own setting: `POPOTO_POSTGRES_URL` and
-`POPOTO_POSTGRES_SCHEMA`. The source is the RDB file. The tool has no Redis
+`POPOTO_POSTGRES_SCHEMA` (and `POPOTO_POSTGRES_MAINTENANCE_URL`, for the
+tool's table DDL, when the URL comes from the environment). The source is the RDB file. The tool has no Redis
 URL, host or port option.
 
 ## Safety model
