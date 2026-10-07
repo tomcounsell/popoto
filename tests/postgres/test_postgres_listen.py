@@ -1159,6 +1159,120 @@ def test_a_subscriber_stuck_through_twenty_reconnects_ends_with_one_row_each(
             conn.close()
 
 
+# -- a moved pid re-arms the sweep (#803, review of aef1c4db) -----------------------
+
+
+def test_a_failed_dead_session_delete_is_retried_on_the_next_poll(
+    pg, admin, tagged, monkeypatch
+):
+    """``_sync_registration`` moves ``pid`` to the hub's, then runs the
+    dead-session DELETE. When that raises, nothing registered the subscriber
+    under the new pid, and every later poll saw ``pid`` current and returned.
+    On ``aef1c4db`` its rows stayed under the dead pid and ``publish`` counted
+    0; main (which moved ``pid`` after the writes) retried."""
+    import psycopg
+    from psycopg.conninfo import make_conninfo
+
+    app, _ = tagged
+    sub = _subscribed(pg, "keep")
+    sink = sub._sink
+    current = sink.pid
+    old_conn = psycopg.connect(
+        make_conninfo(pg.dsn, application_name=app), autocommit=True
+    )
+    old = old_conn.info.backend_pid
+    table = pg._events_ready()["popoto_pubsub_listener"]
+    admin.execute(f"UPDATE {table} SET pid = %s WHERE token = %s", (old, sink.token))
+    sink.pid = old  # registered under a session since replaced
+    real, armed = pg._run, [True]
+
+    def run(sql, params=(), **kw):
+        if armed and "NOT IN" in sql:
+            armed.clear()
+            raise psycopg.OperationalError("boom")
+        return real(sql, params, **kw)
+
+    monkeypatch.setattr(pg, "_run", run)
+    try:
+        with pytest.raises(psycopg.OperationalError):
+            sub._sync_registration()
+        assert not armed
+        assert sink.stale >= {(False, "keep")}
+        old_conn.close()
+        admin.execute("SELECT pg_terminate_backend(%s)", (old,))
+        _eventually(lambda: not _listed(admin, old))
+        for _ in range(3):
+            sub.get_message(timeout=0.05)
+        assert _rows_by_pid(admin, pg, sink.token) == [(current, "keep")]
+        assert pg.publish("keep", b"1") == 1
+    finally:
+        sub.close()
+
+
+def test_a_failed_resume_insert_is_retried_on_the_next_poll(
+    pg, admin, tagged, monkeypatch
+):
+    """The hub's reconnect moves the subscriber's ``pid`` and its snapshot
+    INSERT raises once (a lock or statement timeout). The subscriber's next
+    polls must still register it under the new pid; on ``aef1c4db`` ``stale``
+    was marked only after the INSERT, so its rows stayed under the dead pid
+    and ``publish`` counted 0."""
+    import psycopg
+
+    from popoto.backends.postgres import pubsub as pubsub_module
+
+    _, dsn = tagged
+    sub = _subscribed(pg, "keep")
+    hub = hub_for(dsn)
+    old = hub.backend_pid
+    real, fired = pubsub_module._PubSubSink.resume, []
+
+    class _Cursor:
+        def __init__(self, cur):
+            self.cur = cur
+
+        def __enter__(self):
+            self.cur.__enter__()
+            return self
+
+        def __exit__(self, *exc):
+            return self.cur.__exit__(*exc)
+
+        def executemany(self, *args, **kwargs):
+            if not fired:
+                fired.append(1)
+                raise psycopg.errors.QueryCanceled("canceling: lock timeout")
+            return self.cur.executemany(*args, **kwargs)
+
+    class _Conn:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def cursor(self, *args, **kwargs):
+            return _Cursor(self.conn.cursor(*args, **kwargs))
+
+        def __getattr__(self, name):
+            return getattr(self.conn, name)
+
+    def resume(self, conn, backend_pid):
+        return real(self, _Conn(conn), backend_pid)
+
+    monkeypatch.setattr(pubsub_module._PubSubSink, "resume", resume)
+    try:
+        admin.execute("SELECT pg_terminate_backend(%s)", (old,))
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and hub.backend_pid in (None, old):
+            sub.get_message(timeout=0.05)
+        assert fired
+        new = hub.backend_pid
+        for _ in range(10):
+            sub.get_message(timeout=0.05)
+        assert _rows_by_pid(admin, pg, sub.token) == [(new, "keep")]
+        assert pg.publish("keep", b"1") == 1
+    finally:
+        sub.close()
+
+
 # -- undecodable payloads (#803) ---------------------------------------------------
 
 

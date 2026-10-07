@@ -351,6 +351,10 @@ class _PubSubSink(QueueSink):
             # its own row; one it added before is in the snapshot.
             snapshot = dict(self.names)
             self.pid = backend_pid
+            # Re-armed with the pid, in the same block: if a write below
+            # raises, the next locked operation still sweeps these names
+            # instead of seeing ``pid`` current and skipping them.
+            self.stale.update(snapshot)
         if snapshot:
             with conn.cursor() as cur:
                 cur.executemany(
@@ -603,6 +607,9 @@ class PostgresPubSub:
                 if current is None or current == sink.pid:
                     return
                 sink.pid = current
+                # Same block as the pid move: a raising write below leaves
+                # the names marked, so the next locked operation re-sweeps.
+                sink.stale.update(sink.names)
             t = self.backend._events_ready()
             self.backend._run(
                 f"DELETE FROM {t['popoto_pubsub_listener']} WHERE pid NOT IN "
