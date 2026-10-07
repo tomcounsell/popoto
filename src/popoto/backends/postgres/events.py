@@ -41,12 +41,13 @@ text, as :class:`StreamCommandError` (the server's errors) or
 Blocking reads (``XREADGROUP ... BLOCK``) wait on ``LISTEN``: every append
 sends ``pg_notify`` on the schema's events channel inside its transaction, so
 the notification arrives when the entry is visible. A ``LISTEN`` needs a
-session, so the wait runs on a dedicated connection opened from
-``POPOTO_POSTGRES_LISTEN_URL`` (else the backend's DSN) -- never a pooled
-one, which PgBouncer in transaction mode would hand to another client between
-statements. The wait is capped at :data:`STREAM_WAIT_POLL_SECONDS`, after
-which the read runs again whether or not a notification came (the fallback
-poll), and a dropped ``LISTEN`` connection is reopened on the next wait.
+session, so the wait rides the process's one shared ``LISTEN`` session for
+``POPOTO_POSTGRES_LISTEN_URL`` (else the backend's DSN), :mod:`.listen` --
+never a pooled connection, which PgBouncer in transaction mode would hand to
+another client between statements. The wait is capped at
+:data:`STREAM_WAIT_POLL_SECONDS`, after which the read runs again whether or
+not a notification came (the fallback poll); a dropped session is reopened
+at once and wakes every waiter to read again, so no entry is missed.
 
 Never imports ``redis``; ``psycopg`` only through the backend.
 """
@@ -83,17 +84,18 @@ __all__ = [
 logger = logging.getLogger("POPOTO.postgres.events")
 
 LISTEN_URL_ENV = "POPOTO_POSTGRES_LISTEN_URL"
-"""A DSN for the dedicated ``LISTEN`` sessions (blocking stream reads and
-``Subscriber``). Point it past a transaction-mode pooler at the server, or a
+"""A DSN for the process's shared ``LISTEN`` session (blocking stream reads
+and ``Subscriber``; one per process and DSN, :mod:`.listen`). Point it past a transaction-mode pooler at the server, or a
 session-mode pool; unset, the backend's own DSN is used."""
 
 STREAM_WAIT_POLL_SECONDS = 1.0
 """The fallback poll: a blocking read waits at most this long for a
 notification before it reads again anyway. Bounds the delay a lost
-notification (a ``LISTEN`` connection dropped and reopened) can cause."""
+notification (one sent on another channel, say) can cause."""
 
 LISTEN_RECONNECT_BACKOFF_SECONDS = 0.2
-"""Pause after a ``LISTEN`` connection fails, before the read retries."""
+"""Pause after the shared ``LISTEN`` session cannot be attached to, before
+the read retries."""
 
 MAX_ID_PART = 2**63 - 1
 """``bigint``'s ceiling. Redis ids are unsigned 64-bit; ids past 2**63 - 1
@@ -387,88 +389,99 @@ def _stream_hash(stream: str) -> str:
 
 
 class EventListener:
-    """One dedicated ``LISTEN`` session (never a pooled connection) on a
-    notification channel, reopened when it drops.
+    """A blocking read's ``LISTEN`` on a notification channel: a
+    :class:`~.listen.WakeSink` on the process's shared session for the DSN
+    (:func:`~.listen.hub_for`, #799), never a pooled connection and never a
+    session of its own.
 
-    :meth:`wait` returns ``True`` when a notification with one of the
-    wanted payloads arrived, or when the connection failed (the caller
-    should read again: notifications sent while it was down are lost, which
-    is what the fallback poll covers), ``False`` on timeout."""
+    :meth:`ensure` attaches it (``True`` when listening started, or the
+    shared session was reopened, since it last answered -- the caller should
+    read again). :meth:`wait` returns ``True`` when a notification with one
+    of the wanted payloads arrived, when the session was reopened
+    (notifications sent while it was down are lost, so the caller reads
+    again; the fallback poll covers the rest), or when :meth:`interrupt`
+    was called; ``False`` on timeout."""
 
     def __init__(self, dsn: str, channel: str) -> None:
+        from .listen import WakeSink
+
         self.dsn = dsn
         self.channel = channel
-        self.conn: Any = None
         self.reconnects = 0
+        self._sink = WakeSink()
+        self._hub: Any = None
         self._finalizer: Any = None
 
-    def _connect(self) -> None:
-        from . import _import_psycopg
-        from ...fields.constants import Defaults
+    @property
+    def hub(self) -> Any:
+        return self._hub
 
-        psycopg = _import_psycopg()
-        conn = psycopg.connect(
-            self.dsn,
-            autocommit=True,
-            connect_timeout=max(
-                1, int(round(float(Defaults.PG_CONNECT_TIMEOUT_SECONDS)))
-            ),
-        )
-        conn.execute(f'LISTEN "{self.channel}"')
-        if self.conn is not None:
-            self.reconnects += 1
-        self.conn = conn
-        if self._finalizer is not None:
-            self._finalizer.detach()
-        self._finalizer = weakref.finalize(self, _close_quietly, conn)
+    @property
+    def backend_pid(self) -> Optional[int]:
+        """The shared session's server pid (``None`` while it is down)."""
+        return None if self._hub is None else self._hub.backend_pid
+
+    @property
+    def conn(self) -> Any:
+        """The shared session's connection (read-only: the hub's thread is
+        the only one that uses it)."""
+        return None if self._hub is None else self._hub._conn
+
+    def _attached(self) -> bool:
+        return self._hub is not None and self._hub.pid == os.getpid()
 
     def ensure(self) -> bool:
-        """Open (or reopen) the session; ``True`` when it had to."""
-        conn = self.conn
-        if conn is not None and not conn.closed and not conn.broken:
+        """Attach to the shared session (or re-attach, in a forked child);
+        ``True`` when that, or a reconnect, happened since the last call."""
+        if self._attached():
+            if self._sink.take_reconnected():
+                self.reconnects += 1
+                return True
             return False
-        if conn is not None:
-            _close_quietly(conn)
-        self._connect()
+        from .listen import WakeSink, hub_for
+
+        if self._hub is not None:  # inherited across a fork: start clean
+            if self._finalizer is not None:
+                self._finalizer.detach()
+            self._sink = WakeSink()
+        hub = hub_for(self.dsn)
+        hub.attach(self.channel, self._sink, barrier=False)
+        self._hub = hub
+        self._finalizer = weakref.finalize(self, hub.detach, self.channel, self._sink)
         return True
 
     def wait(self, payloads: Iterable[str], timeout: float) -> bool:
         from . import _import_psycopg
 
         psycopg = _import_psycopg()
-        wanted = set(payloads)
         try:
             if self.ensure():
                 return True
-            for notify in self.conn.notifies(timeout=max(timeout, 0.0)):
-                if notify.payload in wanted:
-                    return True
-            return False
-        except psycopg.OperationalError as exc:
+        except (psycopg.OperationalError, TimeoutError) as exc:
             logger.warning(
-                "popoto Postgres LISTEN session dropped (%s); reopening on the "
+                "popoto Postgres LISTEN session unavailable (%s); retrying on the "
                 "next wait",
                 exc,
             )
-            _close_quietly(self.conn)
             time.sleep(min(max(timeout, 0.0), LISTEN_RECONNECT_BACKOFF_SECONDS))
             return True
+        woken, reconnected = self._sink.wait(set(payloads), timeout)
+        if reconnected:
+            self.reconnects += 1
+        return woken
+
+    def interrupt(self) -> None:
+        """Wake a :meth:`wait` in another thread now."""
+        self._sink.interrupt()
 
     def close(self) -> None:
         if self._finalizer is not None:
             self._finalizer.detach()
             self._finalizer = None
-        _close_quietly(self.conn)
-        self.conn = None
-
-
-def _close_quietly(conn: Any) -> None:
-    if conn is None:
-        return
-    try:
-        conn.close()
-    except Exception:  # pragma: no cover - closing a dead socket
-        pass
+        if self._attached():
+            self._hub.detach(self.channel, self._sink)
+        self._hub = None
+        self._sink.clear()
 
 
 # -- the store --------------------------------------------------------------------------
@@ -1096,6 +1109,7 @@ class StreamStore:
         claim_min_idle_time: Optional[int] = None,
         *,
         listener: Optional[EventListener] = None,
+        cancel: Optional[threading.Event] = None,
     ) -> list[list[Any]]:
         """``XREADGROUP``: ``>`` delivers entries past the group's cursor
         (advanced under the group row's lock, so two consumers never get one
@@ -1103,7 +1117,10 @@ class StreamStore:
         this consumer's own pending entries after it. ``block`` (ms; ``0``
         waits forever) waits for an append's notification when a ``>`` read
         found nothing, re-reading at least every
-        :data:`STREAM_WAIT_POLL_SECONDS`."""
+        :data:`STREAM_WAIT_POLL_SECONDS`. ``cancel`` (set by an async caller
+        that was cancelled, with the listener interrupted) ends the wait with
+        ``[]`` and no further read, so a cancelled read claims nothing it has
+        not already claimed."""
         if claim_min_idle_time is not None:
             raise StreamDataError(
                 "XREADGROUP CLAIM is not supported on the Postgres backend"
@@ -1138,9 +1155,11 @@ class StreamStore:
                 if deadline is None
                 else deadline - time.monotonic()
             )
-            if remaining <= 0:
+            if remaining <= 0 or (cancel is not None and cancel.is_set()):
                 return []
             wait_for.wait(payloads, min(remaining, STREAM_WAIT_POLL_SECONDS))
+            if cancel is not None and cancel.is_set():
+                return []
             result = read()
             if result:
                 return result
@@ -1744,7 +1763,10 @@ class AsyncStreamStore:
     """The awaitable twin of :class:`StreamStore` that ``StreamConsumer``
     drives: each command runs the sync one in a worker thread
     (``asyncio.to_thread``), and blocking reads wait on this instance's own
-    ``LISTEN`` session, so two consumers never share one."""
+    :class:`EventListener` -- a sink on the process's shared ``LISTEN``
+    session, so N consumers cost one session, not N (#799). There is no
+    per-event-loop session: the wait is a thread's, whichever loop awaits
+    it."""
 
     is_postgres_stream_store = True
 
@@ -1758,8 +1780,17 @@ class AsyncStreamStore:
         return self.listener
 
     async def xreadgroup(self, *args: Any, **kwargs: Any) -> Any:
-        kwargs.setdefault("listener", self._listener())
-        return await asyncio.to_thread(self.store.xreadgroup, *args, **kwargs)
+        """``XREADGROUP`` in a worker thread. Cancelling the awaiting task
+        interrupts a blocking wait at once (it used to run out its poll
+        interval) and the thread returns without reading again."""
+        listener = kwargs.setdefault("listener", self._listener())
+        cancel = kwargs.setdefault("cancel", threading.Event())
+        try:
+            return await asyncio.to_thread(self.store.xreadgroup, *args, **kwargs)
+        except asyncio.CancelledError:
+            cancel.set()
+            listener.interrupt()
+            raise
 
     def __getattr__(self, name: str) -> Any:
         method = getattr(self.store, name)
@@ -1836,7 +1867,8 @@ class EventsMixin:
         return store
 
     def async_streams(self) -> AsyncStreamStore:
-        """A fresh awaitable stream client with its own ``LISTEN`` session."""
+        """A fresh awaitable stream client with its own waiter on the shared
+        ``LISTEN`` session."""
         return AsyncStreamStore(self.streams())
 
     @property
@@ -1922,7 +1954,8 @@ class EventsMixin:
     # -- pub/sub ---------------------------------------------------------------------------
 
     def pubsub(self) -> Any:
-        """A redis-py-shaped ``PubSub`` on a dedicated ``LISTEN`` session."""
+        """A redis-py-shaped ``PubSub`` on the process's shared ``LISTEN``
+        session."""
         from .pubsub import PostgresPubSub
 
         self._events_ready()
