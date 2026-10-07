@@ -322,8 +322,8 @@ local k = tonumber(ARGV[2])
 def _bloom_add_script(create_version: int, multi: bool) -> str:
     """One of the four add scripts: single token or many, and the version a
     *missing* filter is created in. The version is baked into the script
-    rather than passed as an argument, so the default (v1) call carries
-    exactly the arguments it always has."""
+    rather than passed as an argument, so the default (v1) call's arguments
+    are main's plus only the lock key."""
     flag = "true" if create_version == 2 else "false"
     head = _BLOOM_LUA_LIB + f"local EF_CREATE_V2 = {flag}\n"
     if multi:
