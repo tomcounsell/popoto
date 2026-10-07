@@ -3231,8 +3231,8 @@ while True:
 </details>        <p>Backends (#759 M5):
     A subscriber listens on <code>backend=</code> (a name or instance) when given,
     else the process default. On Postgres <code>self.pubsub</code> is a
-    <code>PostgresPubSub</code> on a dedicated <code>LISTEN</code> session, polled the same way;
-    call <code>self.pubsub.close()</code> to end it.</p>
+    <code>PostgresPubSub</code> on the process's shared <code>LISTEN</code> session (#799),
+    polled the same way; call <code>self.pubsub.close()</code> to end it.</p>
 
 
 <details class="see-also" open>
@@ -3677,8 +3677,8 @@ subscriber to react to events from different sources.</p>
 <a id="__codelineno-0-148" name="__codelineno-0-148"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_pubsub_backend</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"backend"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <a id="__codelineno-0-149" name="__codelineno-0-149"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="n">_native_backend</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
 <a id="__codelineno-0-150" name="__codelineno-0-150"></a>        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-151" name="__codelineno-0-151"></a>            <span class="c1"># #759 M5: LISTEN on a dedicated Postgres session, with the same</span>
-<a id="__codelineno-0-152" name="__codelineno-0-152"></a>            <span class="c1"># message dicts redis-py's PubSub returns.</span>
+<a id="__codelineno-0-151" name="__codelineno-0-151"></a>            <span class="c1"># #759 M5 / #799: LISTEN on the process's shared Postgres</span>
+<a id="__codelineno-0-152" name="__codelineno-0-152"></a>            <span class="c1"># session, with the same message dicts redis-py's PubSub returns.</span>
 <a id="__codelineno-0-153" name="__codelineno-0-153"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">pubsub</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">pubsub</span><span class="p">()</span>
 <a id="__codelineno-0-154" name="__codelineno-0-154"></a>        <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-155" name="__codelineno-0-155"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">pubsub</span> <span class="o">=</span> <span class="n">get_REDIS_DB</span><span class="p">()</span><span class="o">.</span><span class="n">pubsub</span><span class="p">()</span>

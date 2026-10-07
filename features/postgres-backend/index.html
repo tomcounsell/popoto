@@ -5013,21 +5013,24 @@ streams), else the process default; <code>reconciliation_consumer</code> names
 <li><strong>Blocking reads</strong> (<code>block_ms</code>) wait on <code>LISTEN</code>: each append sends
   <code>pg_notify</code> on the schema's events channel inside its transaction, so the
   notification arrives when the entry is visible. <code>LISTEN</code> needs a session,
-  so the wait runs on a <strong>dedicated connection per consumer, never a pooled
-  one</strong> -- PgBouncer in transaction mode would hand a pooled connection to
-  another client between statements (§3 Topology). Its DSN is
-  <code>POPOTO_POSTGRES_LISTEN_URL</code> when set (point it past a transaction-mode
-  pooler at the server), else the backend's own. The session <code>LISTEN</code>s
-  before the read it backs up, so an append that commits in between is not
-  missed. A wait is capped at one second (<code>STREAM_WAIT_POLL_SECONDS</code>), after
-  which the read runs again anyway -- the fallback poll that bounds a lost
-  notification -- and a dropped <code>LISTEN</code> connection is reopened on the next
-  wait. <code>consumer.close()</code> (or the end of <code>run()</code>) closes the session.</li>
+  so the wait rides the process's <strong>one shared <code>LISTEN</code> session</strong> (below),
+  never a pooled connection -- PgBouncer in transaction mode would hand a
+  pooled connection to another client between statements (§3 Topology). Its
+  DSN is <code>POPOTO_POSTGRES_LISTEN_URL</code> when set (point it past a
+  transaction-mode pooler at the server), else the backend's own. The
+  waiter is attached before the read it backs up, so an append that commits
+  in between is not missed. A wait is capped at one second
+  (<code>STREAM_WAIT_POLL_SECONDS</code>), after which the read runs again anyway --
+  the fallback poll that bounds a lost notification. Cancelling the task
+  awaiting a read wakes its worker thread at once, and the thread returns
+  without reading again, so a cancelled read claims nothing it had not
+  already claimed. <code>consumer.close()</code> (or the end of <code>run()</code>) detaches the
+  consumer's waiter.</li>
 </ul>
 <p><strong>Pub/sub.</strong> <code>Publisher.publish</code> is one <code>pg_notify</code> and <code>Subscriber</code> polls a
 <code>PostgresPubSub</code>, a redis-py-shaped <code>PubSub</code> (<code>subscribe</code>, <code>psubscribe</code>,
 <code>unsubscribe</code>, <code>punsubscribe</code>, <code>get_message</code>, <code>listen</code>, <code>close</code>, the same
-message dicts) on its own dedicated <code>LISTEN</code> session. A publisher uses its
+message dicts) on the process's shared <code>LISTEN</code> session. A publisher uses its
 model's backend, <code>backend=</code>, or the process default; a subscriber <code>backend=</code>
 or the default.</p>
 <ul>
@@ -5065,23 +5068,66 @@ or the default.</p>
   <code>popoto_pubsub_listener</code> rows whose session pid is live
   (<code>pg_stat_activity</code>); a subscriber deletes its rows on <code>close()</code>, and rows
   of a session that died stop counting and are swept by the next subscriber
-  to connect. The <code>LISTEN</code> URL must reach the same server.</li>
+  to connect. Every subscriber in a process registers under the shared
+  session's pid, each with its own token, so the count is per subscription
+  as before. The <code>LISTEN</code> URL must reach the same server.</li>
 </ul>
-<p><strong>Connection cost.</strong> <code>LISTEN</code> belongs to a session, so each blocking
-<code>StreamConsumer</code> (<code>block_ms</code>) and each <code>Subscriber</code> holds <strong>one dedicated
-Postgres session</strong> for as long as it is open, outside the pool and outside
-any transaction-mode pooler; it cannot be pooled or shared. Measured: 4
-blocking consumers hold 4 <code>LISTEN</code> sessions plus the pool's connections. In
-the central-database topology every agent process counts against the one
-server's <code>max_connections</code>: N processes × (blocking consumers + subscribers)
-sessions, on top of N × <code>Defaults.PG_POOL_MAX_SIZE</code> pooled ones. Size
-<code>max_connections</code> (or a session-mode pool behind <code>POPOTO_POSTGRES_LISTEN_URL</code>)
-for that sum, and prefer a non-blocking consumer (<code>block_ms=None</code>, polled)
-where a wake-up latency of a poll interval is acceptable. Each <code>publish</code> also
-reads <code>pg_stat_activity</code> for its count, so its cost grows with the server's
-session count. One multiplexed listener per process and schema, shared by
-all consumers and subscribers, is a planned follow-up
-(<code>docs/plans/sdlc-631-v2.md</code>, "M5 events as shipped").</p>
+<p><strong>One <code>LISTEN</code> session per process</strong> (#799). <code>LISTEN</code> belongs to a session
+and cannot be pooled, so every subscriber and blocking stream read in a
+process shares <strong>one dedicated session per DSN</strong>
+(<code>popoto.backends.postgres.listen</code>), outside the pool and outside any
+transaction-mode pooler. A hub thread owns it: it <code>LISTEN</code>s the union of the
+channels its subscribers want (the schema's pub/sub channel, its events
+channel, for every schema on that DSN), hands each notification to every
+subscriber of that channel <strong>in arrival order</strong>, <code>UNLISTEN</code>s a channel when
+its last subscriber leaves, and closes the session when none is left.
+Measured with <code>POPOTO_POSTGRES_LISTEN_URL</code> tagged by an <code>application_name</code>:
+50 <code>Subscriber</code>s plus 4 blocking <code>XREADGROUP</code>s in one process held <strong>54</strong>
+<code>LISTEN</code> sessions before, and hold <strong>1</strong> now; 50 async stream readers
+(<code>backend.async_streams()</code>, what <code>StreamConsumer</code> drives) hold 1, and so do
+10 subscribers with 5 sync and 5 async blocking readers together
+(<code>tests/postgres/test_postgres_listen.py</code>). In the central-database
+topology a process therefore costs one <code>LISTEN</code> session on top of
+<code>Defaults.PG_POOL_MAX_SIZE</code> pooled ones, however many consumers and
+subscribers it runs. The session reports <code>application_name=popoto_listen</code>
+in <code>pg_stat_activity</code> unless its DSN names one. Each <code>publish</code> still reads
+<code>pg_stat_activity</code> for its count, so its cost grows with the server's
+session count.</p>
+<ul>
+<li><strong>A subscriber is live when <code>subscribe</code> returns.</strong> The first subscriber of
+  a channel is live from its <code>LISTEN</code>; a later one from a barrier -- a
+  <code>pg_notify</code> the hub sends itself on that channel. Postgres delivers
+  notifications in commit order, so a message published before the
+  <code>subscribe</code> call is never handed to the new subscriber (as a Redis
+  <code>SUBSCRIBE</code> never receives an earlier <code>PUBLISH</code>), and one published after
+  it returns always is. Nonce de-duplication, the payload limit and glob
+  matching are the subscriber's own, unchanged by the sharing.</li>
+<li><strong>Reconnects.</strong> When the session drops (<code>pg_terminate_backend</code>, a server
+  restart, a network fault) the hub reconnects at once, then with backoff
+  (0.2 s doubling to 5 s), re-<code>LISTEN</code>s every channel and re-registers every
+  subscription under the new pid on its own session, before any subscriber
+  polls. <strong>A pub/sub message published while the session is down is lost</strong>
+  -- <code>NOTIFY</code> keeps nothing for a session that is not listening -- and
+  <code>publish</code> counts 0 for it (the registrations name a dead pid). That is
+  the same gap, in kind, as a Redis subscriber's: messages published while
+  its connection is down are not delivered. Order is kept across the gap
+  and nothing is delivered twice. <strong>Stream reads lose nothing</strong>: an entry is
+  a row, and the reconnect wakes every blocked reader to read again
+  (well before the fallback poll). Pinned by
+  <code>test_postgres_listen.py::test_a_terminated_listen_session_reconnects_and_relistens</code>,
+  <code>::test_a_reconnect_mid_stream_keeps_order_and_loses_only_the_gap</code> and
+  <code>::test_a_blocking_stream_read_loses_nothing_across_a_reconnect</code>.</li>
+<li><strong>Fork.</strong> The session belongs to the process that opened it: a forked
+  child opens its own on first use and never touches (or closes) the
+  parent's, and a subscriber the child inherited re-attaches there with a
+  fresh registration token.</li>
+<li><strong>Back-pressure.</strong> A subscriber that stops reading keeps at most 100 000
+  unread messages (<code>listen.QUEUE_SINK_MAX_PENDING</code>); past that the oldest
+  are dropped and logged -- the analogue of Redis disconnecting a pub/sub
+  client past its <code>client-output-buffer-limit</code>. A stream reader only keeps
+  which streams were notified, so it costs nothing while it is not
+  waiting.</li>
+</ul>
 <p><strong>Divergences</strong> (stream and pub/sub; Redis behaviour unchanged):</p>
 <table>
 <thead>
