@@ -41,6 +41,7 @@ from __future__ import annotations
 import base64
 import binascii
 import collections
+import contextlib
 import hashlib
 import itertools
 import logging
@@ -288,39 +289,163 @@ class _PubSubSink(QueueSink):
     ``popoto_pubsub_listener`` rows name the shared session's backend pid,
     so they stop counting when it drops. :meth:`resume` re-inserts them
     under the new pid on the hub's own connection the moment it reconnects
-    (before any subscriber polls); ``lock`` serialises that against the
-    subscriber's own registration writes."""
+    (before any subscriber polls).
+
+    Two locks. ``lock`` serialises the subscriber's own registration writes
+    (its thread's I/O on the pool) and is held across them. ``state`` guards
+    only ``names`` and ``pid`` and is never held across I/O, so
+    :meth:`resume` -- run on the hub's thread for every subscriber in turn --
+    takes ``state`` alone and works from a snapshot: one subscriber's slow
+    write never stalls the reconnect, or anyone else's re-registration
+    (#803).
+
+    Only the snapshot's *insert* runs without ``lock``. Removing a row the
+    snapshot re-inserted for a channel unsubscribed meanwhile needs it: the
+    channel may have been subscribed again since, and its fresh row looks
+    exactly like the stale one. So :meth:`resume` records the snapshot's
+    keys in ``stale`` and :meth:`sweep`\\ s them under ``lock``, taken
+    without waiting; when a subscriber's write holds it, that subscriber
+    sweeps as it lets go (:meth:`PostgresPubSub._locked`). Either way the
+    check "is this channel still subscribed?" and its DELETE run with no
+    subscriber write in between. The same sweep deletes this subscriber's
+    rows under any pid but the current one: a write that read the old pid
+    can land after ``resume``'s own cleanup, and only a sweep under ``lock``
+    is sure to come after it.
+
+    ``owner`` is the process that made the sink. A forked child that
+    inherits it never deletes its rows: they are the parent's, still counted
+    for a parent that is still subscribed (#803)."""
 
     def __init__(self) -> None:
         super().__init__()
         self.lock = threading.Lock()
+        self.state = threading.Lock()
+        self.owner = os.getpid()
         self.pid: Optional[int] = None
         self.token = uuid.uuid4().hex
         self.table: Optional[str] = None
         self.names: dict[tuple[bool, str], Optional[str]] = {}
+        self.stale: set[tuple[bool, str]] = set()
+        """Keys :meth:`resume` re-inserted that :meth:`sweep` has not yet
+        checked against ``names`` (guarded by ``state``)."""
 
-    def rows(self, pid: int) -> list[list[Any]]:
+    @property
+    def inherited(self) -> bool:
+        """Made by another process (this one is a forked child)."""
+        return self.owner != os.getpid()
+
+    def rows(
+        self, pid: int, names: Optional[dict[tuple[bool, str], Optional[str]]] = None
+    ) -> list[list[Any]]:
+        source = self.names if names is None else names
         return [
             [pid, self.token, pattern, name, regex]
-            for (pattern, name), regex in self.names.items()
+            for (pattern, name), regex in source.items()
         ]
 
     def resume(self, conn: Any, backend_pid: int) -> None:
-        with self.lock:
-            if self.table is None or self.pid == backend_pid:
+        with self.state:
+            if self.table is None or self.pid == backend_pid or self.inherited:
                 return
-            if self.names:
-                with conn.cursor() as cur:
-                    cur.executemany(
-                        f"INSERT INTO {self.table} (pid, token, pattern, name, "
-                        "regex) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                        self.rows(backend_pid),
-                    )
-            conn.execute(
-                f"DELETE FROM {self.table} WHERE token = %s AND pid <> %s",
-                [self.token, backend_pid],
-            )
+            # From here a concurrent _register reads the new pid and inserts
+            # its own row; one it added before is in the snapshot.
+            snapshot = dict(self.names)
             self.pid = backend_pid
+            # Re-armed with the pid, in the same block: if a write below
+            # raises, the next locked operation still sweeps these names
+            # instead of seeing ``pid`` current and skipping them.
+            self.stale.update(snapshot)
+        if snapshot:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    f"INSERT INTO {self.table} (pid, token, pattern, name, "
+                    "regex) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    self.rows(backend_pid, snapshot),
+                )
+        with self.state:
+            # Unsubscribed (or closed) while the snapshot was inserted, the
+            # subscriber's own DELETE may have run before our INSERT. Which
+            # keys that happened to is only decidable under ``lock``.
+            self.stale.update(snapshot)
+        conn.execute(
+            f"DELETE FROM {self.table} WHERE token = %s AND pid <> %s",
+            [self.token, backend_pid],
+        )
+        # Never wait: a subscriber holding ``lock`` sweeps when it releases
+        # it, and it sees ``stale`` set above (PostgresPubSub._locked). The
+        # DELETE above is not enough on its own: a holder's write that read
+        # the old pid may land after it, and only a sweep under ``lock``
+        # (which also deletes this token's rows under any other pid) is
+        # guaranteed to run after every such write.
+        if self.lock.acquire(blocking=False):
+            try:
+                self.sweep(conn.execute)
+            finally:
+                self.lock.release()
+
+    def sweep(self, execute: Callable[[str, list[Any]], Any]) -> None:
+        """Make this subscriber's rows exactly ``names`` under the current
+        ``pid``. The caller holds ``lock``, so no subscriber write can
+        re-register a key, or land a row, between the check and the writes
+        (#803):
+
+        - delete the rows :meth:`resume` re-inserted for keys no longer
+          subscribed (a key still in ``names`` keeps its row, which may be
+          the subscriber's own);
+        - insert the current pid's row for every key in ``names`` (``ON
+          CONFLICT DO NOTHING``), which a concurrent reconnect's cleanup may
+          have removed while it named a pid that was current a moment ago;
+        - delete every row of this subscriber under any *other* pid. A write
+          that read the pid before a reconnect and landed after its cleanup
+          leaves one (a ``subscribe`` whose INSERT was in flight, or a
+          re-registration a second reconnect overtook); left alone it would
+          be counted twice for as long as the superseded backend stays in
+          ``pg_stat_activity`` -- hours, for a partitioned peer.
+
+        When a reconnect moves ``pid`` while this runs, it marks ``stale``
+        again before trying ``lock``, so the sweep runs once more with the
+        new pid (:meth:`PostgresPubSub._locked`'s loop, or ``resume``
+        itself). On failure the marks are restored, with every subscribed
+        key added, so a sweep that never reached its last two writes runs
+        again on the subscriber's next locked write or poll."""
+        with self.state:
+            marked = set(self.stale)
+            gone = [key for key in marked if key not in self.names]
+            self.stale.clear()
+            pid = self.pid
+            names = dict(self.names)
+        try:
+            for pattern, name in gone:
+                execute(
+                    f"DELETE FROM {self.table} WHERE token = %s AND pattern = %s "
+                    "AND name = %s",
+                    [self.token, pattern, name],
+                )
+            if pid is None:
+                return  # closed, or not registered yet: no rows to keep
+            if names:
+                keys = list(names)
+                execute(
+                    f"INSERT INTO {self.table} (pid, token, pattern, name, regex) "
+                    "SELECT %s, %s, u.p, u.n, u.r FROM unnest(%s::boolean[], "
+                    "%s::text[], %s::text[]) AS u(p, n, r) ON CONFLICT DO NOTHING",
+                    [
+                        pid,
+                        self.token,
+                        [pattern for pattern, _ in keys],
+                        [name for _, name in keys],
+                        [names[key] for key in keys],
+                    ],
+                )
+            execute(
+                f"DELETE FROM {self.table} WHERE token = %s AND pid <> %s",
+                [self.token, pid],
+            )
+        except BaseException:
+            with self.state:
+                self.stale.update(marked)
+                self.stale.update(names)
+            raise
 
 
 class PostgresPubSub:
@@ -367,6 +492,23 @@ class PostgresPubSub:
         return self._sink.token
 
     @property
+    def dropped(self) -> int:
+        """Messages discarded unread because this subscriber fell behind
+        (``Defaults.PG_LISTEN_QUEUE_MAX_MESSAGES`` /
+        ``PG_LISTEN_QUEUE_MAX_BYTES``). The process-wide total is the
+        shared session's ``hub.dropped``."""
+        return self._sink.dropped
+
+    @property
+    def dropped_bytes(self) -> int:
+        return self._sink.dropped_bytes
+
+    @property
+    def queued_bytes(self) -> int:
+        """Payload bytes received but not yet read."""
+        return self._sink.queued_bytes
+
+    @property
     def hub(self) -> Any:
         return self._hub
 
@@ -388,6 +530,7 @@ class PostgresPubSub:
                 if self._finalizer is not None:
                     self._finalizer.detach()
                     self._finalizer = None
+                # No lock: one another thread held at fork() stays held here.
                 names = dict(self._sink.names)
                 self._sink = _PubSubSink()
                 self._sink.names = names
@@ -407,26 +550,73 @@ class PostgresPubSub:
         if self._attached():
             self._hub.detach(self._channel(), self._sink)
         self._hub = None
-        self._sink.take(0)
+        if self._sink.inherited:
+            # A forked child: start from a sink of its own rather than touch
+            # the inherited one's lock (the parent's hub thread may have held
+            # it at fork()). What it had queued was the parent's anyway.
+            fresh = _PubSubSink()
+            fresh.names = dict(self._sink.names)
+            self._sink = fresh
+        else:
+            self._sink.take(0)
+
+    @contextlib.contextmanager
+    def _locked(self, sink: _PubSubSink) -> Iterator[None]:
+        """``sink.lock`` for a registration write, then the sweep a
+        reconnect's :meth:`_PubSubSink.resume` left to this subscriber
+        because the lock was busy. ``resume`` marks ``stale`` before it
+        tries the lock, so whenever its try fails the holder sees the mark
+        on release (#803).
+
+        A write that raises skips the sweep: the exception leaves at
+        ``yield``, so nothing below it runs. That is deliberate -- the caller
+        sees its own error, not a second one from the sweep -- and harmless:
+        ``stale`` stays set, so the subscriber's next locked write sweeps,
+        and every poll makes one (``_poll`` -> ``_ensure`` ->
+        :meth:`_sync_registration`). Until then a superseded pid's row may
+        be counted; the count is advisory."""
+        with sink.lock:
+            yield
+        while sink.stale and not sink.inherited:
+            try:
+                with sink.lock:
+                    sink.sweep(self._execute)
+            except Exception as exc:  # the count is advisory; never fail on it
+                logger.warning("pub/sub registration sweep failed: %s", exc)
+                return
+
+    def _execute(self, sql: str, params: list[Any]) -> None:
+        self.backend._run(sql, params, write=True)
 
     def _sync_registration(self) -> None:
         """Register every subscription under the shared session's current
-        pid when they are not (first use; a reconnect :meth:`_PubSubSink.resume`
-        could not cover), sweeping registrations whose session is gone."""
+        pid when they are not (first use; a reconnect that this subscriber
+        noticed before :meth:`_PubSubSink.resume` reached it), sweeping
+        registrations whose session is gone.
+
+        The re-registration itself is :meth:`_PubSubSink.sweep`, so it also
+        deletes this subscriber's rows under the pid it replaces: that
+        backend may still be listed in ``pg_stat_activity`` (a frozen or
+        partitioned peer), where the dead-session DELETE below misses it.
+        When a second reconnect overtakes these writes, its ``resume`` marks
+        ``stale`` and :meth:`_locked` sweeps again under the newer pid."""
         sink = self._sink
-        with sink.lock:
-            current = None if self._hub is None else self._hub.backend_pid
-            if current is None or current == sink.pid:
-                return
+        with self._locked(sink):
+            with sink.state:
+                current = None if self._hub is None else self._hub.backend_pid
+                if current is None or current == sink.pid:
+                    return
+                sink.pid = current
+                # Same block as the pid move: a raising write below leaves
+                # the names marked, so the next locked operation re-sweeps.
+                sink.stale.update(sink.names)
             t = self.backend._events_ready()
             self.backend._run(
                 f"DELETE FROM {t['popoto_pubsub_listener']} WHERE pid NOT IN "
                 "(SELECT pid FROM pg_stat_activity)",
                 write=True,
             )
-            sink.pid = current
-            for row in sink.rows(current):
-                self._insert(row)
+            sink.sweep(self._execute)
 
     def _insert(self, row: list[Any]) -> None:
         t = self.backend._events_ready()
@@ -441,17 +631,27 @@ class PostgresPubSub:
         sink = self._sink
         text = name.decode("utf-8")
         regex = glob_to_regex(as_bytes_text(text)) if pattern else None
-        with sink.lock:
-            sink.names[(pattern, text)] = regex
-            if sink.pid is not None:
-                self._insert([sink.pid, sink.token, pattern, text, regex])
+        with self._locked(sink):
+            with sink.state:
+                sink.names[(pattern, text)] = regex
+                pid = sink.pid
+            if pid is not None:
+                self._insert([pid, sink.token, pattern, text, regex])
 
     def _unregister(self, name: bytes, *, pattern: bool) -> None:
         sink = self._sink
         text = name.decode("utf-8")
-        with sink.lock:
+        if sink.inherited:
+            # A forked child: the row is the parent's, and the parent may
+            # still be subscribed. Forget it locally, touch no lock (one held
+            # by another thread at fork() stays held) and no row.
             sink.names.pop((pattern, text), None)
-            if sink.pid is None:
+            return
+        with self._locked(sink):
+            with sink.state:
+                sink.names.pop((pattern, text), None)
+                pid = sink.pid
+            if pid is None:
                 return
             t = self.backend._events_ready()
             self.backend._run(
@@ -610,8 +810,27 @@ class PostgresPubSub:
 
     def close(self) -> None:
         sink = self._sink
-        with sink.lock:
-            if sink.pid is not None:
+        if sink.inherited:
+            # A forked child: the rows are the parent's, and the parent may
+            # still be subscribed (#803). Forget them locally, touching no
+            # lock (one held by another thread at fork() stays held here).
+            sink.names.clear()
+            sink.pid = None
+        else:
+            self._close_registrations(sink)
+        self._detach()
+        self.channels.clear()
+        self.patterns.clear()
+        self._compiled.clear()
+
+    def _close_registrations(self, sink: _PubSubSink) -> None:
+        with self._locked(sink):
+            # Forget first, then delete: a reconnect's resume() that inserted
+            # meanwhile sees the names gone and deletes its rows itself.
+            with sink.state:
+                pid, sink.pid = sink.pid, None
+                sink.names.clear()
+            if pid is not None:
                 try:
                     t = self.backend._events_ready()
                     self.backend._run(
@@ -623,12 +842,6 @@ class PostgresPubSub:
                     logger.warning(
                         "pub/sub close could not drop its registrations: %s", exc
                     )
-            sink.names.clear()
-            sink.pid = None
-        self._detach()
-        self.channels.clear()
-        self.patterns.clear()
-        self._compiled.clear()
 
     reset = close
 

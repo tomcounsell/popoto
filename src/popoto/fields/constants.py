@@ -756,6 +756,29 @@ class Defaults:
     # statement (inside transaction() these propagate to the caller).
     PG_TRANSACTION_RETRIES = 3
 
+    # -- Postgres shared LISTEN session (#799, #803) ----------------------------
+    # Read when a subscriber is created / when the hub connects or waits, so a
+    # test may patch them. A pub/sub subscriber that stops reading keeps at
+    # most this many unread messages and this many payload bytes; past either
+    # cap its oldest are dropped (logged, counted). 32 MiB is Redis's default
+    # pubsub client-output-buffer-limit hard cap, the point at which Redis
+    # disconnects a slow subscriber; the message cap alone allowed ~800 MB.
+    PG_LISTEN_QUEUE_MAX_MESSAGES = 100_000
+    PG_LISTEN_QUEUE_MAX_BYTES = 32 * 1024 * 1024
+    # libpq TCP keepalive parameters for the shared session (unless its DSN
+    # names them), so the OS notices a silently dead peer: probe after 30 s
+    # idle, every 10 s, give up after 3 -- about a minute.
+    PG_LISTEN_KEEPALIVES = 1
+    PG_LISTEN_KEEPALIVES_IDLE_SECONDS = 30
+    PG_LISTEN_KEEPALIVES_INTERVAL_SECONDS = 10
+    PG_LISTEN_KEEPALIVES_COUNT = 3
+    # The hub's own liveness check, which works where keepalives are ignored:
+    # after this many seconds without traffic it sends SELECT 1, and drops and
+    # reopens the session when no reply arrives within the timeout. A silent
+    # NAT drop is therefore noticed within interval + timeout.
+    PG_LISTEN_LIVENESS_INTERVAL_SECONDS = 30.0
+    PG_LISTEN_LIVENESS_TIMEOUT_SECONDS = 10.0
+
     # -- Postgres search (#759 M2b) --------------------------------------------
     # Magic numbers for the vector, BM25 and fusion arms on Postgres, pinned
     # in-repo for tuning (CLAUDE.md "Numeric constants"), not constructor
