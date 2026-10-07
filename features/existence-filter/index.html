@@ -1325,6 +1325,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#hash-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hash versions
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3400,6 +3411,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#hash-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hash versions
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3597,6 +3619,12 @@
 <td><code>None</code></td>
 <td>Takes a model instance, returns a fingerprint string</td>
 </tr>
+<tr>
+<td><code>hash_version</code></td>
+<td><code>int</code></td>
+<td><code>1</code></td>
+<td>Hash a <em>new</em> filter is created with: <code>1</code>, or <code>2</code> to opt in (see <a href="#hash-versions">Hash versions</a> and the rolling-upgrade rule first)</td>
+</tr>
 </tbody>
 </table>
 <h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
@@ -3638,10 +3666,112 @@
 <p><strong>Query normalization:</strong> Queries are tokenized using the same rules. For multi-token queries, <code>might_exist()</code> returns <code>True</code> if ANY token matches. For <code>get_frequency()</code>, the minimum frequency across tokens is returned.</p>
 <h3 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Redis key pattern</strong>: <code>$EF:{ClassName}:{field_name}</code> (string used as bit array)</li>
+<li><strong>Redis key pattern</strong>: <code>$EF:{ClassName}:{field_name}</code> (string used as bit array, followed by a 4-byte version marker on v2 filters)</li>
 <li><strong>Lua script</strong>: Computes k hash positions, sets/checks bits atomically</li>
+<li><strong>Hash</strong>: Kirsch–Mitzenmacher double hashing over two 32-bit FNV-1a hashes (the bytes forward and reversed), all arithmetic exact in Lua doubles, plain Lua with no <code>bit</code> library</li>
 <li><strong>Size</strong>: Automatically computed from <code>capacity</code> and <code>error_rate</code> using optimal Bloom filter formulas</li>
 </ul>
+<h3 id="hash-versions">Hash versions<a class="headerlink" href="#hash-versions" title="Permanent link">&para;</a></h3>
+<div class="admonition warning">
+<p class="admonition-title">Rolling-upgrade rule: upgrade every process before opting in to v2</p>
+<p>Code from before #775 reads and writes <strong>every</strong> filter with the v1 hash.
+Pointed at a v2 filter, it gives false negatives: its reads miss the
+tokens stored with v2, and the tokens it adds land on positions v2 reads
+never check. So v2 is <strong>opt-in</strong>, and nothing in this version creates a
+v2 filter unless asked to. Before passing <code>hash_version=2</code> or calling
+<code>rebuild_indexes(bloom_hash_version=2)</code>, upgrade <strong>every</strong> process that
+reads or writes the model -- workers, cron jobs, notebooks -- to a popoto
+with #775. Until then, leave the defaults alone: with them, old and new
+processes share v1 filters with no false negatives in either direction.</p>
+</div>
+<p>Filters built before #775 use a hash whose intermediate products pass 2^53,
+where Lua's doubles drop low-order bits. Similar tokens (shared prefixes,
+sequential ids) collapse onto a few positions: 400 such tokens set 64 of the
+~1,411 bits they should in a 1,000-capacity filter, and 4 of 66 in the
+issue's 20-capacity one. The filter still never gives a false negative, but
+for tokens shaped like the ones it holds it answers "maybe" far more often
+than <code>error_rate</code>.</p>
+<p>Changing the hash in place would make every token already in a live filter
+test absent, so the hash is versioned per filter:</p>
+<ul>
+<li><strong>v1</strong> has no marker and needs none: its hash only produces positions below
+  <code>m</code>, so its string never reaches the marker's offset. It is what every
+  filter built before #775 is, and still what a new filter is by default. A
+  v1 filter is read <em>and written</em> with the v1 hash, byte for byte as before.</li>
+<li><strong>v2</strong> marks itself with four bytes, <code>\x89EF\x02</code>, stored right after its
+  bit array at byte <code>ceil(m / 8)</code>. The marker is part of the filter's own
+  string, so it moves with the bits through <code>DUMP</code>/<code>RESTORE</code>, <code>RENAME</code>,
+  replication and RDB/AOF. A v2 filter is always read and written as v2,
+  whatever the field's <code>hash_version</code> says.</li>
+</ul>
+<p><code>Model.check_indexes()</code> lists v1 filters under <code>legacy_hash</code> (informational;
+not counted in <code>total</code>), and <code>field.hash_version(Model)</code> returns <code>2</code>, <code>1</code>, or
+<code>None</code> for a filter that does not exist yet.</p>
+<p><strong>Opting in</strong>, once the rule above holds:</p>
+<ul>
+<li><code>ExistenceFilter(..., hash_version=2)</code> makes a <em>missing</em> filter v2 when the
+  first save creates it. It does not touch an existing filter.</li>
+<li><code>Model.rebuild_indexes(bloom_hash_version=2)</code> (or
+  <code>await Model.async_rebuild_indexes(bloom_hash_version=2)</code>) converts the
+  model's v1 filters, and missing ones, to v2 from its records. Without the
+  argument, <code>rebuild_indexes()</code> keeps each filter's version and re-saves
+  into it in place, exactly as before #775. A v2 filter is never converted
+  back.</li>
+</ul>
+<p><strong>How a conversion stays free of false negatives:</strong></p>
+<ol>
+<li>It takes the filter's lock, <code>$EF:{ClassName}:{field_name}:rebuild</code>, with
+   <code>SET NX PX</code> and a random token, and in the same Lua step deletes whatever
+   a dead conversion left in the staging key,
+   <code>$EF:{ClassName}:{field_name}:rebuild:staging</code>, and opens it empty as v2.
+   This happens before any index is deleted. The staging key's name is fixed;
+   the token lives only in the lock's value, and every script that renews,
+   swaps or drops the staging key first checks that the lock still holds its
+   token, so a conversion that lost its lock can never extend, rename or
+   delete the staging key of the one that took over.</li>
+<li>It re-saves every record. Every save -- the rebuild's and any other
+   process's -- checks the lock inside its own add script and, while one is
+   held, also writes the staging key, so a save racing the rebuild is not
+   lost. The live filter keeps answering in full the whole time.</li>
+<li>It swaps the staging key over the live filter with one Lua
+   compare-and-rename, which happens only if the lock still holds this
+   rebuild's token and the staging key carries the v2 marker. It clears the
+   expiry the rename would otherwise carry over, then releases the lock.
+   Readers see the complete old filter until that step and the complete v2
+   filter after it.</li>
+</ol>
+<p><strong>One conversion of a filter runs at a time.</strong> A second one raises
+<code>BloomRebuildInProgressError</code> before it has changed anything, so no index is
+deleted and no filter is touched; retry it once the first one finishes.
+(Waiting was the alternative. A bounded wait short enough to be useful cannot
+cover a full rebuild of a large store, and by the time the first rebuild
+finishes, the conversion the second one asked for is already done.) A plain
+<code>rebuild_indexes()</code> is never refused: it does no swap, and its re-saves also
+land in the running conversion's staging key.</p>
+<p><strong>Crashes.</strong> The lock and staging key expire after
+<code>Defaults.BLOOM_REBUILD_LOCK_TTL_MS</code> (60 s). A running conversion renews
+both every third of that from a background thread, started when the lock
+is taken and stopped just before the swap, so renewal covers step 1 (the
+index deletion, which visits no record and can take seconds on a large
+store) as well as the re-saves. If a conversion raises, it deletes its
+staging key and releases the lock, and the thread is stopped and joined
+first. If it dies (for example, SIGKILL), the live filter was never
+touched, the lock lapses, no save writes the orphaned staging key, and
+<code>check_indexes()</code> lists it under <code>stale_bloom_staging</code> until it expires or
+the next conversion deletes it. That check is two <code>EXISTS</code> per bloom field,
+not a keyspace scan. A conversion whose whole process stalls past its lock
+(SIGSTOP, a VM pause: the renewer thread is paused too) has its swap refused
+with <code>BloomRebuildLostLockError</code>. Every other index is still rebuilt, and
+the filter is left as it was.</p>
+<p><strong>What the opt-in does not cover:</strong> a <em>pre-#775</em> process saving during a
+conversion does not write the staging key. Its tokens are in the old filter
+but not in the new one, so they are lost at the swap. This is one more
+reason for the rolling-upgrade rule.</p>
+<p>Tokens from deleted records drop out of a converted filter, as in any rebuild
+from records. Export/import never carries the bits: importing into a
+destination with no filter creates one in the field's <code>hash_version</code>.
+Postgres keeps an exact token table and has no hash to version.</p>
+<p>Every script declares the filter, the lock and the staging key in <code>KEYS</code>.</p>
 <h2 id="frequencysketch">FrequencySketch<a class="headerlink" href="#frequencysketch" title="Permanent link">&para;</a></h2>
 <h3 id="parameters_1">Parameters<a class="headerlink" href="#parameters_1" title="Permanent link">&para;</a></h3>
 <table>
@@ -3674,6 +3804,8 @@
 </tr>
 </tbody>
 </table>
+<p><code>FrequencySketch</code> has no <code>hash_version</code> argument: the hash versions apply to
+<code>ExistenceFilter</code> only, and passing one raises <code>TypeError</code>.</p>
 <h3 id="usage_1">Usage<a class="headerlink" href="#usage_1" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.existence_filter</span><span class="w"> </span><span class="kn">import</span> <span class="n">FrequencySketch</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
