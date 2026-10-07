@@ -6,6 +6,8 @@ owner: Solo dev
 created: 2026-10-07
 tracking: https://github.com/tomcounsell/popoto/issues/811
 last_comment_id:
+revision_applied: true
+revision_applied_at: 2026-10-07T17:06:10Z
 ---
 
 # Decision Log on Postgres
@@ -165,7 +167,7 @@ All spikes ran against local Postgres (`postgresql://localhost:5432/postgres`) t
   - None public. `DecisionLog(redis_client=None)` and every method signature are unchanged.
   - Internally there are two new Postgres pseudo-field adapters: `_m3` / `terminal_write`, and `_lease` / `lock` + `release`, which generalises `_qq_lock` / `_qq_release`. The `_qq` `lock` / `release` ops stay registered and delegate to the shared functions, so the question queue is unchanged.
 - **Coupling**: lower. `SubconsciousMemory`'s backend check shrinks to the split-trail case only, and `DecisionLog` follows the same `non_redis_backend(Model)` dispatch as `ProvenanceJournal` and `question_queue`.
-- **Data ownership**: unchanged. `DecisionRecord` follows the process-default backend, the same rule `JournalEntry` and `ResolutionRecord` already follow, so the decision log, the journal and the resolution sidecar always land in the same store.
+- **Data ownership**: unchanged. `DecisionRecord` follows the process-default backend. The default `JournalEntry` and `ResolutionRecord` follow the same rule, so with the default journal the decision log, the journal and the resolution sidecar always land in the same store. A journal configured with a custom `entry_model` (`ProvenanceJournal.entry_model`, `recipes/provenance_journal.py:596`) can set its own `Meta.backend`. The narrowed refusal guards that case explicitly (see Technical Approach and Risk 4).
 - **Reversibility**: easy. Reverting restores the refusal. There is no data migration: Postgres rows live in an ordinary typed table (`decision_record`) plus lease rows that expire.
 
 ## Appetite
@@ -202,10 +204,10 @@ All spikes ran against local Postgres (`postgresql://localhost:5432/postgres`) t
   - `list_for_agent` uses `query.filter(agent_id=...)`.
   - `list_pending` keeps its existing Python state filter, `older_than` filter and `written_at`-ascending sort over `list_for_agent`.
   - `compute_metrics` is untouched.
-- **Postgres `turn_summary`**: derived from the detail rows. `filter(agent_id=, turn_id=)` selects the rows, then each terminal row adds one to `state:<state>` and, when `reason_code` is set, one to `reason:<reason_code>`. Pending rows are not counted. The result is returned as the same `dict[str, int]` shape.
+- **Postgres `turn_summary`**: derived from the detail rows. `filter(agent_id=, turn_id=)` selects the rows, then each terminal row adds one to `state:<state>` and one to `reason:<reason_code or "">`. The reason key is counted **unconditionally**, even when the reason is empty, because the Redis Lua always increments `reason:{reason}` (`decision_log.py:513-516`, `summary_fields`). Pending rows are not counted. The result is returned as the same `dict[str, int]` shape.
 - **Refusal narrowed to the split-trail case**:
   - Today the `BackendCapabilityError` branch in `SubconsciousMemory.__init__` fires for any non-Redis memory model.
-  - After this change it fires only when the memory model is non-Redis **and** `non_redis_backend(DecisionRecord)` is `None`. That is the case where the audit trail would land in Redis while the memories land in Postgres.
+  - After this change it fires only inside the existing `non_redis_backend(model_class) is not None` branch, and only when the decision log would land in Redis or would land in a different store from the journal. Concretely: the memory model is non-Redis **and** either `non_redis_backend(DecisionRecord)` is `None`, or `DecisionRecord`'s store and the configured journal entry model's store disagree (see Technical Approach, "Refusal guard").
   - The error message changes to name that mixed configuration and the fix: bind the process default with `set_backend("postgres")` / `POPOTO_BACKEND=postgres`.
   - An all-Postgres process constructs normally. See Risk 4 for the full configuration table.
 
@@ -226,6 +228,17 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
   - Keying the decision log on that same rule guarantees the audit trail and the journal it reconciles against are always in one store. That was the refusal's whole purpose.
   - Keying it on the memory model would split them whenever the memory model sets `Meta.backend="postgres"` under a Redis process default.
   - That mixed configuration (memory model on Postgres, process default on Redis) stays refused through a narrowed guard. See the next bullet and Risk 4.
+  - The same-store guarantee holds for the **default** `JournalEntry` only. The journal's store is set by `journal.entry_model` (read at `decision_log.py:733`; overridable at `recipes/provenance_journal.py:596`), and a custom entry model may carry its own `Meta.backend`. `_reconcile_pending` works across stores, because it queries through the entry model's own ORM, but a split trail is exactly what the guard exists to prevent, so the guard refuses it explicitly.
+- **Refusal guard (exact shape)**: in `SubconsciousMemory.__init__`, the new check sits **inside** the existing `if non_redis_backend(model_class) is not None:` branch, so the new refusal is a strict subset of today's:
+  ```python
+  jb = non_redis_backend(
+      getattr(cfg.journal, "entry_model", None) or JournalEntry
+  )
+  db = non_redis_backend(DecisionRecord)
+  if db is None or (db is None) != (jb is None):
+      raise BackendCapabilityError(...)  # names the mixed configuration and the fix
+  ```
+  `db is None` covers the row where the memory model is on Postgres and the process default is on Redis. The second clause covers a custom `entry_model` whose store differs from `DecisionRecord`'s. The builder confirms the attribute path to the journal on `AuditableExtractionConfig` (`cfg.journal` above), falling back to `JournalEntry` when it is absent.
 - **Guarded write SQL**: implement spike-2's statement in `backends/postgres/recipes.py`:
   - Add an `M3_FIELD = "_m3"` handler `{"terminal_write": self._m3_terminal_write}`.
   - Build the columns from `DecisionRecord`'s `TableSpec` with `to_column_value`.
@@ -236,7 +249,8 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
 - **Lease generalisation**:
   - Rename `_qq_lock` / `_qq_release` to `_lease_lock` / `_lease_release`. Their bodies are unchanged.
   - Register them under both `QQ_FIELD` (`lock` / `release`), so the question queue keeps working, and a new `LEASE_FIELD = "_lease"`.
-  - Check the record-lock membership tuple at the tail of `_recipe_field_call` and add `_m3` and `_lease` only where the existing `_qq` precedent does.
+  - The tuple at the tail of `_recipe_field_call` (`recipes.py:228-234`: `COUNTER_FIELD`, `TOMB_FIELD`, ...) is **not** a record-lock list. It decides whether `field` is passed to the handler: members are model-level stores called as `handler(spec, *args, ...)`, and everything else is called as `handler(spec, field, *args, ...)`. `_qq` is not in it, so `_m3` and `_lease` stay out too and receive `(spec, field, ...)` exactly as `_qq_lock` does.
+  - The `_lease` alias is optional. The builder may instead have `DecisionLog` call the existing `_qq` `lock` / `release` ops directly and skip the rename. If the alias is added, `_qq` keeps delegating to the same functions.
   - `acquire_claim` on Postgres passes `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS`. The magic number stays in `Defaults`.
 - **`turn_summary` divergence, documented and pinned by a Postgres-only test**:
   - The Redis summary counts a candidate's **first** terminal write only. A later `accept`-over-`reject` transition does not re-count, and the docstring calls the summary a convenience index while the detail rows are the source of truth.
@@ -245,7 +259,7 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
   - The rejected alternative is a `popoto_*` counter engine table incremented in the guarded statement. It reproduces a Redis convenience structure the doctrine asks us not to emulate, and it imports Redis's summary-versus-detail drift.
 - **Docstrings**: `list_for_agent` and `list_pending` docstrings say the key-pattern `SCAN` and its "ORM bypass" rationale apply to Redis only, and that Postgres uses an indexed `WHERE agent_id = ...` query.
 - **Test conversion**: `tests/test_auditable_extraction.py`'s storage classes join the conformance harness. See Test Impact.
-- **Stale snapshot**: the file's module-level `from popoto.redis_db import POPOTO_REDIS_DB` (line 41) is converted to `get_REDIS_DB()` at call sites, per CLAUDE.md.
+- **Stale snapshot (tests only)**: the module-level `from popoto.redis_db import POPOTO_REDIS_DB` is in `tests/test_auditable_extraction.py:41`, not in `decision_log.py`, which already imports `get_REDIS_DB` (line 92). The test file's import is converted to `get_REDIS_DB()` at its call sites (lines 533, 924 and 1202-1203), per CLAUDE.md.
 
 ## Failure Path Test Strategy
 
@@ -279,16 +293,17 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
 - [ ] `tests/test_auditable_extraction.py:41` (module-level `from popoto.redis_db import POPOTO_REDIS_DB`) — UPDATE. Remove it and resolve `get_REDIS_DB()` at each Redis-only call site.
 - [ ] `TestDecisionLogCore._rows_for` (raw `KEYS`), used by `test_single_row_per_candidate_transitions_in_place`, `test_fresh_candidate_terminal_write_succeeds`, `test_lua_created_row_is_visible_to_the_orm_query_api` and `test_terminal_write_is_refused_against_an_assembled_accept_row` — UPDATE. Make `_rows_for` backend-agnostic. On Redis it keeps the `KEYS` count. On Postgres it counts `DecisionRecord.query.filter(agent_id=, turn_id=)` rows matching the `candidate_id`. One row per candidate is the invariant on both backends, so these four stay on both legs and need no `redis_only`.
 - [ ] `TestDecisionLogCore::test_redis_key_joins_key_fields_alphabetically` — UPDATE. Add `@pytest.mark.redis_only(reason=...)`, because the key format only exists on Redis. Its Postgres twin asserts the composite unique index on `decision_record`.
-- [ ] `TestAssemblyWiring::test_claim_carries_a_finite_ttl` (`PTTL`) — UPDATE. Add `redis_only`. The Postgres twin asserts that the `popoto_lease` row's `expires_at` is about now plus `M3_ASSEMBLY_CLAIM_TTL_MS`, and that a second `acquire_claim` succeeds once that time has passed.
+- [ ] `TestAssemblyWiring::test_claim_carries_a_finite_ttl` (`PTTL`) — UPDATE. Add `redis_only`. The Postgres twin asserts that the `popoto_lease` row's `expires_at` is about `time.time() + M3_ASSEMBLY_CLAIM_TTL_MS / 1000`, within a tolerance. `expires_at` is epoch **seconds** (`recipes.py:109-111`). The twin then asserts that a second `acquire_claim` succeeds once the lease has expired. **Do not sleep 30s**: `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS` is 30_000 (`constants.py:588`). `acquire_claim` reads the constant at call time (`decision_log.py:583`), so either monkeypatch it to about 50ms and sleep 0.1s, or set the row's `expires_at = extract(epoch from clock_timestamp()) - 1` directly.
 - [ ] `TestAssemblyWiring::test_metrics_are_identical_with_the_journal_keyspace_absent` (`SCAN`/`DEL` of `JournalEntry*`) — UPDATE. Add `redis_only`. The Postgres twin deletes the `journal_entry` rows through the ORM, or truncates the test table, and asserts that `compute_metrics` is unchanged.
 - [ ] `tests/test_auditable_extraction.py::TestDecisionLogCore::test_summary_counts_*` — no change. Both pass under detail-row derivation, and they run on both legs.
 - [ ] New in `tests/postgres/test_postgres_decision_log.py`, all Postgres-only twins:
-  - The zero-Redis full-flow test.
+  - The zero-Redis full-flow test. It monkeypatches `Defaults.M4_RESOLUTION_ENABLED = True`, because the env-derived default may be off. It then asserts that a `resolution_record` row exists after the accept, which shows the sidecar was exercised rather than skipped.
   - The guard and claim concurrency tests, using two threads and separate units of work.
   - The `turn_summary` divergence pin.
   - The outage-propagation test.
   - The three twins named above.
-- [ ] `tests/test_query_thread_safety.py` and `tests/test_reference_resolution.py` reference these names. Re-run both on both legs. No change is expected.
+- [ ] `tests/test_reference_resolution.py` — UPDATE. The file has no conformance marker today, so it never runs on Postgres. Opt in `TestResolvedStatus`, `TestAssumedStatus`, `TestEvidenceGapStatus`, `TestIndeterminateStatus`, `TestValidFromMatrix`, `TestResolutionLogWriteFailure`, `TestEmptyOrInvalidInput`, `TestDegradedTagLiteral`, `TestKillSwitchParity` and `TestContextReachesJournalEntry` with `pytest.mark.conformance` plus `pytest.mark.usefixtures("backend")`. A plan-time grep found no direct Redis access in the file (no `keys`, `scan_iter`, `get_REDIS_DB` or `_redis`). The builder re-checks each class before marking it. Any class that turns out to need Redis gets `redis_only` with a reason.
+- [ ] `tests/test_query_thread_safety.py` references these names. Re-run it on both legs. No change is expected.
 
 ## Rabbit Holes
 
@@ -324,10 +339,11 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
 |---|---|---|---|
 | postgres | postgres | refused | runs, all-Postgres (the goal) |
 | postgres (`Meta.backend`) | redis | refused | **still refused** (narrow guard, below) |
-| redis (`Meta.backend`) | postgres | decision log in Redis via `get_REDIS_DB()` | decision log in Postgres, co-located with the journal and `ResolutionRecord`, which already followed the default |
+| redis (`Meta.backend`) | postgres | decision log in Redis via `get_REDIS_DB()` | decision log in Postgres, co-located with the default journal and `ResolutionRecord`, which already followed the default |
+| postgres | postgres, but the journal uses a custom `entry_model` on Redis (`Meta.backend="redis"`) | refused | **still refused** (explicit `entry_model` clause in the guard) |
 
 **Mitigation:**
-- Keep a narrow refusal in `SubconsciousMemory.__init__`. It raises only when the memory model is non-Redis and `non_redis_backend(DecisionRecord)` is `None`. That case is exactly the mixed shape the old guard existed to prevent, and it is a strict subset of today's raise, so no configuration that constructs today starts raising.
+- Keep a narrow refusal in `SubconsciousMemory.__init__`, inside the existing `non_redis_backend(model_class) is not None` branch. It raises when `non_redis_backend(DecisionRecord)` is `None`, or when `DecisionRecord`'s store and the journal entry model's store disagree. That case is exactly the mixed shape the old guard existed to prevent, and it is a strict subset of today's raise, so no configuration that constructs today starts raising.
 - The third row is a data-location change for an unusual configuration, and it is a fix: the decision log now sits with the journal it reconciles against. Call it out in the CHANGELOG.
 - Open Question 1 asks the maintainer to confirm.
 
@@ -412,7 +428,9 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 ## Success Criteria
 
 - [ ] On an all-Postgres process, `SubconsciousMemory(auditable_extraction=...)` constructs, `decision_log` is not `None`, and `extract_memories` returns `ExtractedFact`s.
-- [ ] The mixed shape still raises `BackendCapabilityError`: memory model `Meta.backend="postgres"` with the process default on Redis. A test covers it.
+- [ ] Both mixed shapes still raise `BackendCapabilityError`, and each has a test:
+  - the memory model has `Meta.backend="postgres"` and the process default is Redis;
+  - the journal's custom `entry_model` is in a different store from `DecisionRecord`.
 - [ ] A zero-Redis test (`_RedisRecorder`) runs this whole sequence on Postgres with no Redis command and no connection checkout:
   - empty turn;
   - firewall drop;
@@ -489,14 +507,14 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 ### 1. Postgres adapters
 - **Task ID**: build-pg-adapters
 - **Depends On**: none
-- **Validates**: tests/postgres/test_postgres_recipes.py, tests/postgres/test_postgres_decision_log.py (create)
+- **Validates**: tests/postgres/test_postgres_recipes.py (question-queue lease regression). Task 3 creates `tests/postgres/test_postgres_decision_log.py`, which validates the new adapters end to end.
 - **Informed By**: spike-2 (the guarded upsert returns `(1,0)` when written and `(0,1)` when refused)
 - **Assigned To**: pg-adapter-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Rename `_qq_lock` / `_qq_release` to `_lease_lock` / `_lease_release`. Register them under `LEASE_FIELD = "_lease"` and keep them under `QQ_FIELD`.
+- Optionally rename `_qq_lock` / `_qq_release` to `_lease_lock` / `_lease_release`, registering them under `LEASE_FIELD = "_lease"` and keeping them under `QQ_FIELD`. Reusing the `_qq` `lock` / `release` ops directly is equally acceptable.
 - Add `M3_FIELD = "_m3"` with `terminal_write`. It builds the spike-2 statement from `DecisionRecord`'s `TableSpec` through `to_column_value`, wraps it in `_record_locked`, mirrors `save()`'s `_updated_at` / `_migrated_from` handling, and returns `bool`.
-- Mirror the existing `_qq` precedent for record-lock membership in the `_recipe_field_call` tail.
+- Leave the model-level-store tuple at the tail of `_recipe_field_call` (`recipes.py:228-234`) unchanged. `_m3` and `_lease` are not model-level stores, so like `_qq` they receive `(spec, field, ...)`.
 
 ### 2. DecisionLog dispatch and refusal narrowing
 - **Task ID**: build-decision-log
@@ -508,8 +526,8 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 - **Parallel**: false
 - Change `DecisionLog.__init__` to resolve `self._backend` and assign `self._redis` only on the Redis path.
 - Give `write_terminal`, `acquire_claim`, `release_claim`, `get`, `list_for_agent` and `turn_summary` an early `_pg_*` branch. Leave the Redis bodies textually unchanged.
-- Implement `_pg_turn_summary` as a count over the detail rows (terminal states only).
-- Narrow the `SubconsciousMemory.__init__` refusal to the split-trail case and update its message.
+- Implement `_pg_turn_summary` as a count over the detail rows (terminal states only). Count `reason:<reason_code or "">` unconditionally, to match the Lua.
+- Narrow the `SubconsciousMemory.__init__` refusal to the split-trail case and update its message. Use the exact guard shape in Technical Approach ("Refusal guard"): the check stays inside the existing `non_redis_backend(model_class)` branch, and it also refuses a custom `entry_model` whose store differs from `DecisionRecord`'s.
 - Update the docstrings.
 
 ### 3. Parity and Postgres tests
@@ -519,7 +537,7 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 - **Assigned To**: parity-test-engineer
 - **Agent Type**: test-engineer
 - **Parallel**: false
-- Add the conformance markers to the five storage classes.
+- Add the conformance markers to the five storage classes, and to the ten `tests/test_reference_resolution.py` classes listed in Test Impact.
 - Remove the `POPOTO_REDIS_DB` snapshot import and make `_rows_for` backend-agnostic.
 - Mark the three Redis-structure tests `redis_only`, each with a reason that names its twin.
 - Create `tests/postgres/test_postgres_decision_log.py` with:
@@ -529,7 +547,9 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
   - the `turn_summary` divergence pin;
   - the outage-propagation test;
   - the `ResolutionLog`-failure fail-open test.
-- Replace the refusal test with a positive test, and add a mixed-shape refusal test.
+- Replace the refusal test with a positive test. Add two mixed-shape refusal tests, one for each shape:
+  - the memory model on Postgres under a Redis default;
+  - a custom `entry_model` whose `Meta.backend` differs from `DecisionRecord`'s.
 - Fix the docstring of `test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres`.
 
 ### 4. Validate
@@ -563,6 +583,7 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 | Check | Command | Expected |
 |-------|---------|----------|
 | Auditable suite, both legs | `POPOTO_CONFORMANCE_BACKENDS=redis,postgres POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/test_auditable_extraction.py tests/test_reference_resolution.py -q` | exit code 0 |
+| Reference-resolution suite actually collects a Postgres leg | `POPOTO_CONFORMANCE_BACKENDS=redis,postgres POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/test_reference_resolution.py -q -k postgres --co` | output > 0 collected |
 | Postgres decision-log + recipes | `POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/postgres/test_postgres_decision_log.py tests/postgres/test_postgres_recipes.py -q` | exit code 0 |
 | Full suite (Redis leg) | `pytest -q` | exit code 0 |
 | Lint clean | `ruff check src/` | exit code 0 |
@@ -577,14 +598,22 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+Verdict: **READY TO BUILD (with concerns)**. Revision pass applied 2026-10-07T17:06:10Z.
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| CONCERN | war room | The same-store guarantee holds only for the default `JournalEntry`. The journal's store comes from `journal.entry_model` (`decision_log.py:733`), which `provenance_journal.py:596` lets a caller override. | Architectural Impact; Technical Approach ("Refusal guard"); Risk 4 (new row); Open Question 1; Task 2; Task 3; Success Criteria | Guard explicitly, inside the existing `non_redis_backend(model_class) is not None` branch: `jb = non_redis_backend(getattr(cfg.journal, "entry_model", None) or JournalEntry)`. Refuse when `non_redis_backend(DecisionRecord) is None` or `(db is None) != (jb is None)`. `_reconcile_pending` works across stores through the entry model's ORM. |
+| CONCERN | war room | The claim-TTL twin would sleep 30s (`M3_ASSEMBLY_CLAIM_TTL_MS=30_000`, `constants.py:588`). | Test Impact (`test_claim_carries_a_finite_ttl`) | `acquire_claim` reads the constant at call time (`decision_log.py:583`). Monkeypatch it to about 50ms and sleep 0.1s, or set `expires_at = extract(epoch from clock_timestamp()) - 1`. `expires_at` is in epoch seconds (`recipes.py:109-111`), so compare it with `time.time() + TTL_MS/1000` within a tolerance. |
+| CONCERN | war room | `tests/test_reference_resolution.py` has no conformance marker, so it never ran on Postgres. | Test Impact; Task 3; Verification (new collect row); zero-Redis flow test | Opt in the ten listed classes with `conformance` plus `usefixtures("backend")`. The plan-time grep found no direct Redis access. The zero-Redis flow test monkeypatches `Defaults.M4_RESOLUTION_ENABLED=True` and asserts that a `resolution_record` row exists. |
+| NIT | war room | The Redis Lua always increments `reason:{reason}`, even when the reason is empty (`decision_log.py:513-516`). | Key Elements (`turn_summary`); Task 2 | Count `reason:<reason_code or "">` unconditionally. |
+| NIT | war room | The "Stale snapshot" bullet placed the line-41 import in `decision_log.py`. | Technical Approach ("Stale snapshot (tests only)") | The import is in `tests/test_auditable_extraction.py:41`. `decision_log.py:92` already imports `get_REDIS_DB`. |
+| NIT | war room | Task 1 called the `recipes.py:228-234` tuple a record-lock list. | Technical Approach (lease bullet); Task 1 | The tuple decides whether `field` is passed to the handler. `_qq` is not in it, so `_m3` and `_lease` stay out and receive `(spec, field, ...)`. |
+| NIT | war room | Task 1's "Validates" named a file that Task 3 creates, and the `_lease` alias is optional. | Task 1 | "Validates" now names only `test_postgres_recipes.py`. The rename is optional; reusing the `_qq` `lock` / `release` ops directly is acceptable. |
 
 ---
 
 ## Open Questions
 
-1. **Store-selection rule.** The plan keys the decision log on `DecisionRecord`'s backend, which is the process default and the same rule the journal and `ResolutionRecord` follow. It keeps a narrowed `BackendCapabilityError` for one case only: memory model on Postgres via `Meta.backend` while the process default is Redis. Is that the right cut, or should the mixed shape be allowed and documented instead?
+1. **Store-selection rule.** The plan keys the decision log on `DecisionRecord`'s backend, which is the process default and the same rule the journal and `ResolutionRecord` follow. It keeps a narrowed `BackendCapabilityError` for two cases. The first is a memory model on Postgres via `Meta.backend` while the process default is Redis. The second is a journal whose custom `entry_model` sits in a different store from `DecisionRecord`. Outside those cases, the same-store guarantee holds only for the default `JournalEntry`. Is that the right cut, or should the mixed shape be allowed and documented instead?
 2. **`turn_summary` divergence.** On Postgres the summary is derived from the detail rows, so it always reflects current terminal states. Redis counts each candidate's first terminal write only. Is that divergence acceptable for a "convenience index"? The alternative is a counter engine table that reproduces Redis's first-write-only counting, which the #759 doctrine discourages.
 3. **Data-location change.** A memory model with `Meta.backend="redis"` under a Postgres process default would move its decision log from Redis to Postgres, co-locating it with the journal. Is a CHANGELOG callout enough, or should that shape keep its decision log in Redis?
