@@ -370,31 +370,210 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
 
 ## Update System
 
-TBD
+No update system changes are required.
+- popoto is a library, so nothing needs deploying.
+- Postgres creates the `decision_record` table through the existing lazy model-table path.
+- The `popoto_lease` table already exists as an engine table.
+- No new dependencies, configuration or environment variables are added.
+- Existing Redis installs see no change.
 
 ## Agent Integration
 
-TBD
+No agent integration is required. `SubconsciousMemory` is already the host-facing entry point. Harness integrations (`popoto.integrations`) construct it the same way, and they gain Postgres support for `auditable_extraction=` without any wiring change. No MCP or tool surface changes.
 
 ## Documentation
 
-TBD
+### Feature Documentation
+- [ ] `docs/features/postgres-backend.md`:
+  - Remove the `SubconsciousMemory(auditable_extraction=…)` sentence from "Not on Postgres yet" (lines 843-848).
+  - Add a "Decision log" subsection. It should cover:
+    - the guarded upsert;
+    - the claim on `popoto_lease`;
+    - ORM readers;
+    - the derived `turn_summary` and its documented divergence;
+    - the process-default rule and the narrowed mixed-shape refusal;
+    - the zero-Redis test name.
+  - If the MemoryTelemetry `Meta.ttl` sentence in the same paragraph is stale since #783, fix it in the same edit. Otherwise leave it.
+- [ ] `docs/features/auditable-extraction.md`: add a "Backends" section stating that the decision log runs on Redis and on Postgres. Name the store-selection rule (process default, same as the journal) and the `turn_summary` divergence.
+- [ ] `docs/guides/subconscious-memory-recipe.md`: the auditable section (around line 251) does not mention the Redis-only limit, so add one sentence noting Postgres support.
+- [ ] `CHANGELOG.md` `[Unreleased]` → `### Added`: add an entry that covers:
+  - the auditable extraction decision log on Postgres (#811);
+  - the narrowed refusal;
+  - the `turn_summary` divergence;
+  - the data-location change for a Redis-`Meta.backend` memory model under a Postgres process default (Risk 4).
+
+### External Documentation Site
+- [ ] Run `mkdocs build --strict` (or `scripts/ci-local.sh docs`) to confirm the docs still build.
+
+### Inline Documentation
+- [ ] Update the `DecisionLog` class docstring and the `list_for_agent` / `list_pending` / `turn_summary` docstrings to describe both backends.
+- [ ] Add docstrings for `_m3_terminal_write` and `_lease_lock` / `_lease_release` that name the Redis structure each one replaces, in the same style as the existing `_qq_lock` docstring.
 
 ## Success Criteria
 
-TBD
+- [ ] On an all-Postgres process, `SubconsciousMemory(auditable_extraction=...)` constructs, `decision_log` is not `None`, and `extract_memories` returns `ExtractedFact`s.
+- [ ] The mixed shape still raises `BackendCapabilityError`: memory model `Meta.backend="postgres"` with the process default on Redis. A test covers it.
+- [ ] A zero-Redis test (`_RedisRecorder`) runs this whole sequence on Postgres with no Redis command and no connection checkout:
+  - empty turn;
+  - firewall drop;
+  - reject;
+  - withhold;
+  - accept with a real journal append;
+  - duplicate assembly;
+  - claim contention;
+  - `list_pending`;
+  - `turn_summary`;
+  - `compute_metrics`.
+- [ ] Guard parity:
+  - A terminal write over an accept-with-entry row returns `False`, sets only `detail_code="terminal_conflict_refused"`, and does not raise.
+  - `pending` → terminal transitions in place, so each candidate has one row.
+- [ ] Claim parity:
+  - Exactly one of two concurrent claimers wins.
+  - Release is token-checked.
+  - The claim expires after `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS`.
+- [ ] `get`, `list_for_agent`, `list_pending`, `turn_summary` and `compute_metrics` agree across the legs on the shared suite.
+- [ ] A Postgres-only test pins the `turn_summary` divergence.
+- [ ] Fail-open parity tests exist for each of these:
+  - verdict-provider failure;
+  - `ResolutionLog.write` failure;
+  - journal-blocked assembly;
+  - other append failure;
+  - a refused terminal write.
+
+  Outage propagation is tested on Postgres.
+- [ ] `tests/test_auditable_extraction.py` runs on both legs. Every `redis_only` test names its reason and its Postgres twin. The Redis leg is green and unchanged in behavior.
+- [ ] The Redis implementation is byte-identical: `TERMINAL_WRITE_LUA`, `CLAIM_RELEASE_LUA` and the key helpers are unchanged.
+- [ ] The question-queue tests stay green on both legs after the lease generalisation.
+- [ ] `ruff check src/`, `black --check src/ tests/` and `scripts/mypy_ratchet.py` pass. No new `POPOTO_REDIS_DB` snapshot imports are added, and the one at `tests/test_auditable_extraction.py:41` is removed.
+- [ ] Tests pass (`/do-test`).
+- [ ] Documentation is updated (`/do-docs`).
 
 ## Team Orchestration
 
-TBD
+### Team Members
+
+- **Builder (postgres-adapters)**
+  - Name: pg-adapter-builder
+  - Role: Add the `_m3` / `terminal_write` and `_lease` adapters in `backends/postgres/recipes.py`, keeping the `_qq` aliases.
+  - Agent Type: builder
+  - Domain: Redis/Popoto data
+  - Resume: true
+
+- **Builder (decision-log dispatch)**
+  - Name: decision-log-builder
+  - Role: Add the `DecisionLog` backend dispatch and the `_pg_*` helpers, and narrow the refusal in `SubconsciousMemory`.
+  - Agent Type: builder
+  - Domain: Redis/Popoto data
+  - Resume: true
+
+- **Test engineer (parity)**
+  - Name: parity-test-engineer
+  - Role: Convert `tests/test_auditable_extraction.py` to conformance, and write the Postgres twins plus the zero-Redis, concurrency, divergence and outage tests.
+  - Agent Type: test-engineer
+  - Resume: true
+
+- **Validator**
+  - Name: decision-log-validator
+  - Role: Run both legs, lint, black and the mypy ratchet, and diff-review that the Redis path is byte-identical.
+  - Agent Type: validator
+  - Resume: true
+
+- **Documentarian**
+  - Name: decision-log-docs
+  - Role: Update the docs and the CHANGELOG.
+  - Agent Type: documentarian
+  - Resume: true
 
 ## Step by Step Tasks
 
-TBD
+### 1. Postgres adapters
+- **Task ID**: build-pg-adapters
+- **Depends On**: none
+- **Validates**: tests/postgres/test_postgres_recipes.py, tests/postgres/test_postgres_decision_log.py (create)
+- **Informed By**: spike-2 (the guarded upsert returns `(1,0)` when written and `(0,1)` when refused)
+- **Assigned To**: pg-adapter-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Rename `_qq_lock` / `_qq_release` to `_lease_lock` / `_lease_release`. Register them under `LEASE_FIELD = "_lease"` and keep them under `QQ_FIELD`.
+- Add `M3_FIELD = "_m3"` with `terminal_write`. It builds the spike-2 statement from `DecisionRecord`'s `TableSpec` through `to_column_value`, wraps it in `_record_locked`, mirrors `save()`'s `_updated_at` / `_migrated_from` handling, and returns `bool`.
+- Mirror the existing `_qq` precedent for record-lock membership in the `_recipe_field_call` tail.
+
+### 2. DecisionLog dispatch and refusal narrowing
+- **Task ID**: build-decision-log
+- **Depends On**: build-pg-adapters
+- **Validates**: tests/test_auditable_extraction.py (both legs), tests/postgres/test_postgres_recipes.py
+- **Informed By**: spike-1 (the ORM reads work unchanged), spike-3 (`ResolutionLog` works)
+- **Assigned To**: decision-log-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Change `DecisionLog.__init__` to resolve `self._backend` and assign `self._redis` only on the Redis path.
+- Give `write_terminal`, `acquire_claim`, `release_claim`, `get`, `list_for_agent` and `turn_summary` an early `_pg_*` branch. Leave the Redis bodies textually unchanged.
+- Implement `_pg_turn_summary` as a count over the detail rows (terminal states only).
+- Narrow the `SubconsciousMemory.__init__` refusal to the split-trail case and update its message.
+- Update the docstrings.
+
+### 3. Parity and Postgres tests
+- **Task ID**: build-tests
+- **Depends On**: build-decision-log
+- **Validates**: tests/test_auditable_extraction.py, tests/postgres/test_postgres_decision_log.py, tests/postgres/test_postgres_recipes.py
+- **Assigned To**: parity-test-engineer
+- **Agent Type**: test-engineer
+- **Parallel**: false
+- Add the conformance markers to the five storage classes.
+- Remove the `POPOTO_REDIS_DB` snapshot import and make `_rows_for` backend-agnostic.
+- Mark the three Redis-structure tests `redis_only`, each with a reason that names its twin.
+- Create `tests/postgres/test_postgres_decision_log.py` with:
+  - the three twins;
+  - the zero-Redis full-flow test;
+  - the two-thread guard and claim tests;
+  - the `turn_summary` divergence pin;
+  - the outage-propagation test;
+  - the `ResolutionLog`-failure fail-open test.
+- Replace the refusal test with a positive test, and add a mixed-shape refusal test.
+- Fix the docstring of `test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres`.
+
+### 4. Validate
+- **Task ID**: validate-decision-log
+- **Depends On**: build-tests
+- **Assigned To**: decision-log-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run the Verification table with `POSTGRES_URL` set.
+- Diff-review `decision_log.py`: the Lua constants and key helpers must be unchanged, and the Redis method bodies must be unchanged below the new branch.
+- State the environment (redis-py, mypy, Postgres versions) alongside every count.
+
+### 5. Documentation
+- **Task ID**: document-feature
+- **Depends On**: validate-decision-log
+- **Assigned To**: decision-log-docs
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Apply every item in the Documentation section, then run the docs build.
+
+### 6. Final Validation
+- **Task ID**: validate-all
+- **Depends On**: document-feature
+- **Assigned To**: decision-log-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Re-run the Verification table and confirm every Success Criterion.
 
 ## Verification
 
-TBD
+| Check | Command | Expected |
+|-------|---------|----------|
+| Auditable suite, both legs | `POPOTO_CONFORMANCE_BACKENDS=redis,postgres POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/test_auditable_extraction.py tests/test_reference_resolution.py -q` | exit code 0 |
+| Postgres decision-log + recipes | `POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/postgres/test_postgres_decision_log.py tests/postgres/test_postgres_recipes.py -q` | exit code 0 |
+| Full suite (Redis leg) | `pytest -q` | exit code 0 |
+| Lint clean | `ruff check src/` | exit code 0 |
+| Format clean | `black --check src/ tests/` | exit code 0 |
+| Type ratchet | `scripts/mypy_ratchet.py` | exit code 0 |
+| No stale snapshot import in the auditable tests | `grep -c "from popoto.redis_db import POPOTO_REDIS_DB" tests/test_auditable_extraction.py` | match count == 0 |
+| Refusal test inverted | `grep -c "def test_the_auditable_extraction_path_is_refused_on_postgres" tests/postgres/test_postgres_recipes.py` | match count == 0 |
+| Redis Lua untouched | `git diff origin/main -- src/popoto/extraction/decision_log.py \| grep -c '^[-+].*redis\.call'` | match count == 0 |
+| Doc sentence removed | `grep -c "decision log in Redis" docs/features/postgres-backend.md` | match count == 0 |
+| Zero-Redis test exists | `grep -c "_RedisRecorder" tests/postgres/test_postgres_decision_log.py` | output > 0 |
+| CHANGELOG entry | `grep -c "#811" CHANGELOG.md` | output > 0 |
 
 ## Critique Results
 
@@ -406,4 +585,6 @@ TBD
 
 ## Open Questions
 
-TBD
+1. **Store-selection rule.** The plan keys the decision log on `DecisionRecord`'s backend, which is the process default and the same rule the journal and `ResolutionRecord` follow. It keeps a narrowed `BackendCapabilityError` for one case only: memory model on Postgres via `Meta.backend` while the process default is Redis. Is that the right cut, or should the mixed shape be allowed and documented instead?
+2. **`turn_summary` divergence.** On Postgres the summary is derived from the detail rows, so it always reflects current terminal states. Redis counts each candidate's first terminal write only. Is that divergence acceptable for a "convenience index"? The alternative is a counter engine table that reproduces Redis's first-write-only counting, which the #759 doctrine discourages.
+3. **Data-location change.** A memory model with `Meta.backend="redis"` under a Postgres process default would move its decision log from Redis to Postgres, co-locating it with the journal. Is a CHANGELOG callout enough, or should that shape keep its decision log in Redis?
