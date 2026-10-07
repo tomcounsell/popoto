@@ -15,8 +15,13 @@ Design:
 
     Hash functions:
     ExistenceFilter uses the Kirsch–Mitzenmacher double hashing optimization:
-    h_i(x) = (h1(x) + i * h2(x)) mod m, where h1 is DJB2 and h2 is FNV-1.
-    Two hash functions simulate k independent Bloom-row hashes.
+    h_i(x) = (h1(x) + i * h2(x)) mod m. Two hash functions simulate k
+    independent Bloom-row hashes. The pair is versioned per filter (#775):
+    v2 (every filter created since) uses 32-bit FNV-1a over the bytes forward
+    and reversed, with all arithmetic exact in Lua doubles; v1 (DJB2 plus an
+    FNV-1-shaped multiply) lost low-order bits past 2^53 and is kept only so
+    filters built with it keep answering for the tokens they hold, until
+    ``rebuild_indexes()`` rebuilds them as v2. See ``BLOOM_V2_HEADER``.
     FrequencySketch uses independent per-row polynomial hashes: each of the
     depth rows has its own prime multiplier and modulus, forming a practically
     pairwise-independent family that restores the standard CMS error bound.
@@ -31,7 +36,10 @@ Design:
     fingerprint is used as a fallback.
 
 Redis Key Patterns:
-    - Bloom filter: $EF:{ClassName}:{field_name} — single Redis string (bit array)
+    - Bloom filter: $EF:{ClassName}:{field_name} — single Redis string (bit array,
+      followed by a 4-byte version marker on v2 filters)
+    - Bloom rebuild staging: $EF:{ClassName}:{field_name}:rebuild — exists only
+      while rebuild_indexes() converts a v1 filter
     - Count-Min Sketch: $FS:{ClassName}:{field_name} — single Redis hash
 
 Valkey Compatibility:
@@ -84,40 +92,47 @@ from ._tokenizer import tokenize  # noqa: F401, E402
 # Lua Scripts — Bloom Filter
 # ---------------------------------------------------------------------------
 
-BLOOM_ADD_LUA = """
-local key = KEYS[1]
-local item = ARGV[1]
-local m = tonumber(ARGV[2])
-local k = tonumber(ARGV[3])
-local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
+#: Hash version a filter is written with (#775). A filter is a plain Redis
+#: string; version 2 marks itself with these four bytes placed immediately
+#: after its bit array, at byte offset ``ceil(m / 8)``. Version 1 (every
+#: filter written before #775) has no marker and needs none: its hash only
+#: ever produces positions ``< m``, so its string never reaches that offset,
+#: and a missing marker can only mean v1. The marker lives *inside* the
+#: filter's own key, so it travels with the bits through ``DUMP``/``RESTORE``,
+#: ``RENAME``, replication and RDB/AOF -- nothing can separate the version
+#: from the bits it describes, which is what makes a lost marker (and so a
+#: v2 filter read with the v1 hash, i.e. false negatives) impossible.
+BLOOM_HASH_VERSION = 2
+BLOOM_V2_HEADER = b"\x89EF\x02"
 
--- Double hashing: h1 (DJB2) and h2 (FNV-1 variant)
-local h1 = 5381
-local h2 = 16777619
-for i = 1, #item do
-    local c = string.byte(item, i)
-    h1 = ((h1 * 33) + c) % LARGE_MOD
-    h2 = ((h2 * 16777619) + c) % LARGE_MOD
-end
-h1 = h1 % m
-h2 = h2 % m
+#: Suffix of the staging key ``rebuild_indexes()`` builds a v2 filter in
+#: before swapping it over a v1 one. It sits under the same ``$EF:{Class}:``
+#: prefix, so tooling that classifies keys by family (the #756 migration's
+#: inventory) sees it as part of the existence filter.
+BLOOM_REBUILD_SUFFIX = ":rebuild"
 
-for i = 0, k - 1 do
-    local pos = (h1 + i * h2) % m
-    redis.call('SETBIT', key, pos, 1)
-end
-return 1
-"""
 
-BLOOM_ADD_MULTI_LUA = """
-local key = KEYS[1]
-local m = tonumber(ARGV[1])
-local k = tonumber(ARGV[2])
-local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
+def bloom_header_offset(m: int) -> int:
+    """Byte offset of the v2 version marker: the first byte past ``m`` bits."""
+    return (m + 7) // 8
 
--- Loop over all tokens passed as ARGV[3..N]
-for t = 3, #ARGV do
-    local item = ARGV[t]
+
+# Shared Lua prelude for the four bloom scripts. Lua numbers are IEEE
+# doubles, exact only below 2^53, and Redis/Valkey script Lua is 5.1 with no
+# guaranteed integer type -- so the v2 hash below never forms a value at or
+# above 2^53, and needs no ``bit`` library.
+_BLOOM_LUA_LIB = r"""
+local EF_V2_HEADER = '\137EF\2'
+
+-- v1 (legacy): DJB2 + an FNV-1-shaped multiply, reduced mod 2^52. Both
+-- products pass 2^53 (h1 * 33 after a few bytes, h2 * 16777619 from the
+-- first), so low-order bits are rounded away and similar tokens collapse
+-- onto a handful of positions (#775: 400 similar tokens set 4 of 66 bits).
+-- It is kept operation for operation: every filter written before #775
+-- holds exactly these positions, and changing any step would make tokens
+-- already added test absent.
+local function ef_positions_v1(item, m, k)
+    local LARGE_MOD = 4503599627370496  -- 2^52
     local h1 = 5381
     local h2 = 16777619
     for i = 1, #item do
@@ -127,63 +142,157 @@ for t = 3, #ARGV do
     end
     h1 = h1 % m
     h2 = h2 % m
+    local pos = {}
     for i = 0, k - 1 do
-        local pos = (h1 + i * h2) % m
-        redis.call('SETBIT', key, pos, 1)
+        pos[i + 1] = (h1 + i * h2) % m
     end
+    return pos
+end
+
+-- v2: two 32-bit FNV-1a hashes, over the bytes forward (h1) and reversed
+-- (h2), combined by Kirsch-Mitzenmacher double hashing. Every value stays
+-- below 2^42, so the arithmetic is exact.
+local function ef_xor8(a, b)
+    local r, p = 0, 1
+    for _ = 1, 8 do
+        local x, y = a % 2, b % 2
+        if x ~= y then r = r + p end
+        a = (a - x) / 2
+        b = (b - y) / 2
+        p = p * 2
+    end
+    return r
+end
+
+local function ef_fnv1a_step(h, c)
+    -- h ^= c touches only the low byte; then h * 16777619 mod 2^32, split as
+    -- h * 403 + h * 2^24 (mod 2^32 the second term is (h mod 2^8) * 2^24).
+    local lo = h % 256
+    h = h - lo + ef_xor8(lo, c)
+    return (h * 403 + (h % 256) * 16777216) % 4294967296
+end
+
+local function ef_positions_v2(item, m, k)
+    local n = #item
+    local h1, h2 = 2166136261, 2166136261
+    for i = 1, n do
+        h1 = ef_fnv1a_step(h1, string.byte(item, i))
+        h2 = ef_fnv1a_step(h2, string.byte(item, n + 1 - i))
+    end
+    local a = h1 % m
+    -- A step of 0 would put all k probes on one bit; keep it in [1, m - 1].
+    local b = 0
+    if m > 1 then b = h2 % (m - 1) + 1 end
+    local pos = {}
+    for i = 0, k - 1 do
+        pos[i + 1] = (a + (i * b) % m) % m
+    end
+    return pos
+end
+
+local function ef_header_offset(m)
+    return math.floor((m + 7) / 8)
+end
+
+-- The filter's version from its own bytes: the v2 marker, else v1. An
+-- absent key reads as v1 here, which is harmless for a read (every bit is
+-- 0); the add scripts check EXISTS and create a missing key as v2.
+local function ef_is_v2(key, m)
+    local hb = ef_header_offset(m)
+    return redis.call('GETRANGE', key, hb, hb + 3) == EF_V2_HEADER
+end
+
+local function ef_positions(v2, item, m, k)
+    if v2 then
+        return ef_positions_v2(item, m, k)
+    end
+    return ef_positions_v1(item, m, k)
+end
+"""
+
+# Shared by the two add scripts: KEYS[1] is the filter, KEYS[2] its rebuild
+# staging key. A missing filter is created as v2 (marker first, so it is
+# never observable without one); an existing filter keeps the hash it was
+# built with. While a rebuild has a staging key open, every add also writes
+# the token's v2 bits there, so a save racing the rebuild is not lost when
+# the staging key replaces the filter.
+_BLOOM_ADD_PRELUDE = """
+local key = KEYS[1]
+local staging = KEYS[2]
+local v2 = ef_is_v2(key, m)
+if not v2 and redis.call('EXISTS', key) == 0 then
+    redis.call('SETRANGE', key, ef_header_offset(m), EF_V2_HEADER)
+    v2 = true
+end
+local stage = redis.call('EXISTS', staging) == 1
+
+local function ef_add(item)
+    for _, p in ipairs(ef_positions(v2, item, m, k)) do
+        redis.call('SETBIT', key, p, 1)
+    end
+    if stage then
+        for _, p in ipairs(ef_positions_v2(item, m, k)) do
+            redis.call('SETBIT', staging, p, 1)
+        end
+    end
+end
+"""
+
+BLOOM_ADD_LUA = (
+    _BLOOM_LUA_LIB
+    + """
+local item = ARGV[1]
+local m = tonumber(ARGV[2])
+local k = tonumber(ARGV[3])
+"""
+    + _BLOOM_ADD_PRELUDE
+    + """
+ef_add(item)
+return 1
+"""
+)
+
+BLOOM_ADD_MULTI_LUA = (
+    _BLOOM_LUA_LIB
+    + """
+local m = tonumber(ARGV[1])
+local k = tonumber(ARGV[2])
+"""
+    + _BLOOM_ADD_PRELUDE
+    + """
+-- Loop over all tokens passed as ARGV[3..N]
+for t = 3, #ARGV do
+    ef_add(ARGV[t])
 end
 return 1
 """
+)
 
-BLOOM_EXISTS_LUA = """
+BLOOM_EXISTS_LUA = _BLOOM_LUA_LIB + """
 local key = KEYS[1]
 local item = ARGV[1]
 local m = tonumber(ARGV[2])
 local k = tonumber(ARGV[3])
-local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
 
-local h1 = 5381
-local h2 = 16777619
-for i = 1, #item do
-    local c = string.byte(item, i)
-    h1 = ((h1 * 33) + c) % LARGE_MOD
-    h2 = ((h2 * 16777619) + c) % LARGE_MOD
-end
-h1 = h1 % m
-h2 = h2 % m
-
-for i = 0, k - 1 do
-    local pos = (h1 + i * h2) % m
-    if redis.call('GETBIT', key, pos) == 0 then
+for _, p in ipairs(ef_positions(ef_is_v2(key, m), item, m, k)) do
+    if redis.call('GETBIT', key, p) == 0 then
         return 0
     end
 end
 return 1
 """
 
-BLOOM_EXISTS_BATCH_LUA = """
+BLOOM_EXISTS_BATCH_LUA = _BLOOM_LUA_LIB + """
 local key = KEYS[1]
 local m = tonumber(ARGV[1])
 local k = tonumber(ARGV[2])
-local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
+local v2 = ef_is_v2(key, m)
 
 local results = {}
 for t = 3, #ARGV do
-    local item = ARGV[t]
-    local h1 = 5381
-    local h2 = 16777619
-    for i = 1, #item do
-        local c = string.byte(item, i)
-        h1 = ((h1 * 33) + c) % LARGE_MOD
-        h2 = ((h2 * 16777619) + c) % LARGE_MOD
-    end
-    h1 = h1 % m
-    h2 = h2 % m
-
     local found = 1
-    for i = 0, k - 1 do
-        local pos = (h1 + i * h2) % m
-        if redis.call('GETBIT', key, pos) == 0 then
+    for _, p in ipairs(ef_positions(v2, ARGV[t], m, k)) do
+        if redis.call('GETBIT', key, p) == 0 then
             found = 0
             break
         end
@@ -344,6 +453,15 @@ class ExistenceFilter(Field):
     Redis Key:
         ``$EF:{ClassName}:{field_name}`` -- single Redis string used as bit array.
 
+    Hash version (#775):
+        A filter created now is v2 and carries a version marker after its
+        bit array. A filter built before #775 is v1 and keeps answering with
+        the v1 hash, so no token it holds tests absent; new saves into it
+        also stay v1. ``hash_version()`` says which one a filter is,
+        ``check_indexes()`` lists v1 filters under ``legacy_hash``, and
+        ``rebuild_indexes()`` rebuilds a v1 filter from the records as v2,
+        swapping it in atomically.
+
     Example:
         class Memory(Model):
             topic = Field(type=str)
@@ -417,6 +535,57 @@ class ExistenceFilter(Field):
         class_name = type(model_instance).__name__
         return f"$EF:{class_name}:{self.name}"
 
+    def _class_bloom_key(self, model_class) -> str:
+        """``$EF:{ClassName}:{field_name}`` from the model class."""
+        return f"$EF:{model_class.__name__}:{self.name}"  # type: ignore[attr-defined]
+
+    def hash_version(self, model_class) -> "int | None":
+        """The hash version this field's Redis filter is built with (#775).
+
+        ``2`` for a filter created since #775, ``1`` for a legacy filter
+        (still answered with the hash it was built with, never with v2's),
+        ``None`` when the filter does not exist yet -- the next save creates
+        it as v2. Always ``None`` off Redis: Postgres keeps an exact token
+        table, not a bit array, so it has no hash to version.
+        """
+        if _search_backend(model_class) is not None:
+            return None
+        key = self._class_bloom_key(model_class)
+        m, _k = self._compute_params()
+        client = get_REDIS_DB()
+        hb = bloom_header_offset(m)
+        if client.getrange(key, hb, hb + len(BLOOM_V2_HEADER) - 1) == BLOOM_V2_HEADER:
+            return 2
+        return 1 if client.exists(key) else None
+
+    def _begin_v2_rebuild(self, model_class) -> "str | None":
+        """Open a v2 staging key when this field's filter is legacy v1.
+
+        Returns the staging key (the caller re-saves every record, which
+        dual-writes v2 bits into it, then calls :meth:`_finish_v2_rebuild`),
+        or ``None`` when there is nothing to convert. A staging key left by
+        an interrupted rebuild is discarded and started over.
+        """
+        if self.hash_version(model_class) != 1:
+            return None
+        staging = self._class_bloom_key(model_class) + BLOOM_REBUILD_SUFFIX
+        m, _k = self._compute_params()
+        client = get_REDIS_DB()
+        pipe = client.pipeline(transaction=True)
+        pipe.delete(staging)
+        pipe.setrange(staging, bloom_header_offset(m), BLOOM_V2_HEADER)
+        pipe.execute()
+        return staging
+
+    def _finish_v2_rebuild(self, model_class, staging: str) -> None:
+        """Swap the finished v2 staging key over the v1 filter in one RENAME.
+
+        Readers see the complete v1 filter up to this command and the
+        complete v2 filter from it on -- never a partly built one, so a
+        rebuild opens no false-negative window.
+        """
+        get_REDIS_DB().rename(staging, self._class_bloom_key(model_class))
+
     @classmethod
     def on_save(
         cls,
@@ -446,6 +615,7 @@ class ExistenceFilter(Field):
         field = model_instance._meta.fields[field_name]
         fingerprint = field._compute_fingerprint(model_instance)
         key = field._bloom_key(model_instance)
+        staging = key + BLOOM_REBUILD_SUFFIX
         m, k = field._compute_params()
         client = (
             pipeline if isinstance(pipeline, redis.client.Pipeline) else get_REDIS_DB()
@@ -454,9 +624,9 @@ class ExistenceFilter(Field):
         if not tokens:
             # Fallback: add the raw fingerprint lowercased (handles empty strings,
             # short tokens, redis keys, etc.)
-            run_lua(client, BLOOM_ADD_LUA, 1, key, fingerprint.lower(), m, k)
+            run_lua(client, BLOOM_ADD_LUA, 2, key, staging, fingerprint.lower(), m, k)
         else:
-            run_lua(client, BLOOM_ADD_MULTI_LUA, 1, key, m, k, *tokens)
+            run_lua(client, BLOOM_ADD_MULTI_LUA, 2, key, staging, m, k, *tokens)
         return pipeline if pipeline else None
 
     @classmethod
@@ -559,9 +729,14 @@ class ExistenceFilter(Field):
             # 1 - e^(-k n / m): the same capacity signal, 0.0 when empty.
             n = backend.membership_size(model_class._meta.spec, self.name)  # type: ignore[attr-defined]
             return 1.0 - math.exp(-k * n / m) if m > 0 else 0.0
+        if m <= 0:
+            return 0.0
         key = f"$EF:{model_class.__name__}:{self.name}"
-        set_bits = get_REDIS_DB().bitcount(key)
-        return set_bits / m if m > 0 else 0.0
+        # Count only the bit array, bytes [0, ceil(m/8)): a v2 filter's
+        # version marker follows it and is not filter state. A v1 filter's
+        # string never reaches that offset, so the range is all of it.
+        set_bits = get_REDIS_DB().bitcount(key, 0, bloom_header_offset(m) - 1)
+        return set_bits / m
 
     def might_exist_batch(self, model_class, fingerprints):
         """Check multiple fingerprints against the Bloom filter in one round-trip.

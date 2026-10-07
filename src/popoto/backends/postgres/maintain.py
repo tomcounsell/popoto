@@ -562,6 +562,8 @@ class MaintainOpsMixin:
             },
             "side_tables": {name: d.counts() for name, d in drift.items()},
             "invalid_indexes": len(self._invalid_indexes(ts, spec)),
+            # Redis's bloom hash versions (#775); an exact token table has none.
+            "legacy_hash": [],
         }
         result["total"] = (
             result["partial_writes"]

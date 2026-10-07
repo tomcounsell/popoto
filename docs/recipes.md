@@ -188,9 +188,16 @@ assert after['total'] == 0
     'sorted_fields': {field_name: int, ...},
     'geo_fields': {field_name: int, ...},
     'composite_indexes': {index_key: int, ...},
+    'legacy_hash': [field_name, ...],  # informational; not in total
     'total': int,             # sum of all the above
 }
 ```
+
+`legacy_hash` names `ExistenceFilter` fields whose Redis filter was built with
+the pre-#775 bloom hash. Those filters still answer correctly for every token
+they hold, but their false-positive rate is far above `error_rate`;
+`rebuild_indexes()` rebuilds them with the current hash (see
+[ExistenceFilter: hash versions](features/existence-filter.md#hash-versions)).
 
 ### Partial-Write Orphans
 

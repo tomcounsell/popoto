@@ -1295,8 +1295,11 @@ result = Memory.check_indexes()
 # {'class_set': 0, 'partial_writes': 0, 'key_fields': {...}, 'sorted_fields': {...},
 #  'geo_fields': {}, 'composite_indexes': {},
 #  'side_tables': {'lexical': {'orphans': 0, 'missing': 0, 'stale': 1}, ...},
-#  'invalid_indexes': 0, 'total': 1}
+#  'invalid_indexes': 0, 'legacy_hash': [], 'total': 1}
 ```
+
+`legacy_hash` is always `[]` here: it lists Redis bloom filters still on the
+pre-#775 hash, and Postgres keeps an exact token table instead of a bit array.
 
 `total` sums `partial_writes`, `invalid_indexes` and every `side_tables`
 count.

@@ -75,9 +75,49 @@ For example, saving a model with fingerprint `"kubernetes deployment guide"` add
 
 ### Architecture
 
-- **Redis key pattern**: `$EF:{ClassName}:{field_name}` (string used as bit array)
+- **Redis key pattern**: `$EF:{ClassName}:{field_name}` (string used as bit array, followed by a 4-byte version marker on v2 filters)
 - **Lua script**: Computes k hash positions, sets/checks bits atomically
+- **Hash**: Kirsch–Mitzenmacher double hashing over two 32-bit FNV-1a hashes (the bytes forward and reversed), all arithmetic exact in Lua doubles, plain Lua with no `bit` library
 - **Size**: Automatically computed from `capacity` and `error_rate` using optimal Bloom filter formulas
+
+### Hash versions
+
+Filters built before #775 used a hash whose intermediate products passed
+2^53, where Lua's doubles drop low-order bits. Similar tokens (shared
+prefixes, sequential ids) collapsed onto a few positions: 400 such tokens set
+64 of the ~1,411 bits they should in a 1,000-capacity filter, and 4 of 66 in
+the issue's 20-capacity one. The filter still never gave a false negative, but
+for tokens shaped like the ones it held it answered "maybe" far more often
+than `error_rate`.
+
+Changing the hash in place would have made every token already in a live
+filter test absent, so the hash is versioned per filter:
+
+- **v2** (every filter created since #775) marks itself with four bytes,
+  `\x89EF\x02`, stored right after its bit array at byte `ceil(m / 8)`. The
+  marker is part of the filter's own string, so it moves with the bits through
+  `DUMP`/`RESTORE`, `RENAME`, replication and RDB/AOF.
+- **v1** (a filter built before #775) has no marker and needs none: its hash
+  only produces positions below `m`, so its string never reaches that offset.
+  It keeps being read *and written* with the v1 hash, so every token it holds
+  still tests present, and new saves into it stay v1 until it is rebuilt.
+
+`Model.check_indexes()` lists v1 filters under `legacy_hash`
+(informational; not counted in `total`), and `field.hash_version(Model)`
+returns `2`, `1`, or `None` for a filter that does not exist yet.
+
+`Model.rebuild_indexes()` rebuilds a v1 filter as v2 from the model's records.
+It fills a staging key, `$EF:{ClassName}:{field_name}:rebuild`, which every
+save also writes while it exists (so a save racing the rebuild is not lost),
+then swaps it over the v1 filter with one `RENAME`. Readers see the complete v1
+filter until that command and the complete v2 filter after it. If the rebuild
+raises, the staging key is deleted and the v1 filter is untouched. Tokens from
+deleted records drop out, as they would in any rebuild from records. A v2
+filter is left in place.
+
+Export/import never carries the bits, so importing into a destination with
+no filter yet builds a v2 one. Postgres keeps an exact token table and has no
+hash to version.
 
 ## FrequencySketch
 

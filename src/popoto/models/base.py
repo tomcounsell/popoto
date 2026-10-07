@@ -3381,6 +3381,12 @@ class Model(metaclass=ModelBase):
                via pipeline to reconstruct all indexes
             4. Re-add each instance key to the class set
 
+        An ``ExistenceFilter`` built with the legacy v1 hash (#775) is
+        rebuilt as v2: a staging filter is filled from the records (and by any
+        save that races the rebuild) and swapped over the v1 one in a single
+        ``RENAME``, so the old filter answers until the new one is complete.
+        A v2 filter is left in place and re-saved into, as before.
+
         Rows whose derived key disagrees with the key they are stored under are
         **skipped, not indexed** (#537/#538). Rebuild reconstructs indexes from
         the *decoded* values, so for such a row it would faithfully write an
@@ -3423,8 +3429,6 @@ class Model(metaclass=ModelBase):
             )
             return RebuildIndexesResult(count, diverged)
 
-        from .encoding import decode_popoto_model_hashmap
-
         model_name = cls._meta.model_name
 
         # Step 1: Delete all secondary index keys
@@ -3464,10 +3468,65 @@ class Model(metaclass=ModelBase):
             index_key = cls._meta.get_index_key(tuple(field_names))
             get_REDIS_DB().delete(index_key)
 
+        # Legacy-hash bloom filters (#775) are rebuilt as v2 into a staging
+        # key -- the saves below dual-write it -- and swapped in once every
+        # record has been re-saved. The v1 filter keeps answering until then,
+        # so the rebuild never opens a false-negative window.
+        bloom_staging = cls._begin_bloom_rebuilds()
+        try:
+            count, diverged_keys = cls._rebuild_from_records(batch_size)
+        except BaseException:
+            for _bloom, staging in bloom_staging:
+                get_REDIS_DB().delete(staging)
+            raise
+        for bloom, staging in bloom_staging:
+            bloom._finish_v2_rebuild(cls, staging)
+
+        if diverged_keys:
+            logger.warning(
+                "%s.rebuild_indexes() skipped %d row(s) whose stored key does not "
+                "match the key derived from their decoded values; they were left "
+                "unindexed rather than indexed to a nonexistent key. Run "
+                "%s.audit_datetime_keys() to see them and "
+                "%s.migrate_datetime_keys() to repair them. First skipped: %s",
+                model_name,
+                len(diverged_keys),
+                model_name,
+                model_name,
+                diverged_keys[0],
+            )
+
+        return RebuildIndexesResult(count, diverged_keys)
+
+    @classmethod
+    def _bloom_fields(cls) -> list:
+        """The model's ``ExistenceFilter`` fields, in declaration order."""
+        from ..fields.existence_filter import ExistenceFilter
+
+        return [f for f in cls._meta.fields.values() if isinstance(f, ExistenceFilter)]
+
+    @classmethod
+    def _begin_bloom_rebuilds(cls) -> list:
+        """``[(field, staging_key)]`` for each legacy-hash (v1) bloom filter."""
+        out = []
+        for field in cls._bloom_fields():
+            staging = field._begin_v2_rebuild(cls)
+            if staging is not None:
+                out.append((field, staging))
+        return out
+
+    @classmethod
+    def _rebuild_from_records(cls, batch_size: int) -> "tuple[int, list]":
+        """Step 2 of :meth:`rebuild_indexes`: re-run every record's hooks.
+
+        Returns ``(count, diverged_keys)``.
+        """
+        from .encoding import decode_popoto_model_hashmap
+
         # Step 2: SCAN all instance keys and rebuild indexes
         instance_pattern = cls._meta.db_class_key.redis_key + ":*"
         count = 0
-        diverged_keys = []
+        diverged_keys: list = []
         pipeline = get_REDIS_DB().pipeline()
         batch_count = 0
 
@@ -3542,21 +3601,7 @@ class Model(metaclass=ModelBase):
         if batch_count > 0:
             pipeline.execute()
 
-        if diverged_keys:
-            logger.warning(
-                "%s.rebuild_indexes() skipped %d row(s) whose stored key does not "
-                "match the key derived from their decoded values; they were left "
-                "unindexed rather than indexed to a nonexistent key. Run "
-                "%s.audit_datetime_keys() to see them and "
-                "%s.migrate_datetime_keys() to repair them. First skipped: %s",
-                model_name,
-                len(diverged_keys),
-                model_name,
-                model_name,
-                diverged_keys[0],
-            )
-
-        return RebuildIndexesResult(count, diverged_keys)
+        return count, diverged_keys
 
     @classmethod
     def _get_auto_key_field_name(cls) -> "str | None":
@@ -3715,8 +3760,16 @@ class Model(metaclass=ModelBase):
                     'sorted_fields': {field_name: int, ...},
                     'geo_fields': {field_name: int, ...},
                     'composite_indexes': {index_key: int, ...},
+                    'legacy_hash': [field_name, ...],  # informational, below
                     'total': int,             # sum of all the above
                 }
+
+            ``legacy_hash`` names the ``ExistenceFilter`` fields whose filter
+            is still built with the pre-#775 v1 hash. They answer correctly
+            for every token they hold -- this is not an orphan count and is
+            not in ``total`` -- but v1 packs similar tokens onto few bits, so
+            their false-positive rate is far above ``error_rate``.
+            ``rebuild_indexes()`` rebuilds them as v2.
 
         Example:
             result = User.check_indexes()
@@ -3793,6 +3846,7 @@ class Model(metaclass=ModelBase):
             "sorted_fields": {},
             "geo_fields": {},
             "composite_indexes": {},
+            "legacy_hash": [],
             "total": 0,
         }
 
@@ -3856,6 +3910,13 @@ class Model(metaclass=ModelBase):
             if values:
                 index_orphans = _count_orphans(values)
             result["composite_indexes"][index_key] = index_orphans
+
+        # 6. Bloom filters still on the legacy v1 hash (#775). Informational:
+        #    they answer correctly for every token they hold, so they are not
+        #    orphans and stay out of the total; rebuild_indexes() converts them.
+        result["legacy_hash"] = [
+            field.name for field in cls._bloom_fields() if field.hash_version(cls) == 1
+        ]
 
         # Compute total (includes partial-write orphans).
         result["total"] = (
