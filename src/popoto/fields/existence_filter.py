@@ -43,8 +43,9 @@ Redis Key Patterns:
     - Bloom rebuild lock: $EF:{ClassName}:{field_name}:rebuild — a string
       holding the token of the one rebuild converting the filter to v2
       (expires unless that rebuild keeps renewing it)
-    - Bloom rebuild staging: $EF:{ClassName}:{field_name}:rebuild:{token} —
-      the v2 filter that rebuild is filling (same expiry)
+    - Bloom rebuild staging: $EF:{ClassName}:{field_name}:rebuild:staging —
+      the v2 filter that rebuild is filling (same expiry). One fixed name:
+      the lock's token decides who may renew, swap or drop it
     - Count-Min Sketch: $FS:{ClassName}:{field_name} — single Redis hash
 
 Valkey Compatibility:
@@ -78,6 +79,7 @@ Example:
 
 import logging
 import math
+import threading
 from typing import Any
 
 import redis
@@ -118,10 +120,17 @@ BLOOM_V2_HEADER = b"\x89EF\x02"
 #: Suffix of the key that serializes ``rebuild_indexes(bloom_hash_version=2)``
 #: for one filter: ``$EF:{Class}:{field}:rebuild`` holds the token of the one
 #: rebuild converting it, and that rebuild fills the staging filter
-#: ``$EF:{Class}:{field}:rebuild:{token}``. Both sit under the filter's own
+#: ``$EF:{Class}:{field}:rebuild:staging``. Both sit under the filter's own
 #: ``$EF:{Class}:`` prefix, so tooling that classifies keys by family (the
 #: #756 migration's inventory) sees them as part of the existence filter.
 BLOOM_REBUILD_SUFFIX = ":rebuild"
+#: The staging key's suffix. The name is fixed rather than carrying the
+#: token: the token lives in the lock's value, and every script that renews,
+#: swaps or drops the staging key checks it there first, so a rebuild that
+#: lost its lock can neither extend, rename nor delete the next owner's
+#: staging key. A fixed name also lets every script declare the staging key
+#: in ``KEYS`` and lets ``check_indexes()`` find a stale one without a SCAN.
+BLOOM_REBUILD_STAGING_SUFFIX = BLOOM_REBUILD_SUFFIX + ":staging"
 
 
 class BloomRebuildError(RuntimeError):
@@ -162,6 +171,101 @@ class BloomRebuildLostLockError(BloomRebuildError):
     staging filter was discarded and the live filter is unchanged -- still
     complete for every token it held. Rerun the rebuild to convert it.
     """
+
+
+class BloomLockRenewer:
+    """Renews v2 rebuild locks on a timer for as long as they are held.
+
+    ``Model.rebuild_indexes(bloom_hash_version=2)`` holds each filter's lock
+    from before step 1 (deleting the other indexes) until the swap. Renewal
+    must not depend on what the rebuild is doing at the time: step 1 can run
+    for seconds on a large store without visiting a record (PR #801 review,
+    N1), so a background thread renews every third of
+    ``Defaults.BLOOM_REBUILD_LOCK_TTL_MS``, through the token-checked renew
+    script. ``async_rebuild_indexes`` runs ``rebuild_indexes`` in a worker
+    thread on Redis, so it gets the same renewer.
+
+    Use as a context manager around the work. The thread is started on
+    entry and stopped and joined on exit, whatever ends the block (an
+    exception, ``KeyboardInterrupt``), so it never outlives the rebuild. It
+    is a daemon too, so a hard interpreter exit is never held up by it.
+
+    A renewal that finds its lock lost (lapsed, or taken over by another
+    rebuild) records the field in :attr:`lost` and stops renewing it; the
+    caller refuses that filter's swap. A pause of the whole process
+    (``SIGSTOP``, a VM freeze) pauses this thread with it, so the lock still
+    lapses then -- and the swap's own compare-and-rename refuses it.
+    """
+
+    def __init__(self, model_class: Any, held: "list[tuple[Any, str]]"):
+        self._model_class = model_class
+        self._held = list(held)
+        self._stop = threading.Event()
+        self._thread: "threading.Thread | None" = None
+        #: Fields whose lock a renewal found lost. Their swap is refused.
+        self.lost: "list[Any]" = []
+
+    @staticmethod
+    def interval_s() -> float:
+        """A third of the lock TTL, read at call time (it is a tuning
+        constant tests patch)."""
+        from .constants import Defaults
+
+        return Defaults.BLOOM_REBUILD_LOCK_TTL_MS / 3000.0
+
+    def __enter__(self) -> "BloomLockRenewer":
+        if self._held:
+            self._thread = threading.Thread(
+                target=self._run,
+                name=f"popoto-bloom-renew-{self._model_class.__name__}",
+                daemon=True,
+            )
+            self._thread.start()
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        self.stop()
+        return False
+
+    def stop(self) -> None:
+        """Stop renewing and wait for the thread to end. Idempotent."""
+        self._stop.set()
+        thread, self._thread = self._thread, None
+        if thread is not None:
+            thread.join()
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.interval_s()):
+            self.renew_once()
+
+    def renew_once(self) -> None:
+        """Renew every lock still held; record any found lost."""
+        for pair in list(self._held):
+            field, token = pair
+            try:
+                ok = field._renew_v2_rebuild(self._model_class, token)
+            except Exception:
+                # A transient error is not a lost lock: try again next
+                # interval. If the lock does lapse meanwhile, the next
+                # renewal (or the swap) finds out.
+                logger.warning(
+                    "%s.rebuild_indexes(): renewing the v2 rebuild lock on %s "
+                    "failed; retrying",
+                    self._model_class.__name__,
+                    field._rebuild_lock_key(self._model_class),
+                    exc_info=True,
+                )
+                continue
+            if not ok:
+                # By identity: Field.__eq__ builds a query, not a bool.
+                self._held = [h for h in self._held if h is not pair]
+                self.lost.append(field)
+                logger.warning(
+                    "%s.rebuild_indexes(): the v2 rebuild lock on %s lapsed; "
+                    "its swap will be refused and the filter left unchanged",
+                    self._model_class.__name__,
+                    field._rebuild_lock_key(self._model_class),
+                )
 
 
 def bloom_header_offset(m: int) -> int:
@@ -263,23 +367,21 @@ local function ef_positions(v2, item, m, k)
 end
 """
 
-# Shared by the add scripts: KEYS[1] is the filter, KEYS[2] its rebuild lock.
+# Shared by the add scripts: KEYS[1] is the filter, KEYS[2] its rebuild lock,
+# KEYS[3] the rebuild's staging key.
 # A missing filter is created in the version the field asks for (v2 writes
 # its marker first, so it is never observable without one); an existing
 # filter keeps the hash it was built with, whatever the field asks for.
 #
-# While a v2 rebuild holds the lock, the lock's value names its staging key
-# (``lock .. ':' .. token``), and every add also writes the token's v2 bits
-# there, so a save racing the rebuild is not lost when the staging key
-# replaces the filter. The pointer is read inside this same script -- no
-# extra round-trip, and no window between reading it and writing through
-# it. The staging key is written only if it already exists (the rebuild
-# creates it with its marker, atomically with the lock), so an add can never
-# create a markerless staging key that a swap would install as "v1".
-#
-# The staging key is not in KEYS: its name depends on a token only the
-# server knows at call time. That is fine on standalone Redis and Valkey,
-# which popoto targets; it would need a hash tag under Redis Cluster.
+# While a v2 rebuild holds the lock, every add also writes the token's v2
+# bits into the staging key, so a save racing the rebuild is not lost when
+# the staging key replaces the filter. The lock is checked inside this same
+# script -- no extra round-trip, and no window between checking it and
+# writing through it. The staging key is written only if it already exists
+# (the rebuild creates it with its marker, atomically with the lock), so an
+# add can never create a markerless staging key that a swap would install
+# as "v1"; and only while a lock exists, so a staging key a dead rebuild
+# left is never written.
 _BLOOM_ADD_PRELUDE = """
 local key = KEYS[1]
 local lock = KEYS[2]
@@ -289,10 +391,8 @@ if EF_CREATE_V2 and not v2 and redis.call('EXISTS', key) == 0 then
     v2 = true
 end
 local staging = nil
-local rebuild_token = redis.call('GET', lock)
-if rebuild_token then
-    local s = lock .. ':' .. rebuild_token
-    if redis.call('EXISTS', s) == 1 then staging = s end
+if redis.call('EXISTS', lock) == 1 and redis.call('EXISTS', KEYS[3]) == 1 then
+    staging = KEYS[3]
 end
 
 local function ef_add(item)
@@ -348,11 +448,13 @@ BLOOM_ADD_V2_LUA = _bloom_add_script(2, multi=False)
 BLOOM_ADD_MULTI_V2_LUA = _bloom_add_script(2, multi=True)
 
 # The v2 rebuild's lock protocol. KEYS[1] is the live filter, KEYS[2] the
-# lock (``$EF:{Class}:{field}:rebuild``); the staging key is always
-# ``KEYS[2] .. ':' .. token``.
+# lock (``$EF:{Class}:{field}:rebuild``), KEYS[3] the staging key
+# (``$EF:{Class}:{field}:rebuild:staging``). Every script but BEGIN acts on
+# the staging key only after checking that the lock still holds its token.
 
 #: Take the lock and open an empty v2 staging key, atomically: an add sees
-#: either neither or both. Returns ``{1}``, or ``{0, holder, pttl}`` when
+#: either neither or both. Whatever a dead rebuild left in the staging key
+#: is deleted in the same step. Returns ``{1}``, or ``{0, holder, pttl}`` when
 #: another rebuild holds the lock (nothing is changed then).
 #: ARGV: token, m, ttl_ms.
 BLOOM_REBUILD_BEGIN_LUA = _BLOOM_LUA_LIB + """
@@ -363,7 +465,7 @@ local ttl = tonumber(ARGV[3])
 if not redis.call('SET', lock, token, 'NX', 'PX', ttl) then
     return {0, redis.call('GET', lock), redis.call('PTTL', lock)}
 end
-local staging = lock .. ':' .. token
+local staging = KEYS[3]
 redis.call('DEL', staging)
 redis.call('SETRANGE', staging, ef_header_offset(m), EF_V2_HEADER)
 redis.call('PEXPIRE', staging, ttl)
@@ -380,7 +482,7 @@ local ttl = tonumber(ARGV[2])
 if redis.call('GET', lock) ~= token then
     return 0
 end
-if redis.call('PEXPIRE', lock .. ':' .. token, ttl) == 0 then
+if redis.call('PEXPIRE', KEYS[3], ttl) == 0 then
     return 0
 end
 redis.call('PEXPIRE', lock, ttl)
@@ -401,7 +503,7 @@ local m = tonumber(ARGV[2])
 if redis.call('GET', lock) ~= token then
     return 0
 end
-local staging = lock .. ':' .. token
+local staging = KEYS[3]
 if not ef_is_v2(staging, m) then
     return -1
 end
@@ -411,14 +513,20 @@ redis.call('DEL', lock)
 return 1
 """
 
-#: Abandon a rebuild: drop its own staging key, and the lock only if this
-#: token still holds it. The live filter is never touched. ARGV: token.
+#: Abandon a rebuild: drop the lock and staging key while this token still
+#: holds the lock. If the lock passed to another rebuild, nothing is touched
+#: -- the staging key is that rebuild's now. If it lapsed and nobody took
+#: over, the staging key is ownerless and is dropped. The live filter is
+#: never touched. ARGV: token.
 BLOOM_REBUILD_ABORT_LUA = """
 local lock = KEYS[2]
 local token = ARGV[1]
-redis.call('DEL', lock .. ':' .. token)
-if redis.call('GET', lock) == token then
+local holder = redis.call('GET', lock)
+if holder == token then
     redis.call('DEL', lock)
+    redis.call('DEL', KEYS[3])
+elseif not holder then
+    redis.call('DEL', KEYS[3])
 end
 return 1
 """
@@ -733,8 +841,21 @@ class ExistenceFilter(Field):
         return 1 if client.exists(key) else None
 
     def _rebuild_lock_key(self, model_class: Any) -> str:
-        """``$EF:{Class}:{field}:rebuild``: the v2 rebuild's lock and pointer."""
+        """``$EF:{Class}:{field}:rebuild``: the v2 rebuild's lock."""
         return self._class_bloom_key(model_class) + BLOOM_REBUILD_SUFFIX
+
+    def _rebuild_staging_key(self, model_class: Any) -> str:
+        """``$EF:{Class}:{field}:rebuild:staging``: the v2 filter a rebuild
+        is filling. Owned by whichever token the lock holds."""
+        return self._class_bloom_key(model_class) + BLOOM_REBUILD_STAGING_SUFFIX
+
+    def _rebuild_keys(self, model_class: Any) -> "tuple[str, str, str]":
+        """``KEYS`` for every rebuild script: filter, lock, staging key."""
+        return (
+            self._class_bloom_key(model_class),
+            self._rebuild_lock_key(model_class),
+            self._rebuild_staging_key(model_class),
+        )
 
     def _begin_v2_rebuild(self, model_class: Any) -> "str | None":
         """Take this filter's v2 rebuild lock and open its staging key.
@@ -742,10 +863,14 @@ class ExistenceFilter(Field):
         Returns this rebuild's token, or ``None`` when the filter is already
         v2 and needs no conversion. The caller re-saves every record (which
         dual-writes v2 bits into the staging key, as does every save racing
-        the rebuild), renews the lock with :meth:`_renew_v2_rebuild`, then
-        calls :meth:`_finish_v2_rebuild` -- or :meth:`_abort_v2_rebuild`.
+        the rebuild), keeps the lock renewed with :meth:`_renew_v2_rebuild`
+        (``Model.rebuild_indexes`` does it from a :class:`BloomLockRenewer`
+        thread), then calls :meth:`_finish_v2_rebuild` -- or
+        :meth:`_abort_v2_rebuild`.
 
         A missing filter is converted too: the rebuild creates it as v2.
+        A staging key a dead rebuild left is deleted in the same atomic step
+        that takes the lock.
 
         Raises:
             BloomRebuildInProgressError: another rebuild holds the lock.
@@ -760,13 +885,11 @@ class ExistenceFilter(Field):
         lock = self._rebuild_lock_key(model_class)
         token = uuid.uuid4().hex
         m, _k = self._compute_params()
-        client = get_REDIS_DB()
         got = run_lua(
-            client,
+            get_REDIS_DB(),
             BLOOM_REBUILD_BEGIN_LUA,
-            2,
-            self._class_bloom_key(model_class),
-            lock,
+            3,
+            *self._rebuild_keys(model_class),
             token,
             m,
             Defaults.BLOOM_REBUILD_LOCK_TTL_MS,
@@ -774,13 +897,6 @@ class ExistenceFilter(Field):
         if int(got[0]) != 1:
             holder = got[1].decode() if isinstance(got[1], bytes) else got[1]
             raise BloomRebuildInProgressError(lock, holder or None, int(got[2]))
-        # Staging keys a crashed rebuild left behind. They expire on their
-        # own, and no save writes one once its lock is gone; holding the lock
-        # now, every other staging key of this filter is dead and is dropped.
-        mine = f"{lock}:{token}"
-        for stale in self._staging_keys(model_class):
-            if stale != mine:
-                client.delete(stale)
         return token
 
     def _renew_v2_rebuild(self, model_class: Any, token: str) -> bool:
@@ -790,9 +906,8 @@ class ExistenceFilter(Field):
         renewed = run_lua(
             get_REDIS_DB(),
             BLOOM_REBUILD_RENEW_LUA,
-            2,
-            self._class_bloom_key(model_class),
-            self._rebuild_lock_key(model_class),
+            3,
+            *self._rebuild_keys(model_class),
             token,
             Defaults.BLOOM_REBUILD_LOCK_TTL_MS,
         )
@@ -807,64 +922,61 @@ class ExistenceFilter(Field):
 
         Raises:
             BloomRebuildLostLockError: the lock lapsed or passed to another
-                rebuild; the staging key is dropped and the live filter is
-                untouched.
+                rebuild; the live filter is untouched, and so is the staging
+                key of any rebuild that took the lock over.
         """
-        from .constants import Defaults
-
         m, _k = self._compute_params()
-        lock = self._rebuild_lock_key(model_class)
         swapped = run_lua(
             get_REDIS_DB(),
             BLOOM_REBUILD_SWAP_LUA,
-            2,
-            self._class_bloom_key(model_class),
-            lock,
+            3,
+            *self._rebuild_keys(model_class),
             token,
             m,
         )
         if int(swapped) != 1:
-            self._abort_v2_rebuild(model_class, token)
-            raise BloomRebuildLostLockError(
-                f"{lock}: this rebuild no longer held the lock at its swap (it "
-                f"went {Defaults.BLOOM_REBUILD_LOCK_TTL_MS} ms without renewal, "
-                f"or its staging key was removed), so its v2 filter was "
-                f"discarded. The live filter is unchanged and complete for "
-                f"every token it held. Rerun the rebuild."
-            )
+            self._refuse_v2_swap(model_class, token)
+
+    def _refuse_v2_swap(self, model_class: Any, token: str) -> None:
+        """Abandon this rebuild and raise ``BloomRebuildLostLockError``."""
+        from .constants import Defaults
+
+        self._abort_v2_rebuild(model_class, token)
+        raise BloomRebuildLostLockError(
+            f"{self._rebuild_lock_key(model_class)}: this rebuild no longer "
+            f"held the lock at its swap (it went "
+            f"{Defaults.BLOOM_REBUILD_LOCK_TTL_MS} ms without renewal, or its "
+            f"staging key was removed), so its v2 filter was discarded. The "
+            f"live filter is unchanged and complete for every token it held. "
+            f"Rerun the rebuild."
+        )
 
     def _abort_v2_rebuild(self, model_class: Any, token: str) -> None:
-        """Drop this rebuild's staging key and release its lock if held."""
+        """Release the lock and drop the staging key, if ``token`` still
+        holds the lock (or nobody does). Never touches another rebuild's."""
         run_lua(
             get_REDIS_DB(),
             BLOOM_REBUILD_ABORT_LUA,
-            2,
-            self._class_bloom_key(model_class),
-            self._rebuild_lock_key(model_class),
+            3,
+            *self._rebuild_keys(model_class),
             token,
         )
 
-    def _staging_keys(self, model_class: Any) -> "list[str]":
-        """Every staging key of this filter, live or left by a dead rebuild."""
-        pattern = self._rebuild_lock_key(model_class) + ":*"
-        out = []
-        for raw in get_REDIS_DB().scan_iter(match=pattern, count=1000):
-            out.append(raw.decode() if isinstance(raw, bytes) else raw)
-        return sorted(out)
-
     def stale_rebuild_staging(self, model_class: Any) -> "list[str]":
-        """Staging keys no running rebuild owns; ``check_indexes()`` lists
-        them. Nothing reads them, no save writes them, they expire on their
-        own, and the next v2 rebuild of this filter deletes them. Always
-        ``[]`` off Redis."""
+        """``[staging key]`` when a staging key exists with no lock -- left
+        by a rebuild that died -- else ``[]``; ``check_indexes()`` lists it.
+        Nothing reads it, no save writes it (saves write it only under a
+        lock), it expires on its own, and the next v2 rebuild of this filter
+        deletes it. Two ``EXISTS`` in one ``MULTI``, no keyspace scan.
+        Always ``[]`` off Redis."""
         if _search_backend(model_class) is not None:
             return []
-        lock = self._rebuild_lock_key(model_class)
-        holder = get_REDIS_DB().get(lock)
-        if isinstance(holder, bytes):
-            holder = holder.decode()
-        live = f"{lock}:{holder}" if holder else None
-        return [k for k in self._staging_keys(model_class) if k != live]
+        staging = self._rebuild_staging_key(model_class)
+        pipe = get_REDIS_DB().pipeline(transaction=True)
+        pipe.exists(staging)
+        pipe.exists(self._rebuild_lock_key(model_class))
+        has_staging, has_lock = pipe.execute()
+        return [staging] if has_staging and not has_lock else []
 
     @classmethod
     def on_save(
@@ -896,6 +1008,7 @@ class ExistenceFilter(Field):
         fingerprint = field._compute_fingerprint(model_instance)
         key = field._bloom_key(model_instance)
         lock = key + BLOOM_REBUILD_SUFFIX
+        staging = key + BLOOM_REBUILD_STAGING_SUFFIX
         m, k = field._compute_params()
         client = (
             pipeline if isinstance(pipeline, redis.client.Pipeline) else get_REDIS_DB()
@@ -908,9 +1021,9 @@ class ExistenceFilter(Field):
         if not tokens:
             # Fallback: add the raw fingerprint lowercased (handles empty strings,
             # short tokens, redis keys, etc.)
-            run_lua(client, add_one, 2, key, lock, fingerprint.lower(), m, k)
+            run_lua(client, add_one, 3, key, lock, staging, fingerprint.lower(), m, k)
         else:
-            run_lua(client, add_multi, 2, key, lock, m, k, *tokens)
+            run_lua(client, add_multi, 3, key, lock, staging, m, k, *tokens)
         return pipeline if pipeline else None
 
     @classmethod
@@ -1169,6 +1282,14 @@ class FrequencySketch(Field):
     )
 
     def __init__(self, **kwargs):
+        if "hash_version" in kwargs:
+            # Field.__init__ ignores keywords it does not know, so without
+            # this an ExistenceFilter argument passed here by analogy would
+            # construct silently and do nothing.
+            raise TypeError(
+                "FrequencySketch has no hash_version argument: the bloom hash "
+                "versions (#775) apply to ExistenceFilter only"
+            )
         self.width = kwargs.pop("width", 2003)
         self.depth = kwargs.pop("depth", 7)
         self.fingerprint_fn = kwargs.pop("fingerprint_fn", None)

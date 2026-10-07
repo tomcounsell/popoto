@@ -133,14 +133,18 @@ not counted in `total`), and `field.hash_version(Model)` returns `2`, `1`, or
 **How a conversion stays free of false negatives:**
 
 1. It takes the filter's lock, `$EF:{ClassName}:{field_name}:rebuild`, with
-   `SET NX PX` and a random token, and in the same Lua step opens an empty
-   v2 staging key named by that token,
-   `$EF:{ClassName}:{field_name}:rebuild:{token}`. This happens before any
-   index is deleted.
+   `SET NX PX` and a random token, and in the same Lua step deletes whatever
+   a dead conversion left in the staging key,
+   `$EF:{ClassName}:{field_name}:rebuild:staging`, and opens it empty as v2.
+   This happens before any index is deleted. The staging key's name is fixed;
+   the token lives only in the lock's value, and every script that renews,
+   swaps or drops the staging key first checks that the lock still holds its
+   token, so a conversion that lost its lock can never extend, rename or
+   delete the staging key of the one that took over.
 2. It re-saves every record. Every save -- the rebuild's and any other
-   process's -- reads the lock inside its own add script and also writes the
-   token's staging key, so a save racing the rebuild is not lost. The live
-   filter keeps answering in full the whole time.
+   process's -- checks the lock inside its own add script and, while one is
+   held, also writes the staging key, so a save racing the rebuild is not
+   lost. The live filter keeps answering in full the whole time.
 3. It swaps the staging key over the live filter with one Lua
    compare-and-rename, which happens only if the lock still holds this
    rebuild's token and the staging key carries the v2 marker. It clears the
@@ -158,14 +162,20 @@ finishes, the conversion the second one asked for is already done.) A plain
 land in the running conversion's staging key.
 
 **Crashes.** The lock and staging key expire after
-`Defaults.BLOOM_REBUILD_LOCK_TTL_MS` (60 s), and a running conversion renews
-both every third of that. If a conversion raises, it deletes its staging key
-and releases the lock. If it dies (for example, SIGKILL), the live filter
-was never touched, the lock lapses, no save writes the orphaned staging key,
-and `check_indexes()` lists it under `stale_bloom_staging` until it expires
-or the next conversion deletes it. A conversion that stalls past its lock
-has its swap refused with `BloomRebuildLostLockError`. Every other index is
-still rebuilt, and the filter is left as it was.
+`Defaults.BLOOM_REBUILD_LOCK_TTL_MS` (60 s). A running conversion renews
+both every third of that from a background thread, started when the lock
+is taken and stopped just before the swap, so renewal covers step 1 (the
+index deletion, which visits no record and can take seconds on a large
+store) as well as the re-saves. If a conversion raises, it deletes its
+staging key and releases the lock, and the thread is stopped and joined
+first. If it dies (for example, SIGKILL), the live filter was never
+touched, the lock lapses, no save writes the orphaned staging key, and
+`check_indexes()` lists it under `stale_bloom_staging` until it expires or
+the next conversion deletes it. That check is two `EXISTS` per bloom field,
+not a keyspace scan. A conversion whose whole process stalls past its lock
+(SIGSTOP, a VM pause: the renewer thread is paused too) has its swap refused
+with `BloomRebuildLostLockError`. Every other index is still rebuilt, and
+the filter is left as it was.
 
 **What the opt-in does not cover:** a *pre-#775* process saving during a
 conversion does not write the staging key. Its tokens are in the old filter
@@ -177,9 +187,7 @@ from records. Export/import never carries the bits: importing into a
 destination with no filter creates one in the field's `hash_version`.
 Postgres keeps an exact token table and has no hash to version.
 
-The staging key's name depends on the token, so the add scripts touch a key
-that is not in `KEYS`. Standalone Redis and Valkey, which popoto targets,
-allow that. Redis Cluster would need a hash tag.
+Every script declares the filter, the lock and the staging key in `KEYS`.
 
 ## FrequencySketch
 
@@ -190,7 +198,9 @@ allow that. Redis Cluster would need a hash tag.
 | `width` | `int` | `2003` | Number of counters per hash function (prime recommended) |
 | `depth` | `int` | `7` | Number of hash functions (must be 1–7) |
 | `fingerprint_fn` | `callable` | `None` | Takes a model instance, returns a fingerprint string |
-| `hash_version` | `int` | `1` | Hash a *new* filter is created with: `1`, or `2` to opt in (see [Hash versions](#hash-versions) and the rolling-upgrade rule first) |
+
+`FrequencySketch` has no `hash_version` argument: the hash versions apply to
+`ExistenceFilter` only, and passing one raises `TypeError`.
 
 ### Usage
 

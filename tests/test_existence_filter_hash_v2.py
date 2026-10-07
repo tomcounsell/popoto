@@ -9,8 +9,9 @@ hash until ``rebuild_indexes(bloom_hash_version=2)`` converts it.
 
 v2 is **opt-in** (PR #801 review): pre-#775 code reads every filter with the
 v1 hash, so by default a new filter is still v1 and ``rebuild_indexes()``
-keeps each filter's version. A conversion holds a per-filter lock, fills a
-staging key named by its own token, and swaps it in with a compare-and-rename.
+keeps each filter's version. A conversion holds a per-filter lock (renewed
+by a background thread for as long as it is held), fills a fixed-name
+staging key the lock's token owns, and swaps it in with a compare-and-rename.
 
 These tests are Redis-path tests (the bit array has no Postgres counterpart;
 Postgres stores an exact token table). The cross-backend contract -- no false
@@ -32,6 +33,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 
 import pytest
@@ -40,8 +42,10 @@ from src import popoto
 from src.popoto.fields import existence_filter as ef
 from src.popoto.fields.constants import Defaults
 from src.popoto.fields.existence_filter import (
+    BLOOM_REBUILD_STAGING_SUFFIX,
     BLOOM_REBUILD_SUFFIX,
     BLOOM_V2_HEADER,
+    BloomLockRenewer,
     BloomRebuildInProgressError,
     BloomRebuildLostLockError,
     ExistenceFilter,
@@ -296,8 +300,9 @@ def similar_tokens(n: int, start: int = 0) -> list:
 def legacy_writes(monkeypatch):
     """Make ``on_save`` run the pre-#775 add scripts: the old code's writes.
 
-    The legacy scripts read only ``KEYS[1]``, so the rebuild lock the current
-    ``on_save`` passes as ``KEYS[2]`` is ignored, exactly as the old
+    The legacy scripts read only ``KEYS[1]``, so the rebuild lock and staging
+    key the current ``on_save`` passes as ``KEYS[2..3]`` are ignored, exactly
+    as the old
     ``numkeys=1`` call did -- in particular they never dual-write a rebuild's
     staging key. Every bit they set is the old code's. Patched for both
     create versions: old code had no notion of one.
@@ -331,7 +336,8 @@ def missing(model, tokens) -> int:
 
 
 def rebuild_keys(model) -> list:
-    """The lock and every staging key of the model's filter."""
+    """The lock and staging key of the model's filter -- and anything else
+    under the lock's name, so a stray key would show up too."""
     lock = bloom_key(model) + BLOOM_REBUILD_SUFFIX
     keys = [k.decode() for k in get_REDIS_DB().scan_iter(match=lock + "*")]
     return sorted(keys)
@@ -447,9 +453,10 @@ class TestSimilarTokens:
             run_lua(
                 client,
                 ef.BLOOM_ADD_MULTI_V2_LUA,
-                2,
+                3,
                 key,
                 key + BLOOM_REBUILD_SUFFIX,
+                key + BLOOM_REBUILD_STAGING_SUFFIX,
                 m,
                 k,
                 *tokens[start : start + 500],
@@ -591,11 +598,12 @@ class TestLegacyFilterCompatibility:
         self._build_v1(legacy_writes, similar_tokens(30))
         token = HashV2Doc.bloom._begin_v2_rebuild(HashV2Doc)
         lock = bloom_key(HashV2Doc) + BLOOM_REBUILD_SUFFIX
+        staging = bloom_key(HashV2Doc) + BLOOM_REBUILD_STAGING_SUFFIX
         assert get_REDIS_DB().get(lock) == token.encode()
-        assert rebuild_keys(HashV2Doc) == [lock, f"{lock}:{token}"]
+        assert rebuild_keys(HashV2Doc) == [lock, staging]
         HashV2Doc(name="racer", topic="racingtoken").save()
         m, k = HashV2Doc.bloom._compute_params()
-        staged = set_positions(get_REDIS_DB().get(f"{lock}:{token}"), m)
+        staged = set_positions(get_REDIS_DB().get(staging), m)
         assert set(v2_positions("racingtoken", m, k)) <= staged
         # Live filter is still v1 and already answers for it.
         assert HashV2Doc.bloom.hash_version(HashV2Doc) == 1
@@ -610,7 +618,7 @@ class TestLegacyFilterCompatibility:
         tokens = similar_tokens(30)
         self._build_v1(legacy_writes, tokens)
 
-        def boom(cls, batch_size, tick=None):
+        def boom(cls, batch_size):
             raise RuntimeError("interrupted")
 
         monkeypatch.setattr(HashV2Doc, "_rebuild_from_records", classmethod(boom))
@@ -691,7 +699,7 @@ class TestVersionPortability:
         for key in (
             "$EF:HashV2Doc:bloom",
             "$EF:HashV2Doc:bloom" + BLOOM_REBUILD_SUFFIX,
-            "$EF:HashV2Doc:bloom" + BLOOM_REBUILD_SUFFIX + ":0123abcd",
+            "$EF:HashV2Doc:bloom" + BLOOM_REBUILD_STAGING_SUFFIX,
         ):
             assert _family_of(key, names, {}) == ("HashV2Doc", "$EF")
         assert "$EF" in FAMILY_DISPOSITIONS
@@ -757,14 +765,34 @@ class TestDefaultIsV1:
         with pytest.raises(ValueError, match="hash_version"):
             ExistenceFilter(fingerprint_fn=lambda inst: "x", hash_version=bad)
 
+    @pytest.mark.parametrize("value", [1, 2])
+    def test_frequency_sketch_has_no_hash_version(self, value):
+        """Field.__init__ ignores unknown keywords, so FrequencySketch must
+        refuse this one itself rather than construct and ignore it."""
+        from src.popoto.fields.existence_filter import FrequencySketch
+
+        with pytest.raises(TypeError, match="hash_version"):
+            FrequencySketch(fingerprint_fn=lambda inst: "x", hash_version=value)
+
     def test_existing_v2_filter_is_written_as_v2_by_a_default_field(self):
         """A filter some opted-in process (or a v2 rebuild) made v2 stays v2:
         a default-mode field reads and writes it with v2, never v1."""
         m, k = HashV1Doc.bloom._compute_params()
         key = bloom_key(HashV1Doc)
         lock = key + BLOOM_REBUILD_SUFFIX
+        staging = key + BLOOM_REBUILD_STAGING_SUFFIX
         first = toks("pre", 50)
-        run_lua(get_REDIS_DB(), ef.BLOOM_ADD_MULTI_V2_LUA, 2, key, lock, m, k, *first)
+        run_lua(
+            get_REDIS_DB(),
+            ef.BLOOM_ADD_MULTI_V2_LUA,
+            3,
+            key,
+            lock,
+            staging,
+            m,
+            k,
+            *first,
+        )
         assert HashV1Doc.bloom.hash_version(HashV1Doc) == 2
         later = toks("post", 50)
         save_all(HashV1Doc, later)
@@ -780,7 +808,17 @@ class TestDefaultIsV1:
         lock = bloom_key(HashV1Doc) + BLOOM_REBUILD_SUFFIX
         get_REDIS_DB().set(lock, "deadbeef")
         save_all(HashV1Doc, toks("x", 5))
-        assert not get_REDIS_DB().exists(lock + ":deadbeef")
+        assert not get_REDIS_DB().exists(bloom_key(HashV1Doc) + ":rebuild:staging")
+
+    def test_save_never_writes_a_staging_key_without_a_lock(self):
+        """A staging key a dead rebuild left (its lock lapsed) is frozen:
+        saves write the staging key only while a lock exists."""
+        staging = bloom_key(HashV1Doc) + BLOOM_REBUILD_STAGING_SUFFIX
+        m, _k = HashV1Doc.bloom._compute_params()
+        get_REDIS_DB().setrange(staging, bloom_header_offset(m), BLOOM_V2_HEADER)
+        frozen = get_REDIS_DB().get(staging)
+        save_all(HashV1Doc, toks("x", 5))
+        assert get_REDIS_DB().get(staging) == frozen
 
 
 class TestMixedVersionsDefaultMode:
@@ -825,14 +863,18 @@ class TestMixedVersionsDefaultMode:
         with old_code():
             save_all(HashRace, toks("base", 400), prefix="s")
         calls = [0]
+        on_save = ExistenceFilter.on_save.__func__
 
-        def tick():
+        def counting(cls, *args, **kwargs):
             calls[0] += 1
             if calls[0] == 200:
                 with old_code():
                     save_all(HashRace, toks("orace", 200), prefix="o")
+            return on_save(cls, *args, **kwargs)
 
-        HashRace._rebuild_indexes_redis(100, tick)
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(ExistenceFilter, "on_save", classmethod(counting))
+            HashRace._rebuild_indexes_redis(100)
         assert calls[0] >= 200
         assert HashRace.bloom.hash_version(HashRace) == 1
         assert missing(HashRace, toks("base", 400) + toks("orace", 200)) == 0
@@ -881,6 +923,16 @@ def lapse(key: str) -> None:
 
 
 LOCK = bloom_key(HashRace) + BLOOM_REBUILD_SUFFIX
+STAGING = bloom_key(HashRace) + BLOOM_REBUILD_STAGING_SUFFIX
+
+
+def renewer_threads() -> list:
+    """The live rebuild-lock renewer threads of this process."""
+    return [
+        t
+        for t in threading.enumerate()
+        if t.name.startswith("popoto-bloom-renew-") and t.is_alive()
+    ]
 
 
 class TestRebuildLock:
@@ -933,7 +985,7 @@ class TestRebuildLock:
             HashRace.rebuild_indexes(bloom_hash_version=2)
         assert HashRace.check_indexes()["stale_bloom_staging"] == []  # still live
         lapse(LOCK)
-        staging = f"{LOCK}:{t1}"
+        staging = STAGING
         report = HashRace.check_indexes()
         assert report["stale_bloom_staging"] == [staging]
         assert report["total"] == 0
@@ -950,21 +1002,32 @@ class TestRebuildLock:
     def test_lapsed_lock_refuses_the_swap(self, seeded):
         """R1 stalls past its lock; R2 takes over. R1's swap is refused (the
         compare-and-rename sees R2's token), the live filter is unchanged,
-        R2's staging key is not disturbed, and R2's swap completes."""
+        R2's staging key is not disturbed -- not renewed, renamed or deleted
+        by R1, though the name is the same -- and R2's swap completes."""
         f = HashRace.bloom
         t1 = f._begin_v2_rebuild(HashRace)
         HashRace._rebuild_from_records(1000)
         lapse(LOCK)
         t2 = f._begin_v2_rebuild(HashRace)
         assert t2 != t1
-        assert rebuild_keys(HashRace) == [LOCK, f"{LOCK}:{t2}"]  # t1's dropped
+        assert rebuild_keys(HashRace) == [LOCK, STAGING]
+        m, _k = f._compute_params()
+        # R2's BEGIN emptied what R1 had staged.
+        assert set_positions(get_REDIS_DB().get(STAGING), m) == set()
+        save_all(HashRace, toks("r2", 20), prefix="q")  # R2-era bits
+        r2_bytes = get_REDIS_DB().get(STAGING)
+        get_REDIS_DB().pexpire(STAGING, 5000)
+        get_REDIS_DB().pexpire(LOCK, 5000)
         assert f._renew_v2_rebuild(HashRace, t1) is False
-        assert f._renew_v2_rebuild(HashRace, t2) is True
+        assert get_REDIS_DB().pttl(STAGING) <= 5000  # R1 did not extend it
         with pytest.raises(BloomRebuildLostLockError):
-            f._finish_v2_rebuild(HashRace, t1)
-        assert f.hash_version(HashRace) == 1
-        assert missing(HashRace, seeded) == 0
+            f._finish_v2_rebuild(HashRace, t1)  # refused, then R1's abort
+        f._abort_v2_rebuild(HashRace, t1)  # and once more, explicitly
+        assert get_REDIS_DB().get(STAGING) == r2_bytes  # untouched by R1
         assert get_REDIS_DB().get(LOCK) == t2.encode()
+        assert f.hash_version(HashRace) == 1
+        assert missing(HashRace, seeded + toks("r2", 20)) == 0
+        assert f._renew_v2_rebuild(HashRace, t2) is True
         HashRace._rebuild_from_records(1000)
         f._finish_v2_rebuild(HashRace, t2)
         assert f.hash_version(HashRace) == 2
@@ -974,45 +1037,136 @@ class TestRebuildLock:
     def test_swap_refuses_a_staging_key_without_marker(self, seeded):
         f = HashRace.bloom
         t1 = f._begin_v2_rebuild(HashRace)
-        staging = f"{LOCK}:{t1}"
-        get_REDIS_DB().delete(staging)
-        get_REDIS_DB().setbit(staging, 7, 1)
+        get_REDIS_DB().delete(STAGING)
+        get_REDIS_DB().setbit(STAGING, 7, 1)
         with pytest.raises(BloomRebuildLostLockError):
             f._finish_v2_rebuild(HashRace, t1)
         assert f.hash_version(HashRace) == 1
         assert missing(HashRace, seeded) == 0
         assert rebuild_keys(HashRace) == []
 
-    def test_stalled_rebuild_raises_after_rebuilding_other_indexes(
-        self, seeded, monkeypatch
-    ):
-        monkeypatch.setattr(Defaults, "BLOOM_REBUILD_LOCK_TTL_MS", 150)
+    def test_step1_outlasting_the_ttl_still_converts(self, seeded, monkeypatch):
+        """PR #801 review N1: nothing renewed the lock during step 1, so a
+        conversion whose index deletion alone outlasted the TTL always lost
+        it. The renewer thread runs from the moment the lock is taken."""
+        monkeypatch.setattr(Defaults, "BLOOM_REBUILD_LOCK_TTL_MS", 300)
         original = HashRace._rebuild_from_records
 
-        def stalled(cls, batch_size, tick=None):
-            time.sleep(0.4)  # no renewal: the lock lapses
+        def after_slow_step1(cls, batch_size):
+            time.sleep(1.0)  # > 3 TTLs between taking the lock and step 2
+            assert get_REDIS_DB().exists(LOCK)
             return original(batch_size)
 
-        monkeypatch.setattr(HashRace, "_rebuild_from_records", classmethod(stalled))
+        monkeypatch.setattr(
+            HashRace, "_rebuild_from_records", classmethod(after_slow_step1)
+        )
+        assert HashRace.rebuild_indexes(bloom_hash_version=2) == N_RACE
+        assert HashRace.bloom.hash_version(HashRace) == 2
+        assert get_REDIS_DB().pttl(bloom_key(HashRace)) == -1
+        assert missing(HashRace, seeded) == 0
+        assert rebuild_keys(HashRace) == []
+
+    def test_real_step1_outlasting_the_ttl_still_converts(self, seeded, monkeypatch):
+        """The reviewer's tickprobe, ported: a store whose step 1 really
+        takes longer than the lock TTL (index sets to SCAN and DEL one by
+        one, as on a large store), measured rather than assumed."""
+        index = HashRace._meta.fields["name"].get_special_use_field_db_key(
+            HashRace, "name"
+        )
+        junk = [f"{index.redis_key}:junk{i:06d}" for i in range(20_000)]
+        client = get_REDIS_DB()
+        try:
+            for start in range(0, len(junk), 2000):
+                pipe = client.pipeline(transaction=False)
+                for key in junk[start : start + 2000]:
+                    pipe.sadd(key, "x")
+                pipe.execute()
+            monkeypatch.setattr(Defaults, "BLOOM_REBUILD_LOCK_TTL_MS", 150)
+            begin = HashRace._begin_bloom_rebuilds.__func__
+            original = HashRace._rebuild_from_records
+            marks = {}
+
+            def timed_begin(cls):
+                out = begin(cls)
+                marks["lock"] = time.monotonic()
+                return out
+
+            def timed_step2(cls, batch_size):
+                marks["step2"] = time.monotonic()
+                return original(batch_size)
+
+            monkeypatch.setattr(
+                HashRace, "_begin_bloom_rebuilds", classmethod(timed_begin)
+            )
+            monkeypatch.setattr(
+                HashRace, "_rebuild_from_records", classmethod(timed_step2)
+            )
+            assert HashRace.rebuild_indexes(bloom_hash_version=2) == N_RACE
+            step1 = marks["step2"] - marks["lock"]
+            # Not vacuous: step 1 alone outlasted the TTL several times over.
+            assert step1 > 3 * 0.150, step1
+            assert HashRace.bloom.hash_version(HashRace) == 2
+            assert missing(HashRace, seeded) == 0
+            assert rebuild_keys(HashRace) == []
+        finally:
+            for start in range(0, len(junk), 2000):
+                client.delete(*junk[start : start + 2000])
+
+    def test_lock_lost_mid_rebuild_refuses_the_swap(self, seeded, monkeypatch):
+        """A renewal that finds the lock gone flags it; the swap is refused,
+        every other index is rebuilt, and the live filter is unchanged."""
+        monkeypatch.setattr(Defaults, "BLOOM_REBUILD_LOCK_TTL_MS", 300)
+        original = HashRace._rebuild_from_records
+
+        def lapsing(cls, batch_size):
+            lapse(LOCK)
+            time.sleep(0.3)  # the renewer runs and finds it gone
+            return original(batch_size)
+
+        monkeypatch.setattr(HashRace, "_rebuild_from_records", classmethod(lapsing))
         with pytest.raises(BloomRebuildLostLockError):
             HashRace.rebuild_indexes(bloom_hash_version=2)
         assert class_set_size(HashRace) == N_RACE  # the rebuild itself ran
         assert HashRace.bloom.hash_version(HashRace) == 1
         assert missing(HashRace, seeded) == 0
-        assert rebuild_keys(HashRace) == []
+        assert rebuild_keys(HashRace) == []  # the ownerless staging key too
 
-    def test_renewal_keeps_a_running_rebuild_alive(self, seeded, monkeypatch):
+    def test_renewer_keeps_a_held_lock_alive(self, seeded, monkeypatch):
         monkeypatch.setattr(Defaults, "BLOOM_REBUILD_LOCK_TTL_MS", 300)
         f = HashRace.bloom
         t1 = f._begin_v2_rebuild(HashRace)
-        tick = HashRace._bloom_renewer([(f, t1)])
-        for _ in range(8):  # 0.8 s, well past the 0.3 s TTL
-            time.sleep(0.1)
-            tick()
+        with BloomLockRenewer(HashRace, [(f, t1)]) as renewer:
+            time.sleep(0.8)  # well past the 0.3 s TTL, no record visited
+        assert renewer.lost == []
         assert get_REDIS_DB().get(LOCK) == t1.encode()
-        assert get_REDIS_DB().exists(f"{LOCK}:{t1}")
+        assert get_REDIS_DB().exists(STAGING)
         f._finish_v2_rebuild(HashRace, t1)
         assert get_REDIS_DB().pttl(bloom_key(HashRace)) == -1
+
+    @pytest.mark.parametrize("exc", [RuntimeError, KeyboardInterrupt])
+    def test_renewer_never_outlives_the_rebuild(self, seeded, monkeypatch, exc):
+        monkeypatch.setattr(Defaults, "BLOOM_REBUILD_LOCK_TTL_MS", 300)
+        seen = []
+
+        def boom(cls, batch_size):
+            seen.extend(renewer_threads())
+            raise exc("interrupted")
+
+        monkeypatch.setattr(HashRace, "_rebuild_from_records", classmethod(boom))
+        with pytest.raises(exc):
+            HashRace.rebuild_indexes(bloom_hash_version=2)
+        assert len(seen) == 1 and seen[0].daemon  # it was running ...
+        assert not seen[0].is_alive()  # ... and is stopped and joined
+        assert renewer_threads() == []
+        assert HashRace.bloom.hash_version(HashRace) == 1
+        assert rebuild_keys(HashRace) == []
+        assert missing(HashRace, seeded) == 0
+
+    def test_renewer_is_stopped_after_a_conversion(self, seeded):
+        assert HashRace.rebuild_indexes(bloom_hash_version=2) == N_RACE
+        assert renewer_threads() == []
+        assert HashRace.rebuild_indexes() == N_RACE  # no lock, no thread
+        assert renewer_threads() == []
 
     def test_missing_filter_is_created_v2_by_conversion(self):
         save_all(HashRace, toks("fresh", 100), prefix="f")
@@ -1052,19 +1206,13 @@ _KILLED_REBUILD = textwrap.dedent("""
         )
 
     Defaults.BLOOM_REBUILD_LOCK_TTL_MS = 1500
-    renewer = HashRace._bloom_renewer.__func__
+    on_save = ExistenceFilter.on_save.__func__
 
-    def slow(cls, blooms):
-        tick = renewer(cls, blooms)
+    def slow(cls, *args, **kwargs):
+        time.sleep(0.005)
+        return on_save(cls, *args, **kwargs)
 
-        def t():
-            time.sleep(0.005)
-            if tick is not None:
-                tick()
-
-        return t
-
-    HashRace._bloom_renewer = classmethod(slow)
+    ExistenceFilter.on_save = classmethod(slow)
     # Small batches, so the staging key fills while the process is alive.
     HashRace.rebuild_indexes(batch_size=50, bloom_hash_version=2)
     print("FINISHED")
@@ -1090,9 +1238,8 @@ class TestRebuildSigkill:
             deadline = time.monotonic() + 30
             staged = 0
             while time.monotonic() < deadline and proc.poll() is None:
-                holder = get_REDIS_DB().get(LOCK)
-                if holder:
-                    staged = get_REDIS_DB().bitcount(f"{LOCK}:{holder.decode()}")
+                if get_REDIS_DB().exists(LOCK):
+                    staged = get_REDIS_DB().bitcount(STAGING)
                     if staged > 200:
                         break
                 time.sleep(0.01)
@@ -1119,3 +1266,111 @@ class TestRebuildSigkill:
         assert HashRace.bloom.hash_version(HashRace) == 2
         assert rebuild_keys(HashRace) == []
         assert missing(HashRace, seeded + toks("race", 100) + toks("post", 50)) == 0
+
+
+_STOPPED_REBUILD = textwrap.dedent("""
+    import sys, time
+    sys.path.insert(0, {repo!r})
+    from src import popoto
+    from src.popoto.fields.constants import Defaults
+    from src.popoto.fields.existence_filter import ExistenceFilter
+
+    assert popoto.get_redis().connection_pool.connection_kwargs.get("db") == {db}
+
+    class HashRace(popoto.Model):
+        name = popoto.UniqueKeyField()
+        topic = popoto.Field(type=str)
+        bloom = ExistenceFilter(
+            error_rate=0.01, capacity=100_000, fingerprint_fn=lambda i: i.topic
+        )
+
+    Defaults.BLOOM_REBUILD_LOCK_TTL_MS = 1000
+    on_save = ExistenceFilter.on_save.__func__
+
+    def slow(cls, *args, **kwargs):
+        time.sleep(0.002)
+        return on_save(cls, *args, **kwargs)
+
+    ExistenceFilter.on_save = classmethod(slow)
+    try:
+        HashRace.rebuild_indexes(batch_size=50, bloom_hash_version=2)
+        print("CONVERTED")
+    except Exception as exc:
+        print("RAISED", type(exc).__name__)
+    """)
+
+
+class TestRebuildSigstop:
+    """A whole-process pause longer than the TTL: the renewer thread is
+    paused with the rebuild, so the lock lapses and the swap is refused, in
+    each order another conversion can interleave (the review's SIGSTOP
+    rows). The paused rebuild never writes into, renews, renames or deletes
+    the staging key of the conversion that took over."""
+
+    @pytest.mark.parametrize("order", ["nobody", "r2_mid_flight", "r2_completed"])
+    def test_paused_past_ttl_is_refused(self, seeded, order):
+        db = get_REDIS_DB().connection_pool.connection_kwargs.get("db")
+        assert db not in (None, 0)
+        env = dict(os.environ, REDIS_URL=f"redis://localhost:6379/{db}")
+        proc = subprocess.Popen(
+            [sys.executable, "-c", _STOPPED_REBUILD.format(repo=_REPO, db=db)],
+            cwd=_REPO,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        f = HashRace.bloom
+        extra = toks("pause", 100)
+        stopped = False
+        try:
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline and proc.poll() is None:
+                if get_REDIS_DB().bitcount(STAGING) > 200:
+                    break
+                time.sleep(0.01)
+            assert proc.poll() is None, proc.communicate()
+            proc.send_signal(signal.SIGSTOP)
+            stopped = True
+            deadline = time.monotonic() + 5
+            while get_REDIS_DB().exists(LOCK) and time.monotonic() < deadline:
+                time.sleep(0.02)
+            assert not get_REDIS_DB().exists(LOCK)  # lapsed: nobody renewed it
+            save_all(HashRace, extra, prefix="p")
+            assert missing(HashRace, seeded + extra) == 0
+            t2 = None
+            if order == "r2_completed":
+                assert HashRace.rebuild_indexes(bloom_hash_version=2) == N_RACE + 100
+                assert f.hash_version(HashRace) == 2
+            elif order == "r2_mid_flight":
+                t2 = f._begin_v2_rebuild(HashRace)
+                HashRace._rebuild_from_records(1000)
+                m, _k = f._compute_params()
+                staged = set_positions(get_REDIS_DB().get(STAGING), m)
+            proc.send_signal(signal.SIGCONT)
+            stopped = False
+            out, err = proc.communicate(timeout=60)
+        finally:
+            if proc.poll() is None:
+                if stopped:
+                    proc.send_signal(signal.SIGCONT)
+                proc.kill()
+                proc.communicate()
+        assert b"RAISED BloomRebuildLostLockError" in out, (out, err)
+        assert missing(HashRace, seeded + extra) == 0
+        if order == "nobody":
+            assert f.hash_version(HashRace) == 1
+            assert rebuild_keys(HashRace) == []
+        elif order == "r2_completed":
+            assert f.hash_version(HashRace) == 2
+            assert rebuild_keys(HashRace) == []
+        else:
+            # R1 resumed, re-saved, was refused and aborted -- and left R2's
+            # lock and staging key in place, every R2 bit still set.
+            assert f.hash_version(HashRace) == 1
+            assert get_REDIS_DB().get(LOCK) == t2.encode()
+            assert staged <= set_positions(get_REDIS_DB().get(STAGING), m)
+            assert f._renew_v2_rebuild(HashRace, t2) is True
+            f._finish_v2_rebuild(HashRace, t2)
+            assert f.hash_version(HashRace) == 2
+            assert rebuild_keys(HashRace) == []
+        assert missing(HashRace, seeded + extra) == 0

@@ -3392,10 +3392,11 @@ class Model(metaclass=ModelBase):
         false negatives and its writes land where v2 reads never look.
 
         A conversion takes the filter's rebuild lock before anything else
-        is changed, fills a staging filter named by its own token from the
-        records (every save that races it also writes there), and swaps it
-        over the old filter in one compare-and-rename that succeeds only
-        while the lock is still its own. Readers see the complete old filter
+        is changed, fills a staging filter from the records (every save that
+        races it also writes there), and swaps it over the old filter in one
+        compare-and-rename that succeeds only while the lock still holds its
+        token. A background thread renews the lock every third of its TTL
+        for the whole time it is held, step 1 included. Readers see the complete old filter
         until that step and the complete v2 filter after it. One conversion
         of a filter runs at a time: a second raises
         ``BloomRebuildInProgressError`` before it has deleted any index. If
@@ -3467,18 +3468,29 @@ class Model(metaclass=ModelBase):
         # so a refusal (another conversion running) leaves the store exactly
         # as it was. The saves below dual-write each staging key; each is
         # swapped in by a compare-and-rename once every record is re-saved.
+        # The locks are renewed on a timer from the moment they are taken
+        # until just before the swap (PR #801 review, N1): renewal must not
+        # depend on the rebuild visiting a record, because step 1 visits none.
+        from ..fields.existence_filter import BloomLockRenewer
+
         blooms = cls._begin_bloom_rebuilds() if bloom_hash_version == 2 else []
+        renewer = BloomLockRenewer(cls, blooms)
         try:
-            count, diverged_keys = cls._rebuild_indexes_redis(
-                batch_size, cls._bloom_renewer(blooms)
-            )
+            with renewer:
+                count, diverged_keys = cls._rebuild_indexes_redis(batch_size)
         except BaseException:
             for bloom, token in blooms:
                 bloom._abort_v2_rebuild(cls, token)
             raise
+        # The renewer is stopped; its last renewal left at least two thirds
+        # of the TTL, ample for the swaps.
         lost = []
         for bloom, token in blooms:
             try:
+                if any(f is bloom for f in renewer.lost):
+                    # A renewal already saw the lock gone: refuse without
+                    # asking (the compare-and-rename would refuse too).
+                    bloom._refuse_v2_swap(cls, token)
                 bloom._finish_v2_rebuild(cls, token)
             except BaseException as exc:
                 lost.append(exc)
@@ -3502,9 +3514,7 @@ class Model(metaclass=ModelBase):
         return RebuildIndexesResult(count, diverged_keys)
 
     @classmethod
-    def _rebuild_indexes_redis(
-        cls, batch_size: int, tick: "Any" = None
-    ) -> "tuple[int, list[str]]":
+    def _rebuild_indexes_redis(cls, batch_size: int) -> "tuple[int, list[str]]":
         """Steps 1 and 2 of :meth:`rebuild_indexes` on Redis."""
         # Step 1: Delete all secondary index keys
 
@@ -3543,7 +3553,7 @@ class Model(metaclass=ModelBase):
             index_key = cls._meta.get_index_key(tuple(field_names))
             get_REDIS_DB().delete(index_key)
 
-        return cls._rebuild_from_records(batch_size, tick)
+        return cls._rebuild_from_records(batch_size)
 
     @classmethod
     def _bloom_fields(cls) -> "list[Any]":
@@ -3573,46 +3583,10 @@ class Model(metaclass=ModelBase):
         return out
 
     @classmethod
-    def _bloom_renewer(cls, blooms: "list[tuple[Any, str]]") -> "Any":
-        """A per-record callback renewing each v2 rebuild lock every third of
-        its TTL (``None`` when there is nothing to renew). A lock that cannot
-        be renewed is logged once and dropped from renewal: its swap is
-        refused at the end, and the live filter stays as it is."""
-        if not blooms:
-            return None
-        import time
-
-        from ..fields.constants import Defaults
-
-        held = list(blooms)
-        last = [time.monotonic()]
-
-        def tick() -> None:
-            now = time.monotonic()
-            if (now - last[0]) * 3000 < Defaults.BLOOM_REBUILD_LOCK_TTL_MS:
-                return
-            last[0] = now
-            for pair in list(held):
-                field, token = pair
-                if not field._renew_v2_rebuild(cls, token):
-                    held.remove(pair)
-                    logger.warning(
-                        "%s.rebuild_indexes(): the v2 rebuild lock on %s lapsed; "
-                        "its swap will be refused and the filter left unchanged",
-                        cls._meta.model_name,
-                        field._rebuild_lock_key(cls),
-                    )
-
-        return tick
-
-    @classmethod
-    def _rebuild_from_records(
-        cls, batch_size: int, tick: "Any" = None
-    ) -> "tuple[int, list[str]]":
+    def _rebuild_from_records(cls, batch_size: int) -> "tuple[int, list[str]]":
         """Step 2 of :meth:`rebuild_indexes`: re-run every record's hooks.
 
-        ``tick``, when given, is called once per scanned key (it renews the
-        v2 bloom rebuild locks). Returns ``(count, diverged_keys)``.
+        Returns ``(count, diverged_keys)``.
         """
         from .encoding import decode_popoto_model_hashmap
 
@@ -3624,8 +3598,6 @@ class Model(metaclass=ModelBase):
         batch_count = 0
 
         for redis_key in get_REDIS_DB().scan_iter(match=instance_pattern, count=1000):
-            if tick is not None:
-                tick()
             # Decode the key to a string
             if isinstance(redis_key, bytes):
                 redis_key_str = redis_key.decode("utf-8")

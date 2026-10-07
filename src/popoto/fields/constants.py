@@ -731,10 +731,11 @@ class Defaults:
     # -- ExistenceFilter v2 rebuild (fields/existence_filter.py, #775) --------
     # Expiry of the lock that lets one rebuild_indexes(bloom_hash_version=2)
     # convert a filter at a time, and of that rebuild's staging key. The
-    # rebuild renews both every third of this while it runs, so it bounds
+    # rebuild renews both every third of this from a background thread for
+    # as long as it holds the lock (index deletion included), so it bounds
     # only how long a *crashed* rebuild blocks the next one and how long its
-    # staging key lingers; a rebuild that stalls past it loses the lock and
-    # its swap is refused (the live filter is never touched).
+    # staging key lingers; a rebuild whose process stalls past it loses the
+    # lock and its swap is refused (the live filter is never touched).
     BLOOM_REBUILD_LOCK_TTL_MS = 60000
 
     # -- Postgres backend (#759 M1b) -----------------------------------------
