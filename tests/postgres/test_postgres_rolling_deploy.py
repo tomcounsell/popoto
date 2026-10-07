@@ -83,7 +83,16 @@ def test_first_use_waits_for_another_process_long_migration(pg, admin):
     _model("RdCurrent")(name="seed").save()
     pg.forget_tables()  # the subprocesses start cold anyway
 
-    env = dict(os.environ, REDIS_URL="redis://localhost:6379/9")
+    # Pin the children to this session's own isolated Redis DB, never a literal
+    # that another lane may be using (#806).
+    import popoto
+
+    kw = popoto.get_redis().connection_pool.connection_kwargs
+    redis_url = (
+        f"redis://{kw.get('host', 'localhost')}:{kw.get('port', 6379)}"
+        f"/{kw.get('db', 0)}"
+    )
+    env = dict(os.environ, REDIS_URL=redis_url)
     path = None
 
     def spawn(role):

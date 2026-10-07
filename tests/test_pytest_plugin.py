@@ -43,13 +43,20 @@ _DB_AT_IMPORT_TIME = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.
 # rather than silently asserting against the wrong database.
 _INERT_PROBE_DB = 14
 
-# The DB the env-beats-ini child is pinned to. Deliberately a literal, not a value
-# resolved through _resolve_test_db: this test exists to pin the resolution chain
-# independently, so deriving the expectation from the resolver would make it a
-# tautology. Must be a DB no parent suite run uses -- an opted-in child flushes its
-# DB before each of its own tests, so a collision would wipe the parent's live DB
-# mid-test.
-_ENV_OVERRIDE_CHILD_DB = 12
+
+def _own_db():
+    """The isolated DB this session is bound to (never 0), for child pytest runs.
+
+    Opted-in child pytest processes flush the DB they are pinned to before each
+    test. Pinning a child to a hard-coded number (12, 14, 15) wiped whatever
+    another lane had on that DB (#806), so every flushing child is pinned to
+    *this* session's own isolated DB instead -- the one database this suite is
+    already entitled to flush. Skips if the plugin is inert or bound to DB 0.
+    """
+    db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db", 0)
+    if not db:
+        pytest.skip("not bound to an isolated non-zero DB; refusing child flushes")
+    return int(db)
 
 
 @pytest.fixture(scope="session")
@@ -590,7 +597,9 @@ class TestIsolatedDbSubprocess:
             pytest.skip("no src/ layout next to the test suite — alias-collapse N/A")
 
         marker = "SubprocIsolationProbe420"
-        stand_in_db = "14"  # distinct from this session's DB 15
+        # The child flushes its DB, so pin it to this session's own isolated DB
+        # rather than a literal another lane may be using (#806).
+        stand_in_db = str(_own_db())
 
         probe = tmp_path / "test_subproc_isolation_probe.py"
         probe.write_text(textwrap.dedent(f"""
@@ -808,7 +817,7 @@ class TestIsolationWarning:
         assert "POPOTO_TEST_DB" in out
 
     def test_5b_ini_opt_in_produces_no_warning(self, tmp_path):
-        """Ini opt-in (-o popoto_test_db=15) → no warning; session is on DB 15.
+        """Ini opt-in (-o popoto_test_db=<own db>) → no warning; child on that DB.
 
         A tmp_path probe has no ini file of its own (pytest resolves
         ``inipath = None`` for it even with ``cwd=repo_root``, so the repo's
@@ -829,8 +838,8 @@ class TestIsolationWarning:
                     db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
                         "db"
                     )
-                    assert db == 15, f"expected DB 15, got {db}"
-                """))
+                    assert db == __DB__, f"expected DB __DB__, got {db}"
+                """).replace("__DB__", str(_own_db())))
         result = self._run(
             [
                 sys.executable,
@@ -839,7 +848,7 @@ class TestIsolationWarning:
                 str(probe),
                 "-q",
                 "-o",
-                "popoto_test_db=15",
+                f"popoto_test_db={_own_db()}",
             ],
             repo_root,
             self._inert_env(repo_root),
@@ -848,7 +857,7 @@ class TestIsolationWarning:
         assert "PopotoIsolationWarning" not in result.stdout
 
     def test_5c_env_opt_in_produces_no_warning(self, tmp_path):
-        """Env opt-in (POPOTO_TEST_DB=15) → no warning; session is on DB 15."""
+        """Env opt-in (POPOTO_TEST_DB=<own db>) → no warning; child on that DB."""
         repo_root = self._repo_root()
         probe = tmp_path / "test_5c_probe.py"
         probe.write_text(textwrap.dedent("""
@@ -863,10 +872,10 @@ class TestIsolationWarning:
                     db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
                         "db"
                     )
-                    assert db == 15, f"expected DB 15, got {db}"
-                """))
+                    assert db == __DB__, f"expected DB __DB__, got {db}"
+                """).replace("__DB__", str(_own_db())))
         env = self._base_env(repo_root)
-        env["POPOTO_TEST_DB"] = "15"
+        env["POPOTO_TEST_DB"] = str(_own_db())
         result = self._run(
             [sys.executable, "-m", "pytest", str(probe), "-q"], repo_root, env
         )
@@ -1043,31 +1052,28 @@ class TestResolutionChain:
     """
 
     def test_env_var_beats_ini_option(self, tmp_path, pytestconfig):
-        """POPOTO_TEST_DB wins over the ini opt-in, with a literal expectation.
+        """POPOTO_TEST_DB wins over the ini opt-in.
 
-        The child gets ``-o popoto_test_db=15`` on argv *and*
-        ``POPOTO_TEST_DB=12`` in its env; it must land on 12. The expectation is
-        a hardcoded literal on purpose — resolving it through
-        ``_resolve_test_db`` would move both sides of the assertion together and
-        hide a resolver bug. This is the test that keeps the five
-        resolution-based assertions above honest.
+        The child gets ``-o popoto_test_db=<other>`` on argv *and*
+        ``POPOTO_TEST_DB=<this session's own DB>`` in its env; it must land on
+        the env value. The env value is read from the live connection, not
+        through ``_resolve_test_db``, so a resolver bug cannot move both sides of
+        the assertion together. The child flushes only the env-named DB, which
+        is this session's own (#806); ``<other>`` is never flushed unless the
+        plugin regresses and lets the ini value win.
         """
-        # An opted-in child flushes its own DB before each of its tests. If a
-        # parent suite ever runs on the child's DB, that flush would wipe the
-        # parent's live DB mid-test. Fail loudly instead of colliding silently.
-        assert _resolve_test_db(pytestconfig) != _ENV_OVERRIDE_CHILD_DB, (
-            f"Parent session is on DB {_ENV_OVERRIDE_CHILD_DB}, which this test's "
-            "child process flushes. Pick a different _ENV_OVERRIDE_CHILD_DB."
-        )
+        child_db = _own_db()
+        ini_db = 15 if child_db != 15 else 14
 
         repo_root = TestIsolationWarning._repo_root()
         probe = tmp_path / "test_env_beats_ini_probe.py"
-        probe.write_text(textwrap.dedent("""
+        probe.write_text(
+            textwrap.dedent("""
                 def test_probe(pytestconfig):
                     # Prove the ini opt-in really reached this child: without
                     # this, the test would still pass on the env var alone and
                     # the "beats" half would be hollow.
-                    assert pytestconfig.getini("popoto_test_db") == "15"
+                    assert pytestconfig.getini("popoto_test_db") == "__INI_DB__"
 
                     from popoto import redis_db
 
@@ -1077,9 +1083,12 @@ class TestResolutionChain:
                     assert db == __CHILD_DB__, (
                         f"expected env override to win with DB __CHILD_DB__, got {db}"
                     )
-            """).replace("__CHILD_DB__", str(_ENV_OVERRIDE_CHILD_DB)))
+            """)
+            .replace("__CHILD_DB__", str(child_db))
+            .replace("__INI_DB__", str(ini_db))
+        )
         env = TestIsolationWarning._base_env(repo_root)
-        env["POPOTO_TEST_DB"] = str(_ENV_OVERRIDE_CHILD_DB)
+        env["POPOTO_TEST_DB"] = str(child_db)
         env["REDIS_URL"] = f"redis://localhost:6379/{_INERT_PROBE_DB}"
         result = TestIsolationWarning._run(
             [
@@ -1089,7 +1098,7 @@ class TestResolutionChain:
                 str(probe),
                 "-q",
                 "-o",
-                "popoto_test_db=15",
+                f"popoto_test_db={ini_db}",
             ],
             repo_root,
             env,
