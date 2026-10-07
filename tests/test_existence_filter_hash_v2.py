@@ -5,30 +5,45 @@ similar tokens collapsed onto a handful of positions (400 of them set 4 of
 66 bits). v2 keeps every intermediate exact. Changing the hash in place would
 make every token already added to a live filter test absent, so the version
 is stored per filter, in the filter's own bytes, and a v1 filter keeps its
-hash until ``rebuild_indexes()`` rebuilds it.
+hash until ``rebuild_indexes(bloom_hash_version=2)`` converts it.
+
+v2 is **opt-in** (PR #801 review): pre-#775 code reads every filter with the
+v1 hash, so by default a new filter is still v1 and ``rebuild_indexes()``
+keeps each filter's version. A conversion holds a per-filter lock, fills a
+staging key named by its own token, and swaps it in with a compare-and-rename.
 
 These tests are Redis-path tests (the bit array has no Postgres counterpart;
 Postgres stores an exact token table). The cross-backend contract -- no false
 negatives, bounded false positives -- is pinned in the conformance module
 ``test_existence_filter.py``.
 
-The v1 filters here are built by the **pre-#775 scripts themselves**, copied
-verbatim below from ``src/popoto/fields/existence_filter.py`` as of
-``origin/main`` before #775. Do not edit them: they are the old code, frozen,
+The v1 filters here are built -- and read, for the mixed-version tests -- by
+the **pre-#775 scripts themselves**, copied verbatim below from
+``src/popoto/fields/existence_filter.py`` as of ``origin/main`` before #775
+(``c0fbf79e``). Do not edit them: they are the old code, frozen,
 and every compatibility assertion is only as good as their fidelity.
 """
 
 import io
 import math
+import os
 import random
+import signal
+import subprocess
+import sys
+import textwrap
+import time
 
 import pytest
 
 from src import popoto
 from src.popoto.fields import existence_filter as ef
+from src.popoto.fields.constants import Defaults
 from src.popoto.fields.existence_filter import (
     BLOOM_REBUILD_SUFFIX,
     BLOOM_V2_HEADER,
+    BloomRebuildInProgressError,
+    BloomRebuildLostLockError,
     ExistenceFilter,
     bloom_header_offset,
 )
@@ -84,6 +99,32 @@ for t = 3, #ARGV do
     for i = 0, k - 1 do
         local pos = (h1 + i * h2) % m
         redis.call('SETBIT', key, pos, 1)
+    end
+end
+return 1
+"""
+
+LEGACY_BLOOM_EXISTS_LUA = """
+local key = KEYS[1]
+local item = ARGV[1]
+local m = tonumber(ARGV[2])
+local k = tonumber(ARGV[3])
+local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
+
+local h1 = 5381
+local h2 = 16777619
+for i = 1, #item do
+    local c = string.byte(item, i)
+    h1 = ((h1 * 33) + c) % LARGE_MOD
+    h2 = ((h2 * 16777619) + c) % LARGE_MOD
+end
+h1 = h1 % m
+h2 = h2 % m
+
+for i = 0, k - 1 do
+    local pos = (h1 + i * h2) % m
+    if redis.call('GETBIT', key, pos) == 0 then
+        return 0
     end
 end
 return 1
@@ -170,7 +211,32 @@ class HashV2Doc(popoto.Model):
     name = popoto.UniqueKeyField()
     topic = popoto.Field(type=str)
     bloom = ExistenceFilter(
+        error_rate=0.05,
+        capacity=1000,
+        fingerprint_fn=lambda inst: inst.topic,
+        hash_version=2,
+    )
+
+
+class HashV1Doc(popoto.Model):
+    """HashV2Doc's parameters with the default hash version (v1)."""
+
+    name = popoto.UniqueKeyField()
+    topic = popoto.Field(type=str)
+    bloom = ExistenceFilter(
         error_rate=0.05, capacity=1000, fingerprint_fn=lambda inst: inst.topic
+    )
+
+
+class HashRace(popoto.Model):
+    """capacity 100,000 at 1%: m = 958,505 bits, k = 6. Sparse for the few
+    thousand tokens the race tests add, so a wiped filter shows up as
+    (nearly) every token missing rather than being masked by saturation."""
+
+    name = popoto.UniqueKeyField()
+    topic = popoto.Field(type=str)
+    bloom = ExistenceFilter(
+        error_rate=0.01, capacity=100_000, fingerprint_fn=lambda inst: inst.topic
     )
 
 
@@ -180,7 +246,10 @@ class HashV2Big(popoto.Model):
     name = popoto.UniqueKeyField()
     topic = popoto.Field(type=str)
     bloom = ExistenceFilter(
-        error_rate=0.05, capacity=10_000, fingerprint_fn=lambda inst: inst.topic
+        error_rate=0.05,
+        capacity=10_000,
+        fingerprint_fn=lambda inst: inst.topic,
+        hash_version=2,
     )
 
 
@@ -190,11 +259,14 @@ class HashV2Tiny(popoto.Model):
     name = popoto.UniqueKeyField()
     topic = popoto.Field(type=str)
     bloom = ExistenceFilter(
-        error_rate=0.2, capacity=20, fingerprint_fn=lambda inst: inst.topic
+        error_rate=0.2,
+        capacity=20,
+        fingerprint_fn=lambda inst: inst.topic,
+        hash_version=2,
     )
 
 
-MODELS = (HashV2Doc, HashV2Big, HashV2Tiny)
+MODELS = (HashV2Doc, HashV1Doc, HashRace, HashV2Big, HashV2Tiny)
 
 
 def _wipe():
@@ -224,13 +296,45 @@ def similar_tokens(n: int, start: int = 0) -> list:
 def legacy_writes(monkeypatch):
     """Make ``on_save`` run the pre-#775 add scripts: the old code's writes.
 
-    The legacy scripts read only ``KEYS[1]``, so the staging key the current
+    The legacy scripts read only ``KEYS[1]``, so the rebuild lock the current
     ``on_save`` passes as ``KEYS[2]`` is ignored, exactly as the old
-    ``numkeys=1`` call did. Every bit they set is the old code's.
+    ``numkeys=1`` call did -- in particular they never dual-write a rebuild's
+    staging key. Every bit they set is the old code's. Patched for both
+    create versions: old code had no notion of one.
     """
-    monkeypatch.setattr(ef, "BLOOM_ADD_LUA", LEGACY_BLOOM_ADD_LUA)
-    monkeypatch.setattr(ef, "BLOOM_ADD_MULTI_LUA", LEGACY_BLOOM_ADD_MULTI_LUA)
+    for name in ("BLOOM_ADD_LUA", "BLOOM_ADD_V2_LUA"):
+        monkeypatch.setattr(ef, name, LEGACY_BLOOM_ADD_LUA)
+    for name in ("BLOOM_ADD_MULTI_LUA", "BLOOM_ADD_MULTI_V2_LUA"):
+        monkeypatch.setattr(ef, name, LEGACY_BLOOM_ADD_MULTI_LUA)
     return monkeypatch
+
+
+@pytest.fixture
+def legacy_reads(monkeypatch):
+    """Make ``might_exist``/``might_exist_batch`` run the pre-#775 scripts.
+
+    Both are called with ``numkeys=1`` and the same arguments the old code
+    passed, so a read through them *is* the old code's read."""
+    monkeypatch.setattr(ef, "BLOOM_EXISTS_LUA", LEGACY_BLOOM_EXISTS_LUA)
+    monkeypatch.setattr(ef, "BLOOM_EXISTS_BATCH_LUA", LEGACY_BLOOM_EXISTS_BATCH_LUA)
+    return monkeypatch
+
+
+def missing(model, tokens) -> int:
+    """How many of ``tokens`` the filter calls definitely absent -- false
+    negatives, when every token was added. Checked both ways a caller reads."""
+    batch = model.bloom.might_exist_batch(model, tokens)
+    by_batch = sum(1 for v in batch.values() if not v)
+    by_one = sum(1 for t in tokens[::50] if not model.bloom.might_exist(model, t))
+    assert by_one <= by_batch
+    return by_batch
+
+
+def rebuild_keys(model) -> list:
+    """The lock and every staging key of the model's filter."""
+    lock = bloom_key(model) + BLOOM_REBUILD_SUFFIX
+    keys = [k.decode() for k in get_REDIS_DB().scan_iter(match=lock + "*")]
+    return sorted(keys)
 
 
 def save_all(model, tokens, prefix="r"):
@@ -342,7 +446,7 @@ class TestSimilarTokens:
         for start in range(0, len(tokens), 500):
             run_lua(
                 client,
-                ef.BLOOM_ADD_MULTI_LUA,
+                ef.BLOOM_ADD_MULTI_V2_LUA,
                 2,
                 key,
                 key + BLOOM_REBUILD_SUFFIX,
@@ -441,9 +545,10 @@ class TestLegacyFilterCompatibility:
     def test_rebuild_converts_v1_to_v2(self, legacy_writes):
         tokens = similar_tokens(400)
         self._build_v1(legacy_writes, tokens)
-        assert HashV2Doc.rebuild_indexes() == 400
+        assert HashV2Doc.rebuild_indexes(bloom_hash_version=2) == 400
         assert HashV2Doc.bloom.hash_version(HashV2Doc) == 2
-        assert not get_REDIS_DB().exists(bloom_key(HashV2Doc) + BLOOM_REBUILD_SUFFIX)
+        assert rebuild_keys(HashV2Doc) == []  # lock released, staging renamed
+        assert get_REDIS_DB().pttl(bloom_key(HashV2Doc)) == -1  # no TTL carried
         assert HashV2Doc.check_indexes()["legacy_hash"] == []
         assert all(HashV2Doc.bloom.might_exist_batch(HashV2Doc, tokens).values())
         m, k = HashV2Doc.bloom._compute_params()
@@ -454,23 +559,48 @@ class TestLegacyFilterCompatibility:
         HashV2Doc(name="after", topic="postrebuild").save()
         assert HashV2Doc.bloom.might_exist(HashV2Doc, "postrebuild")
 
-    def test_rebuild_leaves_v2_filter_alone(self):
+    @pytest.mark.parametrize("version", [None, 2])
+    def test_rebuild_leaves_v2_filter_alone(self, version):
         save_all(HashV2Doc, similar_tokens(10))
         before = get_REDIS_DB().get(bloom_key(HashV2Doc))
-        HashV2Doc.rebuild_indexes()
+        HashV2Doc.rebuild_indexes(bloom_hash_version=version)
         assert get_REDIS_DB().get(bloom_key(HashV2Doc)) == before
+        assert rebuild_keys(HashV2Doc) == []
+
+    def test_default_rebuild_keeps_v1_in_place(self, legacy_writes):
+        """Without the opt-in a rebuild is main's: re-save into the live v1
+        filter. No lock, no staging key, and the bytes are exactly what the
+        old code's own rebuild would leave."""
+        tokens = similar_tokens(200)
+        self._build_v1(legacy_writes, tokens)
+        before = get_REDIS_DB().get(bloom_key(HashV2Doc))
+        assert HashV2Doc.rebuild_indexes() == 200
+        assert HashV2Doc.bloom.hash_version(HashV2Doc) == 1
+        assert get_REDIS_DB().get(bloom_key(HashV2Doc)) == before
+        assert rebuild_keys(HashV2Doc) == []
+
+    @pytest.mark.parametrize("bad", [0, 1, 3, "2"])
+    def test_rebuild_rejects_other_versions(self, bad):
+        with pytest.raises(ValueError, match="bloom_hash_version"):
+            HashV2Doc.rebuild_indexes(bloom_hash_version=bad)
 
     def test_save_racing_rebuild_is_not_lost(self, legacy_writes):
-        """A save that lands while the staging key is open dual-writes it, so
+        """A save that lands while the staging key is open dual-writes it --
+        found through the lock's value, inside the save's own script -- so
         the swap does not drop the racing record's tokens."""
         self._build_v1(legacy_writes, similar_tokens(30))
-        staging = HashV2Doc.bloom._begin_v2_rebuild(HashV2Doc)
-        assert staging == bloom_key(HashV2Doc) + BLOOM_REBUILD_SUFFIX
+        token = HashV2Doc.bloom._begin_v2_rebuild(HashV2Doc)
+        lock = bloom_key(HashV2Doc) + BLOOM_REBUILD_SUFFIX
+        assert get_REDIS_DB().get(lock) == token.encode()
+        assert rebuild_keys(HashV2Doc) == [lock, f"{lock}:{token}"]
         HashV2Doc(name="racer", topic="racingtoken").save()
+        m, k = HashV2Doc.bloom._compute_params()
+        staged = set_positions(get_REDIS_DB().get(f"{lock}:{token}"), m)
+        assert set(v2_positions("racingtoken", m, k)) <= staged
         # Live filter is still v1 and already answers for it.
         assert HashV2Doc.bloom.hash_version(HashV2Doc) == 1
         assert HashV2Doc.bloom.might_exist(HashV2Doc, "racingtoken")
-        HashV2Doc.bloom._finish_v2_rebuild(HashV2Doc, staging)
+        HashV2Doc.bloom._finish_v2_rebuild(HashV2Doc, token)
         assert HashV2Doc.bloom.hash_version(HashV2Doc) == 2
         assert HashV2Doc.bloom.might_exist(HashV2Doc, "racingtoken")
 
@@ -480,14 +610,14 @@ class TestLegacyFilterCompatibility:
         tokens = similar_tokens(30)
         self._build_v1(legacy_writes, tokens)
 
-        def boom(cls, batch_size):
+        def boom(cls, batch_size, tick=None):
             raise RuntimeError("interrupted")
 
         monkeypatch.setattr(HashV2Doc, "_rebuild_from_records", classmethod(boom))
         with pytest.raises(RuntimeError):
-            HashV2Doc.rebuild_indexes()
+            HashV2Doc.rebuild_indexes(bloom_hash_version=2)
         assert HashV2Doc.bloom.hash_version(HashV2Doc) == 1
-        assert not get_REDIS_DB().exists(bloom_key(HashV2Doc) + BLOOM_REBUILD_SUFFIX)
+        assert rebuild_keys(HashV2Doc) == []
         assert all(HashV2Doc.bloom.might_exist_batch(HashV2Doc, tokens).values())
 
 
@@ -502,7 +632,7 @@ class TestVersionPortability:
         tokens = similar_tokens(100)
         with monkeypatch.context() as patch:
             if legacy:
-                patch.setattr(ef, "BLOOM_ADD_MULTI_LUA", LEGACY_BLOOM_ADD_MULTI_LUA)
+                _patch_old_writes(patch)
             save_all(HashV2Doc, tokens)
         version = HashV2Doc.bloom.hash_version(HashV2Doc)
         assert version == (1 if legacy else 2)
@@ -529,6 +659,15 @@ class TestVersionPortability:
         assert HashV2Doc.bloom.hash_version(HashV2Doc) == 2
         assert all(HashV2Doc.bloom.might_exist_batch(HashV2Doc, tokens).values())
 
+    def test_export_import_default_destination_builds_v1(self):
+        tokens = similar_tokens(30)
+        save_all(HashV1Doc, tokens)
+        data = HashV1Doc.export_records().data
+        _wipe()
+        HashV1Doc.import_records(io.StringIO(data))
+        assert HashV1Doc.bloom.hash_version(HashV1Doc) == 1
+        assert missing(HashV1Doc, tokens) == 0
+
     def test_import_into_existing_v1_filter_keeps_v1(self, legacy_writes):
         tokens = similar_tokens(40)
         save_all(HashV2Doc, tokens)
@@ -552,6 +691,431 @@ class TestVersionPortability:
         for key in (
             "$EF:HashV2Doc:bloom",
             "$EF:HashV2Doc:bloom" + BLOOM_REBUILD_SUFFIX,
+            "$EF:HashV2Doc:bloom" + BLOOM_REBUILD_SUFFIX + ":0123abcd",
         ):
             assert _family_of(key, names, {}) == ("HashV2Doc", "$EF")
         assert "$EF" in FAMILY_DISPOSITIONS
+
+
+# ---------------------------------------------------------------------------
+# Default mode: v2 is opt-in (PR #801 review, B2)
+# ---------------------------------------------------------------------------
+
+
+def _patch_old_writes(mp):
+    for name in ("BLOOM_ADD_LUA", "BLOOM_ADD_V2_LUA"):
+        mp.setattr(ef, name, LEGACY_BLOOM_ADD_LUA)
+    for name in ("BLOOM_ADD_MULTI_LUA", "BLOOM_ADD_MULTI_V2_LUA"):
+        mp.setattr(ef, name, LEGACY_BLOOM_ADD_MULTI_LUA)
+
+
+class old_code:
+    """Run the block as a pre-#775 process would: the old scripts, verbatim,
+    for every bloom read and write."""
+
+    def __enter__(self):
+        self._mp = pytest.MonkeyPatch()
+        _patch_old_writes(self._mp)
+        self._mp.setattr(ef, "BLOOM_EXISTS_LUA", LEGACY_BLOOM_EXISTS_LUA)
+        self._mp.setattr(ef, "BLOOM_EXISTS_BATCH_LUA", LEGACY_BLOOM_EXISTS_BATCH_LUA)
+        return self
+
+    def __exit__(self, *exc):
+        self._mp.undo()
+        return False
+
+
+def toks(prefix: str, n: int) -> list:
+    return [f"{prefix}{i:06d}" for i in range(n)]
+
+
+def legacy_reference(tokens, model) -> bytes:
+    """The bytes the old code alone would leave after adding ``tokens``."""
+    m, k = model.bloom._compute_params()
+    client = get_REDIS_DB()
+    ref = f"$EF:{model.__name__}:reference"
+    client.delete(ref)
+    for t in tokens:
+        run_lua(client, LEGACY_BLOOM_ADD_MULTI_LUA, 1, ref, m, k, t)
+    raw = client.get(ref)
+    client.delete(ref)
+    return raw
+
+
+class TestDefaultIsV1:
+    def test_new_filter_is_v1_and_byte_identical_to_old_code(self):
+        tokens = similar_tokens(100)
+        save_all(HashV1Doc, tokens)
+        assert HashV1Doc.bloom.hash_version(HashV1Doc) == 1
+        assert get_REDIS_DB().get(bloom_key(HashV1Doc)) == legacy_reference(
+            tokens, HashV1Doc
+        )
+        assert HashV1Doc.check_indexes()["legacy_hash"] == ["bloom"]
+
+    @pytest.mark.parametrize("bad", [0, 3, "2", None])
+    def test_field_rejects_unknown_hash_version(self, bad):
+        with pytest.raises(ValueError, match="hash_version"):
+            ExistenceFilter(fingerprint_fn=lambda inst: "x", hash_version=bad)
+
+    def test_existing_v2_filter_is_written_as_v2_by_a_default_field(self):
+        """A filter some opted-in process (or a v2 rebuild) made v2 stays v2:
+        a default-mode field reads and writes it with v2, never v1."""
+        m, k = HashV1Doc.bloom._compute_params()
+        key = bloom_key(HashV1Doc)
+        lock = key + BLOOM_REBUILD_SUFFIX
+        first = toks("pre", 50)
+        run_lua(get_REDIS_DB(), ef.BLOOM_ADD_MULTI_V2_LUA, 2, key, lock, m, k, *first)
+        assert HashV1Doc.bloom.hash_version(HashV1Doc) == 2
+        later = toks("post", 50)
+        save_all(HashV1Doc, later)
+        assert HashV1Doc.bloom.hash_version(HashV1Doc) == 2
+        want = set().union(*(v2_positions(t, m, k) for t in first + later))
+        assert set_positions(get_REDIS_DB().get(key), m) == want
+        assert missing(HashV1Doc, first + later) == 0
+
+    def test_save_never_creates_a_staging_key(self):
+        """A lock whose staging key is gone (or never made) is not written
+        through: an add creating a markerless staging key is what would let
+        a swap install it as an empty "v1" filter."""
+        lock = bloom_key(HashV1Doc) + BLOOM_REBUILD_SUFFIX
+        get_REDIS_DB().set(lock, "deadbeef")
+        save_all(HashV1Doc, toks("x", 5))
+        assert not get_REDIS_DB().exists(lock + ":deadbeef")
+
+
+class TestMixedVersionsDefaultMode:
+    """Pre-#775 and current processes sharing one store, the current code in
+    default mode: 0 tokens missing in every direction (the review's table,
+    rows that were unsafe because new code created or rebuilt as v2)."""
+
+    def test_old_creates_new_writes_both_read(self):
+        with old_code():
+            save_all(HashRace, toks("alpha", 300), prefix="a")
+        save_all(HashRace, toks("beta", 300), prefix="b")
+        assert HashRace.bloom.hash_version(HashRace) == 1
+        assert missing(HashRace, toks("alpha", 300) + toks("beta", 300)) == 0
+        with old_code():
+            assert missing(HashRace, toks("alpha", 300) + toks("beta", 300)) == 0
+
+    def test_new_creates_old_writes_both_read(self):
+        save_all(HashRace, toks("gamma", 300), prefix="g")
+        assert HashRace.bloom.hash_version(HashRace) == 1
+        with old_code():
+            assert missing(HashRace, toks("gamma", 300)) == 0
+            save_all(HashRace, toks("delta", 300), prefix="d")
+        assert missing(HashRace, toks("gamma", 300) + toks("delta", 300)) == 0
+        assert get_REDIS_DB().get(bloom_key(HashRace)) == legacy_reference(
+            toks("gamma", 300) + toks("delta", 300), HashRace
+        )
+
+    def test_new_default_rebuild_then_old_writes_both_read(self):
+        with old_code():
+            save_all(HashRace, toks("eps", 300), prefix="e")
+        assert HashRace.rebuild_indexes() == 300
+        assert HashRace.bloom.hash_version(HashRace) == 1
+        with old_code():
+            save_all(HashRace, toks("zeta", 300), prefix="z")
+            assert missing(HashRace, toks("eps", 300) + toks("zeta", 300)) == 0
+        assert missing(HashRace, toks("eps", 300) + toks("zeta", 300)) == 0
+
+    def test_old_save_racing_new_default_rebuild(self):
+        """The review's 4b lost 170/2000 at a v2 swap. A default rebuild has
+        no swap: it re-saves into the live filter, so an old-code save in the
+        middle of it lands where every reader looks."""
+        with old_code():
+            save_all(HashRace, toks("base", 400), prefix="s")
+        calls = [0]
+
+        def tick():
+            calls[0] += 1
+            if calls[0] == 200:
+                with old_code():
+                    save_all(HashRace, toks("orace", 200), prefix="o")
+
+        HashRace._rebuild_indexes_redis(100, tick)
+        assert calls[0] >= 200
+        assert HashRace.bloom.hash_version(HashRace) == 1
+        assert missing(HashRace, toks("base", 400) + toks("orace", 200)) == 0
+        with old_code():
+            assert missing(HashRace, toks("base", 400) + toks("orace", 200)) == 0
+
+    def test_why_v2_is_opt_in(self):
+        """The hazard the rolling-upgrade rule exists for, pinned so the docs
+        cannot drift from it: old code reading a v2 filter misses the v2
+        tokens, and new code misses what old code writes into a v2 filter."""
+        save_all(HashRace, toks("new", 300), prefix="n")
+        assert HashRace.rebuild_indexes(bloom_hash_version=2) == 300
+        with old_code():
+            assert missing(HashRace, toks("new", 300)) > 250
+            save_all(HashRace, toks("old", 300), prefix="o")
+        assert missing(HashRace, toks("old", 300)) > 250
+
+
+# ---------------------------------------------------------------------------
+# One v2 rebuild at a time (PR #801 review, B1)
+# ---------------------------------------------------------------------------
+
+N_RACE = 1000
+
+
+@pytest.fixture
+def seeded():
+    """A v1 filter of N_RACE records, built by the old code."""
+    with old_code():
+        save_all(HashRace, toks("base", N_RACE), prefix="s")
+    assert HashRace.bloom.hash_version(HashRace) == 1
+    return toks("base", N_RACE)
+
+
+def class_set_size(model) -> int:
+    return get_REDIS_DB().scard(model._meta.db_class_set_key.redis_key)
+
+
+def lapse(key: str) -> None:
+    """Let ``key`` expire, as a dead rebuild's lock does."""
+    get_REDIS_DB().pexpire(key, 1)
+    deadline = time.monotonic() + 2
+    while get_REDIS_DB().exists(key) and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert not get_REDIS_DB().exists(key)
+
+
+LOCK = bloom_key(HashRace) + BLOOM_REBUILD_SUFFIX
+
+
+class TestRebuildLock:
+    def test_second_rebuild_refused_while_first_completes(self, seeded):
+        """The review's race2: R2 starts while R1's staging key is full.
+        R2 is refused before it deletes anything; 0 missing at every step."""
+        f = HashRace.bloom
+        t1 = f._begin_v2_rebuild(HashRace)
+        HashRace._rebuild_from_records(1000)  # R1, step 2 done
+        assert missing(HashRace, seeded) == 0
+        before = class_set_size(HashRace)
+        with pytest.raises(BloomRebuildInProgressError) as info:
+            HashRace.rebuild_indexes(bloom_hash_version=2)
+        assert info.value.holder == t1 and info.value.lock_key == LOCK
+        assert 0 < info.value.expires_in_ms <= Defaults.BLOOM_REBUILD_LOCK_TTL_MS
+        assert class_set_size(HashRace) == before == N_RACE  # nothing deleted
+        assert missing(HashRace, seeded) == 0
+        with pytest.raises(BloomRebuildInProgressError):
+            f._begin_v2_rebuild(HashRace)
+        assert missing(HashRace, seeded) == 0
+        f._finish_v2_rebuild(HashRace, t1)  # R1's swap
+        assert f.hash_version(HashRace) == 2
+        assert missing(HashRace, seeded) == 0
+        assert rebuild_keys(HashRace) == []
+        # R2, retried, finds nothing to convert and re-saves in place.
+        assert HashRace.rebuild_indexes(bloom_hash_version=2) == N_RACE
+        assert missing(HashRace, seeded) == 0
+
+    def test_default_rebuild_during_conversion_dual_writes(self, seeded):
+        """A default rebuild is not refused (it never swaps); its re-saves
+        land in the converter's staging key too."""
+        f = HashRace.bloom
+        t1 = f._begin_v2_rebuild(HashRace)
+        save_all(HashRace, toks("mid", 100), prefix="m")
+        assert HashRace.rebuild_indexes() == N_RACE + 100
+        f._finish_v2_rebuild(HashRace, t1)
+        assert missing(HashRace, seeded + toks("mid", 100)) == 0
+
+    def test_dead_rebuild_loses_nothing_and_is_cleaned(self, seeded):
+        """The review's race3: a rebuild dies halfway. The live filter was
+        never touched; its lock lapses, check_indexes() reports its staging
+        key, no save writes it, and the next rebuild deletes it."""
+        f = HashRace.bloom
+        t1 = f._begin_v2_rebuild(HashRace)
+        save_all(HashRace, toks("base", N_RACE // 2), prefix="s")  # R1, half
+        # R1 dies here: no finish, no abort.
+        assert missing(HashRace, seeded) == 0
+        assert f.hash_version(HashRace) == 1
+        with pytest.raises(BloomRebuildInProgressError):
+            HashRace.rebuild_indexes(bloom_hash_version=2)
+        assert HashRace.check_indexes()["stale_bloom_staging"] == []  # still live
+        lapse(LOCK)
+        staging = f"{LOCK}:{t1}"
+        report = HashRace.check_indexes()
+        assert report["stale_bloom_staging"] == [staging]
+        assert report["total"] == 0
+        frozen = get_REDIS_DB().get(staging)
+        save_all(HashRace, toks("after", 50), prefix="a")
+        assert get_REDIS_DB().get(staging) == frozen  # nobody writes it
+        assert missing(HashRace, seeded + toks("after", 50)) == 0
+        assert HashRace.rebuild_indexes(bloom_hash_version=2) == N_RACE + 50
+        assert f.hash_version(HashRace) == 2
+        assert rebuild_keys(HashRace) == []
+        assert HashRace.check_indexes()["stale_bloom_staging"] == []
+        assert missing(HashRace, seeded + toks("after", 50)) == 0
+
+    def test_lapsed_lock_refuses_the_swap(self, seeded):
+        """R1 stalls past its lock; R2 takes over. R1's swap is refused (the
+        compare-and-rename sees R2's token), the live filter is unchanged,
+        R2's staging key is not disturbed, and R2's swap completes."""
+        f = HashRace.bloom
+        t1 = f._begin_v2_rebuild(HashRace)
+        HashRace._rebuild_from_records(1000)
+        lapse(LOCK)
+        t2 = f._begin_v2_rebuild(HashRace)
+        assert t2 != t1
+        assert rebuild_keys(HashRace) == [LOCK, f"{LOCK}:{t2}"]  # t1's dropped
+        assert f._renew_v2_rebuild(HashRace, t1) is False
+        assert f._renew_v2_rebuild(HashRace, t2) is True
+        with pytest.raises(BloomRebuildLostLockError):
+            f._finish_v2_rebuild(HashRace, t1)
+        assert f.hash_version(HashRace) == 1
+        assert missing(HashRace, seeded) == 0
+        assert get_REDIS_DB().get(LOCK) == t2.encode()
+        HashRace._rebuild_from_records(1000)
+        f._finish_v2_rebuild(HashRace, t2)
+        assert f.hash_version(HashRace) == 2
+        assert missing(HashRace, seeded) == 0
+        assert rebuild_keys(HashRace) == []
+
+    def test_swap_refuses_a_staging_key_without_marker(self, seeded):
+        f = HashRace.bloom
+        t1 = f._begin_v2_rebuild(HashRace)
+        staging = f"{LOCK}:{t1}"
+        get_REDIS_DB().delete(staging)
+        get_REDIS_DB().setbit(staging, 7, 1)
+        with pytest.raises(BloomRebuildLostLockError):
+            f._finish_v2_rebuild(HashRace, t1)
+        assert f.hash_version(HashRace) == 1
+        assert missing(HashRace, seeded) == 0
+        assert rebuild_keys(HashRace) == []
+
+    def test_stalled_rebuild_raises_after_rebuilding_other_indexes(
+        self, seeded, monkeypatch
+    ):
+        monkeypatch.setattr(Defaults, "BLOOM_REBUILD_LOCK_TTL_MS", 150)
+        original = HashRace._rebuild_from_records
+
+        def stalled(cls, batch_size, tick=None):
+            time.sleep(0.4)  # no renewal: the lock lapses
+            return original(batch_size)
+
+        monkeypatch.setattr(HashRace, "_rebuild_from_records", classmethod(stalled))
+        with pytest.raises(BloomRebuildLostLockError):
+            HashRace.rebuild_indexes(bloom_hash_version=2)
+        assert class_set_size(HashRace) == N_RACE  # the rebuild itself ran
+        assert HashRace.bloom.hash_version(HashRace) == 1
+        assert missing(HashRace, seeded) == 0
+        assert rebuild_keys(HashRace) == []
+
+    def test_renewal_keeps_a_running_rebuild_alive(self, seeded, monkeypatch):
+        monkeypatch.setattr(Defaults, "BLOOM_REBUILD_LOCK_TTL_MS", 300)
+        f = HashRace.bloom
+        t1 = f._begin_v2_rebuild(HashRace)
+        tick = HashRace._bloom_renewer([(f, t1)])
+        for _ in range(8):  # 0.8 s, well past the 0.3 s TTL
+            time.sleep(0.1)
+            tick()
+        assert get_REDIS_DB().get(LOCK) == t1.encode()
+        assert get_REDIS_DB().exists(f"{LOCK}:{t1}")
+        f._finish_v2_rebuild(HashRace, t1)
+        assert get_REDIS_DB().pttl(bloom_key(HashRace)) == -1
+
+    def test_missing_filter_is_created_v2_by_conversion(self):
+        save_all(HashRace, toks("fresh", 100), prefix="f")
+        get_REDIS_DB().delete(bloom_key(HashRace))
+        assert HashRace.bloom.hash_version(HashRace) is None
+        assert HashRace.rebuild_indexes(bloom_hash_version=2) == 100
+        assert HashRace.bloom.hash_version(HashRace) == 2
+        assert missing(HashRace, toks("fresh", 100)) == 0
+
+    def test_async_rebuild_converts(self, seeded):
+        import asyncio
+
+        assert asyncio.run(HashRace.async_rebuild_indexes()) == N_RACE
+        assert HashRace.bloom.hash_version(HashRace) == 1
+        got = asyncio.run(HashRace.async_rebuild_indexes(bloom_hash_version=2))
+        assert got == N_RACE
+        assert HashRace.bloom.hash_version(HashRace) == 2
+        assert missing(HashRace, seeded) == 0
+
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+_KILLED_REBUILD = textwrap.dedent("""
+    import sys, time
+    sys.path.insert(0, {repo!r})
+    from src import popoto
+    from src.popoto.fields.constants import Defaults
+    from src.popoto.fields.existence_filter import ExistenceFilter
+
+    assert popoto.get_redis().connection_pool.connection_kwargs.get("db") == {db}
+
+    class HashRace(popoto.Model):
+        name = popoto.UniqueKeyField()
+        topic = popoto.Field(type=str)
+        bloom = ExistenceFilter(
+            error_rate=0.01, capacity=100_000, fingerprint_fn=lambda i: i.topic
+        )
+
+    Defaults.BLOOM_REBUILD_LOCK_TTL_MS = 1500
+    renewer = HashRace._bloom_renewer.__func__
+
+    def slow(cls, blooms):
+        tick = renewer(cls, blooms)
+
+        def t():
+            time.sleep(0.005)
+            if tick is not None:
+                tick()
+
+        return t
+
+    HashRace._bloom_renewer = classmethod(slow)
+    # Small batches, so the staging key fills while the process is alive.
+    HashRace.rebuild_indexes(batch_size=50, bloom_hash_version=2)
+    print("FINISHED")
+    """)
+
+
+class TestRebuildSigkill:
+    def test_sigkill_mid_rebuild_loses_nothing(self, seeded):
+        """A real process converting the filter is SIGKILLed mid-scan, with
+        saves landing around it. 0 tokens missing before, during and after;
+        its lock lapses and the next conversion completes."""
+        db = get_REDIS_DB().connection_pool.connection_kwargs.get("db")
+        assert db not in (None, 0)
+        env = dict(os.environ, REDIS_URL=f"redis://localhost:6379/{db}")
+        proc = subprocess.Popen(
+            [sys.executable, "-c", _KILLED_REBUILD.format(repo=_REPO, db=db)],
+            cwd=_REPO,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            deadline = time.monotonic() + 30
+            staged = 0
+            while time.monotonic() < deadline and proc.poll() is None:
+                holder = get_REDIS_DB().get(LOCK)
+                if holder:
+                    staged = get_REDIS_DB().bitcount(f"{LOCK}:{holder.decode()}")
+                    if staged > 200:
+                        break
+                time.sleep(0.01)
+            assert proc.poll() is None, proc.communicate()
+            assert staged > 200
+            save_all(HashRace, toks("race", 100), prefix="r")
+            assert missing(HashRace, seeded + toks("race", 100)) == 0
+            time.sleep(0.2)
+        finally:
+            proc.send_signal(signal.SIGKILL)
+            out, err = proc.communicate()
+        assert b"FINISHED" not in out, err
+        assert HashRace.bloom.hash_version(HashRace) == 1
+        assert missing(HashRace, seeded + toks("race", 100)) == 0
+        assert get_REDIS_DB().exists(LOCK)  # held until it lapses
+        with pytest.raises(BloomRebuildInProgressError):
+            HashRace.rebuild_indexes(bloom_hash_version=2)
+        deadline = time.monotonic() + 5
+        while get_REDIS_DB().exists(LOCK) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not get_REDIS_DB().exists(LOCK)
+        save_all(HashRace, toks("post", 50), prefix="p")
+        assert HashRace.rebuild_indexes(bloom_hash_version=2) == N_RACE + 150
+        assert HashRace.bloom.hash_version(HashRace) == 2
+        assert rebuild_keys(HashRace) == []
+        assert missing(HashRace, seeded + toks("race", 100) + toks("post", 50)) == 0

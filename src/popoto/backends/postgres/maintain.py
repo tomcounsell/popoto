@@ -564,6 +564,7 @@ class MaintainOpsMixin:
             "invalid_indexes": len(self._invalid_indexes(ts, spec)),
             # Redis's bloom hash versions (#775); an exact token table has none.
             "legacy_hash": [],
+            "stale_bloom_staging": [],
         }
         result["total"] = (
             result["partial_writes"]

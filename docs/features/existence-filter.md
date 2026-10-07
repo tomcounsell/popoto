@@ -20,6 +20,7 @@ Both operate entirely in Redis via Lua scripts, requiring no client-side state.
 | `capacity` | `int` | `100_000` | Expected number of unique items |
 | `error_rate` | `float` | `0.01` | Target false positive rate |
 | `fingerprint_fn` | `callable` | `None` | Takes a model instance, returns a fingerprint string |
+| `hash_version` | `int` | `1` | Hash a *new* filter is created with: `1`, or `2` to opt in (see [Hash versions](#hash-versions) and the rolling-upgrade rule first) |
 
 ### Usage
 
@@ -82,42 +83,103 @@ For example, saving a model with fingerprint `"kubernetes deployment guide"` add
 
 ### Hash versions
 
-Filters built before #775 used a hash whose intermediate products passed
-2^53, where Lua's doubles drop low-order bits. Similar tokens (shared
-prefixes, sequential ids) collapsed onto a few positions: 400 such tokens set
-64 of the ~1,411 bits they should in a 1,000-capacity filter, and 4 of 66 in
-the issue's 20-capacity one. The filter still never gave a false negative, but
-for tokens shaped like the ones it held it answered "maybe" far more often
+!!! warning "Rolling-upgrade rule: upgrade every process before opting in to v2"
+    Code from before #775 reads and writes **every** filter with the v1 hash.
+    Pointed at a v2 filter, it gives false negatives: its reads miss the
+    tokens stored with v2, and the tokens it adds land on positions v2 reads
+    never check. So v2 is **opt-in**, and nothing in this version creates a
+    v2 filter unless asked to. Before passing `hash_version=2` or calling
+    `rebuild_indexes(bloom_hash_version=2)`, upgrade **every** process that
+    reads or writes the model -- workers, cron jobs, notebooks -- to a popoto
+    with #775. Until then, leave the defaults alone: with them, old and new
+    processes share v1 filters with no false negatives in either direction.
+
+Filters built before #775 use a hash whose intermediate products pass 2^53,
+where Lua's doubles drop low-order bits. Similar tokens (shared prefixes,
+sequential ids) collapse onto a few positions: 400 such tokens set 64 of the
+~1,411 bits they should in a 1,000-capacity filter, and 4 of 66 in the
+issue's 20-capacity one. The filter still never gives a false negative, but
+for tokens shaped like the ones it holds it answers "maybe" far more often
 than `error_rate`.
 
-Changing the hash in place would have made every token already in a live
-filter test absent, so the hash is versioned per filter:
+Changing the hash in place would make every token already in a live filter
+test absent, so the hash is versioned per filter:
 
-- **v2** (every filter created since #775) marks itself with four bytes,
-  `\x89EF\x02`, stored right after its bit array at byte `ceil(m / 8)`. The
-  marker is part of the filter's own string, so it moves with the bits through
-  `DUMP`/`RESTORE`, `RENAME`, replication and RDB/AOF.
-- **v1** (a filter built before #775) has no marker and needs none: its hash
-  only produces positions below `m`, so its string never reaches that offset.
-  It keeps being read *and written* with the v1 hash, so every token it holds
-  still tests present, and new saves into it stay v1 until it is rebuilt.
+- **v1** has no marker and needs none: its hash only produces positions below
+  `m`, so its string never reaches the marker's offset. It is what every
+  filter built before #775 is, and still what a new filter is by default. A
+  v1 filter is read *and written* with the v1 hash, byte for byte as before.
+- **v2** marks itself with four bytes, `\x89EF\x02`, stored right after its
+  bit array at byte `ceil(m / 8)`. The marker is part of the filter's own
+  string, so it moves with the bits through `DUMP`/`RESTORE`, `RENAME`,
+  replication and RDB/AOF. A v2 filter is always read and written as v2,
+  whatever the field's `hash_version` says.
 
-`Model.check_indexes()` lists v1 filters under `legacy_hash`
-(informational; not counted in `total`), and `field.hash_version(Model)`
-returns `2`, `1`, or `None` for a filter that does not exist yet.
+`Model.check_indexes()` lists v1 filters under `legacy_hash` (informational;
+not counted in `total`), and `field.hash_version(Model)` returns `2`, `1`, or
+`None` for a filter that does not exist yet.
 
-`Model.rebuild_indexes()` rebuilds a v1 filter as v2 from the model's records.
-It fills a staging key, `$EF:{ClassName}:{field_name}:rebuild`, which every
-save also writes while it exists (so a save racing the rebuild is not lost),
-then swaps it over the v1 filter with one `RENAME`. Readers see the complete v1
-filter until that command and the complete v2 filter after it. If the rebuild
-raises, the staging key is deleted and the v1 filter is untouched. Tokens from
-deleted records drop out, as they would in any rebuild from records. A v2
-filter is left in place.
+**Opting in**, once the rule above holds:
 
-Export/import never carries the bits, so importing into a destination with
-no filter yet builds a v2 one. Postgres keeps an exact token table and has no
-hash to version.
+- `ExistenceFilter(..., hash_version=2)` makes a *missing* filter v2 when the
+  first save creates it. It does not touch an existing filter.
+- `Model.rebuild_indexes(bloom_hash_version=2)` (or
+  `await Model.async_rebuild_indexes(bloom_hash_version=2)`) converts the
+  model's v1 filters, and missing ones, to v2 from its records. Without the
+  argument, `rebuild_indexes()` keeps each filter's version and re-saves
+  into it in place, exactly as before #775. A v2 filter is never converted
+  back.
+
+**How a conversion stays free of false negatives:**
+
+1. It takes the filter's lock, `$EF:{ClassName}:{field_name}:rebuild`, with
+   `SET NX PX` and a random token, and in the same Lua step opens an empty
+   v2 staging key named by that token,
+   `$EF:{ClassName}:{field_name}:rebuild:{token}`. This happens before any
+   index is deleted.
+2. It re-saves every record. Every save -- the rebuild's and any other
+   process's -- reads the lock inside its own add script and also writes the
+   token's staging key, so a save racing the rebuild is not lost. The live
+   filter keeps answering in full the whole time.
+3. It swaps the staging key over the live filter with one Lua
+   compare-and-rename, which happens only if the lock still holds this
+   rebuild's token and the staging key carries the v2 marker. It clears the
+   expiry the rename would otherwise carry over, then releases the lock.
+   Readers see the complete old filter until that step and the complete v2
+   filter after it.
+
+**One conversion of a filter runs at a time.** A second one raises
+`BloomRebuildInProgressError` before it has changed anything, so no index is
+deleted and no filter is touched; retry it once the first one finishes.
+(Waiting was the alternative. A bounded wait short enough to be useful cannot
+cover a full rebuild of a large store, and by the time the first rebuild
+finishes, the conversion the second one asked for is already done.) A plain
+`rebuild_indexes()` is never refused: it does no swap, and its re-saves also
+land in the running conversion's staging key.
+
+**Crashes.** The lock and staging key expire after
+`Defaults.BLOOM_REBUILD_LOCK_TTL_MS` (60 s), and a running conversion renews
+both every third of that. If a conversion raises, it deletes its staging key
+and releases the lock. If it dies (for example, SIGKILL), the live filter
+was never touched, the lock lapses, no save writes the orphaned staging key,
+and `check_indexes()` lists it under `stale_bloom_staging` until it expires
+or the next conversion deletes it. A conversion that stalls past its lock
+has its swap refused with `BloomRebuildLostLockError`. Every other index is
+still rebuilt, and the filter is left as it was.
+
+**What the opt-in does not cover:** a *pre-#775* process saving during a
+conversion does not write the staging key. Its tokens are in the old filter
+but not in the new one, so they are lost at the swap. This is one more
+reason for the rolling-upgrade rule.
+
+Tokens from deleted records drop out of a converted filter, as in any rebuild
+from records. Export/import never carries the bits: importing into a
+destination with no filter creates one in the field's `hash_version`.
+Postgres keeps an exact token table and has no hash to version.
+
+The staging key's name depends on the token, so the add scripts touch a key
+that is not in `KEYS`. Standalone Redis and Valkey, which popoto targets,
+allow that. Redis Cluster would need a hash tag.
 
 ## FrequencySketch
 
@@ -128,6 +190,7 @@ hash to version.
 | `width` | `int` | `2003` | Number of counters per hash function (prime recommended) |
 | `depth` | `int` | `7` | Number of hash functions (must be 1–7) |
 | `fingerprint_fn` | `callable` | `None` | Takes a model instance, returns a fingerprint string |
+| `hash_version` | `int` | `1` | Hash a *new* filter is created with: `1`, or `2` to opt in (see [Hash versions](#hash-versions) and the rolling-upgrade rule first) |
 
 ### Usage
 

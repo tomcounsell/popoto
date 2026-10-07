@@ -117,6 +117,7 @@ class StatisticalBloomModel(popoto.Model):
         error_rate=0.05,
         capacity=10_000,
         fingerprint_fn=lambda inst: inst.topic,
+        hash_version=2,  # #775: opt-in; v1 packs similar tokens onto few bits
     )
 
 
@@ -1295,4 +1296,16 @@ class TestSimilarTokensBothBackends:
 
     def test_check_indexes_reports_no_legacy_hash(self):
         StatisticalBloomModel(name="li-1", topic="fresh").save()
-        assert StatisticalBloomModel.check_indexes()["legacy_hash"] == []
+        report = StatisticalBloomModel.check_indexes()
+        assert report["legacy_hash"] == []
+        assert report["stale_bloom_staging"] == []
+
+    def test_rebuild_bloom_hash_version_both_backends(self):
+        """The opt-in conversion is accepted on both legs (a no-op on
+        Postgres, which has no bit array), and other values are refused."""
+        StatisticalBloomModel(name="rb-1", topic="converted").save()
+        assert StatisticalBloomModel.rebuild_indexes(bloom_hash_version=2) == 1
+        bloom = StatisticalBloomModel.bloom
+        assert bloom.might_exist(StatisticalBloomModel, "converted")
+        with pytest.raises(ValueError):
+            StatisticalBloomModel.rebuild_indexes(bloom_hash_version=1)

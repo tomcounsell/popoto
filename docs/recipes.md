@@ -189,15 +189,21 @@ assert after['total'] == 0
     'geo_fields': {field_name: int, ...},
     'composite_indexes': {index_key: int, ...},
     'legacy_hash': [field_name, ...],  # informational; not in total
+    'stale_bloom_staging': [redis_key, ...],  # informational; not in total
     'total': int,             # sum of all the above
 }
 ```
 
-`legacy_hash` names `ExistenceFilter` fields whose Redis filter was built with
-the pre-#775 bloom hash. Those filters still answer correctly for every token
-they hold, but their false-positive rate is far above `error_rate`;
-`rebuild_indexes()` rebuilds them with the current hash (see
-[ExistenceFilter: hash versions](features/existence-filter.md#hash-versions)).
+`legacy_hash` names `ExistenceFilter` fields whose Redis filter uses the v1
+bloom hash: every filter built before #775, and every filter created since
+unless the field opts in. Those filters still answer correctly for every
+token they hold, but their false-positive rate is far above `error_rate`.
+Once every process runs popoto with #775,
+`rebuild_indexes(bloom_hash_version=2)` converts them. Plain
+`rebuild_indexes()` keeps them v1. See
+[ExistenceFilter: hash versions](features/existence-filter.md#hash-versions),
+including the rolling-upgrade rule. `stale_bloom_staging` lists staging keys
+that a dead conversion left behind. They are harmless, and they expire.
 
 ### Partial-Write Orphans
 

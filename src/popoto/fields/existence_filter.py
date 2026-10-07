@@ -17,11 +17,13 @@ Design:
     ExistenceFilter uses the Kirsch–Mitzenmacher double hashing optimization:
     h_i(x) = (h1(x) + i * h2(x)) mod m. Two hash functions simulate k
     independent Bloom-row hashes. The pair is versioned per filter (#775):
-    v2 (every filter created since) uses 32-bit FNV-1a over the bytes forward
-    and reversed, with all arithmetic exact in Lua doubles; v1 (DJB2 plus an
-    FNV-1-shaped multiply) lost low-order bits past 2^53 and is kept only so
-    filters built with it keep answering for the tokens they hold, until
-    ``rebuild_indexes()`` rebuilds them as v2. See ``BLOOM_V2_HEADER``.
+    v2 uses 32-bit FNV-1a over the bytes forward and reversed, with all
+    arithmetic exact in Lua doubles; v1 (DJB2 plus an FNV-1-shaped multiply)
+    loses low-order bits past 2^53. v1 is still the default for a new
+    filter, because a process running pre-#775 code reads every filter with
+    the v1 hash; v2 is opt-in (``ExistenceFilter(hash_version=2)`` for new
+    filters, ``rebuild_indexes(bloom_hash_version=2)`` to convert existing
+    ones) once every process runs this version. See ``BLOOM_V2_HEADER``.
     FrequencySketch uses independent per-row polynomial hashes: each of the
     depth rows has its own prime multiplier and modulus, forming a practically
     pairwise-independent family that restores the standard CMS error bound.
@@ -38,8 +40,11 @@ Design:
 Redis Key Patterns:
     - Bloom filter: $EF:{ClassName}:{field_name} — single Redis string (bit array,
       followed by a 4-byte version marker on v2 filters)
-    - Bloom rebuild staging: $EF:{ClassName}:{field_name}:rebuild — exists only
-      while rebuild_indexes() converts a v1 filter
+    - Bloom rebuild lock: $EF:{ClassName}:{field_name}:rebuild — a string
+      holding the token of the one rebuild converting the filter to v2
+      (expires unless that rebuild keeps renewing it)
+    - Bloom rebuild staging: $EF:{ClassName}:{field_name}:rebuild:{token} —
+      the v2 filter that rebuild is filling (same expiry)
     - Count-Min Sketch: $FS:{ClassName}:{field_name} — single Redis hash
 
 Valkey Compatibility:
@@ -92,24 +97,71 @@ from ._tokenizer import tokenize  # noqa: F401, E402
 # Lua Scripts — Bloom Filter
 # ---------------------------------------------------------------------------
 
-#: Hash version a filter is written with (#775). A filter is a plain Redis
-#: string; version 2 marks itself with these four bytes placed immediately
-#: after its bit array, at byte offset ``ceil(m / 8)``. Version 1 (every
-#: filter written before #775) has no marker and needs none: its hash only
-#: ever produces positions ``< m``, so its string never reaches that offset,
-#: and a missing marker can only mean v1. The marker lives *inside* the
-#: filter's own key, so it travels with the bits through ``DUMP``/``RESTORE``,
-#: ``RENAME``, replication and RDB/AOF -- nothing can separate the version
-#: from the bits it describes, which is what makes a lost marker (and so a
-#: v2 filter read with the v1 hash, i.e. false negatives) impossible.
-BLOOM_HASH_VERSION = 2
+#: Bloom hash versions (#775). A filter is a plain Redis string; a v2
+#: filter marks itself with these four bytes placed immediately after its bit
+#: array, at byte offset ``ceil(m / 8)``. A v1 filter (every filter written
+#: before #775, and every filter created by default since) has no marker and
+#: needs none: its hash only ever produces positions ``< m``, so its string
+#: never reaches that offset, and a missing marker can only mean v1. The
+#: marker lives *inside* the filter's own key, so it travels with the bits
+#: through ``DUMP``/``RESTORE``, ``RENAME``, replication and RDB/AOF --
+#: nothing can separate the version from the bits it describes.
+#:
+#: v1 stays the default for a new filter because pre-#775 code reads (and
+#: writes) every filter with the v1 hash, so a v2 filter is only safe once no
+#: process running older code touches it. See ``ExistenceFilter``'s
+#: ``hash_version`` argument and ``Model.rebuild_indexes(bloom_hash_version=2)``.
+BLOOM_HASH_VERSIONS = (1, 2)
+BLOOM_DEFAULT_HASH_VERSION = 1
 BLOOM_V2_HEADER = b"\x89EF\x02"
 
-#: Suffix of the staging key ``rebuild_indexes()`` builds a v2 filter in
-#: before swapping it over a v1 one. It sits under the same ``$EF:{Class}:``
-#: prefix, so tooling that classifies keys by family (the #756 migration's
-#: inventory) sees it as part of the existence filter.
+#: Suffix of the key that serializes ``rebuild_indexes(bloom_hash_version=2)``
+#: for one filter: ``$EF:{Class}:{field}:rebuild`` holds the token of the one
+#: rebuild converting it, and that rebuild fills the staging filter
+#: ``$EF:{Class}:{field}:rebuild:{token}``. Both sit under the filter's own
+#: ``$EF:{Class}:`` prefix, so tooling that classifies keys by family (the
+#: #756 migration's inventory) sees them as part of the existence filter.
 BLOOM_REBUILD_SUFFIX = ":rebuild"
+
+
+class BloomRebuildError(RuntimeError):
+    """A v2 bloom rebuild could not start or could not swap its result in.
+
+    Raised by ``Model.rebuild_indexes(bloom_hash_version=2)``. Whenever it is
+    raised the live filter is the one that was there before: a rebuild only
+    replaces it in a single atomic compare-and-rename, never partly.
+    """
+
+
+class BloomRebuildInProgressError(BloomRebuildError):
+    """Another process holds this filter's v2 rebuild lock.
+
+    Raised before ``rebuild_indexes()`` has changed anything -- no index is
+    deleted and no filter touched -- so the caller can simply retry once the
+    other rebuild has finished (by which time the conversion it asked for is
+    usually already done). ``lock_key``, ``holder`` and ``expires_in_ms`` say
+    which rebuild holds it and when the lock lapses if that rebuild has died.
+    """
+
+    def __init__(self, lock_key: str, holder: "str | None", expires_in_ms: int):
+        self.lock_key = lock_key
+        self.holder = holder
+        self.expires_in_ms = expires_in_ms
+        super().__init__(
+            f"{lock_key} is held by another bloom rebuild (token {holder!r}); "
+            f"only one rebuild of a filter runs at a time. Nothing was changed. "
+            f"Retry once it finishes; if that rebuild died, its lock lapses in "
+            f"{max(expires_in_ms, 0)} ms."
+        )
+
+
+class BloomRebuildLostLockError(BloomRebuildError):
+    """The rebuild's lock lapsed before its swap, so the swap was refused.
+
+    Every record was re-saved (the other indexes are rebuilt), but the v2
+    staging filter was discarded and the live filter is unchanged -- still
+    complete for every token it held. Rerun the rebuild to convert it.
+    """
 
 
 def bloom_header_offset(m: int) -> int:
@@ -196,7 +248,8 @@ end
 
 -- The filter's version from its own bytes: the v2 marker, else v1. An
 -- absent key reads as v1 here, which is harmless for a read (every bit is
--- 0); the add scripts check EXISTS and create a missing key as v2.
+-- 0); the add scripts check EXISTS and create a missing key in the version
+-- the field asks for.
 local function ef_is_v2(key, m)
     local hb = ef_header_offset(m)
     return redis.call('GETRANGE', key, hb, hb + 3) == EF_V2_HEADER
@@ -210,27 +263,43 @@ local function ef_positions(v2, item, m, k)
 end
 """
 
-# Shared by the two add scripts: KEYS[1] is the filter, KEYS[2] its rebuild
-# staging key. A missing filter is created as v2 (marker first, so it is
-# never observable without one); an existing filter keeps the hash it was
-# built with. While a rebuild has a staging key open, every add also writes
-# the token's v2 bits there, so a save racing the rebuild is not lost when
-# the staging key replaces the filter.
+# Shared by the add scripts: KEYS[1] is the filter, KEYS[2] its rebuild lock.
+# A missing filter is created in the version the field asks for (v2 writes
+# its marker first, so it is never observable without one); an existing
+# filter keeps the hash it was built with, whatever the field asks for.
+#
+# While a v2 rebuild holds the lock, the lock's value names its staging key
+# (``lock .. ':' .. token``), and every add also writes the token's v2 bits
+# there, so a save racing the rebuild is not lost when the staging key
+# replaces the filter. The pointer is read inside this same script -- no
+# extra round-trip, and no window between reading it and writing through
+# it. The staging key is written only if it already exists (the rebuild
+# creates it with its marker, atomically with the lock), so an add can never
+# create a markerless staging key that a swap would install as "v1".
+#
+# The staging key is not in KEYS: its name depends on a token only the
+# server knows at call time. That is fine on standalone Redis and Valkey,
+# which popoto targets; it would need a hash tag under Redis Cluster.
 _BLOOM_ADD_PRELUDE = """
 local key = KEYS[1]
-local staging = KEYS[2]
+local lock = KEYS[2]
 local v2 = ef_is_v2(key, m)
-if not v2 and redis.call('EXISTS', key) == 0 then
+if EF_CREATE_V2 and not v2 and redis.call('EXISTS', key) == 0 then
     redis.call('SETRANGE', key, ef_header_offset(m), EF_V2_HEADER)
     v2 = true
 end
-local stage = redis.call('EXISTS', staging) == 1
+local staging = nil
+local rebuild_token = redis.call('GET', lock)
+if rebuild_token then
+    local s = lock .. ':' .. rebuild_token
+    if redis.call('EXISTS', s) == 1 then staging = s end
+end
 
 local function ef_add(item)
     for _, p in ipairs(ef_positions(v2, item, m, k)) do
         redis.call('SETBIT', key, p, 1)
     end
-    if stage then
+    if staging then
         for _, p in ipairs(ef_positions_v2(item, m, k)) do
             redis.call('SETBIT', staging, p, 1)
         end
@@ -238,35 +307,121 @@ local function ef_add(item)
 end
 """
 
-BLOOM_ADD_LUA = (
-    _BLOOM_LUA_LIB
-    + """
+_BLOOM_ADD_ONE_BODY = """
 local item = ARGV[1]
 local m = tonumber(ARGV[2])
 local k = tonumber(ARGV[3])
 """
-    + _BLOOM_ADD_PRELUDE
-    + """
-ef_add(item)
-return 1
-"""
-)
 
-BLOOM_ADD_MULTI_LUA = (
-    _BLOOM_LUA_LIB
-    + """
+_BLOOM_ADD_MULTI_BODY = """
 local m = tonumber(ARGV[1])
 local k = tonumber(ARGV[2])
 """
-    + _BLOOM_ADD_PRELUDE
-    + """
+
+
+def _bloom_add_script(create_version: int, multi: bool) -> str:
+    """One of the four add scripts: single token or many, and the version a
+    *missing* filter is created in. The version is baked into the script
+    rather than passed as an argument, so the default (v1) call carries
+    exactly the arguments it always has."""
+    flag = "true" if create_version == 2 else "false"
+    head = _BLOOM_LUA_LIB + f"local EF_CREATE_V2 = {flag}\n"
+    if multi:
+        return head + _BLOOM_ADD_MULTI_BODY + _BLOOM_ADD_PRELUDE + """
 -- Loop over all tokens passed as ARGV[3..N]
 for t = 3, #ARGV do
     ef_add(ARGV[t])
 end
 return 1
 """
-)
+    return (
+        head + _BLOOM_ADD_ONE_BODY + _BLOOM_ADD_PRELUDE + "\nef_add(item)\nreturn 1\n"
+    )
+
+
+#: Add scripts that create a missing filter as v1 (the default) ...
+BLOOM_ADD_LUA = _bloom_add_script(1, multi=False)
+BLOOM_ADD_MULTI_LUA = _bloom_add_script(1, multi=True)
+#: ... and as v2 (``ExistenceFilter(hash_version=2)``). An existing filter is
+#: written with its own hash by all four.
+BLOOM_ADD_V2_LUA = _bloom_add_script(2, multi=False)
+BLOOM_ADD_MULTI_V2_LUA = _bloom_add_script(2, multi=True)
+
+# The v2 rebuild's lock protocol. KEYS[1] is the live filter, KEYS[2] the
+# lock (``$EF:{Class}:{field}:rebuild``); the staging key is always
+# ``KEYS[2] .. ':' .. token``.
+
+#: Take the lock and open an empty v2 staging key, atomically: an add sees
+#: either neither or both. Returns ``{1}``, or ``{0, holder, pttl}`` when
+#: another rebuild holds the lock (nothing is changed then).
+#: ARGV: token, m, ttl_ms.
+BLOOM_REBUILD_BEGIN_LUA = _BLOOM_LUA_LIB + """
+local lock = KEYS[2]
+local token = ARGV[1]
+local m = tonumber(ARGV[2])
+local ttl = tonumber(ARGV[3])
+if not redis.call('SET', lock, token, 'NX', 'PX', ttl) then
+    return {0, redis.call('GET', lock), redis.call('PTTL', lock)}
+end
+local staging = lock .. ':' .. token
+redis.call('DEL', staging)
+redis.call('SETRANGE', staging, ef_header_offset(m), EF_V2_HEADER)
+redis.call('PEXPIRE', staging, ttl)
+return {1}
+"""
+
+#: Renew the lock and staging key while this token still holds the lock.
+#: Returns 1, or 0 when the lock lapsed or passed to another rebuild (or the
+#: staging key is gone) -- the swap would be refused then. ARGV: token, ttl_ms.
+BLOOM_REBUILD_RENEW_LUA = """
+local lock = KEYS[2]
+local token = ARGV[1]
+local ttl = tonumber(ARGV[2])
+if redis.call('GET', lock) ~= token then
+    return 0
+end
+if redis.call('PEXPIRE', lock .. ':' .. token, ttl) == 0 then
+    return 0
+end
+redis.call('PEXPIRE', lock, ttl)
+return 1
+"""
+
+#: The swap: a compare-and-rename. Only while this token still holds the
+#: lock, and only a staging key that carries the v2 marker, is renamed over
+#: the live filter -- in the same atomic step as the check. ``RENAME`` moves
+#: the staging key's expiry with it, so the live filter is ``PERSIST``-ed in
+#: that step too. Returns 1 on swap; 0 (lock not held) or -1 (no marked
+#: staging key) leave the live filter untouched. ARGV: token, m.
+BLOOM_REBUILD_SWAP_LUA = _BLOOM_LUA_LIB + """
+local key = KEYS[1]
+local lock = KEYS[2]
+local token = ARGV[1]
+local m = tonumber(ARGV[2])
+if redis.call('GET', lock) ~= token then
+    return 0
+end
+local staging = lock .. ':' .. token
+if not ef_is_v2(staging, m) then
+    return -1
+end
+redis.call('RENAME', staging, key)
+redis.call('PERSIST', key)
+redis.call('DEL', lock)
+return 1
+"""
+
+#: Abandon a rebuild: drop its own staging key, and the lock only if this
+#: token still holds it. The live filter is never touched. ARGV: token.
+BLOOM_REBUILD_ABORT_LUA = """
+local lock = KEYS[2]
+local token = ARGV[1]
+redis.call('DEL', lock .. ':' .. token)
+if redis.call('GET', lock) == token then
+    redis.call('DEL', lock)
+end
+return 1
+"""
 
 BLOOM_EXISTS_LUA = _BLOOM_LUA_LIB + """
 local key = KEYS[1]
@@ -453,14 +608,23 @@ class ExistenceFilter(Field):
     Redis Key:
         ``$EF:{ClassName}:{field_name}`` -- single Redis string used as bit array.
 
+        hash_version: The hash a *missing* filter is created with: ``1``
+            (default) or ``2``. An existing filter is always read and written
+            with the hash it was built with, whatever this says.
+
     Hash version (#775):
-        A filter created now is v2 and carries a version marker after its
-        bit array. A filter built before #775 is v1 and keeps answering with
-        the v1 hash, so no token it holds tests absent; new saves into it
-        also stay v1. ``hash_version()`` says which one a filter is,
-        ``check_indexes()`` lists v1 filters under ``legacy_hash``, and
-        ``rebuild_indexes()`` rebuilds a v1 filter from the records as v2,
-        swapping it in atomically.
+        v1 packs similar tokens onto few bits (low-order bits are lost past
+        2^53 in Lua's doubles), so its false-positive rate is far above
+        ``error_rate`` for tokens shaped like the ones it holds; it never
+        gives a false negative. v2 is exact, and marks itself with four bytes
+        after its bit array. **v2 is opt-in**: pre-#775 code reads and writes
+        every filter with the v1 hash, so a v2 filter gives false negatives
+        to any process still running it. Upgrade every process first, then
+        opt in -- ``hash_version=2`` here for new filters, and
+        ``Model.rebuild_indexes(bloom_hash_version=2)`` to convert existing
+        ones (one rebuild at a time per filter, swapped in atomically).
+        ``hash_version()`` says which one a filter is, and
+        ``check_indexes()`` lists v1 filters under ``legacy_hash``.
 
     Example:
         class Memory(Model):
@@ -504,6 +668,16 @@ class ExistenceFilter(Field):
         self.error_rate = kwargs.pop("error_rate", 0.01)
         self.capacity = kwargs.pop("capacity", 100_000)
         self.fingerprint_fn = kwargs.pop("fingerprint_fn", None)
+        # Stored under another name: ``hash_version`` is the method that
+        # reports an existing filter's version.
+        self.new_filter_hash_version = kwargs.pop(
+            "hash_version", BLOOM_DEFAULT_HASH_VERSION
+        )
+        if self.new_filter_hash_version not in BLOOM_HASH_VERSIONS:
+            raise ValueError(
+                f"ExistenceFilter hash_version must be one of "
+                f"{BLOOM_HASH_VERSIONS}, got {self.new_filter_hash_version!r}"
+            )
         # Do not pass our custom kwargs to Field.__init__
         super().__init__(**kwargs)
 
@@ -542,11 +716,11 @@ class ExistenceFilter(Field):
     def hash_version(self, model_class: Any) -> "int | None":
         """The hash version this field's Redis filter is built with (#775).
 
-        ``2`` for a filter created since #775, ``1`` for a legacy filter
-        (still answered with the hash it was built with, never with v2's),
-        ``None`` when the filter does not exist yet -- the next save creates
-        it as v2. Always ``None`` off Redis: Postgres keeps an exact token
-        table, not a bit array, so it has no hash to version.
+        ``2`` for a v2 filter, ``1`` for a v1 one (every filter built before
+        #775, and every filter created since unless the field opts in with
+        ``hash_version=2``), ``None`` when the filter does not exist yet.
+        Always ``None`` off Redis: Postgres keeps an exact token table, not a
+        bit array, so it has no hash to version.
         """
         if _search_backend(model_class) is not None:
             return None
@@ -558,33 +732,139 @@ class ExistenceFilter(Field):
             return 2
         return 1 if client.exists(key) else None
 
-    def _begin_v2_rebuild(self, model_class: Any) -> "str | None":
-        """Open a v2 staging key when this field's filter is legacy v1.
+    def _rebuild_lock_key(self, model_class: Any) -> str:
+        """``$EF:{Class}:{field}:rebuild``: the v2 rebuild's lock and pointer."""
+        return self._class_bloom_key(model_class) + BLOOM_REBUILD_SUFFIX
 
-        Returns the staging key (the caller re-saves every record, which
-        dual-writes v2 bits into it, then calls :meth:`_finish_v2_rebuild`),
-        or ``None`` when there is nothing to convert. A staging key left by
-        an interrupted rebuild is discarded and started over.
+    def _begin_v2_rebuild(self, model_class: Any) -> "str | None":
+        """Take this filter's v2 rebuild lock and open its staging key.
+
+        Returns this rebuild's token, or ``None`` when the filter is already
+        v2 and needs no conversion. The caller re-saves every record (which
+        dual-writes v2 bits into the staging key, as does every save racing
+        the rebuild), renews the lock with :meth:`_renew_v2_rebuild`, then
+        calls :meth:`_finish_v2_rebuild` -- or :meth:`_abort_v2_rebuild`.
+
+        A missing filter is converted too: the rebuild creates it as v2.
+
+        Raises:
+            BloomRebuildInProgressError: another rebuild holds the lock.
+                Nothing has been changed.
         """
-        if self.hash_version(model_class) != 1:
+        if self.hash_version(model_class) == 2:
             return None
-        staging = self._class_bloom_key(model_class) + BLOOM_REBUILD_SUFFIX
+        import uuid
+
+        from .constants import Defaults
+
+        lock = self._rebuild_lock_key(model_class)
+        token = uuid.uuid4().hex
         m, _k = self._compute_params()
         client = get_REDIS_DB()
-        pipe = client.pipeline(transaction=True)
-        pipe.delete(staging)
-        pipe.setrange(staging, bloom_header_offset(m), BLOOM_V2_HEADER)
-        pipe.execute()
-        return staging
+        got = run_lua(
+            client,
+            BLOOM_REBUILD_BEGIN_LUA,
+            2,
+            self._class_bloom_key(model_class),
+            lock,
+            token,
+            m,
+            Defaults.BLOOM_REBUILD_LOCK_TTL_MS,
+        )
+        if int(got[0]) != 1:
+            holder = got[1].decode() if isinstance(got[1], bytes) else got[1]
+            raise BloomRebuildInProgressError(lock, holder or None, int(got[2]))
+        # Staging keys a crashed rebuild left behind. They expire on their
+        # own, and no save writes one once its lock is gone; holding the lock
+        # now, every other staging key of this filter is dead and is dropped.
+        mine = f"{lock}:{token}"
+        for stale in self._staging_keys(model_class):
+            if stale != mine:
+                client.delete(stale)
+        return token
 
-    def _finish_v2_rebuild(self, model_class: Any, staging: str) -> None:
-        """Swap the finished v2 staging key over the v1 filter in one RENAME.
+    def _renew_v2_rebuild(self, model_class: Any, token: str) -> bool:
+        """Extend the lock and staging key; ``False`` once the lock is lost."""
+        from .constants import Defaults
 
-        Readers see the complete v1 filter up to this command and the
-        complete v2 filter from it on -- never a partly built one, so a
-        rebuild opens no false-negative window.
+        renewed = run_lua(
+            get_REDIS_DB(),
+            BLOOM_REBUILD_RENEW_LUA,
+            2,
+            self._class_bloom_key(model_class),
+            self._rebuild_lock_key(model_class),
+            token,
+            Defaults.BLOOM_REBUILD_LOCK_TTL_MS,
+        )
+        return int(renewed) == 1
+
+    def _finish_v2_rebuild(self, model_class: Any, token: str) -> None:
+        """Swap the finished v2 staging key over the live filter.
+
+        One Lua compare-and-rename: the swap happens only while ``token``
+        still holds the lock. Readers see the complete old filter up to that
+        step and the complete v2 filter from it on.
+
+        Raises:
+            BloomRebuildLostLockError: the lock lapsed or passed to another
+                rebuild; the staging key is dropped and the live filter is
+                untouched.
         """
-        get_REDIS_DB().rename(staging, self._class_bloom_key(model_class))
+        from .constants import Defaults
+
+        m, _k = self._compute_params()
+        lock = self._rebuild_lock_key(model_class)
+        swapped = run_lua(
+            get_REDIS_DB(),
+            BLOOM_REBUILD_SWAP_LUA,
+            2,
+            self._class_bloom_key(model_class),
+            lock,
+            token,
+            m,
+        )
+        if int(swapped) != 1:
+            self._abort_v2_rebuild(model_class, token)
+            raise BloomRebuildLostLockError(
+                f"{lock}: this rebuild no longer held the lock at its swap (it "
+                f"went {Defaults.BLOOM_REBUILD_LOCK_TTL_MS} ms without renewal, "
+                f"or its staging key was removed), so its v2 filter was "
+                f"discarded. The live filter is unchanged and complete for "
+                f"every token it held. Rerun the rebuild."
+            )
+
+    def _abort_v2_rebuild(self, model_class: Any, token: str) -> None:
+        """Drop this rebuild's staging key and release its lock if held."""
+        run_lua(
+            get_REDIS_DB(),
+            BLOOM_REBUILD_ABORT_LUA,
+            2,
+            self._class_bloom_key(model_class),
+            self._rebuild_lock_key(model_class),
+            token,
+        )
+
+    def _staging_keys(self, model_class: Any) -> "list[str]":
+        """Every staging key of this filter, live or left by a dead rebuild."""
+        pattern = self._rebuild_lock_key(model_class) + ":*"
+        out = []
+        for raw in get_REDIS_DB().scan_iter(match=pattern, count=1000):
+            out.append(raw.decode() if isinstance(raw, bytes) else raw)
+        return sorted(out)
+
+    def stale_rebuild_staging(self, model_class: Any) -> "list[str]":
+        """Staging keys no running rebuild owns; ``check_indexes()`` lists
+        them. Nothing reads them, no save writes them, they expire on their
+        own, and the next v2 rebuild of this filter deletes them. Always
+        ``[]`` off Redis."""
+        if _search_backend(model_class) is not None:
+            return []
+        lock = self._rebuild_lock_key(model_class)
+        holder = get_REDIS_DB().get(lock)
+        if isinstance(holder, bytes):
+            holder = holder.decode()
+        live = f"{lock}:{holder}" if holder else None
+        return [k for k in self._staging_keys(model_class) if k != live]
 
     @classmethod
     def on_save(
@@ -615,18 +895,22 @@ class ExistenceFilter(Field):
         field = model_instance._meta.fields[field_name]
         fingerprint = field._compute_fingerprint(model_instance)
         key = field._bloom_key(model_instance)
-        staging = key + BLOOM_REBUILD_SUFFIX
+        lock = key + BLOOM_REBUILD_SUFFIX
         m, k = field._compute_params()
         client = (
             pipeline if isinstance(pipeline, redis.client.Pipeline) else get_REDIS_DB()
         )
+        if field.new_filter_hash_version == 2:
+            add_one, add_multi = BLOOM_ADD_V2_LUA, BLOOM_ADD_MULTI_V2_LUA
+        else:
+            add_one, add_multi = BLOOM_ADD_LUA, BLOOM_ADD_MULTI_LUA
         tokens = tokenize(fingerprint)
         if not tokens:
             # Fallback: add the raw fingerprint lowercased (handles empty strings,
             # short tokens, redis keys, etc.)
-            run_lua(client, BLOOM_ADD_LUA, 2, key, staging, fingerprint.lower(), m, k)
+            run_lua(client, add_one, 2, key, lock, fingerprint.lower(), m, k)
         else:
-            run_lua(client, BLOOM_ADD_MULTI_LUA, 2, key, staging, m, k, *tokens)
+            run_lua(client, add_multi, 2, key, lock, m, k, *tokens)
         return pipeline if pipeline else None
 
     @classmethod
