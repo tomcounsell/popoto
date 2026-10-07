@@ -141,27 +141,130 @@ All spikes ran against local Postgres (`postgresql://localhost:5432/postgres`) t
 
 ## Data Flow
 
-TBD
+1. **Entry point**: the host calls `SubconsciousMemory.extract_memories(...)` with `auditable_extraction=` configured (`recipes/subconscious_memory.py`, `_extract_memories_auditable`, around line 732).
+2. **Candidate generation and verdicts**: pure Python, with no storage. When the verdict provider raises, the candidate gets `reject(llm_unavailable)` (`_verdict_for`).
+3. **Non-accept verdicts** (`firewall_drop`, `reject`, `withhold`) go to `DecisionLog.write_terminal(record)`.
+   - On Redis this is `TERMINAL_WRITE_LUA`.
+   - On Postgres it becomes `backend.field_call(DecisionRecord spec, "_m3", "terminal_write", ...)`, which runs the guarded upsert from spike-2.
+4. **Accept verdicts** go to `DecisionLog.assemble(...)`:
+   1. `acquire_claim` takes the lease. On Redis that is `SET NX PX`. On Postgres it is a `popoto_lease` row through the shared lease adapter.
+   2. `get` short-circuits if the row is already terminal.
+   3. `_reconcile_pending` runs the journal probe (ORM `filter`).
+   4. `write_pending` saves through the ORM.
+   5. `_append_and_transition` calls `ProvenanceJournal.append()`, which is already Postgres-routed. It then writes the terminal row through `write_terminal`, and the `ResolutionLog().write()` sidecar through the ORM, which never raises.
+   6. `release_claim` releases the claim with a token check.
+5. **Turn summary**: at the end of the turn, `turn_summary(agent_id, turn_id)` sets `_last_extraction_privacy_dropped`.
+   - On Redis this is `HGETALL` of the summary hash.
+   - On Postgres it is derived from the detail rows through `DecisionRecord.query.filter(agent_id=, turn_id=)`.
+6. **Output**: the host receives the `ExtractedFact` list. Offline, `compute_metrics` reads through `list_for_agent`, which is SCAN on Redis and an ORM `filter(agent_id=)` on Postgres.
 
 ## Architectural Impact
 
-TBD
+- **New dependencies**: none.
+- **Interface changes**:
+  - None public. `DecisionLog(redis_client=None)` and every method signature are unchanged.
+  - Internally there are two new Postgres pseudo-field adapters: `_m3` / `terminal_write`, and `_lease` / `lock` + `release`, which generalises `_qq_lock` / `_qq_release`. The `_qq` `lock` / `release` ops stay registered and delegate to the shared functions, so the question queue is unchanged.
+- **Coupling**: lower. `SubconsciousMemory` no longer special-cases the backend for this feature, and `DecisionLog` follows the same `non_redis_backend(Model)` dispatch as `ProvenanceJournal` and `question_queue`.
+- **Data ownership**: unchanged. `DecisionRecord` follows the process-default backend, the same rule `JournalEntry` and `ResolutionRecord` already follow, so the decision log, the journal and the resolution sidecar always land in the same store.
+- **Reversibility**: easy. Reverting restores the refusal. There is no data migration: Postgres rows live in an ordinary typed table (`decision_record`) plus lease rows that expire.
 
 ## Appetite
 
-TBD
+**Size:** Medium
+
+**Team:** Solo dev (builder), validator, documentarian
+
+**Interactions:**
+- PM check-ins: 1, to confirm the `turn_summary` divergence and the `Meta.backend`-only gap in Open Questions.
+- Review rounds: 1
 
 ## Prerequisites
 
-TBD
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| Redis on localhost:6379 | `redis-cli -n 15 ping` | Redis leg of the suite (DB 15 via `popoto_test_db`) |
+| Postgres reachable | `pg_isready -h localhost -p 5432` | Postgres conformance leg and `tests/postgres` |
+| `POSTGRES_URL` exported for test runs | `test -n "$POSTGRES_URL"` (e.g. `postgresql://localhost:5432/postgres`) | Enables the Postgres leg; without it the leg skips |
+| Postgres driver installed | `python -c "import psycopg"` | Postgres backend import |
 
 ## Solution
 
-TBD
+### Key Elements
+
+- **Backend dispatch in `DecisionLog`**: `DecisionLog` chooses its store once, at construction, from `DecisionRecord`'s bound backend.
+  - When `redis_client` is passed explicitly, the Redis path is used. That keeps the public parameter's meaning.
+  - When `non_redis_backend(DecisionRecord)` is not `None`, the Postgres path is used.
+  - Otherwise the Redis path is used, exactly as today.
+- **Postgres guarded terminal write**: one SQL statement in a new `_m3` / `terminal_write` adapter. It returns `True` when the row was written and `False` when it was refused, with the same warning log on refusal.
+- **Postgres assembly claim**: the existing `popoto_lease` engine table, reached through a shared `_lease` adapter with `lock` / `release` ops. The claim keys keep the `popoto:m3:claim:{agent}:{turn}:{cand}` format, so the key helpers are unchanged.
+- **Postgres readers**: ORM queries, with no new SQL.
+  - `get` uses `DecisionRecord.query.get(...)`.
+  - `list_for_agent` uses `query.filter(agent_id=...)`.
+  - `list_pending` keeps its existing Python state filter, `older_than` filter and `written_at`-ascending sort over `list_for_agent`.
+  - `compute_metrics` is untouched.
+- **Postgres `turn_summary`**: derived from the detail rows. `filter(agent_id=, turn_id=)` selects the rows, then each terminal row adds one to `state:<state>` and, when `reason_code` is set, one to `reason:<reason_code>`. Pending rows are not counted. The result is returned as the same `dict[str, int]` shape.
+- **Refusal removed**: the `BackendCapabilityError` branch in `SubconsciousMemory.__init__` is deleted, and `self._decision_log = DecisionLog()` is built unconditionally.
+
+### Flow
+
+Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (it used to raise) → `extract_memories(turn)` → decision rows in `decision_record`, journal entries in `journal_entry`, sidecar rows in `resolution_record`, and leases in `popoto_lease` → `ExtractedFact`s returned → offline `compute_metrics(agent_id)` produces precision and recall. No Redis connection is checked out at any point.
+
+### Technical Approach
+
+- **Dispatch shape**: keep `DecisionLog` as one class. In `__init__`:
+  - If `redis_client is None`, resolve `self._backend = non_redis_backend(DecisionRecord)`.
+  - Only when `self._backend` is `None`, assign `self._redis = redis_client or get_REDIS_DB()`, exactly as today.
+  - On the Postgres path, set `self._redis = None` and never call `get_REDIS_DB()`.
+
+  Each Redis-touching method (`write_terminal`, `acquire_claim`, `release_claim`, `get`, `list_for_agent`, `turn_summary`) gets a single early branch, `if self._backend is not None: return self._pg_<name>(...)`. The Redis bodies below the branch stay textually unchanged, so the Redis command sequence is identical. Private `_pg_*` helpers live in `decision_log.py` and call `self._backend.field_call(DecisionRecord._meta.spec, ...)` for SQL work, or the ORM for reads. That matches how `question_queue` and `provenance_journal` route.
+- **Why `DecisionRecord`'s backend and not the memory model's**: this answers the issue's open question.
+  - `DecisionRecord`, `ResolutionRecord` and `JournalEntry` have no `Meta.backend`, so all three follow the process default (`set_backend()` → `POPOTO_BACKEND` → `"redis"`).
+  - Keying the decision log on that same rule guarantees the audit trail and the journal it reconciles against are always in one store. That was the refusal's whole purpose.
+  - Keying it on the memory model would split them whenever the memory model sets `Meta.backend="postgres"` under a Redis process default.
+  - That configuration keeps working as it does today: decision log and journal both stay in Redis. The plan documents it rather than refusing it, because a new raise would change Redis-default behavior. See Open Questions.
+- **Guarded write SQL**: implement spike-2's statement in `backends/postgres/recipes.py`:
+  - Add an `M3_FIELD = "_m3"` handler `{"terminal_write": self._m3_terminal_write}`.
+  - Build the columns from `DecisionRecord`'s `TableSpec` with `to_column_value`.
+  - Wrap the statement with `_record_locked` on the row's `_pk`, so it serializes with ORM saves of the same row such as `write_pending`.
+  - `written_at` is taken from the record exactly as the Redis path sets it before the Lua call, so both legs store the same value.
+  - The two CTE branches must stay mutually exclusive (see Research). If `_record_locked` and `uow` allow it, an acceptable fallback is two statements in one unit of work under the same advisory lock: the upsert with `RETURNING`, then the `detail_code` `UPDATE` only when the upsert returned nothing.
+  - The adapter returns `bool`.
+- **Lease generalisation**:
+  - Rename `_qq_lock` / `_qq_release` to `_lease_lock` / `_lease_release`. Their bodies are unchanged.
+  - Register them under both `QQ_FIELD` (`lock` / `release`), so the question queue keeps working, and a new `LEASE_FIELD = "_lease"`.
+  - Check the record-lock membership tuple at the tail of `_recipe_field_call` and add `_m3` and `_lease` only where the existing `_qq` precedent does.
+  - `acquire_claim` on Postgres passes `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS`. The magic number stays in `Defaults`.
+- **`turn_summary` divergence, documented and pinned by a Postgres-only test**:
+  - The Redis summary counts a candidate's **first** terminal write only. A later `accept`-over-`reject` transition does not re-count, and the docstring calls the summary a convenience index while the detail rows are the source of truth.
+  - Postgres derives the summary from the detail rows, so it always equals the current terminal states.
+  - The two legs agree in every case the existing suite exercises: `test_summary_counts_terminal_states_only` and `test_summary_counts_a_transitioned_candidate_once` both pass under derivation. They differ only for a candidate whose terminal state changed after its first terminal write, and Postgres reports the truer number there.
+  - The rejected alternative is a `popoto_*` counter engine table incremented in the guarded statement. It reproduces a Redis convenience structure the doctrine asks us not to emulate, and it imports Redis's summary-versus-detail drift.
+- **Docstrings**: `list_for_agent` and `list_pending` docstrings say the key-pattern `SCAN` and its "ORM bypass" rationale apply to Redis only, and that Postgres uses an indexed `WHERE agent_id = ...` query.
+- **Test conversion**: `tests/test_auditable_extraction.py`'s storage classes join the conformance harness. See Test Impact.
+- **Stale snapshot**: the file's module-level `from popoto.redis_db import POPOTO_REDIS_DB` (line 41) is converted to `get_REDIS_DB()` at call sites, per CLAUDE.md.
 
 ## Failure Path Test Strategy
 
-TBD
+### Exception Handling Coverage
+- `ResolutionLog.write` catches `Exception`, logs a warning and returns `False`. A Postgres-leg test monkeypatches the sidecar save to raise. It asserts that `assemble` still returns the accept outcome, that the decision row is `accept`, and that a warning is logged.
+- `_append_and_transition` has two mappings:
+  - `JournalBlockedError` becomes `firewall_drop(post_accept_journal_block)`.
+  - Any other exception becomes `reject(assembly_failed)`, with the exception class name in the detail.
+
+  Both mappings get conformance-leg tests (on both backends) that assert the terminal row's state, reason and detail.
+- `_verdict_for` maps a raising verdict provider to `reject(llm_unavailable)`. A conformance-leg test checks it on both backends.
+- On a refused terminal write, `write_terminal` returns `False` and logs a warning. A conformance-leg test asserts the return value, the unchanged state and `entry_id`, `detail_code == "terminal_conflict_refused"`, and the log record.
+- Outage parity:
+  - With the Postgres backend's connection forced down, `DecisionLog.write_terminal` raises `BackendUnavailableError`, a `ConnectionError` subclass. That matches the Redis path's propagating `redis.ConnectionError`. No new swallow is added.
+  - A Postgres-only test asserts that `extract_memories` propagates a `ConnectionError` subclass, exactly as the Redis path does today.
+
+### Empty/Invalid Input Handling
+- An empty turn produces no candidates and no rows. `turn_summary` returns `{}` on both legs, and `list_for_agent` returns `[]` for an unknown agent on both legs.
+- `write_terminal` with a non-terminal state raises `ValueError` before any backend call, on both legs. That check is not backend-specific.
+- `get` on a missing key returns `None` on both legs.
+
+### Error State Rendering
+- There is no user-visible UI. Errors surface as log warnings, refused-write `False` values or terminal reason codes, and the tests above assert each of those.
 
 ## Test Impact
 
