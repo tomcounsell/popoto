@@ -416,3 +416,80 @@ class TestFullRoundTrip:
 
         # Report outcomes (no-op since no records)
         sm.report_outcomes(assembly, outcome="acted")
+
+
+# ===========================================================================
+# Outages raise, quality failures degrade (#816)
+# ===========================================================================
+
+
+class TestPostgresOutagePropagates:
+    """A Postgres ``BackendUnavailableError`` is an outage on every path, as a
+    Redis ``ConnectionError`` already was: it propagates instead of reading as
+    "no memories" / a dropped write. Each case keeps a non-outage sibling that
+    still degrades with the existing warning, so the fix cannot be "remove the
+    ``except Exception``". The failures are stubbed, so no store is touched.
+    """
+
+    @staticmethod
+    def _outage():
+        from popoto.backends import BackendUnavailableError
+
+        return BackendUnavailableError("postgres is unreachable")
+
+    @staticmethod
+    def _record():
+        record = MagicMock()
+        record.db_key.redis_key = "SCMemory:abc"
+        return AssemblyResult(records=[record])
+
+    def test_inject_context_raises_on_an_outage(self, sm):
+        from popoto.backends import BackendUnavailableError
+
+        with patch.object(sm._assembler, "assemble", side_effect=self._outage()):
+            with pytest.raises(BackendUnavailableError, match="unreachable"):
+                sm.inject_context([{"role": "user", "content": "deploys?"}])
+
+    def test_inject_context_degrades_on_a_non_outage(self, sm, caplog):
+        messages = [{"role": "user", "content": "deploys?"}]
+        with patch.object(sm._assembler, "assemble", side_effect=ValueError("bad")):
+            with caplog.at_level("WARNING"):
+                result_msgs, assembly = sm.inject_context(messages)
+        assert result_msgs == messages and not assembly.records
+        assert "Context assembly failed: bad" in caplog.text
+
+    def test_extract_memories_raises_on_an_outage(self, sm):
+        from popoto.backends import BackendUnavailableError
+
+        with patch.object(SCMemory, "save", side_effect=self._outage()):
+            with pytest.raises(BackendUnavailableError, match="unreachable"):
+                sm.extract_memories("We deploy using blue-green.", importance=0.6)
+
+    def test_extract_memories_degrades_on_a_non_outage(self, sm, caplog):
+        with patch.object(SCMemory, "save", side_effect=ValueError("bad")):
+            with caplog.at_level("WARNING"):
+                saved = sm.extract_memories(
+                    "We deploy using blue-green.", importance=0.6
+                )
+        assert saved == []
+        assert "Failed to save extracted memory: bad" in caplog.text
+
+    def test_report_outcomes_raises_on_an_outage(self, sm):
+        from popoto.backends import BackendUnavailableError
+        from popoto.fields.observation import ObservationProtocol
+
+        with patch.object(
+            ObservationProtocol, "on_context_used", side_effect=self._outage()
+        ):
+            with pytest.raises(BackendUnavailableError, match="unreachable"):
+                sm.report_outcomes(self._record(), outcome="acted")
+
+    def test_report_outcomes_degrades_on_a_non_outage(self, sm, caplog):
+        from popoto.fields.observation import ObservationProtocol
+
+        with patch.object(
+            ObservationProtocol, "on_context_used", side_effect=ValueError("bad")
+        ):
+            with caplog.at_level("WARNING"):
+                sm.report_outcomes(self._record(), outcome="acted")
+        assert "Failed to report outcomes: bad" in caplog.text

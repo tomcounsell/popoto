@@ -70,6 +70,17 @@ the DSN directly:
 `grant_main_role=True` to opt in to [per-object
 grants](#two-roles-an-application-role-and-an-owner-role).
 
+That instance serves every model without `Meta.backend` **and** every model
+declaring `Meta.backend = "postgres"` (since #816; before, a pinned model
+ignored it and built its own backend from `POPOTO_POSTGRES_URL`, raising when
+the variable was unset or talking to a different database when it was set).
+The rule is by name: a `set_backend` instance whose `name` matches a model's
+non-Redis `Meta.backend` serves that model. A `Meta.backend` naming a
+different backend still resolves by name, so a Redis-default process can host
+a Postgres-pinned model, and `Meta.backend = "redis"` always resolves to the
+stock Redis backend, even when the process default is a Redis-named
+instance.
+
 **Laziness.** `import popoto` never imports `psycopg`. Defining a
 `Meta.backend = "postgres"` model never touches the network either: class
 creation only checks the model's fields against a static capability table.
@@ -575,8 +586,10 @@ arm's tie order (records with the same text have the same vector, which Redis
 returns in file-listing order and Postgres by key).
 
 An outage raises `BackendUnavailableError` from `assemble()`, as a Redis
-outage raises `ConnectionError`; it is in
-`popoto.recipes.context_assembler.OUTAGE_ERRORS`. That is the retrieval
+outage raises `ConnectionError`; catch it with
+`popoto.backends.OUTAGE_ERRORS`, the backend-neutral tuple every recipe and
+the harness integration share (`popoto.recipes.context_assembler.OUTAGE_ERRORS`
+is the same object). That is the retrieval
 path's rule, not every helper's: the quality helpers behind
 `assess_quality` and `assess()` (score spread, feeling-of-knowing,
 staleness) catch every exception and degrade, on both backends (unchanged

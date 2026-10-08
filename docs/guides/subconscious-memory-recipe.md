@@ -283,14 +283,16 @@ Modulation is on by default whenever the model carries exactly one `ConfidenceFi
 
 `SubconsciousMemory` itself does not run lifecycle ticks -- compose it with a `MemoryLifecycle` instance as shown in [Composing with SubconsciousMemory](../recipes.md#composing-with-subconsciousmemory).
 
-### Redis outages raise
+### Outages raise
 
 Since 1.9.0, `inject_context`, `extract_memories` and `report_outcomes` re-raise `redis.exceptions.ConnectionError`/`TimeoutError` rather than logging them and returning an empty result. A dead server used to be indistinguishable from "this turn had no relevant memories", which is the failure mode that makes a memory layer look like it is working while it is not.
 
-Wrap the call at your application's turn boundary if a turn must survive an outage:
+The same holds on Postgres: when the memory model is bound to Postgres and its database is unreachable, all three re-raise `popoto.backends.BackendUnavailableError`. Before #816 a Postgres outage fell through to the generic handler instead, so `inject_context` returned an empty context, extraction dropped the write and outcome reporting moved on.
+
+Wrap the call at your application's turn boundary if a turn must survive an outage. `popoto.backends.OUTAGE_ERRORS` covers both backends (`popoto.redis_db.OUTAGE_ERRORS` is the Redis pair alone and misses a Postgres outage):
 
 ```python
-from popoto.redis_db import OUTAGE_ERRORS   # redis ConnectionError/TimeoutError, not the builtins
+from popoto.backends import OUTAGE_ERRORS   # redis ConnectionError/TimeoutError (not the builtins) + BackendUnavailableError
 
 try:
     assembly = sm.inject_context(query)

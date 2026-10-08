@@ -82,19 +82,20 @@ from ..fields.observation import ObservationProtocol
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.tag_field import TagFieldMixin
 from ..fields.validity_field import ValidityField
-from ..backends.types import BackendUnavailableError
-from ..redis_db import OUTAGE_ERRORS as _REDIS_OUTAGE_ERRORS
+from ..backends.types import OUTAGE_ERRORS
 
 logger = logging.getLogger("POPOTO.ContextAssembler")
 
-#: Exceptions that mean "the store is unreachable", which every stage here
-#: re-raises rather than reading as "no memories". Redis's two plus the
-#: backend-neutral :class:`~popoto.backends.BackendUnavailableError` a
-#: Postgres-bound model raises (#759 M2c, #758 D8): without it, a Postgres
-#: outage in the BM25 arm was swallowed as a failed signal and assembly
-#: degraded to the query-blind composite path. A Redis-bound model never
-#: raises the third, so its behaviour is unchanged.
-OUTAGE_ERRORS = _REDIS_OUTAGE_ERRORS + (BackendUnavailableError,)
+# ``OUTAGE_ERRORS`` -- exceptions that mean "the store is unreachable", which
+# every stage here re-raises rather than reading as "no memories" -- is the
+# shared backend-neutral tuple :data:`popoto.backends.OUTAGE_ERRORS`: Redis's
+# two plus :class:`~popoto.backends.BackendUnavailableError`, which a
+# Postgres-bound model raises (#759 M2c, #758 D8). Without the third, a
+# Postgres outage in the BM25 arm was swallowed as a failed signal and
+# assembly degraded to the query-blind composite path. It used to be widened
+# here alone, so the other recipes drifted (#816); the name stays importable
+# from this module and is now the same object. A Redis-bound model never
+# raises the third, so its behaviour is unchanged.
 
 
 # ---------------------------------------------------------------------------

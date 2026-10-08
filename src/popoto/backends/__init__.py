@@ -26,7 +26,12 @@ non-Redis model (:mod:`popoto.backends.routing`) -- and the rest raise
 
 Selection (plan §4)
 -------------------
-* ``Meta.backend = "redis" | "postgres"`` on a model wins.
+* ``Meta.backend = "redis" | "postgres"`` on a model wins. A non-Redis name
+  resolves to the :func:`set_backend` instance when that instance's ``name``
+  matches (``set_backend(PostgresBackend(dsn=...))`` serves every
+  ``Meta.backend = "postgres"`` model, #816), else to the instance built from
+  the environment. ``Meta.backend = "redis"`` always resolves to the stock
+  Redis backend, even when a Redis-named instance is the process default.
 * Otherwise the process default: :func:`set_backend` if called, else the
   ``POPOTO_BACKEND`` environment variable, else ``"redis"``. The variable is
   read on each :func:`get_backend` call that needs it -- never at import -- and
@@ -79,6 +84,7 @@ from .types import (
     Expiry,
     FieldKind,
     MaintenanceIncompleteError,
+    OUTAGE_ERRORS,
     FieldSpec,
     ModelSpec,
     Not,
@@ -117,6 +123,7 @@ __all__ = [
     "Expiry",
     "FieldKind",
     "MaintenanceIncompleteError",
+    "OUTAGE_ERRORS",
     "FieldSpec",
     "ModelSpec",
     "Not",
@@ -830,7 +837,31 @@ def default_backend_name() -> str:
 
 
 def _instance(name: str) -> Backend:
+    """The backend that serves the backend name ``name`` -- for a
+    ``Meta.backend`` model, and for every other name-based lookup (streams,
+    and a publish joining a ``UnitOfWork``), so they all agree.
+
+    Precedence (#816): a :func:`set_backend` *instance* whose ``name`` matches
+    > the ``_instances`` cache (including :func:`_swap_instance`) > a backend
+    built from the environment, then cached. The instance must beat the
+    cache, or a process that resolved ``"postgres"`` from the environment
+    before calling ``set_backend(instance)`` would keep the env backend. The
+    instance is never written into ``_instances``, so ``set_backend(None)`` or
+    a replacement stops serving it with nothing to evict.
+
+    The instance match applies to non-Redis names only: ``_instance("redis")``
+    never consults the process default, so a Redis-named custom instance
+    serves only models without ``Meta.backend``, exactly as before #816.
+    """
     with _lock:
+        current = _default
+        if (
+            current is not None
+            and not isinstance(current, str)
+            and name != "redis"
+            and getattr(current, "name", None) == name
+        ):
+            return current
         backend = _instances.get(name)
         if backend is not None:
             return backend
@@ -900,7 +931,17 @@ def _ensure_bound(backend: Backend, model_cls: Any) -> Capabilities:
 def set_backend(backend: Union[str, Backend, None]) -> Union[str, Backend, None]:
     """Set the process default backend (a name or an instance); ``None``
     returns to ``POPOTO_BACKEND``/``"redis"``. Returns the previous setting,
-    so a caller can restore it. Discards memoised bindings."""
+    so a caller can restore it. Discards memoised bindings.
+
+    The default serves every model without ``Meta.backend``. An *instance*
+    whose ``name`` is not ``"redis"`` also serves every model whose
+    ``Meta.backend`` names it, and every other lookup by that name: so
+    ``set_backend(PostgresBackend(dsn=...))`` is honoured by
+    ``Meta.backend = "postgres"`` models without ``POPOTO_POSTGRES_URL``
+    (#816). A ``Meta.backend`` naming a *different* backend still resolves
+    by name, so a Redis-default process can host a Postgres-pinned model and
+    vice versa; and ``Meta.backend = "redis"`` always gets the stock Redis
+    backend, even when the instance is Redis-named."""
     global _default
     if isinstance(backend, str):
         _check_name(backend)

@@ -1097,6 +1097,11 @@ class _ConformanceFixtures:
         instance.forget_tables()
         from popoto.backends import _swap_instance, set_backend
 
+        # Since #816 a Postgres-named ``set_backend`` instance also serves
+        # ``Meta.backend = "postgres"`` models on its own, so the
+        # ``_swap_instance`` call is now redundant for them. It is kept as a
+        # harmless redundancy (both point at the same instance) until after
+        # 1.10.0 ships; other tests use ``_swap_instance`` directly.
         previous = set_backend(instance)
         previous_instance = _swap_instance("postgres", instance)
 

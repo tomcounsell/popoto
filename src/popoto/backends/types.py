@@ -28,6 +28,7 @@ from typing import (
     runtime_checkable,
 )
 
+from ..redis_db import OUTAGE_ERRORS as _REDIS_OUTAGE_ERRORS
 from ..redis_db import PopotoException
 
 __all__ = [
@@ -60,6 +61,7 @@ __all__ = [
     "BackendRetryableError",
     "BackendBusyError",
     "MaintenanceIncompleteError",
+    "OUTAGE_ERRORS",
     "Scored",
     "UnitOfWork",
 ]
@@ -100,6 +102,27 @@ class BackendUnavailableError(BackendError, ConnectionError):
     selecting ``postgres`` without ``POPOTO_POSTGRES_URL`` or the ``postgres``
     extra.
     """
+
+
+OUTAGE_ERRORS: tuple[type[BaseException], ...] = _REDIS_OUTAGE_ERRORS + (
+    BackendUnavailableError,
+)
+"""The backend-neutral answer to "is this an outage?" (#816).
+
+Exceptions that mean the store is unreachable, as opposed to a bad query:
+Redis's ``ConnectionError`` and ``TimeoutError`` (:data:`popoto.redis_db.OUTAGE_ERRORS`,
+whose value is unchanged) plus :class:`BackendUnavailableError`, which a
+Postgres-bound model raises on a refused connect, a connect/statement timeout,
+or a missing DSN or extra. Recipes re-raise these so an outage never reads as
+an empty retrieval, and the integrations service trips its breaker on them.
+Every "is this an outage?" decision in popoto consumes this one tuple, so the
+backends cannot drift apart again.
+
+:class:`BackendRetryableError` (and so :class:`BackendBusyError`) is
+deliberately **not** a member: pool or lock contention rolled the work back
+and running it again is safe, which is not an outage. A Redis-bound model
+never raises :class:`BackendUnavailableError`, so Redis behaviour is
+unchanged."""
 
 
 class SchemaDriftError(BackendError):

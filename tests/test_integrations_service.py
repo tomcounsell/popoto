@@ -857,3 +857,47 @@ def test_genuine_empty_result_still_records_a_failure(tmp_path):
     assert service.capture("an ordinary turn with no secrets in it") == []
     assert POPOTO_REDIS_DB.get(counter_key) is not None
     assert (tmp_path / "memory.log").exists()
+
+
+def test_breaker_trips_on_a_postgres_outage(tmp_path, monkeypatch):
+    """#816: a Postgres ``BackendUnavailableError`` trips the one-attempt
+    breaker exactly like a Redis connection error, so later hook calls stop
+    retrying a dead server: ``assemble()`` returns ``""`` without reaching
+    the assembler."""
+    from popoto.backends import BackendUnavailableError
+
+    service = make_service(tmp_path)
+    assert service._redis_down is False
+    service._record_failure("assemble", BackendUnavailableError("pg down"))
+    assert service._redis_down is True
+
+    calls = []
+
+    def _assemble(*args, **kwargs):  # pragma: no cover - must not run
+        calls.append(kwargs)
+        raise AssertionError("the breaker should have short-circuited")
+
+    monkeypatch.setattr(service.memory.assembler, "assemble", _assemble)
+    assert service.assemble("what do we deploy with?", session_id="s1") == ""
+    assert calls == []
+
+
+def test_breaker_does_not_trip_on_a_non_outage(tmp_path):
+    service = make_service(tmp_path)
+    service._record_failure("assemble", ValueError("bad query"))
+    assert service._redis_down is False
+
+
+def test_assemble_outage_from_the_assembler_trips_the_breaker(tmp_path, monkeypatch):
+    """End to end through the service's own handler: the assembler raising
+    ``BackendUnavailableError`` fails open (``""``) and trips the breaker."""
+    from popoto.backends import BackendUnavailableError
+
+    service = make_service(tmp_path)
+
+    def _down(*args, **kwargs):
+        raise BackendUnavailableError("pg down")
+
+    monkeypatch.setattr(service.memory.assembler, "assemble", _down)
+    assert service.assemble("what do we deploy with?", session_id="s1") == ""
+    assert service._redis_down is True

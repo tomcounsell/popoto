@@ -275,7 +275,7 @@ This is a behavior change for direct callers. If your application calls
 (`hooks.run`, the MCP dispatcher) already does:
 
 ```python
-from popoto.redis_db import OUTAGE_ERRORS   # (redis ConnectionError, TimeoutError)
+from popoto.backends import OUTAGE_ERRORS   # Redis pair + BackendUnavailableError
 
 try:
     result = assembler.assemble(query_cues=..., agent_id=...)
@@ -283,16 +283,18 @@ except OUTAGE_ERRORS:
     result = None   # serve the turn without memory, and log it
 ```
 
-Note these are `redis.exceptions.ConnectionError`/`TimeoutError`, not the
-builtins of the same name — catching the builtins will not catch these.
-`OUTAGE_ERRORS` is the exact tuple the recipes test against.
+`popoto.backends.OUTAGE_ERRORS` is the exact tuple every recipe and the
+harness integration test against, on both backends: Redis's
+`redis.exceptions.ConnectionError`/`TimeoutError` (not the builtins of the
+same name — catching the builtins will not catch these) plus
+`popoto.backends.BackendUnavailableError`, which a model bound to Postgres
+raises when its database is unreachable.
 
-A model bound to Postgres raises
-`popoto.backends.BackendUnavailableError` when its database is unreachable,
-and the assembler re-raises that too. The tuple it tests against is
-`popoto.recipes.context_assembler.OUTAGE_ERRORS`, the Redis pair plus
-`BackendUnavailableError`; catch that one when a model may be bound to either
-backend.
+Two older names remain importable. `popoto.redis_db.OUTAGE_ERRORS` is the
+Redis pair alone, unchanged for existing importers; it does not match a
+Postgres outage. `popoto.recipes.context_assembler.OUTAGE_ERRORS` is now the
+same object as `popoto.backends.OUTAGE_ERRORS` (before #816 it was a local
+widening that the other recipes did not share).
 
 ### On Postgres
 

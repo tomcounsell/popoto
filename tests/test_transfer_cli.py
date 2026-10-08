@@ -609,3 +609,61 @@ def test_help_via_subprocess_module_invocation():
     )
     assert result.returncode == 0
     assert "usage" in result.stdout.lower()
+
+
+# ---------------------------------------------------------------------------
+# Outages through the neutral tuple (#816)
+# ---------------------------------------------------------------------------
+#
+# The one deliberate stub in this module: an outage cannot be produced on
+# demand against the live test database, so the transfer function itself is
+# replaced with one that raises. ``export_records`` / ``import_records`` are
+# imported function-locally by the handlers, so patching the defining module
+# is what they see.
+
+
+def _outage_cases():
+    import redis
+
+    from popoto.backends import BackendUnavailableError
+
+    return [
+        pytest.param(BackendUnavailableError("postgres is unreachable"), id="pg"),
+        # spike-3: redis-py's TimeoutError does not subclass the builtin one,
+        # so before #816 it escaped the handler as a traceback.
+        pytest.param(redis.exceptions.TimeoutError("redis timed out"), id="redis"),
+    ]
+
+
+@pytest.mark.parametrize("exc", _outage_cases())
+def test_export_reports_an_outage_in_one_line(tmp_path, capsys, monkeypatch, exc):
+    from popoto.transfer import export as export_module
+
+    def _down(*args, **kwargs):
+        raise exc
+
+    monkeypatch.setattr(export_module, "export_records", _down)
+    out_path = tmp_path / "out.jsonl"
+    exit_code = main(["export", "--model", MODEL_SPEC, "--out", str(out_path)])
+    err = capsys.readouterr().err
+    assert exit_code == 1
+    assert err == f"popoto-transfer export: {exc}\n"
+    assert "Traceback" not in err
+    assert not out_path.exists() and not (tmp_path / "out.jsonl.part").exists()
+
+
+@pytest.mark.parametrize("exc", _outage_cases())
+def test_import_reports_an_outage_in_one_line(tmp_path, capsys, monkeypatch, exc):
+    from popoto.transfer import import_ as import_module
+
+    def _down(*args, **kwargs):
+        raise exc
+
+    monkeypatch.setattr(import_module, "import_records", _down)
+    in_path = tmp_path / "in.jsonl"
+    in_path.write_text("")
+    exit_code = main(["import", "--model", MODEL_SPEC, "--in", str(in_path)])
+    err = capsys.readouterr().err
+    assert exit_code == 1
+    assert err == f"popoto-transfer import: {exc}\n"
+    assert "Traceback" not in err

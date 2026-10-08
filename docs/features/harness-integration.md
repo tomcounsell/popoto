@@ -333,7 +333,10 @@ exactly when `doctor` has nothing to read back anyway.
 connection with a 1-second connect and socket timeout and no redis-py
 retries (the default is 10), and once a `ConnectionError`/`TimeoutError` has
 been recorded, every later Redis operation in that hook process is skipped
-outright. The shipped Claude Code and Codex hook configs also carry an
+outright. The breaker tests `popoto.backends.OUTAGE_ERRORS`, so a Postgres
+`BackendUnavailableError` trips it the same way (#816): a hook process whose
+memory model is on an unreachable Postgres makes one attempt, not one per
+call. The shipped Claude Code and Codex hook configs also carry an
 explicit `"timeout": 10`. Against a server that accepts connections and
 never answers, this is the difference between roughly 25 seconds on the
 user's prompt and under 2.

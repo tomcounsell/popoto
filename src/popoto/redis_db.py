@@ -812,9 +812,12 @@ def print_redis_info() -> None:
 # Lua script registry
 # ---------------------------------------------------------------------------
 
-#: Exceptions that mean "the server is unreachable", as opposed to a bad
-#: query. Recipes let these propagate so an outage never masquerades as an
-#: empty retrieval; the harness boundary is where they get swallowed.
+#: Exceptions that mean "the Redis server is unreachable", as opposed to a bad
+#: query: the Redis pair only. Backend-neutral callers -- anything that may
+#: run against a Postgres-bound model -- should catch
+#: ``popoto.backends.OUTAGE_ERRORS`` instead, which adds
+#: ``BackendUnavailableError`` (#816) and is the tuple every recipe and the
+#: integrations service consume. This value is kept for external importers.
 OUTAGE_ERRORS = (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError)
 
 
