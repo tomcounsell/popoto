@@ -1504,6 +1504,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backends
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-terminal-write-conflict-guard" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3371,6 +3382,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backends
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-terminal-write-conflict-guard" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3676,13 +3698,38 @@ right retention horizon can't be known until the M9 follow-on (below)
 consumes the log at scale, so v1 declines to guess a number rather than
 silently deleting audit evidence early.</p>
 <p>The per-turn compact summary (<code>DecisionLog.turn_summary(agent_id, turn_id)</code>)
-is a <strong>convenience index over terminal states only</strong> — an O(1) count instead
-of a per-turn row scan — not a completeness fallback. If it ever disagrees
-with the detail rows, the detail rows are right.</p>
+is a <strong>rollup of the rows' current terminal states</strong> — an O(1) count instead
+of a per-turn row scan — not a completeness fallback. Each candidate counts
+once under the <code>state:&lt;s&gt;</code> and <code>reason:&lt;r&gt;</code> its row holds now, so a candidate
+that moves from one terminal state to another is counted under the new one
+only; zero counts are absent and <code>pending</code> never appears. If it ever
+disagrees with the detail rows, the detail rows are right.</p>
+<p>On Redis the summary is a hash that the terminal-write script updates in the
+same atomic step as the row. Before #811 that script only incremented, so a
+terminal-to-terminal write (a retried <code>reject</code> after a <code>withhold</code>, say) left
+the old state's count in place. A hash written that way is repaired by
+<code>DecisionLog.rebuild_turn_summary(agent_id, turn_id)</code>, which recomputes it
+from the detail rows in one script call; run it per turn once every process
+has the fix. On Postgres the summary is a <code>GROUP BY</code> computed on read and
+cannot drift, so the same call just returns it.</p>
+<h2 id="backends">Backends<a class="headerlink" href="#backends" title="Permanent link">&para;</a></h2>
+<p><code>DecisionLog</code> follows <code>DecisionRecord</code>'s backend, the process default, as the
+journal does. On Redis nothing changed beyond the summary fix above. On
+Postgres <code>SubconsciousMemory(auditable_extraction=...)</code> constructs and runs
+with no Redis command: rows, the guarded terminal write, the assembly claim
+(a lease row) and the summary all live in Postgres, with the same semantics.
+Construction refuses only the split trail, whenever <code>auditable_extraction</code> is
+set: a decision log that would land in Redis while the memory model is on
+Postgres, or a decision log in a different store from the journal entry model
+(in either direction). The error says how to bind the process default. A
+memory model pinned to Redis under a Postgres default keeps its decision log in
+Postgres, next to the journal. See <a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Postgres Backend</a>.
+A process that moves to Postgres starts with an empty decision log.</p>
 <h2 id="the-terminal-write-conflict-guard">The terminal-write conflict guard<a class="headerlink" href="#the-terminal-write-conflict-guard" title="Permanent link">&para;</a></h2>
 <p>Every terminal write — including the pre-LLM <code>firewall_drop</code>, which cannot
 conflict in practice because no prior row exists for a fresh candidate — goes
-through <strong>one conditional Lua script</strong>, run via <code>EVAL</code>. There is no
+through <strong>one conditional Lua script</strong>, run via <code>EVAL</code> (on Postgres, one
+conditional statement under the row's lock, with the same rule). There is no
 unconditional fast-path write anywhere in <code>decision_log.py</code>.</p>
 <p>The rule it enforces: a terminal write must not overwrite a row that is
 already terminal <code>accept</code> carrying a non-empty <code>entry_id</code>. If it would, the

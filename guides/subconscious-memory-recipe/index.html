@@ -3804,7 +3804,8 @@ different pipeline: deterministic candidate enumeration, one enum-only LLM
 verdict per candidate, and a decision log where every candidate ends in
 exactly one of <code>firewall_drop | accept | reject | withhold</code>. Off by default
 -- see <a href="../../features/auditable-extraction/">Auditable Extraction</a> for the
-full design and a runnable quickstart.</p>
+full design and a runnable quickstart. It runs on Redis and on Postgres: the
+decision log follows the process default backend, like the journal.</p>
 <h3 id="outcome-report_outcomesassembly_result-outcome">Outcome: <code>report_outcomes(assembly_result, outcome)</code><a class="headerlink" href="#outcome-report_outcomesassembly_result-outcome" title="Permanent link">&para;</a></h3>
 <p>Reports how the agent used the injected memories via <code>ObservationProtocol.on_context_used()</code>. Outcomes strengthen or weaken memories for future retrieval:</p>
 <ul>
