@@ -264,10 +264,35 @@ if prev_state == ARGV[1] and prev_entry and prev_entry ~= ARGV[2] then
     return 0
 end
 
--- The summary aggregates TERMINAL states only, and counts each candidate
--- once: bump only when the row is new or still non-terminal 'pending'.
-if prev_state == false or prev_state == nil or prev_state == ARGV[4] then
-    local n = tonumber(ARGV[5])
+-- The summary is a rollup of the rows' CURRENT terminal states: each
+-- candidate contributes one state:<s> and one reason:<r>. A write that
+-- moves a row off a terminal state takes back that state's counts first.
+-- ARGV[6] / ARGV[7] are the new state:/reason: fields, in that order
+-- (DecisionLog.write_terminal's summary_fields builds them; keep the
+-- 'state:' / 'reason:' prefixes in step with it).
+local n = tonumber(ARGV[5])
+local is_new = (prev_state == false or prev_state == nil or prev_state == ARGV[4])
+if not is_new then
+    local decoded_state = cmsgpack.unpack(prev_state)
+    if decoded_state == '' then
+        is_new = true  -- never counted (bare ORM save with defaults)
+    else
+        local prev_reason = redis.call('HGET', KEYS[1], 'reason_code')
+        local old_fields = {
+            'state:' .. decoded_state,
+            'reason:' .. (prev_reason and cmsgpack.unpack(prev_reason) or ''),
+        }
+        if old_fields[1] ~= ARGV[6] or old_fields[2] ~= ARGV[7] then
+            for _, f in ipairs(old_fields) do
+                if redis.call('HINCRBY', KEYS[2], f, -1) <= 0 then
+                    redis.call('HDEL', KEYS[2], f)
+                end
+            end
+            is_new = true
+        end
+    end
+end
+if is_new then
     for i = 1, n do
         redis.call('HINCRBY', KEYS[2], ARGV[5 + i], 1)
     end
@@ -280,6 +305,54 @@ redis.call('SADD', KEYS[6], KEYS[1])
 redis.call('HSET', KEYS[1], unpack(ARGV, 6 + tonumber(ARGV[5])))
 return 1
 """
+
+
+TURN_SUMMARY_REBUILD_LUA = """
+-- Recompute one turn's summary hash from its detail rows (operator repair).
+-- KEYS[1] = the per-turn summary hash
+-- KEYS[2] = the agent_id KeyField index Set, KEYS[3] = the turn_id one
+-- ARGV    = the terminal state names (not hard-coded here)
+--
+-- The row keys are read from SINTER KEYS[2] KEYS[3] rather than declared in
+-- KEYS: an undeclared-key access, fine on standalone Redis and Valkey and
+-- not Redis Cluster-safe (neither is the decision log, whose summary and row
+-- keys share no hash tag). One EVAL, so TERMINAL_WRITE_LUA calls serialize
+-- around it. Keep the 'state:' / 'reason:' prefixes in step with
+-- DecisionLog.write_terminal's summary_fields.
+local terminal = {}
+for i = 1, #ARGV do
+    terminal[ARGV[i]] = true
+end
+local counts = {}
+local order = {}
+local function bump(field)
+    if counts[field] == nil then
+        counts[field] = 0
+        order[#order + 1] = field
+    end
+    counts[field] = counts[field] + 1
+end
+for _, row in ipairs(redis.call('SINTER', KEYS[2], KEYS[3])) do
+    local packed_state = redis.call('HGET', row, 'state')
+    if packed_state then
+        local state = cmsgpack.unpack(packed_state)
+        if terminal[state] then
+            local packed_reason = redis.call('HGET', row, 'reason_code')
+            bump('state:' .. state)
+            bump('reason:' .. (packed_reason and cmsgpack.unpack(packed_reason) or ''))
+        end
+    end
+end
+redis.call('DEL', KEYS[1])
+local out = {}
+for _, field in ipairs(order) do
+    redis.call('HSET', KEYS[1], field, counts[field])
+    out[#out + 1] = field
+    out[#out + 1] = counts[field]
+end
+return out
+"""
+"""Repair script for a summary hash that drifted before the #811 fix."""
 
 
 def _packb(value: str) -> bytes:
@@ -301,8 +374,10 @@ class DecisionLog:
     """Writer/reader over :class:`DecisionRecord` rows.
 
     Stateless -- every method takes the identity it operates on -- so one
-    instance can serve any agent. All writes go through Redis/Valkey core
-    commands and Lua only.
+    instance can serve any agent. On Redis/Valkey all writes go through core
+    commands and Lua only; on Postgres (when ``DecisionRecord``'s backend is
+    not Redis) each method is one SQL statement through the backend, with the
+    same semantics, and no Redis command is issued.
 
     Example::
 
@@ -329,9 +404,21 @@ class DecisionLog:
 
     def __init__(self, redis_client: Any = None):
         """Args:
-        redis_client: Redis/Valkey client. Defaults to Popoto's.
+        redis_client: Redis/Valkey client. Passing one pins the Redis path.
+            Left unset, the store follows ``DecisionRecord``'s backend (the
+            process default, as for the journal): Postgres when that is
+            bound, else Popoto's Redis client.
         """
-        self._redis = redis_client if redis_client is not None else get_REDIS_DB()
+        self._backend: Any = None
+        self._redis: Any = None
+        if redis_client is not None:
+            self._redis = redis_client
+            return
+        from ..backends.routing import non_redis_backend
+
+        self._backend = non_redis_backend(DecisionRecord)
+        if self._backend is None:
+            self._redis = get_REDIS_DB()
 
     # -- keys ------------------------------------------------------------
 
@@ -506,11 +593,24 @@ class DecisionLog:
             detail_code=detail_code,
             written_at=time.time(),
         )
+        if self._backend is not None:
+            written = self._pg_write_terminal(record)
+            if not written:
+                logger.warning(
+                    "decision log: terminal %s write refused for %s/%s -- row is "
+                    "already terminal accept with an entry_id",
+                    verdict.value,
+                    agent_id,
+                    candidate.candidate_id,
+                )
+            return written
+
         row_fields: List[bytes] = []
         for field_name, packed in encode_popoto_model_obj(record).items():
             row_fields.append(field_name)
             row_fields.append(packed)
 
+        # TERMINAL_WRITE_LUA reads these as ARGV[6] / ARGV[7], in this order.
         summary_fields = [
             f"state:{verdict.value}",
             f"reason:{reason}",
@@ -576,6 +676,16 @@ class DecisionLog:
             the winner.
         """
         token = uuid4().hex
+        if self._backend is not None:
+            won = self._backend.field_call(
+                DecisionRecord._meta.spec,
+                "_lease",
+                "lock",
+                self.claim_key(agent_id, turn_id, candidate_id),
+                token,
+                Defaults.M3_ASSEMBLY_CLAIM_TTL_MS,
+            )
+            return token if won else None
         won = self._redis.set(
             self.claim_key(agent_id, turn_id, candidate_id),
             token,
@@ -593,6 +703,16 @@ class DecisionLog:
         owns -- if the TTL expired and another runner re-claimed, the DEL
         would otherwise hand that runner's candidate to a third.
         """
+        if self._backend is not None:
+            return bool(
+                self._backend.field_call(
+                    DecisionRecord._meta.spec,
+                    "_lease",
+                    "release",
+                    self.claim_key(agent_id, turn_id, candidate_id),
+                    token,
+                )
+            )
         released = run_lua(
             self._redis,
             CLAIM_RELEASE_LUA,
@@ -956,6 +1076,13 @@ class DecisionLog:
         self, agent_id: str, turn_id: str, candidate_id: str
     ) -> Optional[DecisionRecord]:
         """Read one candidate's row, or ``None`` if it has none yet."""
+        if self._backend is not None:
+            return cast(
+                Optional[DecisionRecord],
+                DecisionRecord.query.get(
+                    agent_id=agent_id, turn_id=turn_id, candidate_id=candidate_id
+                ),
+            )
         key = self.row_key(agent_id, turn_id, candidate_id)
         if not self._redis.exists(key):
             return None
@@ -980,7 +1107,13 @@ class DecisionLog:
 
         Uses ``SCAN`` rather than ``KEYS`` so an unbounded log cannot block
         the server. This is an operator/analysis reader, not a hot path.
+
+        All of the above is the Redis path. On Postgres the table's own
+        indexes cover every row however it was written, so this is an
+        indexed ``WHERE agent_id = ...`` query through the ORM.
         """
+        if self._backend is not None:
+            return list(DecisionRecord.query.filter(agent_id=agent_id))
         keys = set(self._redis.scan_iter(match=self._agent_key_pattern(agent_id)))
         if not keys:
             return []
@@ -993,7 +1126,8 @@ class DecisionLog:
 
         The operator recovery reader (see the module docstring). A thin
         reader over existing rows -- it adds no keyspace, and decision rows
-        carry no TTL, so nothing here deletes audit evidence.
+        carry no TTL, so nothing here deletes audit evidence. It reads through
+        :meth:`list_for_agent`, so it works on either backend.
 
         Args:
             agent_id: Owning agent.
@@ -1019,10 +1153,22 @@ class DecisionLog:
     def turn_summary(self, agent_id: str, turn_id: str) -> Dict[str, int]:
         """The per-turn compact summary as ``{field: count}``.
 
-        A convenience index over the detail rows, aggregating terminal
-        states only. Correctness never depends on it -- if it ever
-        disagrees with the detail rows, the detail rows are right.
+        A convenience index over the detail rows: a rollup of the rows'
+        **current** terminal states. Each candidate contributes one
+        ``state:<s>`` and one ``reason:<r>`` count (an empty reason is
+        ``reason:``) under the state and reason its row holds now, so a
+        candidate that moves between terminal states is counted under its new
+        state only. Zero counts are absent and ``state:pending`` never
+        appears. Correctness never depends on it -- if it ever disagrees with
+        the detail rows, the detail rows are right.
+
+        Redis keeps a hash that ``TERMINAL_WRITE_LUA`` maintains atomically
+        with the row; Postgres derives it on read with an indexed
+        ``GROUP BY`` and cannot drift. Both return the same dict for the same
+        sequence of writes.
         """
+        if self._backend is not None:
+            return self._pg_turn_summary(agent_id, turn_id)
         # redis-py types every command Awaitable[T] | T for the sync
         # client too; the cast is the repo-wide shape for that.
         raw = cast(
@@ -1032,6 +1178,71 @@ class DecisionLog:
             key.decode(ENCODING) if isinstance(key, bytes) else key: int(value)
             for key, value in raw.items()
         }
+
+    def rebuild_turn_summary(self, agent_id: str, turn_id: str) -> Dict[str, int]:
+        """Recompute a turn's summary from its detail rows and return it.
+
+        The repair for Redis summary hashes written before the #811 fix,
+        which could disagree with their rows after a terminal-to-terminal
+        write. Run it per turn once every process runs the fixed version.
+        One ``EVAL`` (``TURN_SUMMARY_REBUILD_LUA``), so concurrent terminal
+        writes serialize around it. An operator call, never on the hot path.
+
+        On Postgres the summary is derived on read and cannot drift, so this
+        returns :meth:`turn_summary` unchanged.
+        """
+        if self._backend is not None:
+            return self.turn_summary(agent_id, turn_id)
+        agent_set, turn_set, _ = self.key_field_index_keys(agent_id, turn_id, "")
+        flat = run_lua(
+            self._redis,
+            TURN_SUMMARY_REBUILD_LUA,
+            3,
+            self.summary_key(agent_id, turn_id),
+            agent_set,
+            turn_set,
+            *sorted(v.value for v in TERMINAL_VERDICTS),
+        )
+        pairs = iter(flat or [])
+        return {
+            (k.decode(ENCODING) if isinstance(k, bytes) else k): int(v)
+            for k, v in zip(pairs, pairs)
+        }
+
+    # -- Postgres path ---------------------------------------------------
+    #
+    # Each helper is the Postgres twin of one Redis method above. The store
+    # is chosen once in __init__; none of these touches Redis.
+
+    def _pg_write_terminal(self, record: DecisionRecord) -> bool:
+        """The guarded terminal write as one statement (``_m3`` adapter)."""
+        return bool(
+            self._backend.field_call(
+                DecisionRecord._meta.spec,
+                "_m3",
+                "terminal_write",
+                record,
+                self.CONFLICT_REFUSED,
+            )
+        )
+
+    def _pg_turn_summary(self, agent_id: str, turn_id: str) -> Dict[str, int]:
+        """``GROUP BY state, reason_code`` over the turn's terminal rows,
+        folded into the same ``state:`` / ``reason:`` dict the Redis hash
+        holds. A ``NULL`` reason counts as ``reason:``."""
+        rows = self._backend.field_call(
+            DecisionRecord._meta.spec,
+            "_m3",
+            "turn_summary",
+            agent_id,
+            turn_id,
+            sorted(v.value for v in TERMINAL_VERDICTS),
+        )
+        summary: Dict[str, int] = {}
+        for state, reason, count in rows:
+            for field in (f"state:{state}", f"reason:{reason or ''}"):
+                summary[field] = summary.get(field, 0) + int(count)
+        return summary
 
     # -- offline metrics -------------------------------------------------
 

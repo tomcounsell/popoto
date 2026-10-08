@@ -258,7 +258,8 @@ different pipeline: deterministic candidate enumeration, one enum-only LLM
 verdict per candidate, and a decision log where every candidate ends in
 exactly one of `firewall_drop | accept | reject | withhold`. Off by default
 -- see [Auditable Extraction](../features/auditable-extraction.md) for the
-full design and a runnable quickstart.
+full design and a runnable quickstart. It runs on Redis and on Postgres: the
+decision log follows the process default backend, like the journal.
 
 ### Outcome: `report_outcomes(assembly_result, outcome)`
 

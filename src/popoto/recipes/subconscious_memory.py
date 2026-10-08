@@ -285,17 +285,42 @@ class SubconsciousMemory:
 
             backend = non_redis_backend(model_class)
             if backend is not None:
-                # #759 M4: the decision log is a Redis-only extraction surface
-                # (extraction/decision_log.py, plan §1); a Postgres-bound
-                # model must not split its audit trail across two stores.
+                # #811: the decision log follows DecisionRecord's backend (the
+                # process default, like the journal). Refuse only the split
+                # trail: a log that would land in Redis, or in a different
+                # store from the journal it reconciles against.
                 from ..backends import BackendCapabilityError
+                from ..extraction.decision_log import DecisionRecord
+                from .provenance_journal import JournalEntry
 
-                raise BackendCapabilityError(
-                    f"auditable_extraction keeps its decision log in Redis "
-                    f"(extraction/decision_log.py is Redis-only); "
-                    f"{model_class.__name__} is stored on the {backend.name!r} "
-                    "backend"
+                entry_model = (
+                    getattr(auditable_extraction.journal, "entry_model", None)
+                    or JournalEntry
                 )
+                log_backend = non_redis_backend(DecisionRecord)
+                # A duck-typed entry model with no ``_meta`` has no store of
+                # its own to compare (it is not a Popoto model), so only the
+                # log's own backend is checked for it.
+                journal_backend = (
+                    non_redis_backend(entry_model)
+                    if hasattr(entry_model, "_meta")
+                    else log_backend
+                )
+                if log_backend is None or (log_backend is None) != (
+                    journal_backend is None
+                ):
+                    raise BackendCapabilityError(
+                        f"auditable_extraction would split its audit trail "
+                        f"across stores: {model_class.__name__} is stored on "
+                        f"the {backend.name!r} backend, but the decision log "
+                        "follows the process default backend "
+                        f"({'redis' if log_backend is None else log_backend.name}) "
+                        "and the journal entry model is on "
+                        f"{'redis' if journal_backend is None else journal_backend.name}. "
+                        "Bind the process default with set_backend('postgres') "
+                        "or POPOTO_BACKEND=postgres so the decision log, the "
+                        "journal and the resolution sidecar share one store"
+                    )
 
             from ..extraction.decision_log import DecisionLog
 

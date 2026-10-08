@@ -845,10 +845,29 @@ its reconciler send Redis no command at all. Pinned by
 and `report_outcomes()` and `TelemetryAnalyzer` read them back. Pinned by
 `tests/test_memory_telemetry.py`, whose every test runs on both legs.
 
-**Not on Postgres yet.** `SubconsciousMemory(auditable_extraction=…)` keeps
-its decision log in Redis (`extraction/decision_log.py` is Redis-only, plan
-§1), so on a Postgres-bound model it raises `BackendCapabilityError` at
-construction.
+**Decision log** (#811). `SubconsciousMemory(auditable_extraction=...)`
+constructs and runs on a Postgres-bound process with no Redis command at all.
+`DecisionLog` follows `DecisionRecord`'s backend (the process default, as the
+journal does): the per-candidate row is a `decisionrecord` row under a unique
+key, the guarded terminal write (refuse a terminal write over an assembled
+`accept`) is one statement run under the row's advisory lock, the assembly
+claim is a `popoto_lease` row (`INSERT ... ON CONFLICT ... WHERE expires_at <=
+now`, so a lapsed claim is takeable and a release is token-checked), and
+`turn_summary` is a `GROUP BY` over the turn's rows computed on read. Every
+method has the same semantics on both backends, `turn_summary` included: a
+rollup of the rows' current terminal states, zero counts absent, `pending`
+never counted, an empty or `NULL` reason counted as `reason:`.
+
+Construction refuses only the split trail: a log that would land in Redis
+while the memory model is on Postgres (bind the process default with
+`set_backend("postgres")` or `POPOTO_BACKEND=postgres`), or a journal entry
+model in a different store from the log. Data placement changes with the
+binding: a process that moves to Postgres starts with an empty decision log,
+as it does for the journal; migrate existing rows with the Redis-to-Postgres
+migration tool. Pinned by `tests/postgres/test_postgres_decision_log.py`
+(including a whole extraction under a Redis connection layer that refuses
+every command) and by the conformance classes in
+`tests/test_auditable_extraction.py` and `tests/test_reference_resolution.py`.
 
 The seeded probe, `scripts/probe_queue_parity.py`, replays random queue
 sessions on both legs (proposals with dedup, use, delivery with and without

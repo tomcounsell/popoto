@@ -241,6 +241,8 @@ def ref_indeterminate(surface, start, end, kind="pronoun"):
 # ===========================================================================
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestResolvedStatus:
     def test_resolved_reference_updates_statement_verbatim_tag_and_sidecar(self):
         candidate = make_candidate(
@@ -286,6 +288,8 @@ class TestResolvedStatus:
         assert record.entry_id == entry_id
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestAssumedStatus:
     def test_assumed_reference_updates_statement_verbatim_tag_and_sidecar(self):
         candidate = make_candidate(
@@ -339,6 +343,8 @@ class TestAssumedStatus:
         assert json.loads(record.references_json)[0]["assumption"]
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestEvidenceGapStatus:
     def test_evidence_gap_reference_updates_statement_verbatim_tag_and_sidecar(self):
         candidate = make_candidate(
@@ -386,6 +392,8 @@ class TestEvidenceGapStatus:
         assert stored_ref["question"] == "Who is 'she'?"
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestIndeterminateStatus:
     def test_indeterminate_reference_updates_statement_verbatim_tag_and_sidecar(self):
         candidate = make_candidate(
@@ -462,6 +470,8 @@ class TestEmptyReferencesArray:
 # ===========================================================================
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestValidFromMatrix:
     def _resolve(self, text, ref, turn_id, tz="UTC"):
         refs = ref if isinstance(ref, list) else [ref]
@@ -1004,6 +1014,8 @@ class TestParseReplyRejections:
         assert resolution.statement == resolution.verbatim == candidate.text
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestResolutionLogWriteFailure:
     def test_sidecar_write_failure_does_not_lose_the_journal_entry(
         self, monkeypatch, caplog
@@ -1097,6 +1109,8 @@ class TestResolutionProviderRaises:
 # ===========================================================================
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestEmptyOrInvalidInput:
     def test_empty_candidate_span_degrades_without_a_client_call(self):
         candidate = make_candidate(
@@ -1224,6 +1238,8 @@ class TestEmptyOrInvalidInput:
 # ===========================================================================
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestDegradedTagLiteral:
     def test_degraded_entry_is_tagged_res_degraded_not_res_indeterminate(self):
         candidate = make_candidate(
@@ -1251,6 +1267,8 @@ class TestDegradedTagLiteral:
 # ===========================================================================
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestKillSwitchParity:
     def test_disabled_switch_skips_the_client_and_stays_indeterminate_degraded(self):
         Defaults.M4_RESOLUTION_ENABLED = False
@@ -1310,6 +1328,8 @@ class TestKillSwitchParity:
 # ===========================================================================
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestContextReachesJournalEntry:
     def test_speaker_and_captured_at_from_context_reach_the_entry(self):
         captured_at = time.time() - 500
