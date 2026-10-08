@@ -940,6 +940,47 @@ class TestDecisionLogCore:
             "reason:not_a_fact": 1,
         }
 
+    def test_a_pending_write_takes_back_a_terminal_rows_counts(self):
+        """#822: ``pending`` is never counted, so a ``pending`` write over a
+        terminal row removes that row from the summary (on Redis, in the same
+        script as the row write), and the terminal write that follows counts
+        it exactly once."""
+        log = DecisionLog()
+        a, b = self._candidate(0), self._candidate(1)
+        log.write_terminal("agent-pot", a, Verdict.REJECT, ReasonCode.NOT_A_FACT)
+        log.write_terminal("agent-pot", b, Verdict.REJECT, ReasonCode.NOT_A_FACT)
+
+        log.write_pending("agent-pot", a)
+        assert log.turn_summary("agent-pot", "t-41") == {
+            "state:reject": 1,
+            "reason:not_a_fact": 1,
+        }
+        assert log.turn_summary("agent-pot", "t-41") == self._rollup(log, "agent-pot")
+
+        log.write_terminal(
+            "agent-pot", a, Verdict.ACCEPT, ReasonCode.ACCEPTED, entry_id="E1"
+        )
+        expected = {
+            "state:reject": 1,
+            "reason:not_a_fact": 1,
+            "state:accept": 1,
+            "reason:accepted": 1,
+        }
+        assert log.turn_summary("agent-pot", "t-41") == expected
+        assert self._rollup(log, "agent-pot") == expected
+
+    def test_a_pending_write_over_pending_or_nothing_leaves_the_summary(self):
+        log = DecisionLog()
+        c = self._candidate()
+        log.write_pending("agent-pp", c)
+        log.write_pending("agent-pp", c)
+        assert log.turn_summary("agent-pp", "t-41") == {}
+        row = log.get("agent-pp", "t-41", c.candidate_id)
+        assert row is not None and row.state == Verdict.PENDING.value
+        assert [r.candidate_id for r in log.list_pending("agent-pp")] == [
+            c.candidate_id
+        ]
+
     def test_summary_transition_among_several_candidates(self):
         log = DecisionLog()
         a, b, c = self._candidate(0), self._candidate(1), self._candidate(2)
@@ -1592,17 +1633,15 @@ class TestAssemblyAgainstTheRealJournal:
             == entry_id
         )
 
-    def test_a_pending_write_over_a_terminal_row_is_a_documented_divergence(self):
+    def test_a_pending_write_over_a_terminal_row_keeps_the_summary_exact(self):
         """#822: an unclaimed terminal write (any non-accept verdict takes no
         claim) that lands between ``assemble``'s row read and its
-        ``write_pending``. ``write_pending`` is a plain save, so on Redis it
-        overwrites the terminal row without taking back that row's summary
-        counts, and the ``accept`` that follows treats ``pending`` as new: the
-        hash keeps ``state:reject`` for a candidate whose row is ``accept``.
-        Postgres derives the summary from the rows and does not drift. On both
-        legs ``rebuild_turn_summary`` returns the rollup of the rows. Redis
-        wire unchanged; documented in auditable-extraction.md and the
-        postgres-backend divergence table."""
+        ``write_pending``. The pending write takes back the ``reject`` row's
+        counts in the same atomic step as the row write (``PENDING_WRITE_LUA``
+        on Redis), so the ``accept`` that follows counts the candidate once.
+        Postgres derives the summary from the rows. Both legs return the
+        rollup of the rows, before and after ``rebuild_turn_summary``. Before
+        the fix the Redis hash kept ``state:reject`` for an ``accept`` row."""
         candidate = self._candidate(7, turn="t-race")
         log = DecisionLog()
         other_runner = DecisionLog()
@@ -1623,17 +1662,7 @@ class TestAssemblyAgainstTheRealJournal:
         row = log.get("agent-race", "t-race", candidate.candidate_id)
         assert row.state == Verdict.ACCEPT.value and row.entry_id == entry_id
         rollup = {"state:accept": 1, "reason:accepted": 1}
-        summary = log.turn_summary("agent-race", "t-race")
-        if log._backend is None:
-            # Redis: the reject's counts were never taken back.
-            assert summary == {
-                "state:reject": 1,
-                "reason:not_a_fact": 1,
-                "state:accept": 1,
-                "reason:accepted": 1,
-            }
-        else:
-            assert summary == rollup
+        assert log.turn_summary("agent-race", "t-race") == rollup
         assert log.rebuild_turn_summary("agent-race", "t-race") == rollup
         assert log.turn_summary("agent-race", "t-race") == rollup
 

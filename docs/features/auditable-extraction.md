@@ -192,34 +192,33 @@ that moves from one terminal state to another is counted under the new one
 only; zero counts are absent and `pending` never appears. If it ever
 disagrees with the detail rows, the detail rows are right.
 
-On Redis the summary is a hash that the terminal-write script updates in the
-same atomic step as the row. Before #811 that script only incremented, so a
+On Redis the summary is a hash that every write changing a row's state
+updates in the same atomic step as the row. The terminal-write script takes
+back the row's old `state:`/`reason:` counts and adds the new ones. The
+`pending` write is a script too (`PENDING_WRITE_LUA`): `pending` is never
+counted, so a `pending` write over a row that is already terminal takes that
+row's counts back out (#822). That path is reachable: a non-`accept` verdict
+takes no assembly claim, so an unclaimed `reject` (or `withhold`, or
+`firewall_drop`) can land between `assemble`'s row read and its
+`write_pending`, and the `accept` that follows must count the candidate once.
+On Postgres the summary is a `GROUP BY` computed on read and cannot drift.
+Both backends return the same summary for the same writes, in any
+interleaving; pinned on both legs by
+`test_auditable_extraction.py::TestAssemblyAgainstTheRealJournal::test_a_pending_write_over_a_terminal_row_keeps_the_summary_exact`.
+
+A Redis hash written by an earlier version can still disagree with its rows.
+Before #811 the terminal-write script only incremented, so a
 terminal-to-terminal write (a retried `reject` after a `withhold`, say) left
-the old state's count in place. A hash written that way is repaired by
+the old state's count in place. Before #822 `write_pending` was a plain save
+with no summary step, so `reject`, then `pending`, then `accept` left
+`{state:reject: 1, reason:not_a_fact: 1, state:accept: 1, reason:accepted: 1}`
+for a single `accept` row. A hash written either way is repaired by
 `DecisionLog.rebuild_turn_summary(agent_id, turn_id)`, which recomputes it
 from the detail rows in one script call; run it per turn once every process
-has the fix. Until then, while old and new processes both write, or when new
-writes land on a hash that drifted before the fix, a transition can take back
-counts the hash never held, so it may undercount until rebuilt. On Postgres
-the summary is a `GROUP BY` computed on read and cannot drift, so the same
-call just returns it.
-
-**One Redis-only drift remains, by design (#822).** `write_pending` is a
-plain row save with no summary step, so a `pending` write over a row that is
-already terminal does not take back that row's counts, and the terminal write
-that follows treats `pending` as new. The path that reaches it: a non-`accept`
-verdict takes no assembly claim, so an unclaimed `reject` (or `withhold`, or
-`firewall_drop`) can land between `assemble`'s row read and its
-`write_pending`. The sequence `reject`, then `pending`, then `accept` leaves
-the Redis hash at `{state:reject: 1, reason:not_a_fact: 1, state:accept: 1,
-reason:accepted: 1}` for a single `accept` row. The rows are right and the
-hash over-counts; `rebuild_turn_summary` repairs it. Postgres derives the
-summary from the rows and returns `{state:accept: 1, reason:accepted: 1}`.
-The Redis wire is unchanged: making the pending write take back the counts
-would mean a Lua twin of the save, which this fix does not add. Read
-`turn_summary` on Redis as a fast estimate, and use the rows (or a rebuild)
-where an exact count matters. Pinned on both legs by
-`test_auditable_extraction.py::TestAssemblyAgainstTheRealJournal::test_a_pending_write_over_a_terminal_row_is_a_documented_divergence`.
+has both fixes. Until then, while old and new processes both write, or when
+new writes land on a hash that drifted before the fix, a take-back can remove
+counts the hash never held for that row, so it may be off in either direction
+until rebuilt. On Postgres the same call just returns the derived summary.
 
 ## The terminal-write conflict guard
 
@@ -476,8 +475,10 @@ claim keys are left behind on purpose: Postgres derives the summary, and a
 claim is a lease. `DecisionLog(redis_client=...)` pins the Redis path whatever
 the process default is.
 
-The one difference between the backends is the Redis-only summary drift
-described above, which Postgres does not have.
+The two backends return the same rows, return values and summary for the same
+writes. The only Redis-specific step is the per-turn rebuild of a hash written
+by a version before #811 or #822, described above; Postgres has no hash to
+rebuild.
 
 **Units of work and the connection pool.** The decision log joins neither a
 caller's `transaction()` nor `popoto.batch()`, on either backend. Its writes
