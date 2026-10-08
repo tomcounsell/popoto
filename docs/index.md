@@ -34,7 +34,8 @@ export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents
 Postgres needs PostgreSQL 18 or newer; `EmbeddingField` also needs the
 pgvector extension. Popoto never reads `DATABASE_URL`, and it creates its
 tables on first use. The two backends differ in a few documented places, and
-`DataFrameField` stays Redis-only: see
+`DataFrameField` stays Redis-only: see the
+[Use Postgres](guides/postgres-quickstart.md) walkthrough,
 [Postgres Backend](features/postgres-backend.md) and its
 [documented divergences](features/postgres-backend.md#documented-divergences).
 An existing Redis memory store moves across with a one-off copy from an RDB

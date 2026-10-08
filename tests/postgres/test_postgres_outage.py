@@ -11,6 +11,8 @@ import subprocess
 import sys
 import textwrap
 import time
+import traceback
+from urllib.parse import quote
 
 import pytest
 
@@ -124,6 +126,167 @@ def test_dropped_writes_are_counted_from_the_first_use(unreachable_from_start):
     assert health["dropped_writes"] == 2, "a failed read was counted as a write"
     assert health["consecutive_failures"] == 5
     assert health["ok"] is False and health["last_error"]
+
+
+def test_redact_removes_the_dsn_password_from_a_message():
+    _needs_psycopg()
+    from popoto.backends.postgres import INVALID_DSN_MESSAGE, _redact
+
+    dsn = "postgresql://app:s3cr3t-hunter2@db.internal:5432/agents"
+    assert _redact("auth failed for s3cr3t-hunter2", dsn) == "auth failed for ***"
+    assert _redact("nothing to hide", "postgresql://db/agents") == "nothing to hide"
+    # A DSN that does not parse: nothing says which part of the text is the
+    # secret, so the message is withheld outright.
+    assert _redact("Sekr1t", "not a dsn ===") == INVALID_DSN_MESSAGE
+    url_form = "postgresql://app:p%40ss%3Aw%2Frd@db/agents"
+    both = _redact("bad p%40ss%3Aw%2Frd and p@ss:w/rd", url_form)
+    assert both == "bad *** and ***", both
+    assert _redact("x password=abc y", "postgresql://db/a") == "x password=*** y"
+    assert _redact("at postgresql://u:pw@h/d", "postgresql://db/a") == (
+        "at postgresql://u:***@h/d"
+    )
+
+
+# The 1.10.0 review's leak (#821): libpq's parse errors quote the fragment
+# they fail on, which for these DSNs is the password, and #821 put the last
+# connection attempt's text into the error, ``health.last_error`` and the
+# logs. Each case is (DSN, the secret substrings that must appear nowhere).
+_SPECIAL = "p@ss:w/rd%x#y?z&q=1 'Sekr1t"
+_LEAK_CASES = {
+    # A literal "%" not percent-encoded: libpq says
+    # ``invalid percent-encoded token: "Pa%zzSekr1t"``.
+    "url-unencoded-percent": (
+        "postgresql://app:Pa%zzSekr1t@127.0.0.1:1/agents",
+        ("Pa%zzSekr1t", "Sekr1t"),
+    ),
+    # An unquoted space in a keyword value: ``missing "=" after "Sekr1tTail"``.
+    "keyword-unquoted-space": (
+        "host=127.0.0.1 port=1 dbname=agents user=app password=hunter2 Sekr1tTail",
+        ("hunter2", "Sekr1tTail"),
+    ),
+    # Valid DSNs whose password holds every reserved character (refused port).
+    "url-special-characters": (
+        "postgresql://app:" + quote(_SPECIAL, safe="") + "@127.0.0.1:1/agents",
+        (_SPECIAL, quote(_SPECIAL, safe=""), "Sekr1t"),
+    ),
+    "keyword-special-characters": (
+        "host=127.0.0.1 port=1 dbname=agents user=app password='"
+        + _SPECIAL.replace("'", "\\'")
+        + "'",
+        (_SPECIAL, "Sekr1t"),
+    ),
+}
+
+
+def _leaks(exc, backend, caplog, secrets):
+    """Every surface the error text reaches, mapped to the secrets in it."""
+    surfaces = {
+        "str": str(exc),
+        "repr": repr(exc),
+        "traceback": "".join(traceback.format_exception(exc)),
+        "health.last_error": str(backend.health.last_error),
+        "health": repr(backend.health),
+        "backend": repr(backend),
+        "logs": caplog.text,
+    }
+    return {
+        name: secret
+        for name, text in surfaces.items()
+        for secret in secrets
+        if secret in text
+    }
+
+
+@pytest.mark.parametrize("case", sorted(_LEAK_CASES))
+def test_a_connection_error_never_contains_the_password(case, monkeypatch, caplog):
+    dsn, secrets = _LEAK_CASES[case]
+    backend, restore = _install(monkeypatch, dsn)
+    try:
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(BackendUnavailableError) as raised:
+                OutageNote.query.count()
+    finally:
+        restore()
+    assert not _leaks(raised.value, backend, caplog, secrets)
+    if "unencoded" in case or "unquoted" in case:
+        assert "invalid connection string" in str(raised.value)
+        assert "invalid connection string" in backend.health.last_error
+
+
+@pytest.mark.parametrize("case", ["url-unencoded-percent", "keyword-unquoted-space"])
+def test_an_unparseable_dsn_is_refused_before_any_pool_exists(case):
+    """No pool is ever built for a DSN libpq cannot parse: a pool would retry
+    in its own threads and put libpq's parse error -- the password fragment
+    -- in ``psycopg.pool``'s own warning log on every attempt."""
+    _needs_psycopg()
+    import psycopg
+
+    from popoto.backends.postgres import _pool_for, _pools
+
+    dsn, secrets = _LEAK_CASES[case]
+    with pytest.raises(psycopg.OperationalError) as raised:
+        _pool_for(dsn)
+    assert raised.value.__cause__ is None and raised.value.__suppress_context__
+    assert not any(key[0] == dsn for key in _pools)
+    assert not any(secret in str(raised.value) for secret in secrets)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", sorted(_LEAK_CASES))
+async def test_an_async_connection_error_never_contains_the_password(
+    case, monkeypatch, caplog
+):
+    """The async bridge connects inline on the loop, so libpq's error is the
+    raised exception itself rather than a pool thread's last attempt."""
+    from popoto.backends import QueryPlan
+    from popoto.backends.postgres import aio
+
+    dsn, secrets = _LEAK_CASES[case]
+    backend, restore = _install(monkeypatch, dsn)
+    try:
+        twin = aio.get_async_backend(OutageNote)
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(BackendUnavailableError) as raised:
+                await twin.count(OutageNote._meta.spec, QueryPlan())
+    finally:
+        restore()
+    assert not _leaks(raised.value, backend, caplog, secrets)
+
+
+def test_a_missing_database_names_the_cause_and_never_the_password(
+    pg, pg_schema, monkeypatch
+):
+    """The 1.10.0 audit: a DSN naming a database that does not exist used to
+    raise only ``PoolTimeout: couldn't get a connection after 5.00 sec``,
+    because the sync pool connects in its own threads. The error now carries
+    the last connection attempt's own message (``FATAL: database "x" does
+    not exist``), with the DSN's password redacted."""
+    import uuid
+
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    from popoto.backends.postgres import PostgresBackend, close_pools
+
+    url = os.environ["POSTGRES_URL"]
+    password = conninfo_to_dict(url).get("password") or "popoto-not-a-real-secret"
+    missing = f"popoto_no_such_db_{uuid.uuid4().hex[:10]}"
+    dsn = make_conninfo(url, dbname=missing, password=password)
+    monkeypatch.setattr(Defaults, "PG_CONNECT_TIMEOUT_SECONDS", 1.0)
+    backend = PostgresBackend(dsn=dsn, schema="popoto_outage_probe")
+    previous = set_backend(backend)
+    previous_instance = _swap_instance("postgres", backend)
+    try:
+        with pytest.raises(BackendUnavailableError) as raised:
+            OutageNote.query.count()
+    finally:
+        _swap_instance("postgres", previous_instance)
+        set_backend(previous)
+        close_pools()
+    message = str(raised.value)
+    assert "last connection attempt" in message, message
+    assert f'database "{missing}" does not exist' in message, message
+    assert password not in message, message
+    assert password not in backend.health.last_error
 
 
 def test_error_is_logged_once_per_window(unreachable, caplog, monkeypatch):

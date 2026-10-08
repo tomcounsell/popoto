@@ -63,6 +63,9 @@ PACKAGES: list[tuple[str, str]] = [
     ("pgvector", "postgres"),
     # M5: the async Postgres backend's bridge (a C extension).
     ("greenlet", "postgres"),
+    # 1.10.0: EmbeddingField imports numpy at module load, so the postgres
+    # extra declares it too. Listed under both extras because each declares it.
+    ("numpy", "postgres"),
 ]
 
 

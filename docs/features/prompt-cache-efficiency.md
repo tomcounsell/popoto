@@ -265,10 +265,11 @@ The four rules are about prompt position, not storage, so they hold unchanged
 for a Postgres-bound model: `ContextAssembler.assemble(exclude_keys=...)` and
 `SubconsciousMemory.inject_context(exclude_keys=...)` filter candidates before
 selection on both backends (the suppression tests in
-`tests/test_context_assembler.py` run on both legs). The automatic per-session suppression is the part that does not
-carry over: it lives in `MemoryService`, the Redis-only harness integration,
-which keeps the injected keys in a Redis set. A Postgres application gets the
-same effect by passing the previous turns' keys itself. See
+`tests/test_context_assembler.py` run on both legs). The automatic per-session suppression lives in `MemoryService`, the
+harness integration. It keeps the injected keys in a Redis set on Redis and in
+the `_harness` adapter's tables on Postgres, so the hook and the MCP server get it
+on either backend. An application that does not use the harness gets the same
+effect by passing the previous turns' keys itself. See
 [ContextAssembler](postgres-backend.md#contextassembler-m2c) and
 [Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
 

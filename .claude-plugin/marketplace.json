@@ -6,17 +6,17 @@
     "url": "https://popoto.io/"
   },
   "metadata": {
-    "description": "Agent memory on Redis or Valkey, with no API keys.",
+    "description": "Agent memory on Redis, Valkey or PostgreSQL, with no API keys.",
     "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "popoto-memory",
       "source": "./plugins/claude-code",
-      "description": "Subconscious memory for Claude Code: recall before every turn, capture after every turn, backed by your own Redis or Valkey.",
+      "description": "Subconscious memory for Claude Code: recall before every turn, capture after every turn, backed by your own Redis, Valkey or PostgreSQL.",
       "version": "1.8.2",
       "category": "memory",
-      "keywords": ["memory", "redis", "valkey", "context", "recall"]
+      "keywords": ["memory", "redis", "valkey", "postgres", "context", "recall"]
     }
   ]
 }

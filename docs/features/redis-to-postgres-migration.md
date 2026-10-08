@@ -1,19 +1,45 @@
 # Redis to Postgres Migration (#756)
 
 A one-off tool that copies agent memory from a Redis store into the
-[Postgres backend](postgres-backend.md). It is built for Valor's `Memory`,
-but works on any popoto model the Postgres backend accepts. Run it once per
-machine: each machine's Redis store merges into the one central Postgres
-database.
+[Postgres backend](postgres-backend.md). It works on any popoto model the
+Postgres backend accepts. Run it once per machine: each machine's Redis store
+merges into the one central Postgres database. The examples on this page use
+an agent-memory model shaped like the one its first adopter, Valor, migrated
+with it; substitute your own model and mapping.
 
 ```bash
-python -m popoto.migrate_redis_to_postgres \
+popoto-migrate-redis-to-postgres \
     --rdb /archive/laptop-1/dump.rdb \
     --content-dir /archive/laptop-1/content \
     --run-dir /archive/laptop-1/migration \
     --source-id laptop-1 \
     --mapping myapp.memory_migration:MAPPINGS
 ```
+
+`python -m popoto.migrate_redis_to_postgres` with the same arguments is the
+same tool.
+
+## Prerequisites
+
+Check these before the rehearsal. A missing `redis-server` or an
+unimportable model module is refused (exit `2`) before anything is read:
+
+- **`popoto[postgres]` on the machine that runs the tool**, at the version
+  the application will run after the cutover.
+- **`redis-server` on `PATH`**, at the **same major version** as the server
+  that wrote the snapshot, or passed with `--redis-server /path/to/redis-server`.
+  The tool reads the RDB file through a private `redis-server` it starts
+  itself. An older major version cannot load a newer RDB.
+- **The model module is importable.** `--mapping myapp.memory_migration:MAPPINGS`
+  and `--model myapp.models:Memory` import your code. Run the tool from the
+  directory that holds `myapp`, or add that directory to `PYTHONPATH`. An
+  unimportable module is refused with a message naming `PYTHONPATH`.
+- **A Postgres database the backend accepts**: PostgreSQL 18 or newer, a
+  UTF8 database, and `CREATE EXTENSION vector` already run if the model has
+  an `EmbeddingField` (see [Use Postgres](../guides/postgres-quickstart.md)).
+- **The snapshot**: a copy of `dump.rdb` and of `$POPOTO_CONTENT_PATH`, taken
+  as the [runbook](#runbook) describes. The tool never connects to a live
+  Redis.
 
 The target is the library's own setting: `POPOTO_POSTGRES_URL` and
 `POPOTO_POSTGRES_SCHEMA`. The source is the RDB file. The tool has no Redis
@@ -141,10 +167,12 @@ into a scratch Postgres database, without freezing anything. Read the report
 
 1. **Drain.** Let pending memory-extraction jobs and session sidecars drain,
    so nothing writes memory after the snapshot.
-2. **Freeze.** Stop every memory writer on the machine: close the Claude
-   Code sessions (their hooks write memory), then stop the bridge, the
-   worker (all memory reflections) and the memory MCP server.
-   *Rollback: restart them.*
+2. **Freeze.** Stop every memory writer on the machine: every process
+   that saves to the models you are migrating. In an agent deployment that
+   is usually the harness sessions whose hooks write memory, the background
+   workers that extract or reflect on memory, and any memory MCP server. (In
+   Valor's deployment: the Claude Code sessions, the bridge, the worker and
+   the memory MCP server.) *Rollback: restart them.*
 3. **Snapshot.** On the live server, run `BGSAVE` and poll `LASTSAVE` until
    it advances. Record `INFO persistence`'s `rdb_changes_since_last_save`.
    Copy `dump.rdb` and `$POPOTO_CONTENT_PATH` (default `~/.popoto/content`,
@@ -256,7 +284,7 @@ MAPPINGS = [
                 "dismissal-prune", "decay-prune-tier2", "cleanup-junk-extraction",
             ),
         },
-        # Valor's ids are uuid4 hex; anything else is rejected and counted.
+        # This model's ids are uuid4 hex; anything else is rejected and counted.
         id_patterns={"memory_id": r"^[0-9a-f]{32}$"},
     ),
 ]
@@ -267,8 +295,10 @@ post-cutover declaration already says `Meta.backend = "postgres"` works too:
 the tool binds it to Redis to export and to its own Postgres backend to
 import.
 
-For Valor's `Memory`, as surveyed by #757 and #758 and mirrored by the test
-fixture `tests/postgres/migrate_fixtures.py::MigMemory`:
+For an example agent-memory model (Valor's `Memory`, as surveyed by #757
+and #758 and mirrored by the test fixture
+`tests/postgres/migrate_fixtures.py::MigMemory`), the mapping looks like
+this. A model with other fields maps the same way, field for field:
 
 | Redis | Postgres (`<schema>.memory`) | Notes |
 |---|---|---|
@@ -541,8 +571,8 @@ snapshot. Each key family of a migrated model has a disposition, recorded in
 
 A key family the tool does not recognize also stops the run, unless you pass
 `--accept-unclassified` after reading `inventory.json`. Keys of other models
-are counted under `out_of_scope` and left alone. That includes Valor's
-memory-gate counters, which stay in Redis.
+are counted under `out_of_scope` and left alone, such as an
+application's own counters that are not popoto models.
 
 ## Resume and idempotency
 
@@ -658,8 +688,8 @@ row per run, with its status, progress and final report) and
 | `3` | The inventory stopped the run. Nothing was written. |
 | `130` | Interrupted by `SIGTERM`, `SIGHUP` or `SIGINT`. The throwaway server is stopped and its copies are removed. Continue with `--resume` and the same `--run-dir`. |
 
-`redis-server` must be on `PATH` (or passed with `--redis-server`), at the
-same major version as the server that wrote the snapshot.
+See [Prerequisites](#prerequisites) for what the tool needs before it
+reads anything.
 
 ## Where this departs from the #757 plan
 

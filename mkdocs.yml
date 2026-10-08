@@ -28,6 +28,7 @@ nav:
     - Home: 'index.md'
     - Add Memory to Your Agent:
           - Quickstart: 'guides/agent-memory-quickstart.md'
+          - Use Postgres: 'guides/postgres-quickstart.md'
           - SubconsciousMemory: 'guides/subconscious-memory-recipe.md'
           - Query-Blind Retrieval: 'guides/query-blind-retrieval.md'
           - LLM Memory Extraction: 'features/llm-memory-extraction.md'

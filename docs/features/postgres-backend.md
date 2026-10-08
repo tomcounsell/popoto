@@ -5,6 +5,9 @@ Popoto keeps one model API with two native storage backends behind it
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.
 
+New to it? Start with [Use Postgres](../guides/postgres-quickstart.md), which goes from an empty database
+to a working memory loop. This page is the reference; server requirements (PostgreSQL 18+, UTF8, pgvector) are listed under [Known limitations](#known-limitations).
+
 Postgres support ships in popoto 1.10.0. It is opt-in: a model uses Postgres
 only when you select it (below), and every model that does not keeps running
 on Redis exactly as before. Redis behaviour is unchanged unless noted.
@@ -31,7 +34,7 @@ Redis are collected under [Known limitations](#known-limitations).
 ## Selecting the backend
 
 ```bash
-pip install 'popoto[postgres]'      # psycopg[binary,pool] + pgvector
+pip install 'popoto[postgres]'   # psycopg[binary,pool], psycopg-pool, pgvector, numpy, greenlet
 ```
 
 A backend is chosen per model, or once for the whole process:

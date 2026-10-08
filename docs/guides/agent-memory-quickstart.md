@@ -65,7 +65,8 @@ in the table rather than on the filesystem. Popoto never reads `DATABASE_URL`. T
 [Postgres Backend](../features/postgres-backend.md) reference covers
 connection settings, the outage contract, and the
 [documented divergences](../features/postgres-backend.md#documented-divergences)
-from Redis.
+from Redis. For a walkthrough from an empty database, see
+[Use Postgres](postgres-quickstart.md).
 
 The levels below exist for when you want to shape the schema yourself. See the
 [SubconsciousMemory recipe](subconscious-memory-recipe.md) for the default

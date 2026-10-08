@@ -221,7 +221,7 @@ wheels = [
 
 [[package]]
 name = "popoto"
-version = "1.9.0"
+version = "1.10.0"
 source = { editable = "../" }
 dependencies = [
     { name = "msgpack" },
@@ -249,11 +249,13 @@ requires-dist = [
     { name = "numpy", marker = "extra == 'dataframe'", specifier = ">=1.23.1" },
     { name = "numpy", marker = "extra == 'embeddings'", specifier = ">=1.23.1" },
     { name = "numpy", marker = "extra == 'openai'", specifier = ">=1.23.1" },
+    { name = "numpy", marker = "extra == 'postgres'", specifier = ">=1.23.1" },
     { name = "numpy", marker = "extra == 'voyage'", specifier = ">=1.23.1" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0.0" },
     { name = "pandas", marker = "extra == 'dataframe'", specifier = ">=1.4.3" },
     { name = "pgvector", marker = "extra == 'postgres'", specifier = ">=0.3" },
-    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = ">=3.2" },
+    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = ">=3.2.1" },
+    { name = "psycopg-pool", marker = "extra == 'postgres'", specifier = ">=3.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.1.2" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
     { name = "redis", specifier = ">=4.4.4" },

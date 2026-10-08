@@ -30,7 +30,7 @@ export POPOTO_BACKEND=postgres
 export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents
 ```
 
-Popoto never reads `DATABASE_URL`. Tables are created on first use. See [Postgres Backend](https://popoto.io/features/postgres-backend/) for the full reference, including the [documented divergences](https://popoto.io/features/postgres-backend/#documented-divergences) from Redis behaviour and the fields that stay Redis-only (`DataFrameField`).
+Popoto never reads `DATABASE_URL`. Tables are created on first use. For a walkthrough from an empty database to a working memory loop, see [Use Postgres](https://popoto.io/guides/postgres-quickstart/); for the full reference, see [Postgres Backend](https://popoto.io/features/postgres-backend/), including the [documented divergences](https://popoto.io/features/postgres-backend/#documented-divergences) from Redis behaviour and the fields that stay Redis-only (`DataFrameField`).
 
 ## Memory around an LLM turn
 
