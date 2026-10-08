@@ -656,28 +656,281 @@ before Stop reads it.
 the table advisory lock (#776).
 
 ## No-Gos (Out of Scope)
-TBD
+
+- Widening the shared `OUTAGE_ERRORS` tuple and fixing `set_backend(instance)`
+  for `Meta.backend="postgres"` models belong to #816
+  **[SEPARATE-SLUG #816]**. This plan only consumes the widening, with a local
+  fallback until #816 merges.
+- Migrating existing `$popoto_memory:*` Redis keys into Postgres. They are
+  transient (1 h TTL) or diagnostic counters, so they restart empty
+  **[DESTRUCTIVE]**: no migration tool will touch a live Redis store.
+- A shorter Postgres connect timeout for the hook process, unless Open
+  Question 1 says yes. If it is wanted, it lands as a pinned constant in the
+  same PR. If deferred, it gets its own issue **[ORDERED]**: it must follow
+  the latency measurement from this build.
+- Creating the pgvector extension from doctor or the service. Doctor reports
+  only; `CREATE EXTENSION` is an operator action that needs privileges popoto
+  must not assume **[EXTERNAL]**.
+- Async (`aio.py`) adapters for `_harness`. The harness path is sync end to
+  end. The async backend can add `_harness` when an async caller exists
+  **[SEPARATE-SLUG #759]**.
+- `py.typed` / public typing of `integrations/`. That is unchanged and remains
+  a separate published-API decision.
 
 ## Update System
-TBD
+
+- No new dependency. `psycopg` is already the `postgres` extra, and the
+  harness does not require it on Redis installs.
+  - `integrations/state.py` must import nothing from
+    `popoto.backends.postgres` at module scope. A Redis-only install without
+    the extra must still import the hook.
+  - Test: run `python -c "import popoto.integrations.hooks"` with psycopg
+    absent (the existing lock-import job covers it).
+- Existing installs need no migration. The engine tables are created on first
+  use, under the existing `POPOTO_SCHEMA_AUTO` rule.
+  - With auto-DDL off, an operator who manages the schema needs the three new
+    `popoto_harness_*` tables. Doctor names them when they are missing, and
+    the Postgres backend doc lists their DDL next to the other engine tables.
+- The plugins (`plugins/*`) need no change: they shell out to the hook, or
+  construct `MemoryService()`, and both are backend-neutral after this
+  change.
 
 ## Agent Integration
-TBD
+
+- The MCP server (`popoto.integrations.mcp_server`) is the agent-facing
+  surface. Its tools (`search`, `remember`, `status`, ...) already go through
+  `MemoryService`, so they become Postgres-native with the service. No new
+  tool is added.
+- Changes:
+  - The `_status` tool reads `reachable` instead of `redis_reachable`, and
+    returns the `postgres` health block on Postgres.
+  - The server's instruction text names Postgres.
+- Integration test: the zero-Redis test in
+  `tests/postgres/test_postgres_harness.py` calls the MCP tool functions under
+  `_RedisRecorder`. `tests/test_integrations_mcp.py` runs as `conformance` on
+  both legs.
 
 ## Documentation
-TBD
+
+- [ ] Update `docs/features/harness-integration.md`:
+  - a "Running on Postgres" section (`POPOTO_BACKEND=postgres` +
+    `POPOTO_POSTGRES_URL`, with no Redis needed);
+  - the doctor health block and its exit codes;
+  - `POPOTO_MEMORY_URL` being ignored on Postgres.
+- [ ] Update `docs/features/postgres-backend.md`:
+  - list `popoto_harness_list` / `_set` / `_stamp` among the engine tables
+    with their DDL;
+  - replace the "MemoryService (the Redis-only integration) does not see that
+    counter" sentence (around lines 762-763) now that it does;
+  - add the harness to the zero-Redis surfaces next to the decision log.
+- [ ] Update `plugins/claude-code/README.md`, `plugins/hermes/README.md` and
+  `plugins/openclaw/README.md` wherever they say Redis is required: "Redis,
+  Valkey or Postgres".
+- [ ] Add a `CHANGELOG.md` `[Unreleased]` entry under Fixed: "the harness
+  (hook, MCP server, doctor, demo) works on the Postgres backend with zero
+  Redis commands; doctor reports Postgres health" (#814).
+- [ ] Update docstrings in `integrations/cli.py`, `demo.py`, `mcp_server.py`
+  and `service.py` that say Redis where they mean "the store".
 
 ## Success Criteria
-TBD
+
+- [ ] With `POPOTO_BACKEND=postgres`, a full hook turn (`UserPromptSubmit` →
+  `Stop`) plus the MCP tools, `doctor --json`, `demo` and `status()` sends
+  **zero** Redis commands. The `_RedisRecorder` test in
+  `tests/postgres/test_postgres_harness.py` asserts `calls == []`.
+- [ ] On Postgres, `feedback` after `assemble` records the injected
+  memories' outcomes (non-zero), and a second `assemble` in the same session
+  excludes the first turn's keys. These are the behaviours spike-2 showed
+  broken.
+- [ ] `MemoryService()` constructs on a Postgres-only host with no
+  `REDIS_URL` / `POPOTO_MEMORY_URL`, and attempts no Redis command.
+- [ ] `popoto-memory doctor` on Postgres reports:
+  - the server version and whether it meets the >= 18 floor;
+  - pgvector installed and available versions, its schema, and whether it is
+    on the search path;
+  - the schema name, whether it exists, its format version and the memory
+    table.
+
+  It exits 1 when Postgres is unreachable. It never prints a password.
+- [ ] Redis leg: the recorded command sequence for one assemble + feedback
+  turn is identical before and after the refactor. All existing integration
+  tests pass unchanged, or with only the documented
+  `reachable` / `redis_only` edits.
+- [ ] The integration tests marked `conformance` pass on both legs
+  (`POPOTO_CONFORMANCE_BACKENDS=redis,postgres`), and CI's `postgres` job is
+  green.
+- [ ] Hook p95 on Postgres is within the 400 ms budget in
+  `tests/test_integrations_latency.py`, and the environment is stated.
+- [ ] `scripts/mypy_ratchet.py` passes, with `integrations/` still exactly 0
+  (the `clean` allowlist).
+- [ ] `ruff check src/` and `black --check src/ tests/` are clean.
+- [ ] Documentation updated (`/do-docs`).
 
 ## Team Orchestration
-TBD
+
+### Team Members
+
+- **Builder (harness-state)**
+  - Name: state-builder
+  - Role: `integrations/state.py`, the service refactor, the
+    `bind_connection` early return, and the outage handling.
+  - Agent Type: builder
+  - Resume: true
+- **Builder (pg-adapters)**
+  - Name: pg-builder
+  - Role: the `_harness` adapters, `counter_scan` / `counter_set_once`, and
+    `PostgresBackend.diagnose()`.
+  - Agent Type: builder
+  - Resume: true
+- **Builder (surfaces)**
+  - Name: surface-builder
+  - Role: `status()`, doctor, MCP `_status`, demo, and the redaction helper.
+  - Agent Type: builder
+  - Resume: true
+- **Test engineer**
+  - Name: harness-tester
+  - Role: the conformance marking sweep, `test_postgres_harness.py`, the Redis
+    wire pin and the latency parametrization.
+  - Agent Type: test-engineer
+  - Resume: true
+- **Validator**
+  - Name: harness-validator
+  - Role: run both legs plus mypy, ruff and black; check the zero-Redis
+    assertion is not vacuous (it must fail when one `self.redis` call is
+    reintroduced).
+  - Agent Type: validator
+  - Resume: true
+- **Documentarian**
+  - Name: harness-docs
+  - Role: the Documentation checklist.
+  - Agent Type: documentarian
+  - Resume: true
+
+A solo builder can run these in sequence. The split only marks dependency
+boundaries.
 
 ## Step by Step Tasks
-TBD
+
+### 1. Pin the Redis wire first
+- **Task ID**: build-wire-pin
+- **Depends On**: none
+- **Validates**: tests/test_integrations_service.py (new pin test)
+- **Assigned To**: harness-tester
+- **Agent Type**: test-engineer
+- **Parallel**: true
+- Record the exact Redis command sequence of one `assemble` + `feedback` +
+  `status` turn on the current code. Commit it as the expected value **before**
+  any refactor.
+
+### 2. Postgres adapters
+- **Task ID**: build-pg-adapters
+- **Depends On**: none
+- **Validates**: tests/postgres/test_postgres_recipes.py
+- **Assigned To**: pg-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Add `HARNESS_FIELD` and the three engine tables. Add the `list_*`, `set_*`
+  and `stamp_*` ops, plus `counter_scan` (escaped LIKE) and `counter_set_once`.
+- Add `PostgresBackend.diagnose()`, which uses catalog reads only and never
+  raises.
+- Add the bounded expired-row sweep, with its batch size as a `Defaults`
+  constant.
+
+### 3. Harness state and service refactor
+- **Task ID**: build-state
+- **Depends On**: build-wire-pin, build-pg-adapters
+- **Validates**: tests/test_integrations_service.py, tests/test_integrations_hooks.py
+- **Assigned To**: state-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Create `integrations/state.py`, with `RedisHarnessState` moved verbatim and
+  `BackendHarnessState` using `field_call`. Selection uses
+  `non_redis_backend(model)`.
+- Route every side-state call in `service.py` through `self.state`. Keep
+  `_decode_pending_entry` and the claim logic in the service.
+- Add the `bind_connection` early return for a non-Redis memory backend.
+- Rename `_redis_down` to `_store_down` and keep an alias. Widen the outage
+  tuple locally unless #816 has merged.
+
+### 4. Operator surfaces
+- **Task ID**: build-surfaces
+- **Depends On**: build-state
+- **Validates**: tests/test_integrations_cli.py, tests/test_integrations_mcp.py
+- **Assigned To**: surface-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- `status()`: add the `backend`, `reachable`, `server` and `ping_ms` keys; add
+  the `postgres` block and the ignored `POPOTO_MEMORY_URL` warning.
+- Doctor: add the health block and the exit rules.
+- MCP `_status` and instructions: update both. `demo`: neutral wording.
+- `redact_url`: handle conninfo and Postgres URLs.
+
+### 5. Test sweep and zero-Redis turn
+- **Task ID**: build-tests
+- **Depends On**: build-surfaces
+- **Validates**: tests/postgres/test_postgres_harness.py and the eight
+  integration files
+- **Assigned To**: harness-tester
+- **Agent Type**: test-engineer
+- **Parallel**: false
+- Mark the backend-neutral tests `conformance` and the key-inspecting tests
+  `redis_only(reason=...)`.
+- Write `test_postgres_harness.py`: the zero-Redis full turn, side-by-side
+  semantics, the two-claimer race, the `diagnose` shape, and the no-URL
+  construction case.
+- Add the Postgres parametrization to the latency test.
+
+### 6. Documentation
+- **Task ID**: document-feature
+- **Depends On**: build-tests
+- **Assigned To**: harness-docs
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Work through the Documentation checklist above.
+
+### 7. Final validation
+- **Task ID**: validate-all
+- **Depends On**: build-tests, document-feature
+- **Assigned To**: harness-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run both legs, the ratchet, ruff and black.
+- Run the non-vacuity check: temporarily reintroduce one `self.redis.incr` on
+  the Postgres path and confirm the zero-Redis test fails.
+- Report each number together with its environment.
 
 ## Verification
-TBD
+
+| Check | Command | Expected |
+|-------|---------|----------|
+| Redis leg | `pytest tests/test_integration*.py tests/test_hermes_plugin_contract.py -q` | exit code 0 |
+| Both legs (conformance) | `POPOTO_CONFORMANCE_BACKENDS=redis,postgres POSTGRES_URL=postgresql://localhost:5432/postgres pytest -m conformance -q` | exit code 0 |
+| Postgres-only | `POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/postgres -q` | exit code 0 |
+| Zero-Redis turn | `POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/postgres/test_postgres_harness.py -k zero_redis -q` | exit code 0 |
+| Types (ratchet) | `scripts/mypy_ratchet.py` | exit code 0, `integrations` 0 |
+| Lint | `ruff check src/` | exit code 0 |
+| Format | `black --check src/ tests/` | exit code 0 |
+| No new Redis import in integrations side state | `grep -n "POPOTO_REDIS_DB\|get_REDIS_DB" src/popoto/integrations/service.py` | output contains only the `redis` property |
+| Doctor on Postgres | `POPOTO_BACKEND=postgres POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres POPOTO_POSTGRES_SCHEMA=harness_verify popoto-memory doctor --json` | output contains "pgvector" |
 
 ## Open Questions
-TBD
+
+1. **Hook connect timeout on Postgres.**
+   - The hook process inherits `PG_CONNECT_TIMEOUT_SECONDS = 5.0`, against
+     Redis's 1.0 s (`HOOK_SOCKET_TIMEOUT_SECONDS`).
+   - When Postgres is down, every prompt therefore stalls up to 5 s before
+     the hook fails open.
+   - Should the hook process pin a shorter connect timeout (for example 1.0 s,
+     as a magic constant mirroring the Redis hook) in this PR?
+   - Recommendation: yes. It is a few lines, and it applies only in the hook
+     entry point, not to the library default.
+2. **`doctor --json` key shape on Postgres.**
+   - Proposed: add `backend`, `reachable`, `server` and `postgres`, and *omit*
+     `redis_url` / `redis_reachable` on Postgres rather than reporting
+     `false`.
+   - Is any consumer known to read `redis_reachable` unconditionally? Only
+     the in-repo MCP server and `cli.py` do, and both are updated here.
+3. **Ordering with #816.**
+   - Build this on top of #816 once it merges (clean), or proceed in parallel
+     with the local outage widening and rebase?
+   - Recommendation: proceed in parallel. The overlap is one expression.
