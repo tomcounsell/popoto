@@ -82,6 +82,11 @@ spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.
 
+**`Meta.backend` is not inherited.** Like every popoto `Meta` option, it is
+read from the class's own `Meta`: a subclass that declares no `Meta` of its
+own takes the process default, not its parent's backend. Repeat
+`backend = "postgres"` on each concrete model that needs it.
+
 ## Known limitations
 
 This section collects what Postgres does not do, or does differently, in
@@ -331,7 +336,10 @@ save's own transaction.
 `GeoField` is stored without PostGIS; see [Geo](#geo-m5).
 
 An `IndexedField` on a collection type is refused, as is a custom field that
-overrides a storage hook. A model that uses one of them raises
+overrides a storage hook: `on_save`, `on_delete`, `filter_query`,
+`format_value_pre_save` or `pre_save_validate`. A subclass of a built-in field
+that overrides none of the five is accepted and stored as its base field. A
+model that uses one of them raises
 `BackendCapabilityError` when you declare it with `Meta.backend =
 "postgres"`, or on first use when it takes the process default.
 
