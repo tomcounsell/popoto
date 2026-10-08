@@ -257,7 +257,7 @@ def _field_type(spec: ModelSpec, name: str) -> type:
     if py_type not in SQL_TYPES:
         raise BackendCapabilityError(
             f"{spec.name}.{name}: type {getattr(py_type, '__name__', py_type)} has "
-            "no Postgres column mapping yet"
+            "no Postgres column mapping"
         )
     return py_type
 

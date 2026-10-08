@@ -447,7 +447,7 @@ def _default_client() -> Any:
     """
     if not _anthropic_available or anthropic_module is None:
         raise ImportError(
-            "anthropic is required to use the M5 sameness judge. "
+            "anthropic is required to use the reconciliation sameness judge. "
             "Install it with: pip install popoto[anthropic]"
         )
     client = anthropic_module.Anthropic()

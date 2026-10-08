@@ -536,9 +536,9 @@ _POSTGRES_REFUSED_MIXINS: dict[str, str] = {}
 #: "a documented ``bind()`` refusal").
 _POSTGRES_REFUSED_KINDS: dict[str, str] = {
     "DataFrameField": (
-        "a pandas DataFrame is not stored on Postgres in v2: the field needs the "
+        "a pandas DataFrame is not stored on Postgres: the field needs the "
         "optional 'dataframe' extra, which no CI job installs, so a bytea column "
-        "for it would ship untested (#759 M5). Store the frame's JSON in a "
+        "for it would ship untested. Store the frame's JSON in a "
         "DictField or a BytesField instead"
     ),
 }

@@ -491,7 +491,7 @@ def _cond_sql(ts: TableSpec, kinds: dict[str, str], c: Cond, params: list[Any]) 
             return "FALSE"
         params.extend((low, high))
         return f"{col} BETWEEN %s AND %s"
-    raise _query_exception(f"lookup __{op.value} is not supported on Postgres yet")
+    raise _query_exception(f"lookup __{op.value} is not supported on Postgres")
 
 
 def _range_value(ts: TableSpec, kind: str, field_name: str, value: Any) -> Any:

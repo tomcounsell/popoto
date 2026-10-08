@@ -225,7 +225,7 @@ class RedisBackend:
         """
         if expiry is not None:
             raise BackendCapabilityError(
-                "save(expiry=) is not routed in #759 M1a; set Meta.ttl or the "
+                "the backend save takes no per-call expiry; set Meta.ttl or the "
                 "instance's _ttl/_expire_at"
             )
         update_fields = fields

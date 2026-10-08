@@ -671,3 +671,128 @@ def test_help_via_subprocess_module_invocation():
     )
     assert result.returncode == 0
     assert "usage" in result.stdout.lower()
+
+
+# ---------------------------------------------------------------------------
+# The database-0 fence applies only to transfers that use Redis
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fenced(monkeypatch):
+    """Arm the database-0 fence over the test lane's own pool.
+
+    The fence is armed as if the process were bound to database 0, but the
+    pool it fences is the test database's, so a command the fence fails to
+    stop still never reaches database 0. Any Redis connection checkout while
+    armed trips it, whichever path the caller took to the client.
+    """
+    from popoto.transfer import cli
+
+    original_init = cli._Db0Fence.__init__
+
+    def armed_init(self, allow_db0, verb):
+        original_init(self, allow_db0, verb)
+        self.active = not allow_db0
+
+    monkeypatch.setattr(cli._Db0Fence, "__init__", armed_init)
+
+
+def test_db0_fence_refuses_only_a_redis_bound_transfer(
+    fenced, backend, tmp_path, capsys
+):
+    """Redis on database 0 refuses a transfer that uses Redis, before any
+    command, and lets a Postgres-bound transfer run with no Redis command at
+    all: the fence would trip on the first connection checkout."""
+    TransferCliItem.create(name="a", payload="x")
+    out = tmp_path / "out.jsonl"
+
+    code = main(["export", "--model", MODEL_SPEC, "--out", str(out)])
+    err = capsys.readouterr().err
+
+    if backend.name == "redis":
+        assert code == 1, err
+        assert "refusing to read from Redis database" in err
+        assert "--allow-db0" in err
+        assert "Traceback" not in err
+        assert not out.exists()
+    else:
+        assert code == 0, err
+        assert "refusing" not in err
+        assert out.read_text().count("\n") >= 2  # manifest + one record
+
+        TransferCliItem.query.get(name="a").delete()
+        code = main(["import", "--model", MODEL_SPEC, "--in", str(out)])
+        err = capsys.readouterr().err
+        assert code == 0, err
+        assert TransferCliItem.query.get(name="a").payload == "x"
+
+
+def test_db0_fence_passes_with_allow_db0(fenced, tmp_path, capsys):
+    TransferCliItem.create(name="a")
+    out = tmp_path / "out.jsonl"
+    code = main(["export", "--model", MODEL_SPEC, "--out", str(out), "--allow-db0"])
+    assert code == 0, capsys.readouterr().err
+
+
+@pytest.mark.redis_only(reason="fences the Redis pool directly")
+def test_db0_fence_refuses_commands_and_pipelines_and_restores_the_pool():
+    from popoto.transfer.cli import CLIError, _Db0Fence
+
+    fence = _Db0Fence(allow_db0=False, verb="read from")
+    fence.active = True
+    pool = POPOTO_REDIS_DB.connection_pool
+    with fence:
+        with pytest.raises(CLIError, match="--allow-db0"):
+            POPOTO_REDIS_DB.ping()
+        assert fence.tripped
+        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe.get("x")
+        with pytest.raises(CLIError):
+            pipe.execute()
+    assert "get_connection" not in vars(pool)
+    assert POPOTO_REDIS_DB.ping()
+
+
+def test_postgres_only_process_on_db0_transfers_without_allow_db0(backend, tmp_path):
+    """End to end, no test fence: a child process whose Redis binding is
+    database 0 (``REDIS_URL=…/0``) and whose default backend is Postgres
+    exports and imports without ``--allow-db0``. The real fence is armed in
+    the child, so exit 0 means no Redis connection was checked out, and
+    database 0's key count is unchanged."""
+    if backend.name != "postgres":
+        pytest.skip("the Postgres-only deployment shape")
+    from popoto.backends import get_backend
+
+    pg = get_backend(TransferCliItem)
+    TransferCliItem.create(name="a", payload="x")
+
+    db0_client = __import__("redis").Redis(
+        **sibling_client_kwargs(POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=0)
+    )
+    size_before = db0_client.dbsize()
+
+    env = _child_env(db=0)
+    env.update(
+        POPOTO_BACKEND="postgres",
+        POPOTO_POSTGRES_URL=pg.dsn,
+        POPOTO_POSTGRES_SCHEMA=pg.schema,
+    )
+    out = tmp_path / "out.jsonl"
+    for argv in (
+        ["export", "--model", MODEL_SPEC, "--out", str(out)],
+        ["import", "--model", MODEL_SPEC, "--in", str(out), "--on-conflict", "skip"],
+    ):
+        result = subprocess.run(
+            [sys.executable, "-m", "popoto.transfer.cli", *argv],
+            cwd=REPO_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "refusing" not in result.stderr
+
+    assert out.read_text().count("\n") >= 2
+    assert db0_client.dbsize() == size_before
