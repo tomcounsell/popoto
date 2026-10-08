@@ -385,7 +385,9 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
 
 ## Rabbit Holes
 
-- **Reproducing Redis's first-write-only summary counter on Postgres.** A counter engine table bumped inside the guarded statement is doable, but it emulates a Redis convenience index and inherits its drift. Derivation is the intended design.
+- **A Postgres counter table for `turn_summary`.** A `popoto_*` counter engine table bumped inside the guarded statement could mirror the Redis hash, but it adds a second structure that can disagree with the rows. The indexed `GROUP BY` answers the same question from the rows themselves. Do not build the table.
+- **Auto-repairing drifted Redis hashes on read.** Calling `rebuild_turn_summary` from `turn_summary`, or on a schedule, turns an O(1) read into a scan and puts an undeclared-key script on the hot path. Repair stays an explicit operator call, and the CHANGELOG tells operators when to run it.
+- **Generalising the summary into a reusable "maintained rollup" primitive.** One consumer does not justify it.
 - **Making `DecisionLog` follow the memory model's `Meta.backend`.** Threading a model or backend through `DecisionLog()` or `AuditableExtractionConfig` changes public signatures and splits the trail from the journal, which follows the process default. Defer it to the open question.
 - **Unifying `_RedisRecorder` into a shared fixture.** It already exists twice, and a third copy, or an import from `test_postgres_recipes.py`, is fine. A refactor is a separate chore.
 - **The stale MemoryTelemetry `Meta.ttl` sentence** in the same `postgres-backend.md` paragraph. When the builder deletes the SubconsciousMemory sentence and the remaining text is clearly stale, they should fix it in the same edit. They should not go auditing other doc paragraphs.
@@ -393,12 +395,20 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
 
 ## Risks
 
-### Risk 1: The Redis path drifts while the dispatch branches are added
-**Impact:** The plan's hardest constraint is a byte-identical Redis path. A refactor that, say, moves `get_REDIS_DB()` to lazy resolution changes when the client is captured.
+### Risk 1: The Redis path drifts beyond the intended summary fix
+**Impact:** Apart from the summary block, the Redis path must stay byte-identical. A refactor that, say, moves `get_REDIS_DB()` to lazy resolution changes when the client is captured.
 **Mitigation:**
-- Each method gets one early `if self._backend is not None` return, and the Redis bodies stay textually unchanged. Review the diff hunk by hunk.
+- Each method gets one early `if self._backend is not None` return, and the Python Redis bodies stay textually unchanged. Review the diff hunk by hunk.
 - The whole existing suite stays green on the Redis leg.
-- `TERMINAL_WRITE_LUA` and `CLAIM_RELEASE_LUA` are untouched, which the diff makes easy to check.
+- `CLAIM_RELEASE_LUA` is untouched. In `TERMINAL_WRITE_LUA` only the summary block changes. A Verification row confirms that the refusal branch, the four `SADD`s and the row `HSET` are unchanged.
+
+### Risk 1b: The Redis summary fix itself
+**Impact:** The new Lua could mis-decrement, for example by decoding the prior reason wrongly, double-counting when nothing changed, or driving a field negative. That would make `_last_extraction_privacy_dropped` wrong, or make the summary disagree with the rows in a new way.
+**Mitigation:**
+- The conformance tests in Test Impact pin every transition shape on both legs against a rollup computed from the rows.
+- `HDEL` at `<= 0` means no field is ever negative, and a Redis-only test seeds a drifted hash to prove it.
+- The change is visible to Redis users, so it gets a CHANGELOG **Fixed** entry naming the old behaviour, the new behaviour and the `rebuild_turn_summary` repair.
+- Rolling upgrade: a pre-fix process writing to the same hash still increments only on first terminal write. The two scripts touch disjoint cases and neither can drive a field negative, so mixed fleets cannot corrupt the hash beyond the old drift, and `rebuild_turn_summary` repairs it once every process is upgraded. The CHANGELOG says to upgrade every process first.
 
 ### Risk 2: The `_qq` lease rename regresses the question queue
 **Impact:** The question queue's propose lock stops working on Postgres.
@@ -422,8 +432,8 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
 
 **Mitigation:**
 - Keep a narrow refusal in `SubconsciousMemory.__init__`, inside the existing `non_redis_backend(model_class) is not None` branch. It raises when `non_redis_backend(DecisionRecord)` is `None`, or when `DecisionRecord`'s store and the journal entry model's store disagree. That case is exactly the mixed shape the old guard existed to prevent, and it is a strict subset of today's raise, so no configuration that constructs today starts raising.
-- The third row is a data-location change for an unusual configuration, and it is a fix: the decision log now sits with the journal it reconciles against. Call it out in the CHANGELOG.
-- Open Question 1 asks the maintainer to confirm.
+- The third row is a data-location change for an unusual configuration, and it is a fix: the decision log now sits with the journal it reconciles against. Call it out in the CHANGELOG. The maintainer confirmed that a CHANGELOG callout is enough (Open Question 3, resolved).
+- The narrowed refusal was approved by the maintainer as planned (Open Question 1, resolved).
 
 ## Race Conditions
 
@@ -459,7 +469,7 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
 ## No-Gos (Out of Scope)
 
 - [SEPARATE-SLUG #568] Retention or TTL for decision rows, a stale-`pending` sweeper, and decision-log dashboards. These are M9 work, and rows stay unbounded on Postgres just as on Redis.
-- [ORDERED] Making the decision log follow a memory model's own `Meta.backend` instead of the process default. This waits on the maintainer's answer to Open Question 1. The plan ships the process-default rule, plus the narrow mixed-shape refusal described under Risk 4.
+- [ORDERED] Making the decision log follow a memory model's own `Meta.backend` instead of the process default. The maintainer approved the process-default rule plus the narrow mixed-shape refusal (Open Question 1), so this stays out unless a host asks for it.
 - [DESTRUCTIVE] Migrating existing Redis decision rows into Postgres. The one-off Redis→Postgres transfer path owns that, and it should be reviewed separately before it runs. Nothing in this plan copies rows across stores.
 
 ## Update System
