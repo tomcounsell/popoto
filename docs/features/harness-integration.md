@@ -317,9 +317,22 @@ when the server does not answer, and `UNSUPPORTED` when it is older than
 PostgreSQL 18 or not UTF8; both exit 1, as an unreachable Redis does.
 `schema` says `not created yet` before the first write. `pgvector` is
 informational: `DefaultMemory` does not need it, only models with an
-`EmbeddingField` do. `doctor --json` carries the same facts under a
-`postgres` key, plus `backend` and `reachable`; on Redis the JSON gains only
-those two keys.
+`EmbeddingField` do.
+
+`doctor --json` has the same keys on both backends, so a script written
+against one shape never meets a `KeyError` on the other:
+
+| Key | On Redis | On Postgres |
+|---|---|---|
+| `backend` | `"redis"` | `"postgres"` |
+| `reachable` | server answered | server answered and is PostgreSQL 18+ / UTF8 |
+| `server` | `"redis 8.2.1"` or `"valkey 8.1.0"` | `"postgresql 18.6"` |
+| `postgres` | `null` | `dsn`, `schema`, `schema_exists`, `schema_tables`, `server_version`, `supported`, `pgvector`, `database`, `health` |
+| `redis_url` | the redacted URL, as before | `null` |
+| `redis_reachable` | as before | `null` (not applicable, never `false`) |
+
+On Redis every key that existed before keeps its value and position;
+`backend`, `reachable` and `postgres` are appended.
 
 A hook on an unreachable Postgres behaves as one on an unreachable Redis
 (see [Failure behavior](#failure-behavior)): exit 0, no output, one log line,

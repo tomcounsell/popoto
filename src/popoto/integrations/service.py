@@ -596,11 +596,12 @@ class MemoryService:
             A dict with connection, configuration, retrieval mode, record
             count, counters, and last-success timestamps. ``backend`` names
             the backend and ``reachable`` says whether its server answered
-            (and, on Postgres, meets the version floor). On Redis the dict
-            also carries ``redis_url`` and ``redis_reachable``, as it always
-            has; on Postgres it carries a ``postgres`` sub-dict instead (DSN
-            summary, schema, server version, pgvector, health) and no Redis
-            key at all.
+            (and, on Postgres, meets the version floor). Both backends carry
+            the same key set: on Redis ``redis_url`` and ``redis_reachable``
+            are filled as they always have been and ``postgres`` is ``None``;
+            on Postgres ``postgres`` is a sub-dict (DSN summary, schema,
+            server version, pgvector, health) and ``redis_url`` /
+            ``redis_reachable`` are ``None``, never absent.
         """
         try:
             backend_name = self.backend_name
@@ -660,8 +661,9 @@ class MemoryService:
         """The configuration half of :meth:`status`, before any probe.
 
         On Redis the keys come in the order they always have (``redis_url``
-        second, ``redis_reachable`` before ``server``), with ``backend`` and
-        ``reachable`` appended, so ``doctor --json`` only gains two keys.
+        second, ``redis_reachable`` before ``server``), with ``backend``,
+        ``reachable`` and ``postgres`` (``None``) appended, so ``doctor
+        --json`` on Redis only gains keys. Both shapes carry the same key set.
         """
         if backend_name == "redis":
             return {
@@ -684,14 +686,21 @@ class MemoryService:
                 "errors": [],
                 "backend": backend_name,
                 "reachable": False,
+                "postgres": None,
             }
         # config.url and its source describe a Redis connection. On another
         # backend the connection comes from that backend's own variable, so
         # reporting the Redis one would point an operator at a setting
         # nothing reads.
+        #
+        # ``redis_url`` / ``redis_reachable`` stay in the dict as ``None``
+        # rather than being dropped: a consumer of ``doctor --json`` written
+        # against the Redis shape indexes them unconditionally, and a
+        # missing key is a KeyError where ``None`` reads as "not applicable".
         return {
             "enabled": self.config.enabled,
             "backend": backend_name,
+            "redis_url": None,
             "url_source": (
                 "POPOTO_POSTGRES_URL" if backend_name == "postgres" else "unknown"
             ),
@@ -701,6 +710,7 @@ class MemoryService:
             "ingest": self.config.ingest,
             "log_path": str(self.config.log_path),
             "model": "DefaultMemory",
+            "redis_reachable": None,
             "reachable": False,
             "server": None,
             "retrieval_mode": None,

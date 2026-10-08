@@ -53,6 +53,7 @@ the outage is logged at ERROR once per ``Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS``
 from __future__ import annotations
 
 import asyncio
+import atexit
 import contextlib
 import contextvars
 import datetime
@@ -309,6 +310,24 @@ def _schema_auto() -> bool:
 
 _pools: dict[tuple[str, int], Any] = {}
 _pools_lock = threading.Lock()
+_atexit_registered = False
+
+
+def _close_pools_at_exit() -> None:
+    """Close this process's pools while its threads can still run.
+
+    ``psycopg_pool`` starts a scheduler and worker threads per pool. Left to
+    interpreter finalization, the pool's ``__del__`` asks each to stop after
+    the threads can no longer be scheduled, then waits 5 s per thread for a
+    join that cannot happen: a short-lived process (the ``popoto-memory
+    hook``, a CLI, a script) took ~20 s to exit after its last statement
+    (#814). ``atexit`` runs before finalization, so the threads stop at once.
+    Never raises: a failure here must not turn a clean exit into a traceback.
+    """
+    try:
+        close_pools()
+    except Exception:  # pragma: no cover - best effort at shutdown
+        pass
 
 
 def _import_psycopg() -> Any:
@@ -400,6 +419,7 @@ def _pool_for(dsn: str) -> Any:
     """The process's pool for ``dsn``, created lazily (and again after a
     fork: a child never reuses the parent's sockets). Inside the async
     bridge, the running loop's pool instead (:mod:`.aio`)."""
+    global _atexit_registered
     bridge = _bridged()
     if bridge is not None:
         return bridge.pool(dsn)
@@ -438,6 +458,9 @@ def _pool_for(dsn: str) -> Any:
                 name=f"popoto-{os.getpid()}",
             )
             _pools[key] = pool
+            if not _atexit_registered:
+                atexit.register(_close_pools_at_exit)
+                _atexit_registered = True
     return pool
 
 

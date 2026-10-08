@@ -54,11 +54,18 @@ def test_the_service_reports_the_leg_it_runs_on(tmp_path, backend):
     assert info["backend"] == backend.name
     assert info["reachable"] is True
     assert info["errors"] == []
+    # One key set on both legs: a ``doctor --json`` consumer written against
+    # either shape never meets a KeyError on the other.
+    for key in ("backend", "reachable", "server", "postgres"):
+        assert key in info, key
+    for key in ("redis_url", "redis_reachable"):
+        assert key in info, key
     if backend.name == "redis":
         assert info["redis_reachable"] is True
-        assert "postgres" not in info
+        assert info["redis_url"]
+        assert info["postgres"] is None
     else:
-        assert "redis_url" not in info and "redis_reachable" not in info
+        assert info["redis_url"] is None and info["redis_reachable"] is None
         assert info["postgres"]["supported"] is True
         assert info["server"].startswith("postgresql ")
 

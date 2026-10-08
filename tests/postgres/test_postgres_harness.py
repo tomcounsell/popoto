@@ -120,7 +120,10 @@ def test_doctor_reports_the_postgres_server(pg, tmp_path, monkeypatch, capsys):
     assert info["postgres"]["supported"] is True
     assert info["postgres"]["server_version"].startswith("18")
     assert info["postgres"]["health"]["ok"] is True
-    assert "redis_url" not in info
+    # Present as null, never absent: a consumer that indexes them gets None,
+    # not a KeyError.
+    assert info["redis_url"] is None and info["redis_reachable"] is None
+    assert info["server"].startswith("postgresql 18")
 
 
 def test_doctor_fails_on_an_unreachable_server(down, tmp_path, monkeypatch, capsys):
@@ -134,6 +137,9 @@ def test_doctor_fails_on_an_unreachable_server(down, tmp_path, monkeypatch, caps
     assert main(["doctor", "--json"]) == 1
     info = json.loads(capsys.readouterr().out)
     assert info["reachable"] is False and info["errors"]
+    assert info["redis_url"] is None and info["redis_reachable"] is None
+    assert info["backend"] == "postgres" and info["server"] is None
+    assert info["postgres"]["health"] is not None or info["postgres"]["dsn"]
     assert recorder.calls == []
 
 
@@ -279,6 +285,11 @@ def test_the_hook_and_doctor_run_on_postgres_with_redis_unreachable(
     for run in turns["runs"]:
         assert run.returncode == 0, run.stderr
         assert "failed" not in run.stderr, run.stderr
+        # Start to exit. psycopg_pool's threads once held every process for
+        # ~20 s in interpreter shutdown (5 s per thread), after the hook's
+        # work was done; atexit now closes the pools first.
+        assert run.elapsed < 4.0, f"hook took {run.elapsed:.1f}s to exit"
+        assert "couldn't stop thread" not in run.stderr, run.stderr
     assert turns["context"] is not None
     assert harness_e2e.DEPLOY_FACT in turns["context"]
 
@@ -327,4 +338,42 @@ def test_the_hook_survives_postgres_down_and_says_which_backend(
     doctor = h.run(["doctor"])
     assert doctor.returncode == 1
     assert "  postgres       UNREACHABLE\n" in doctor.stdout
+    assert h.redis_attempts() == ""
+
+
+def test_the_hook_fails_open_within_its_budget_on_a_silent_postgres(
+    pg, pg_schema, tmp_path
+):
+    """A server that accepts TCP and never answers holds libpq for the whole
+    ``connect_timeout``, unlike a refused port, which fails in microseconds
+    and so cannot tell the hook's 1 s cap from the 5 s library default.
+
+    The lower bound proves the listener really made the hook wait; the upper
+    bound proves the hook's cap (``HOOK_SOCKET_TIMEOUT_SECONDS``), not
+    ``Defaults.PG_CONNECT_TIMEOUT_SECONDS`` (5 s), set that wait.
+    """
+    import socket
+
+    silent = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    silent.bind(("127.0.0.1", 0))
+    silent.listen(64)  # never accept(): the kernel completes the handshake
+    port = silent.getsockname()[1]
+    try:
+        h = _pg_harness(tmp_path, pg_schema, url=f"postgresql://127.0.0.1:{port}/x")
+        started = time.monotonic()
+        run = h.hook(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "s",
+                "prompt": "how do deploys roll back?",
+            }
+        )
+        elapsed = time.monotonic() - started
+    finally:
+        silent.close()
+    assert run.returncode == 0
+    assert run.stdout == ""
+    assert "(backend: postgres)" in run.stderr
+    assert elapsed >= 0.9, f"{elapsed:.2f}s: the silent server never held the hook"
+    assert elapsed < 4.5, f"{elapsed:.1f}s on the prompt path"
     assert h.redis_attempts() == ""

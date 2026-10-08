@@ -26,6 +26,7 @@ the subcommand that needs them.
 """
 
 import argparse
+import os
 import sys
 from typing import Any, List, Optional
 
@@ -248,7 +249,16 @@ def _cmd_doctor(args: Any) -> int:
 
             sys.stdout.write(
                 json.dumps(
-                    {"redis_reachable": False, "reachable": False, "error": str(exc)},
+                    {
+                        "redis_url": None,
+                        "redis_reachable": False,
+                        "reachable": False,
+                        "backend": os.environ.get("POPOTO_BACKEND", "").strip()
+                        or "redis",
+                        "server": None,
+                        "postgres": None,
+                        "error": str(exc),
+                    },
                     indent=2,
                 )
                 + "\n"

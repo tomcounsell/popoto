@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -90,7 +91,14 @@ class Harness:
         self.env = base
 
     def run(self, args: List[str], stdin: str = "") -> subprocess.CompletedProcess:
-        return subprocess.run(
+        """Run one child; its wall time (start to exit) is ``.elapsed``.
+
+        Exit, not last output, is what a harness waits for, so a process
+        that hangs in interpreter shutdown costs the prompt just as much as
+        one that hangs in a query.
+        """
+        started = time.monotonic()
+        result = subprocess.run(
             command() + args,
             input=stdin,
             env=self.env,
@@ -98,6 +106,8 @@ class Harness:
             text=True,
             timeout=120,
         )
+        result.elapsed = time.monotonic() - started  # type: ignore[attr-defined]
+        return result
 
     def hook(self, payload: Dict[str, Any]) -> subprocess.CompletedProcess:
         return self.run(["hook"], json.dumps(payload))

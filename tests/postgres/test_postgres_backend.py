@@ -10,6 +10,7 @@ rather than reading Redis.
 
 import datetime
 import json
+import os
 
 import pytest
 
@@ -377,3 +378,56 @@ def test_pg_hands_each_test_its_own_health_record(pg, pg_schema):
     assert pg.health == Health()
     pg.health.ok = False
     pg.health.dropped_writes += 1  # discarded with this test's record
+
+
+_EXIT_PROBE = """
+import sys
+import time
+import popoto
+
+class ExitProbe(popoto.Model):
+    k = popoto.KeyField()
+
+ExitProbe.create(k="a")
+assert ExitProbe.query.get(k="a") is not None
+sys.stdout.write(repr(time.monotonic()))
+sys.stdout.flush()
+"""
+
+
+def test_a_short_lived_process_exits_promptly(pg, pg_schema):
+    """A Postgres-bound process exits right after its last statement (#814).
+
+    ``psycopg_pool``'s scheduler and worker threads, left to interpreter
+    finalization, were each given 5 s to join after they could no longer
+    run: every short-lived process (a ``popoto-memory hook``, a CLI, a
+    script) sat ~20 s in shutdown and printed "couldn't stop thread". The
+    pools are now closed from ``atexit``. Measured from the child's last
+    statement to its exit, so interpreter start-up does not count.
+    """
+    import subprocess
+    import sys
+    import time
+
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(("POPOTO_POSTGRES", "POPOTO_BACKEND"))
+    }
+    env.update(
+        POPOTO_BACKEND="postgres",
+        POPOTO_POSTGRES_URL=pg_schema.url,
+        POPOTO_POSTGRES_SCHEMA=pg_schema.name,
+    )
+    run = subprocess.run(
+        [sys.executable, "-c", _EXIT_PROBE],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    exited = time.monotonic()
+    assert run.returncode == 0, run.stderr
+    shutdown = exited - float(run.stdout)
+    assert "couldn't stop thread" not in run.stderr, run.stderr
+    assert shutdown < 2.0, f"{shutdown:.1f}s in interpreter shutdown"
