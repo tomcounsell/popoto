@@ -5,8 +5,8 @@
 > is for, how the pieces compose, and where the full reference for each one
 > lives.
 
-Popoto Agent Memory is a set of Redis-backed ORM primitives for programmable
-memory. Records decay over time, strengthen through use, carry confidence that
+Popoto Agent Memory is a set of ORM primitives for programmable memory, stored
+in Postgres or in Redis/Valkey. Records decay over time, strengthen through use, carry confidence that
 moves with evidence, form associations, and get assembled into LLM context
 within a token budget.
 
@@ -26,6 +26,24 @@ cannot do unaided is decide what belongs there:
 - **Filter noise.** Keep low-value observations out of storage entirely.
 
 Each primitive below covers one of those. Each is independently useful.
+
+## Where memory is stored
+
+Every primitive and layer on this page runs on both backends behind the same
+model API. **Postgres is the recommended substrate for agent memory**: since
+1.10 every agent-memory feature runs on it, its deployment model is one central
+database for every agent and machine, and new capabilities land there first.
+Redis and Valkey remain fully supported.
+
+Select Postgres with `POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL`, or
+per model with `class Meta: backend = "postgres"` (see
+[Configuration](../configuration.md#postgres-backend)). Where this page says
+"Redis" below, it describes the Redis backend; the Postgres equivalent of each
+structure is in the [Postgres Backend](postgres-backend.md) reference, and the
+places where results differ are its
+[documented divergences](postgres-backend.md#documented-divergences). The
+[harness integration](harness-integration.md) runs on Redis or Valkey only in
+1.10.
 
 ## The 17 primitives
 
@@ -115,10 +133,11 @@ the right choice for some workloads and quietly wrong for others.
    hooks, and query methods. Domain-specific memory models are yours to build
    on top.
 
-2. **Redis-native everything.** No external brokers, job queues, or Redis
-   modules. Lua scripts, sorted sets, streams, and Bloom filters over
-   `SETBIT`/`GETBIT` all run inside the Redis process, so the same code runs
-   identically on Redis and Valkey.
+2. **Native to the store.** No external brokers, job queues, or Redis
+   modules. On Redis, Lua scripts, sorted sets, streams, and Bloom filters
+   over `SETBIT`/`GETBIT` all run inside the Redis process, so the same code
+   runs identically on Redis and Valkey. On Postgres, the same operations are
+   SQL statements over typed tables and native indexes.
 
 3. **Composable, degrading gracefully.** Each primitive is independently
    useful, and every layer adapts to whichever fields are present rather than

@@ -96,6 +96,20 @@ class ProjectMemory(DefaultMemory):
     pass  # keys become ProjectMemory:* instead of DefaultMemory:*
 ```
 
+### Running on Postgres
+
+Postgres is the recommended store for agent memory, and the loop runs on it unchanged. Install the extra and select the backend for the process:
+
+```bash
+pip install 'popoto[postgres]'
+export POPOTO_BACKEND=postgres
+export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents   # PostgreSQL 18+
+```
+
+`DefaultMemory` then lives in a table in the `popoto` schema (override with `POPOTO_POSTGRES_SCHEMA`), created on first use, and the loop issues no Redis commands, including its eviction counter and, with `auditable_extraction`, its decision log. To move only your own model, set `class Meta: backend = "postgres"` on it instead of the process variable. Configuration options are in [Configuration](../configuration.md#postgres-backend); behaviour that differs from Redis is listed under [documented divergences](../features/postgres-backend.md#documented-divergences). An existing Redis store moves across once, from an RDB snapshot: [Redis to Postgres Migration](../features/redis-to-postgres-migration.md).
+
+The [harness integration](../features/harness-integration.md) is the exception: in 1.10 it runs on Redis or Valkey only.
+
 ### Injected context format
 
 The injected block carries the memory text and nothing else:
@@ -299,6 +313,21 @@ except OUTAGE_ERRORS:
 ```
 
 Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index.
+
+#### Postgres outages do not raise yet
+
+On Postgres, `inject_context`, `extract_memories` and `report_outcomes` do not yet follow the rule above. A Postgres outage surfaces as `popoto.backends.BackendUnavailableError`, which `popoto.redis_db.OUTAGE_ERRORS` does not include, so `SubconsciousMemory` logs it as a warning and returns an empty result (`inject_context` leaves `messages` unchanged; `extract_memories` returns `[]`). `ContextAssembler.assemble()` called directly does raise it. Until that is aligned, watch the backend's health record instead:
+
+```python
+from popoto.backends import get_backend
+from popoto.recipes import DefaultMemory
+
+health = get_backend(DefaultMemory).health.as_dict()
+if not health["ok"]:
+    ...  # alert: memory is not being read or written
+```
+
+See [Topology and the outage contract](../features/postgres-backend.md#topology-and-the-outage-contract).
 
 ## Tuning
 

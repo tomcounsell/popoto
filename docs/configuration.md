@@ -2,6 +2,8 @@
 
 Popoto connects to Redis or Valkey automatically when imported. By default it connects to `localhost:6379`, which works for local development. For production, set the `REDIS_URL` environment variable.
 
+Since 1.10, models can run on Postgres instead, per model or for the whole process. Postgres is opt-in and configured separately: see [Postgres Backend](#postgres-backend) below. Without it, nothing on this page changes.
+
 ## Redis/Valkey Connection
 
 Popoto works with both Redis and [Valkey](https://valkey.io) (the open-source Redis fork). The same configuration works for either - just point `REDIS_URL` at your server.
@@ -139,6 +141,78 @@ it is equivalent to calling `popoto.get_redis()`.
 Prefer this over building your own client. A hand-built `redis.from_url(...)`
 opens a *different* connection, and unless its URL names the same database, reads
 and writes land somewhere Popoto never touched — with no error to say so.
+
+## Postgres Backend
+
+Postgres is the second storage backend ([reference](features/postgres-backend.md)). It needs the `postgres` extra and PostgreSQL 18 or newer:
+
+```bash
+pip install 'popoto[postgres]'      # psycopg[binary,pool], pgvector, greenlet
+```
+
+### Selecting it
+
+A backend is chosen per model, or once for the whole process. A model's own `Meta.backend` wins over the process default.
+
+```python
+import popoto
+
+class Note(popoto.Model):
+    slug = popoto.KeyField()
+    body = popoto.StringField(default="")
+
+    class Meta:
+        backend = "postgres"        # this model only
+```
+
+```bash
+export POPOTO_BACKEND=postgres      # every model without its own Meta.backend
+```
+
+Without either, every model stays on Redis. `import popoto` never imports `psycopg`, and nothing connects to Postgres until a Postgres model's first query or save. Selecting Postgres without `POPOTO_POSTGRES_URL`, or without the extra installed, raises `BackendUnavailableError` naming what is missing.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POPOTO_BACKEND` | `redis` | Process default backend: `redis` or `postgres`. Read on each call, so `set_backend()` or a model's `Meta.backend` overrides it. |
+| `POPOTO_POSTGRES_URL` | *(required for Postgres)* | The DSN, e.g. `postgresql://db.internal:5432/agents`. The only place popoto reads a Postgres URL from: it never reads `DATABASE_URL` or `POSTGRES_URL`. |
+| `POPOTO_POSTGRES_SCHEMA` | `popoto` | Schema that holds popoto's tables. |
+| `POPOTO_POSTGRES_MAINTENANCE_URL` | unset (the main DSN) | Optional second DSN to the same database, for work that needs a real session: `REINDEX`/`DROP INDEX CONCURRENTLY`, first-use DDL, and the shared `LISTEN` session. Set it when `POPOTO_POSTGRES_URL` goes through PgBouncer in transaction mode. See [A maintenance DSN](features/postgres-backend.md#a-maintenance-dsn-for-pgbouncer-transaction-mode). |
+| `POPOTO_POSTGRES_GRANT_MAIN_ROLE` | unset (falsy) | `1`/`true`/`yes`/`on` makes popoto grant the main DSN's role access to the tables its own DDL creates on the maintenance DSN, when the two DSNs run as different roles. Off, popoto grants nothing. See [Two roles](features/postgres-backend.md#two-roles-an-application-role-and-an-owner-role). Known gap ([#808](https://github.com/tomcounsell/popoto/issues/808)): in a rolling deploy where processes disagree on this flag, a process with it on that adds a column to a table an older process just created also grants on that table. |
+| `POPOTO_POSTGRES_LISTEN_URL` | unset | DSN for the process's one shared `LISTEN` session (blocking stream reads, `Subscriber`). Unset, the maintenance DSN is used, else the main DSN. |
+| `POPOTO_SCHEMA_AUTO` | `1` | `0`/`false`/`no`/`off` turns off the automatic first-use `CREATE TABLE` and additive migrations, for deployments that run the DDL themselves. |
+
+The variables that pick the connection (`POPOTO_POSTGRES_URL`, `POPOTO_POSTGRES_SCHEMA`, `POPOTO_POSTGRES_MAINTENANCE_URL`, `POPOTO_POSTGRES_GRANT_MAIN_ROLE`) are read when the process's Postgres backend is first built, at the first Postgres model's first use.
+
+### Configuring in code
+
+Pass the settings directly instead of through the environment:
+
+```python
+from popoto.backends import set_backend
+from popoto.backends.postgres import PostgresBackend
+
+set_backend(PostgresBackend(
+    dsn="postgresql://app@pgbouncer:6432/agents",
+    schema="popoto",                                          # default "popoto"
+    maintenance_dsn="postgresql://owner@db.internal:5432/agents",  # optional
+    grant_main_role=False,                                    # optional, default False
+))
+```
+
+`set_backend()` sets the process default and returns the previous one; `set_backend(None)` returns to `POPOTO_BACKEND`. It also accepts a name (`set_backend("postgres")`), which builds the backend from the environment variables above.
+
+!!! warning "An instance passed to `set_backend()` is only the process default"
+    A model that declares `Meta.backend = "postgres"` does not use it: the name resolves to the backend built from `POPOTO_POSTGRES_URL`, and raises `BackendUnavailableError` when that variable is unset. When you configure Postgres in code, leave `Meta.backend` off the models that should use that instance.
+
+`popoto.backends.get_backend(Model)` returns the backend a model is bound to; its `health.as_dict()` reports outages and dropped writes.
+
+### What to read next
+
+- [Postgres Backend](features/postgres-backend.md): the full reference, including the outage contract, transactions, schema management, and the [documented divergences](features/postgres-backend.md#documented-divergences) from Redis. `DataFrameField` is refused on Postgres; keep those models on Redis.
+- [Redis to Postgres Migration](features/redis-to-postgres-migration.md): a one-off copy of an existing store from an RDB snapshot.
+- [Testing](testing.md): the Postgres conformance suite, which reads its own `POSTGRES_URL`.
 
 ## Debugging
 
@@ -435,6 +509,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 | `POPOTO_SENTRY_DSN` | *(built-in)* | Override the Sentry DSN used by `enable_error_reporting()`. |
 | `POPOTO_TEST_DB` | unset | Redis DB number used by the pytest plugin for test isolation, and one of the two ways to activate the plugin at all (the other is the `popoto_test_db` ini option, which this overrides). Unset with no ini option, the plugin does nothing. DB 0 is rejected to prevent accidental production data loss. See [Testing](testing.md). |
+| `POPOTO_BACKEND`, `POPOTO_POSTGRES_*`, `POPOTO_SCHEMA_AUTO` | see above | Postgres backend selection and connection. See [Postgres Backend](#postgres-backend). |
 | `POPOTO_ASYNC_MAX_CONNECTIONS` | `128` | Maximum async Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_SYNC_MAX_CONNECTIONS` | `128` | Maximum sync Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_DATETIME_KEY_LEGACY` | unset (falsy) | Kill switch that restores 1.8.2 `str(value)` key bytes for datetime values on the write path, so a fleet can roll readers forward before moving key bytes. It covers two things, and lifting it commits to both: `KeyField(type=datetime)` row identity, and `partition_by` partition segments for `SortedField`, `ConfidenceField` and `EventStreamMixin` (a datetime partition value canonicalizes to UTC, so aware, offset and naive forms of one instant share a single partition). Non-datetime partition values are byte-identical either way. Migration cookbook recipe 19 covers only the KeyField half; partition keys have no automatic migration, so do not lift the switch fleet-wide on the strength of a finished KeyField migration alone. Does not affect `audit_datetime_keys()`, which always reports the truth. See [Datetime KeyFields](fields.md#datetime-keyfields), [partition_by](fields.md#partition_by) and migration cookbook recipe 19. |

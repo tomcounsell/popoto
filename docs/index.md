@@ -1,12 +1,14 @@
-# Popoto: Agent Memory on Redis and Valkey
+# Popoto: Agent Memory on Postgres, Redis, and Valkey
 
 Memory for LLM agents, as primitives you program rather than a service you call.
 Records decay over time, confidence moves with evidence, associations form
 between things mentioned together, and a context assembler packs the result into
 a token budget before each turn.
 
-It runs in your process against a Redis or Valkey server you already operate.
-Your memory data stays in your database.
+It runs in your process against a database you already operate. Underneath is
+one model API with two storage backends: Redis/Valkey, the default, and
+Postgres, opt-in since 1.10. You choose the backend per model or per process,
+and the model code does not change. Your memory data stays in your database.
 
 ```bash
 pip install popoto
@@ -14,6 +16,29 @@ pip install popoto
 
 Three packages, 9.0 MB of site-packages in a clean Python 3.12 venv (redis-py 8.1.0, measured 2026-09-04), no API key.
 Point it at Redis or Valkey on `localhost:6379` and you are running.
+
+## Choosing a backend
+
+For agent memory, **Postgres is the recommended substrate**. Every
+agent-memory feature runs on it, its deployment model is one central database
+shared by every agent and machine, and new capabilities land there first. Redis and
+Valkey remain fully supported, for agent memory and for the rest of the ORM,
+and nothing changes for an existing Redis deployment.
+
+```bash
+pip install 'popoto[postgres]'      # adds psycopg, pgvector, greenlet
+export POPOTO_BACKEND=postgres      # or per model: class Meta: backend = "postgres"
+export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents
+```
+
+Postgres needs PostgreSQL 18 or newer; `EmbeddingField` also needs the
+pgvector extension. Popoto never reads `DATABASE_URL`, and it creates its
+tables on first use. The two backends differ in a few documented places, and
+`DataFrameField` stays Redis-only: see
+[Postgres Backend](features/postgres-backend.md) and its
+[documented divergences](features/postgres-backend.md#documented-divergences).
+An existing Redis memory store moves across with a one-off copy from an RDB
+snapshot: [Redis to Postgres Migration](features/redis-to-postgres-migration.md).
 
 ## Memory around an LLM turn
 
@@ -36,18 +61,22 @@ that, two agents sharing one Redis via the default loop could retrieve each
 other's memories). Leaving `model_class`
 unset selects `DefaultMemory`, which ships the benchmarked configuration: decay,
 confidence, a keyword index that makes retrieval respond to the query text, and
-an association graph.
+an association graph. The loop is the same on either backend; with
+`POPOTO_BACKEND=postgres` set, `DefaultMemory` is a Postgres table.
 
 [Add memory to your agent](guides/agent-memory-quickstart.md) walks the same
 loop up level by level, from a single decaying field to the full assembly.
 Running inside Claude Code, Codex, Hermes, or OpenClaw instead of your own
 loop? [Add memory to your harness](features/harness-integration.md) wires the
-same primitives into hooks and MCP, no glue code required.
+same primitives into hooks and MCP, no glue code required. The harness
+integration runs on Redis or Valkey only in 1.10.
 
 ## What is measured
 
 Every number here comes from a harness in this repository, with its result JSON
-committed alongside. Method, per-category tables, and the runs that came out
+committed alongside, and was measured on the Redis backend (Postgres numbers are
+in the [Postgres Backend](features/postgres-backend.md#performance-m1-m2a-and-m3-exit-criteria)
+reference). Method, per-category tables, and the runs that came out
 badly are in [Benchmarks](benchmarks.md).
 
 - **Retrieval quality.** LongMemEval-S, all 500 questions, hybrid BM25 + vector:
@@ -66,11 +95,11 @@ Finding the right evidence is far more reliable than answering from it, and the
 number, its interval, and its protocol are published in
 [Benchmarks](benchmarks.md).
 
-## Built on a full Redis and Valkey ORM
+## Built on a full ORM for Redis, Valkey, and Postgres
 
 Every memory primitive is a field on an ordinary model, so the same Django-like
 query syntax, indexes, TTLs, relationships, and pub/sub apply to memory records
-and to everything else in your keyspace.
+and to everything else you store, on either backend.
 
 ```python
 from popoto import Model, KeyField, Field, SortedField, GeoField
@@ -93,14 +122,15 @@ print(f"{restaurant.name} serves {restaurant.cuisine} food.")
 # => 'Burger Palace serves American food.'
 ```
 
-Reading and writing happen at RAM speed. Popoto adds
+On Redis, reading and writing happen at RAM speed; on Postgres, each model is a
+typed table with native indexes. Popoto adds
 [async operations](async.md), [multi-tenancy](multi-tenancy.md) via KeyField
 namespacing, geometric distance search, timeseries for streaming data, Pandas
 and Xarray interoperation, [pub/sub](pubsub.md) for message queues,
 [content and embedding fields](features/content-and-embedding-fields.md) for
 large content storage and semantic search, and
 [generic export/import](guides/export-import.md) with per-field round-trip
-fidelity for moving records between Redis instances.
+fidelity for moving records between stores, in one format on both backends.
 
 Start at [Configuration](configuration.md) and
 [Models and Fields](fields.md) for the ORM half of the library.

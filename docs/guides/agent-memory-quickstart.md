@@ -4,7 +4,8 @@ Add programmable memory to your AI agent. Level 0 is the whole loop in six
 lines. Levels 1 through 6 build the same thing up one field at a time, so you
 understand what each piece buys before you keep or drop it.
 
-> **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`.
+> **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`,
+> or Postgres instead (see [Running on Postgres](#running-on-postgres)).
 >
 > **Full reference:** [Agent Memory](../features/agent-memory.md) maps all 17
 > primitives and the layers composed on them.
@@ -43,6 +44,28 @@ secret-shaped content is blocked before it reaches Redis with no extra setup
 — see [NeverRecordFirewall](../features/never-record-firewall.md). If you
 hand-build the schema at Levels 1-4 below, that protection is not there for
 free; add `NeverRecordMixin` to your own model class if you want it.
+
+### Running on Postgres
+
+Every level on this page runs unchanged on Postgres. Install the extra and
+point the process at a PostgreSQL 18+ database:
+
+```bash
+pip install 'popoto[postgres]'
+export POPOTO_BACKEND=postgres
+export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents
+```
+
+Every model in the process, `DefaultMemory` included, is then a table in the
+`popoto` schema (override with `POPOTO_POSTGRES_SCHEMA`), created on first
+use. To move only some models, set `class Meta: backend = "postgres"` on
+those instead. Level 6's `EmbeddingField` also needs the pgvector extension
+(`CREATE EXTENSION vector`), and on Postgres its `ContentField` keeps the text
+in the table rather than on the filesystem. Popoto never reads `DATABASE_URL`. The
+[Postgres Backend](../features/postgres-backend.md) reference covers
+connection settings, the outage contract, and the
+[documented divergences](../features/postgres-backend.md#documented-divergences)
+from Redis.
 
 The levels below exist for when you want to shape the schema yourself. See the
 [SubconsciousMemory recipe](subconscious-memory-recipe.md) for the default

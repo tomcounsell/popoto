@@ -2,6 +2,8 @@
 
 Subconscious memory for Claude Code, Codex, Hermes, and OpenClaw, backed by
 your own Redis or Valkey. No API keys, no hosted service, no schema to write.
+The harness integration does not run on the Postgres backend in 1.10; see
+[Redis or Valkey only](#redis-or-valkey-only).
 
 ```bash
 pip install 'popoto[mcp]'
@@ -224,6 +226,22 @@ harness config must not break a turn. The database number is the exception —
 both a database-0 target and a URL with no database at all (`redis://host:6379/`,
 which is *not* database 0) raise, because the alternative is writing your
 memories somewhere you did not ask for.
+
+### Redis or Valkey only
+
+The harness integration needs Redis or Valkey; `POPOTO_BACKEND=postgres` is
+not a supported configuration for a harness process, and no test covers it.
+`MemoryService`, which every hook, the MCP server, and `doctor` go through,
+keeps the per-turn handoff (pending and injected record keys) and its health
+and eviction reporting in Redis directly, so only the `DefaultMemory`
+records would move and `doctor` would describe a store the memories are not
+in.
+
+Hooks inherit the harness's environment. If your shell exports
+`POPOTO_BACKEND=postgres` for an application, unset it in the environment
+the harness runs in. For agent memory on Postgres today, run
+`SubconsciousMemory` in your own loop: see
+[Running on Postgres](../guides/subconscious-memory-recipe.md#running-on-postgres).
 
 ### Database 0 is refused
 
