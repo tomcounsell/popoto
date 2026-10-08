@@ -165,7 +165,6 @@ def test_compiled_search_ddl_is_pinned():
     A change here is a schema change; it needs a migration story."""
     from popoto.backends.postgres.schema import compile_table
 
-    DdlMemory()  # the AutoKeyField joins the spec at first instantiation
     ddl = compile_table(DdlMemory._meta.spec, "popoto").create_sql()
     t = '"popoto"."ddl_memory"'
     fk = f'REFERENCES {t} ("_pk") ON DELETE CASCADE'
