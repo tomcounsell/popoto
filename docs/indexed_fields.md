@@ -1,7 +1,11 @@
 # Indexed Fields
 
 Indexed fields provide secondary indexing for non-key fields, enabling efficient
-exact-match queries without making the field part of the model's Redis key (identity).
+exact-match queries without making the field part of the model's key (identity).
+
+The index structures described on this page (Sets, Lua scripts, pointer keys) are the
+Redis backend's. A Postgres model gets the same queries and the same uniqueness errors
+from B-tree and `UNIQUE` indexes; see [On Postgres](#on-postgres).
 
 ## The Problem
 
@@ -16,8 +20,8 @@ email, the entire Redis key changes, potentially orphaning references.
 
 ## The Solution
 
-`IndexedField` and `UniqueField` decouple querying from identity. They maintain
-Redis Set indexes (identical to KeyField's indexing mechanism) but do not participate
+`IndexedField` and `UniqueField` decouple querying from identity. On Redis they maintain
+Set indexes (identical to KeyField's indexing mechanism) but do not participate
 in the Redis key.
 
 ```python
@@ -143,7 +147,7 @@ except Exception as e:
 
 ### Concurrency Guarantee
 
-`UniqueField` enforces uniqueness inside an atomic server-side Lua script
+On Redis, `UniqueField` enforces uniqueness inside an atomic server-side Lua script
 (`INDEX_SWAP_LUA`). Under concurrent cross-process writes, the script runs as a
 single Redis command: it reads the current index pointer, performs the uniqueness
 check, and moves the record to the new Set — all without a race window.
@@ -157,7 +161,7 @@ surfaces conflicts earlier for the common case.
 
 ### Index Key Pattern
 
-Indexed fields maintain Redis Sets following this pattern:
+On Redis, indexed fields maintain Sets following this pattern:
 
 ```
 $IndexF:ModelName:field_name:value -> Set of redis_keys
@@ -282,7 +286,9 @@ try:
     instance.save()
 except KeyMutationError as e:
     print(e)
-    # => KeyField 'name' changed from 'old_name' to 'new_name'. Use save(migrate_key=True).
+    # => Cannot change KeyField 'name' from 'old_name' to 'new_name' without
+    #    migrate_key=True. KeyField values form the model's Redis identity and
+    #    cannot be changed accidentally.
 ```
 
 To intentionally migrate a key, pass `migrate_key=True`:
@@ -299,3 +305,35 @@ and creating the new key with all indexes pointing to it.
 !!! warning
     Key migration changes the Redis key (identity) of the instance. Any external
     references to the old key will break. Use this intentionally, not accidentally.
+
+`KeyMutationError` is raised on both backends. `save(migrate_key=True)` is Redis-only: on a
+Postgres model it raises `BackendCapabilityError`. Create the new record and delete the old
+one instead.
+
+## On Postgres
+
+`IndexedField`, `UniqueField`, `Field(indexed=True)`, `UniqueKeyField` and
+`Meta.indexes` all work on a model with `Meta.backend = "postgres"`, with the same lookups
+and the same `ModelException` on a duplicate unique value.
+
+**How it maps.** Each field is a column. An indexed field gets a B-tree index on its column
+and a unique field a `UNIQUE` index; each `Meta.indexes` entry is a composite B-tree, `UNIQUE`
+when `is_unique`. There are no `$IndexF:` Sets, `$IdxPtr:` pointer keys or Lua scripts:
+a save updates the row and its indexes in one statement, and a delete removes the row. The
+lookups (`__in`, `__isnull`, `__startswith`, `__endswith`) are SQL over the column, not
+`SCAN`.
+
+**Uniqueness.** `pre_save` checks the value with a read, as on Redis. The `UNIQUE` index is
+the authority for a concurrent writer that has not yet committed: its violation
+(SQLSTATE 23505) is raised as the same `ModelException`. See
+[Supported fields](features/postgres-backend.md#supported-fields-m1-m11-m2a-m2b-m3-m4-m5).
+
+**Limitations:**
+
+- An `IndexedField` or `UniqueField` must have a scalar type (`int`, `float`, `str`,
+  `bool`, `datetime`, `Decimal`, `date`, `time`). An indexed `list` or `dict` field is
+  refused with `BackendCapabilityError` when the model class is defined.
+- `save(migrate_key=True)` raises `BackendCapabilityError` (see above).
+- Some lookups return a different (correct) result than Redis, for example a pattern lookup
+  on a row holding `None`. Each case is a row in
+  [Query results](features/postgres-backend.md#query-results).

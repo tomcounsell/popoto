@@ -1,8 +1,12 @@
 # Making Queries
 
 Every Popoto model has a `query` attribute that provides a Django-like interface for retrieving
-instances from Redis. You can look up a single object by its key, fetch all instances, filter by
+stored instances. You can look up a single object by its key, fetch all instances, filter by
 field values, count results, and return lightweight dictionaries instead of full model objects.
+
+The query API is the same whether a model is stored in Redis (the default) or in Postgres
+(`Meta.backend = "postgres"`). Where this page names Redis commands, keys or complexities, it
+describes the Redis backend; see [On Postgres](#on-postgres) for how queries behave there.
 
 Queries combine multiple filters with AND logic. If you pass several filter parameters, only
 instances matching all criteria are returned.
@@ -207,7 +211,7 @@ import popoto
 pipe = popoto.batch()
 Restaurant(name="Sushi Zen", cuisine="Japanese").save(pipeline=pipe)
 Restaurant(name="Taco Stand", cuisine="Mexican").save(pipeline=pipe)
-pipe.execute()   # both saves, and all their index writes, in one MULTI/EXEC
+pipe.execute()   # both saves, and all their index writes, in one transaction
 ```
 
 Every `save()`/`delete()` and every field hook accepts `pipeline=`, so a batch groups a
@@ -217,9 +221,13 @@ pipelines for throughput but gives up atomicity; some callers (the
 [provenance journal](features/provenance-journal.md)) require a transactional pipeline and
 raise if given a non-transactional one.
 
-The returned object is a `redis.client.Pipeline` — the same type
-`popoto.get_redis().pipeline()` returns — so existing code that builds one off the client
-keeps working. `batch()` is the preferred spelling.
+On Redis the batch is one `MULTI`/`EXEC`. The returned object is a `redis.client.Pipeline` —
+the same type `popoto.get_redis().pipeline()` returns — so existing code that builds one off
+the client keeps working. `batch()` is the preferred spelling.
+
+The same code works for a Postgres model: the batch's writes run in one Postgres transaction,
+and `execute()` commits it. The differences (all-or-nothing on a failed statement, one backend
+per batch) are listed under [On Postgres](#on-postgres).
 
 ## Get Multiple Objects by Key
 
@@ -997,7 +1005,9 @@ need the page size instead.
 ## Get Redis Keys
 
 Use `query.keys()` to retrieve the raw Redis keys for all instances of a model. This is useful
-for debugging or performing custom Redis operations.
+for debugging or performing custom Redis operations. On a Postgres model, `keys()` returns the
+records' keys, but `keys(catchall=True)` and `keys(clean=True)` raise `BackendCapabilityError`,
+because they scan or repair Redis keyspace that a Postgres model does not have.
 
 ```python
 keys = Restaurant.query.keys()
@@ -1469,7 +1479,9 @@ embeddings exist for the model.
 ## Performance Best Practices
 
 Popoto is optimized for common query patterns, but understanding the underlying Redis operations
-helps you write efficient code. Here are the key patterns to follow.
+helps you write efficient code. Here are the key patterns to follow. The commands and
+complexities below describe the Redis backend; a Postgres model answers the same calls with SQL
+against B-tree indexes (see [On Postgres](#on-postgres)).
 
 ### Use `count()` Instead of `len(all())`
 
@@ -1559,6 +1571,8 @@ declared `default` -- or `None` if no default is set -- matching `Model.__init__
 
 ### Query Performance Summary
 
+On Redis:
+
 | Operation | Redis Command | Time Complexity |
 |-----------|--------------|-----------------|
 | `count()` (no filters) | SCARD | O(1) |
@@ -1578,3 +1592,39 @@ declared `default` -- or `None` if no default is set -- matching `Model.__init__
 | `keyword_search(...)` | Lua BM25 scoring over inverted index | O(T * D) where T = query terms, D = docs per term |
 | `fuse(...)` | Rank-merge + pipeline HGETALL | O(sum of list lengths + K log K) |
 | `values(...)` on KeyFields only | No Redis call | O(1) |
+
+## On Postgres
+
+Every query method on this page works on a model with `Meta.backend = "postgres"`:
+`get`, `get_many`, `filter`, `all`, `count`, `keys`, `values=`, `order_by`, `limit`, `Q`
+objects, the sorted, geo and validity lookups, `composite_score`, `keyword_search`,
+`semantic_search`, `fuse`, `load_fields` and `idle_seconds`. Results come back as the same
+model instances and dictionaries.
+
+**How it maps.** A Postgres model is a table with one column per field. Filters become a
+`WHERE` clause over B-tree indexes on the key, indexed and sorted columns, so the Redis
+commands and complexities in [Query Performance Summary](#query-performance-summary) do not
+apply. `popoto.batch()` opens one Postgres transaction for the batch's Postgres writes and
+`execute()` commits it (see [`popoto.batch()`](features/postgres-backend.md#popotobatch-m5)).
+
+**Differences from Redis:**
+
+- A query without `order_by` returns rows in key order (bytewise on the stored key). Redis
+  returns them in set order. Pass `order_by` when order matters.
+- Some queries that Redis answers wrongly return the correct result on Postgres: an
+  unindexed field inside a `Q` object is applied rather than dropped, two lookups on the same
+  side of a `SortedField` both apply, and a lookup through a `Relationship`
+  (`restaurant__name=...`) works. Other rows differ the other way, such as `order_by` on a
+  list or other collection field, which Postgres refuses. Each case is a row in
+  [Query results](features/postgres-backend.md#query-results).
+- `load_raw_hash` and `keys(catchall=True)` / `keys(clean=True)` raise
+  `BackendCapabilityError`. They inspect Redis hashes and keyspace.
+- `idle_seconds` counts whole seconds since the row's last write or, with
+  `AccessTrackerMixin`, its last confirmed read. On Redis it is `OBJECT IDLETIME`, which any
+  read resets.
+- In a `popoto.batch()`, a statement that fails inside the transaction makes `execute()`
+  raise `BackendError` and write nothing. Redis's `MULTI`/`EXEC` applies the other queued
+  commands. `batch(transaction=False)` is still one transaction, and a batch cannot mix Redis
+  commands and Postgres writes (`BackendCapabilityError`).
+
+The full list is in [Documented divergences](features/postgres-backend.md#documented-divergences).
