@@ -65,10 +65,12 @@ and `docs/features/postgres-backend.md:65-67`.
 - One backend-neutral outage tuple, consumed by every "is this an outage?"
   decision in `src/`, so `ContextAssembler`, `SubconsciousMemory`, the
   integrations service and `popoto-transfer` cannot drift again.
-- A `set_backend` instance serves every model (and every name-based lookup)
-  whose backend name matches the instance's `name`; a different name keeps
-  resolving by name. `redis_db.OUTAGE_ERRORS` and the `set_backend` signature
-  are unchanged.
+- A non-Redis `set_backend` instance (today: `"postgres"`) serves every model
+  (and every name-based lookup) whose backend name matches the instance's
+  `name`; a different name keeps resolving by name. `Meta.backend = "redis"`
+  resolution is unchanged (critique concern 1: the issue's Redis
+  backward-compatibility constraint governs). `redis_db.OUTAGE_ERRORS` and the
+  `set_backend` signature are unchanged.
 
 ## Freshness Check
 
@@ -217,9 +219,10 @@ involved. One environment fact was checked locally rather than searched:
    or a publish joining a Postgres `UnitOfWork`).
 2. **`get_backend(model)` -> `_resolve(model)`**: sees `Meta.backend`, calls
    `_instance("postgres")`.
-3. **`_instance(name)`** (the fix point): if `_default` is a non-string
-   instance whose `name == "postgres"`, return it; else the `_instances` cache;
-   else build from env and cache.
+3. **`_instance(name)`** (the fix point): if `name != "redis"` and `_default`
+   is a non-string instance whose `name == name`, return it; else the
+   `_instances` cache; else build from env and cache. `_instance("redis")`
+   never consults `_default`, exactly as today.
 4. **`_ensure_bound(backend, model_cls)`**: memoised by `id(backend)`, so a
    different instance binds afresh; `set_backend` already clears `_bound`.
 5. **Output**: the model's operations run on DSN A.
@@ -233,8 +236,9 @@ involved. One environment fact was checked locally rather than searched:
   (also `popoto.backends.types.OUTAGE_ERRORS`). `redis_db.OUTAGE_ERRORS` keeps
   its exact value. `context_assembler.OUTAGE_ERRORS` remains importable (it
   becomes the same object as the neutral tuple; the docs name it). `set_backend`
-  signature unchanged; its *semantics* widen: an instance now also serves
-  `Meta.backend` models of the same name.
+  signature unchanged; its *semantics* widen for non-Redis names only: a
+  Postgres-named instance now also serves `Meta.backend="postgres"` models.
+  `Meta.backend="redis"` resolution is byte-for-byte unchanged.
 - **Coupling**: decreases. Outage classification has one definition instead
   of a Redis tuple plus a per-module widening.
 - **Data ownership**: unchanged.
@@ -275,7 +279,7 @@ works.
 - **Drift guard**: a test that fails if any module under `src/popoto` other
   than `backends/types.py` imports `OUTAGE_ERRORS` from `redis_db`.
 - **Instance-aware name lookup**: `_instance(name)` returns the `set_backend`
-  instance when its `name` matches.
+  instance when its `name` matches and the name is not `"redis"`.
 
 ### Flow
 
@@ -318,8 +322,17 @@ Postgres down -> `SubconsciousMemory.inject_context` -> `BackendUnavailableError
 **Defect 2**
 - In `_instance(name)` (`backends/__init__.py:832`), first, under `_lock`:
   `current = _default; if current is not None and not isinstance(current, str)
-  and getattr(current, "name", None) == name: return current`. Only then the
-  `_instances` cache and the env build.
+  and name != "redis" and getattr(current, "name", None) == name: return
+  current`. Only then the `_instances` cache and the env build.
+- **Why `name != "redis"`** (critique concern 1): the issue requires Redis
+  behavior to stay backward compatible. Today `set_backend(MyRedisBackend())`
+  (name `"redis"`) serves only un-pinned models, and `Meta.backend="redis"`
+  models get the stock cached `RedisBackend()`. A symmetric rule would move
+  those pinned models onto the custom instance, a Redis behavior change. No
+  concrete reason requires symmetry: the plugin's Redis leg sets no instance
+  (`pytest_plugin.py` binds an instance only on the Postgres leg), and the
+  defect the issue names is Postgres-only. The exclusion is one condition and
+  is pinned by a test (see Test Impact).
 - Precedence, decided here: **matching `set_backend` instance > `_instances`
   cache (including `_swap_instance`) > env build.** The instance must win over
   the cache, or a process that resolved `"postgres"` from env before calling
@@ -331,7 +344,9 @@ Postgres down -> `SubconsciousMemory.inject_context` -> `BackendUnavailableError
   `set_backend`, so no memoisation change is needed.
 - `_resolve` keeps its shape; a `Meta.backend` naming a different backend than
   the instance still resolves by name (Redis-default process hosting a
-  Postgres-pinned model, and vice versa).
+  Postgres-pinned model, and vice versa), and a `Meta.backend="redis"` model
+  resolves to the cached stock `RedisBackend` even under a Redis-named
+  instance default.
 - `pytest_plugin.py:1098-1105`: keep the `_swap_instance` call. It is now
   redundant for the matching-name case but harmless, and other tests rely on
   `_swap_instance` directly; update its comment to say so. Removing it is a
