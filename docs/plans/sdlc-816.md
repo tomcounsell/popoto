@@ -193,23 +193,151 @@ involved. One environment fact was checked locally rather than searched:
 
 ## Data Flow
 
-TBD
+**Outage (Defect 1):**
+1. **Entry point**: an agent turn calls `SubconsciousMemory.inject_context` /
+   `extract_memories` / `report_outcomes`, or a harness hook calls a
+   `MemoryService` method.
+2. **Model operation**: a Postgres-bound model's query/save reaches
+   `PostgresBackend`, which raises `BackendUnavailableError` on refused
+   connect, connect/statement timeout, or missing DSN/extra.
+3. **Recipe boundary** (`subconscious_memory.py:427/590/996`): the
+   `except OUTAGE_ERRORS: raise` clause must match it; today it does not and
+   `except Exception` degrades. After the fix it propagates.
+4. **Harness boundary** (`integrations/service.py`): the service's own
+   `except Exception` calls `_record_failure`, whose `isinstance(exc,
+   OUTAGE_ERRORS)` sets `_redis_down`; later calls short-circuit at
+   `:269/:273/:820`.
+5. **Output**: the hook still fails open (returns `""`), but stops retrying a
+   dead server for the rest of the process; a direct recipe caller sees the
+   exception instead of an empty context.
+
+**Resolution (Defect 2):**
+1. **Entry point**: `set_backend(PostgresBackend(dsn=A))`, then any use of a
+   `Meta.backend="postgres"` model (or `resolve_stream_backend(backend="postgres")`,
+   or a publish joining a Postgres `UnitOfWork`).
+2. **`get_backend(model)` -> `_resolve(model)`**: sees `Meta.backend`, calls
+   `_instance("postgres")`.
+3. **`_instance(name)`** (the fix point): if `_default` is a non-string
+   instance whose `name == "postgres"`, return it; else the `_instances` cache;
+   else build from env and cache.
+4. **`_ensure_bound(backend, model_cls)`**: memoised by `id(backend)`, so a
+   different instance binds afresh; `set_backend` already clears `_bound`.
+5. **Output**: the model's operations run on DSN A.
 
 ## Architectural Impact
 
-TBD
+- **New dependencies**: none. `subconscious_memory`, `integrations/service`
+  and `transfer/cli` gain an import of `..backends.types` (already imported by
+  `context_assembler`; spike-2 found no cycle).
+- **Interface changes**: one new public name, `popoto.backends.OUTAGE_ERRORS`
+  (also `popoto.backends.types.OUTAGE_ERRORS`). `redis_db.OUTAGE_ERRORS` keeps
+  its exact value. `context_assembler.OUTAGE_ERRORS` remains importable (it
+  becomes the same object as the neutral tuple; the docs name it). `set_backend`
+  signature unchanged; its *semantics* widen: an instance now also serves
+  `Meta.backend` models of the same name.
+- **Coupling**: decreases. Outage classification has one definition instead
+  of a Redis tuple plus a per-module widening.
+- **Data ownership**: unchanged.
+- **Reversibility**: trivial; three import lines and one branch in `_instance`.
 
 ## Appetite
 
-TBD
+**Size:** Small
+
+**Team:** Solo dev, code reviewer
+
+**Interactions:**
+- PM check-ins: 0 (scope fixed by the issue's acceptance criteria)
+- Review rounds: 1
 
 ## Prerequisites
 
-TBD
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| Redis/Valkey on localhost:6379 | `redis-cli -n 15 ping` | Full suite (DB 15 via `popoto_test_db`) |
+| Dev extras installed | `python -c "import pytest, popoto"` | Test runner |
+
+No Postgres server is required: every new test drives `BackendUnavailableError`
+directly or uses an instance that never connects (spike-4). Postgres-leg tests
+in `tests/postgres/` skip without `POSTGRES_URL`; if it is available locally,
+running them is a bonus check that the plugin's `_swap_instance` pairing still
+works.
 
 ## Solution
 
-TBD
+### Key Elements
+
+- **Neutral outage tuple**: `popoto.backends.types.OUTAGE_ERRORS` = the Redis
+  pair + `BackendUnavailableError`, re-exported from `popoto.backends`. The
+  single answer to "is this an outage?".
+- **Consumers re-pointed**: `ContextAssembler`, `SubconsciousMemory`, the
+  integrations service and `popoto-transfer` import the neutral tuple.
+- **Drift guard**: a test that fails if any module under `src/popoto` other
+  than `backends/types.py` imports `OUTAGE_ERRORS` from `redis_db`.
+- **Instance-aware name lookup**: `_instance(name)` returns the `set_backend`
+  instance when its `name` matches.
+
+### Flow
+
+`set_backend(PostgresBackend(dsn=A))` -> define `Meta.backend="postgres"`
+model -> `Model.save()` -> `get_backend` -> `_resolve` -> `_instance("postgres")`
+-> **the instance on DSN A** (not `POPOTO_POSTGRES_URL`).
+
+Postgres down -> `SubconsciousMemory.inject_context` -> `BackendUnavailableError`
+-> **re-raised** (not an empty context). Hook path -> `_record_failure` ->
+**`_redis_down = True`** -> later hook calls return `""` without a round trip.
+
+### Technical Approach
+
+**Defect 1**
+- In `src/popoto/backends/types.py`, after `BackendUnavailableError`, define
+  `OUTAGE_ERRORS: tuple[type[BaseException], ...] = _REDIS_OUTAGE_ERRORS +
+  (BackendUnavailableError,)` with `from ..redis_db import OUTAGE_ERRORS as
+  _REDIS_OUTAGE_ERRORS` (next to the existing `PopotoException` import). Add
+  it to `types.__all__` and to `backends/__init__.py`'s import list and
+  `__all__`. Docstring: an outage, not a bad query; `BackendRetryableError`
+  (pool/lock contention, `types.py:136-141`) is deliberately **not** in it.
+- `recipes/context_assembler.py:85-97`: replace the local widening with
+  `from ..backends.types import OUTAGE_ERRORS` (keep the module-level name so
+  `context_assembler.OUTAGE_ERRORS` stays importable; it is now the same
+  object). Keep the explanatory comment, re-pointed at the shared definition.
+- `recipes/subconscious_memory.py:66`: import from `..backends.types`. The
+  three `except OUTAGE_ERRORS: raise` sites are untouched.
+- `integrations/service.py:44`: import from `..backends.types`. `:808` is
+  untouched. Do not rename `_redis_down` (#814 owns the service's naming).
+- `transfer/cli.py:408-413` and `:477-482`: replace
+  `redis_exceptions.ConnectionError` with the neutral tuple's members
+  (`*OUTAGE_ERRORS`, or list `BackendUnavailableError` and the Redis pair);
+  keep `TimeoutError`, `OSError`, `ModelException`, `QueryException`, and
+  `KeyboardInterrupt` on export. Drop the now-unused function-local
+  `redis_exceptions` imports at `:384` / `:462` if nothing else uses them.
+  `:286` (DB-0 guard) is out of scope.
+- `redis_db.py:813-818`: value unchanged; amend the comment to say it is the
+  Redis pair and point backend-neutral callers at `popoto.backends.OUTAGE_ERRORS`.
+
+**Defect 2**
+- In `_instance(name)` (`backends/__init__.py:832`), first, under `_lock`:
+  `current = _default; if current is not None and not isinstance(current, str)
+  and getattr(current, "name", None) == name: return current`. Only then the
+  `_instances` cache and the env build.
+- Precedence, decided here: **matching `set_backend` instance > `_instances`
+  cache (including `_swap_instance`) > env build.** The instance must win over
+  the cache, or a process that resolved `"postgres"` from env before calling
+  `set_backend(instance)` would keep the cached env backend: the bug again.
+- The `set_backend` instance is **not** written into `_instances`. So
+  `set_backend(None)` (or a different instance) cleanly stops serving it, and
+  the next `_instance("postgres")` falls back to the cache/env, with no stale
+  entry to evict. `_bound` is keyed by `id(backend)` and already cleared by
+  `set_backend`, so no memoisation change is needed.
+- `_resolve` keeps its shape; a `Meta.backend` naming a different backend than
+  the instance still resolves by name (Redis-default process hosting a
+  Postgres-pinned model, and vice versa).
+- `pytest_plugin.py:1098-1105`: keep the `_swap_instance` call. It is now
+  redundant for the matching-name case but harmless, and other tests rely on
+  `_swap_instance` directly; update its comment to say so. Removing it is a
+  No-Go (see below).
+- Update `set_backend`'s docstring to state the rule, and the
+  `backends/postgres/__init__.py:13-14` docstring stays true as written.
 
 ## Failure Path Test Strategy
 
