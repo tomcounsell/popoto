@@ -5,9 +5,9 @@
 > evidence, associations form between co-mentioned things, and a context
 > assembler packs the result into a token budget before each LLM turn. It runs
 > in your process against a Redis or Valkey server, or a PostgreSQL 18+
-> database, that you already operate: no API key, no hosted service. Underneath it is a full Redis/Valkey ORM with
-> Django-like model syntax, so every memory primitive is a field on an ordinary
-> model.
+> database, that you already operate: no API key, no hosted service. Underneath
+> it is a full ORM with Django-like model syntax, so every memory primitive is a
+> field on an ordinary model.
 
 ## Start here
 

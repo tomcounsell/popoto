@@ -132,8 +132,8 @@ print(len(alice_orders))
 Use double-underscore notation to query by fields on the related model.
 
 !!! warning "Redis: currently broken"
-    On the Redis backend this lookup raises today (a `KeyError` or an
-    `AttributeError`, depending on the related field) instead of returning
+    On the Redis backend this lookup raises today (a `KeyError` or a
+    `QueryException`, depending on the related field) instead of returning
     matches. The bug is tracked in #771 and is row (xii) of
     [Query results](features/postgres-backend.md#query-results). On Postgres
     the lookup works as shown. On Redis, query the related model first and

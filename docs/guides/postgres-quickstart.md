@@ -55,17 +55,9 @@ Postgres-bound model.
 
 ## Configure
 
-Popoto reads its own environment variables and never a generic one such as
-`DATABASE_URL`:
-
-| Variable | Required | What it does |
-|---|---|---|
-| `POPOTO_BACKEND` | no | `postgres` binds every model without its own `Meta.backend` to Postgres. Unset, the default is `redis`. |
-| `POPOTO_POSTGRES_URL` | yes, for Postgres | The DSN, e.g. `postgresql://app@db.internal:5432/agents`. |
-| `POPOTO_POSTGRES_SCHEMA` | no | The Postgres schema popoto's tables live in. Default `popoto`. |
-| `POPOTO_SCHEMA_AUTO` | no | Default `1`: the first use of a model creates its table, or applies an additive change (a new nullable column, a new index). `0` turns this off, for deployments that run the DDL themselves. |
-| `POPOTO_POSTGRES_MAINTENANCE_URL` | no | A direct (or session-mode) DSN to the same database, for the DDL, `REINDEX` and the `LISTEN` session. Set it when `POPOTO_POSTGRES_URL` points at PgBouncer in transaction mode. See [maintenance DSN](../features/postgres-backend.md#a-maintenance-dsn-for-pgbouncer-transaction-mode). |
-| `POPOTO_POSTGRES_GRANT_MAIN_ROLE` | no | `1` makes popoto grant the main DSN's role access to the tables its maintenance-DSN DDL creates. Off by default: popoto grants nothing unless you opt in. See [two roles](../features/postgres-backend.md#two-roles-an-application-role-and-an-owner-role). |
+Two variables are enough. Popoto reads its own variables and never a generic
+one such as `DATABASE_URL`. The schema name, the maintenance DSN for PgBouncer,
+the role grants and the rest are listed in [Configuration](../configuration.md#postgres-backend).
 
 ```bash
 export POPOTO_BACKEND=postgres
@@ -223,17 +215,17 @@ echoing its text. `get_backend(Model).health` counts consecutive
 failures and dropped writes. See [the outage
 contract](../features/postgres-backend.md#topology-and-the-outage-contract).
 
-## Not on Postgres yet
+## Harness integration
 
-- **Harness integration.** The `popoto-memory` hook, the MCP server and
-  `popoto-memory doctor` still talk only to Redis
-  ([#814](https://github.com/tomcounsell/popoto/issues/814)). Use them with a
-  Redis-backed process for now.
-- **`DataFrameField`** is refused on Postgres. Store the frame's JSON in a
-  `DictField` or a `BytesField`.
+The `popoto-memory` hook, the MCP server and `popoto-memory doctor` run on
+Postgres too, with no Redis at all. See [Harness
+integration](../features/harness-integration.md#on-postgres).
 
-The full list of behavioural differences is in [Documented
-divergences](../features/postgres-backend.md#documented-divergences).
+## Not on Postgres
+
+`DataFrameField` is refused on Postgres. Store the frame's JSON in a
+`DictField` or a `BytesField`. The full list of behavioural differences is in
+[Documented divergences](../features/postgres-backend.md#documented-divergences).
 
 ## Moving existing memory from Redis
 
