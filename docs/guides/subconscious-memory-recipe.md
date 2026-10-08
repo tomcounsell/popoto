@@ -283,14 +283,14 @@ Modulation is on by default whenever the model carries exactly one `ConfidenceFi
 
 `SubconsciousMemory` itself does not run lifecycle ticks -- compose it with a `MemoryLifecycle` instance as shown in [Composing with SubconsciousMemory](../recipes.md#composing-with-subconsciousmemory).
 
-### Redis outages raise
+### Backend outages raise
 
-Since 1.9.0, `inject_context`, `extract_memories` and `report_outcomes` re-raise `redis.exceptions.ConnectionError`/`TimeoutError` rather than logging them and returning an empty result. A dead server used to be indistinguishable from "this turn had no relevant memories", which is the failure mode that makes a memory layer look like it is working while it is not.
+Since 1.9.0, `inject_context`, `extract_memories` and `report_outcomes` re-raise `redis.exceptions.ConnectionError`/`TimeoutError` rather than logging them and returning an empty result. A dead server used to be indistinguishable from "this turn had no relevant memories", which is the failure mode that makes a memory layer look like it is working while it is not. Since #816 the same holds on Postgres: a model bound to Postgres raises `popoto.backends.BackendUnavailableError` when its database is unreachable, and all three methods re-raise it too (before, it was logged and degraded to an empty context, a dropped write or dropped outcomes).
 
 Wrap the call at your application's turn boundary if a turn must survive an outage:
 
 ```python
-from popoto.redis_db import OUTAGE_ERRORS   # redis ConnectionError/TimeoutError, not the builtins
+from popoto.backends import OUTAGE_ERRORS   # redis ConnectionError/TimeoutError + BackendUnavailableError
 
 try:
     assembly = sm.inject_context(query)
@@ -298,7 +298,9 @@ except OUTAGE_ERRORS:
     assembly = None    # serve the turn without memory, and alert
 ```
 
-Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index.
+`popoto.backends.OUTAGE_ERRORS` is the tuple the recipe tests against. `popoto.redis_db.OUTAGE_ERRORS` is the Redis pair only and misses a Postgres outage; prefer the backend-neutral one even on Redis, so the handler keeps working if the model moves.
+
+Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index. So does contention: `popoto.backends.BackendRetryableError` (a deadlock, a serialization failure, an exhausted pool) is not an outage and is not in the tuple.
 
 ## Tuning
 

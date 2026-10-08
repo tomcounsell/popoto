@@ -438,9 +438,11 @@ does.
 
 **An outage costs one attempt, not five.** The integration binds its
 connection with a 1-second connect and socket timeout and no redis-py
-retries (the default is 10), and once a `ConnectionError`/`TimeoutError` has
-been recorded, every later Redis operation in that hook process is skipped
-outright. The shipped Claude Code and Codex hook configs also carry an
+retries (the default is 10), and once an outage has been recorded -- a redis
+`ConnectionError`/`TimeoutError`, or, for a model bound to Postgres, a
+`popoto.backends.BackendUnavailableError` (#816; any member of
+`popoto.backends.OUTAGE_ERRORS`) -- later `assemble()` calls in that hook
+process, and the failure-counter write, are skipped outright. The shipped Claude Code and Codex hook configs also carry an
 explicit `"timeout": 10`. Against a server that accepts connections and
 never answers, this is the difference between roughly 25 seconds on the
 user's prompt and under 2.

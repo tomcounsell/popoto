@@ -28,6 +28,7 @@ from typing import (
     runtime_checkable,
 )
 
+from ..redis_db import OUTAGE_ERRORS as _REDIS_OUTAGE_ERRORS
 from ..redis_db import PopotoException
 
 __all__ = [
@@ -60,6 +61,7 @@ __all__ = [
     "BackendRetryableError",
     "BackendBusyError",
     "MaintenanceIncompleteError",
+    "OUTAGE_ERRORS",
     "Scored",
     "UnitOfWork",
 ]
@@ -100,6 +102,23 @@ class BackendUnavailableError(BackendError, ConnectionError):
     selecting ``postgres`` without ``POPOTO_POSTGRES_URL`` or the ``postgres``
     extra.
     """
+
+
+#: Exceptions that mean "the store is unreachable", as opposed to a bad query,
+#: on **either** backend (#816): Redis's ``ConnectionError`` / ``TimeoutError``
+#: pair (:data:`popoto.redis_db.OUTAGE_ERRORS`, unchanged) plus
+#: :class:`BackendUnavailableError`, which a Postgres-bound model raises.
+#: ``BackendUnavailableError`` subclasses the *builtin* ``ConnectionError``, not
+#: redis-py's, so the Redis pair alone misses a Postgres outage. This is the
+#: one answer to "is this an outage?" for every consumer in ``src/``: the
+#: recipes re-raise it instead of reading an outage as "no memories", the
+#: integrations service trips its breaker on it, and ``popoto-transfer``
+#: reports it as a one-line error. :class:`BackendRetryableError` (deadlock,
+#: serialization failure, pool contention) is deliberately **not** a member:
+#: it is contention, and running the work again is safe.
+OUTAGE_ERRORS: tuple[type[BaseException], ...] = _REDIS_OUTAGE_ERRORS + (
+    BackendUnavailableError,
+)
 
 
 class SchemaDriftError(BackendError):

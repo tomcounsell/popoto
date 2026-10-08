@@ -260,22 +260,23 @@ Two behaviors worth knowing:
 
 ### Outages are raised, not swallowed
 
-Every retrieval path re-raises `redis.exceptions.ConnectionError` and
-`TimeoutError` instead of logging them and returning an empty
+Every retrieval path re-raises an outage — `redis.exceptions.ConnectionError`
+and `TimeoutError`, or a Postgres-bound model's `BackendUnavailableError` —
+instead of logging it and returning an empty
 `AssemblyResult`. Before 1.9.0 a dead server was indistinguishable from "no
 relevant memories" — the assembler returned nothing, the caller injected
 nothing, and the only trace was a log line nobody was reading.
 
 Retrieval-*quality* failures still degrade as before: a zero-hit BM25 query
-falls back to composite ranking, a missing index is skipped. Only the two
-connection exceptions propagate.
+falls back to composite ranking, a missing index is skipped. Only the
+outage exceptions propagate.
 
 This is a behavior change for direct callers. If your application calls
 `assemble()` on a request path, wrap it — the harness boundary
 (`hooks.run`, the MCP dispatcher) already does:
 
 ```python
-from popoto.redis_db import OUTAGE_ERRORS   # (redis ConnectionError, TimeoutError)
+from popoto.backends import OUTAGE_ERRORS   # an outage on either backend
 
 try:
     result = assembler.assemble(query_cues=..., agent_id=...)
@@ -283,16 +284,16 @@ except OUTAGE_ERRORS:
     result = None   # serve the turn without memory, and log it
 ```
 
-Note these are `redis.exceptions.ConnectionError`/`TimeoutError`, not the
-builtins of the same name — catching the builtins will not catch these.
-`OUTAGE_ERRORS` is the exact tuple the recipes test against.
+`popoto.backends.OUTAGE_ERRORS` is the exact tuple every recipe tests
+against: `redis.exceptions.ConnectionError`/`TimeoutError` (not the builtins
+of the same name — catching the builtins will not catch these) plus
+`popoto.backends.BackendUnavailableError`, which a model bound to Postgres
+raises when its database is unreachable. The assembler re-raises all three.
 
-A model bound to Postgres raises
-`popoto.backends.BackendUnavailableError` when its database is unreachable,
-and the assembler re-raises that too. The tuple it tests against is
-`popoto.recipes.context_assembler.OUTAGE_ERRORS`, the Redis pair plus
-`BackendUnavailableError`; catch that one when a model may be bound to either
-backend.
+Two older names remain importable. `popoto.redis_db.OUTAGE_ERRORS` is the
+**Redis pair only**, with its value unchanged; catching it misses a Postgres
+outage. `popoto.recipes.context_assembler.OUTAGE_ERRORS` is, since #816, the
+same object as `popoto.backends.OUTAGE_ERRORS`.
 
 ### Push Path
 
