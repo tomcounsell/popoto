@@ -1,7 +1,8 @@
 # Export & Import
 
-`popoto.transfer` moves one model's records between Redis instances — migrating to a
-new machine, seeding staging from production, taking a logical backup of a single
+`popoto.transfer` moves one model's records between stores — between Redis instances,
+between Postgres databases, or from Redis to Postgres (see [On Postgres](#on-postgres)).
+Typical uses are migrating to a new machine, seeding staging from production, taking a logical backup of a single
 model, or merging two datasets. It exists because the two naive approaches both lose
 data silently:
 
@@ -15,7 +16,7 @@ data silently:
 
 Export and import fix all four by round-tripping through a documented protocol (see
 [Writing Custom Fields](../field-authoring.md) for the field-author side) and by
-reconciling every record against Redis rather than trusting `save()`'s return value
+reconciling every record against the destination rather than trusting `save()`'s return value
 alone.
 
 ## Exporting
@@ -293,7 +294,8 @@ if report.errored or report.partial:
 
 ## Fidelity: what crosses, and what does not
 
-Popoto's secondary Redis structures fall into two groups, and the line between
+Popoto's secondary structures (on Redis, separate keys; on Postgres, extra columns and
+tables) fall into two groups, and the line between
 them is not "hard to implement" but *what the bytes mean*:
 
 - A structure that is a **fact about the record** — a prediction that was made,
@@ -451,3 +453,40 @@ The check reads the database off the live connection pool, not an environment
 variable, so it catches the unset-`REDIS_URL` fallback (which also binds database 0)
 as well as an explicit `…/0` URL. It runs before the operator's `--model` module is
 imported and before any Redis command is issued.
+
+The check applies to a Postgres-bound model too, because it runs before the model is
+imported and so cannot know the model's backend. When transferring a Postgres model,
+set `REDIS_URL` to a non-zero database or pass `--allow-db0`.
+
+## On Postgres
+
+Export and import work on a model with `Meta.backend = "postgres"`, through the same
+Python API and the same `popoto-transfer` CLI. The JSON Lines format is the same on both
+backends: it carries field values and each field's state, never Redis structures or SQL.
+So an export from a Redis-bound model imports into the same model bound to Postgres, and
+the reverse.
+
+**How it maps.** The import's existence check, a filtered export, and the carried state
+of `ConfidenceField`, `EmbeddingField` and `AccessTrackerMixin` read and write the row's
+columns instead of Redis keys. Rebuilt structures (BM25, `ExistenceFilter`, `GeoField`,
+the indexes) are rebuilt by the import's save, as on Redis. `preserve_keys=False` remaps
+keys the same way on both backends. On Postgres you can also pass `uow=` to run the
+whole import inside your transaction (see
+[Resuming an interrupted import](#resuming-an-interrupted-import)).
+
+**Differences and limitations:**
+
+- Per-record TTLs (`_ttl`, `_expire_at`) are not carried on either backend. An imported
+  record expires `Meta.ttl` after its import.
+- A Redis export carries a `ContentField`'s file reference, not its text. Importing it
+  into Postgres reads the file through the content store, so `POPOTO_CONTENT_PATH` must
+  reach the same files. A Postgres export carries the text inline.
+- Postgres keeps no confirmed access log. `access_count` and `last_accessed` cross; the
+  log does not.
+- A model with a `DataFrameField` cannot be bound to Postgres.
+- The database-0 refusal above still applies.
+
+Every row is in
+[Cross-backend migration notes](../features/postgres-backend.md#cross-backend-migration-notes-for-756).
+For a one-off copy of a whole Redis store, see
+[Redis to Postgres Migration](../features/redis-to-postgres-migration.md).

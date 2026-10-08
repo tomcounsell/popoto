@@ -4,7 +4,13 @@ ContentField and EmbeddingField extend Popoto's storage model beyond Redis hashe
 routing large content and vector embeddings to the filesystem while keeping Redis
 lean and fast.
 
+The storage layout below (files, `.npy` vectors, the process cache) is the Redis
+backend's. On Postgres both fields live in the record's row; see
+[On Postgres](#on-postgres).
+
 ## Overview
+
+On Redis:
 
 | Field | Stores in Redis | Stores on Filesystem | Purpose |
 |-------|----------------|---------------------|---------|
@@ -290,6 +296,40 @@ invalidate_cache()
 | `VOYAGE_API_KEY` | *(none)* | API key for VoyageProvider (alternative to passing `api_key=`) |
 | `OPENAI_API_KEY` | *(none)* | API key for OpenAIProvider (alternative to passing `api_key=`) |
 | *(none)* | — | OllamaProvider requires no API key |
+
+## On Postgres
+
+Both fields work on a model with `Meta.backend = "postgres"`, and you read and write
+the same Python values. Nothing is written to the filesystem.
+
+**ContentField.** The content is stored inline in a `text` column of the record's
+row. There is no `$CF:` reference and no file, so `POPOTO_CONTENT_PATH` and a custom
+`store=` are not used.
+
+**EmbeddingField.** The vector is a pgvector `vector(d)` column with an HNSW index,
+written in the same statement as the record. Setup and behaviour:
+
+- Install `popoto[postgres]`, which includes the `pgvector` Python package. The
+  database also needs the extension: run `CREATE EXTENSION vector` as a role allowed
+  to, in a schema on the connection's `search_path` (`public` is). popoto never
+  creates it. Without it, the model's first use raises `BackendCapabilityError`
+  naming the fix.
+- The dimension `d` is read from the provider at the model's first use, so call
+  `popoto.configure(...)` before then. With no provider the column has no fixed
+  dimension and no HNSW index, and every search is exact.
+- A save embeds the source text as on Redis. A provider failure raises `RuntimeError`
+  and nothing is written.
+- `semantic_search()` works as described above, with the same ranking.
+- There are no `.npy` files and no cross-process cache, so `invalidate_cache()` is not
+  needed. `garbage_collect` and `sweep_stale_tempfiles` return `0`.
+- After a save whose own embedding succeeded, the save also embeds up to four rows in
+  the same scope that have no vector yet, after the commit and for at most about one
+  second. Errors there are logged, not raised.
+
+Details, including the narrow vector table and the exact-versus-HNSW threshold, are
+in [Embeddings](postgres-backend.md#embeddings). How a Redis export's `ContentField`
+file references import into Postgres is covered in
+[Cross-backend migration notes](postgres-backend.md#cross-backend-migration-notes-for-756).
 
 ## See Also
 
