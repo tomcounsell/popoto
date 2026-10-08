@@ -229,8 +229,9 @@ Testing Postgres models goes through the conformance harness above. In short:
   `save()` run on Redis even when `POPOTO_BACKEND=postgres`. Only the `backend`
   fixture moves a test onto Postgres.
 - A model that declares `Meta.backend = "postgres"` runs on the harness's schema
-  only inside the `backend` fixture's Postgres leg. Anywhere else it resolves to
-  the library's own `POPOTO_POSTGRES_URL`, the same as in production code. Leave
+  only inside the `backend` fixture's Postgres leg. Anywhere else it resolves as
+  in production code: a Postgres instance passed to `set_backend()`, else the
+  library's own `POPOTO_POSTGRES_URL`. Leave
   `POPOTO_POSTGRES_URL` unset in test environments so such a test fails with
   `BackendUnavailableError` instead of writing to a real database.
 - `use_test_db()` and `flush_test_db()` below act on Redis only.

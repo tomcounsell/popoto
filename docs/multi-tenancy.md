@@ -318,14 +318,12 @@ record to another partition moves nothing else.
   Postgres model they name no stored data, so do not use them to audit isolation there;
   query the rows instead.
 - Instead of separate Redis databases, give a tenant its own Postgres database or schema.
-  For models on the process default backend, pass a backend instance to
-  `popoto.backends.set_backend()`, for example
+  Pass a backend instance to `popoto.backends.set_backend()`, for example
   `set_backend(PostgresBackend(dsn=..., schema="tenant_a"))`, with `PostgresBackend` from
-  `popoto.backends.postgres`. Like
-  `set_REDIS_DB_settings()`, this is process-wide. A model that names
-  `Meta.backend = "postgres"` uses the backend built from `POPOTO_POSTGRES_URL` and
-  `POPOTO_POSTGRES_SCHEMA` instead, so per-deployment isolation there is set through
-  those variables.
+  `popoto.backends.postgres`. It serves models on the process default and models that
+  name `Meta.backend = "postgres"`, ahead of `POPOTO_POSTGRES_URL` and
+  `POPOTO_POSTGRES_SCHEMA`. Like `set_REDIS_DB_settings()`, this is process-wide;
+  without an instance, those variables set the isolation.
 
 See [Selecting the backend](features/postgres-backend.md#selecting-the-backend) and
 [Ranking and memory state](features/postgres-backend.md#ranking-and-memory-state-m2a).

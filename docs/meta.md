@@ -38,7 +38,9 @@ class Note(Model):
 Without `backend`, the model uses the process default. That default is
 `POPOTO_BACKEND` when it is set, else `"redis"`; it can also be changed at runtime
 with `popoto.backends.set_backend()`. An explicit `Meta.backend` always wins over the
-process default.
+process default. A Postgres instance passed to `set_backend()` also serves models that
+declare `Meta.backend = "postgres"`, ahead of `POPOTO_POSTGRES_URL`; a model that declares
+`Meta.backend = "redis"` always gets the stock Redis backend.
 
 What to know:
 
