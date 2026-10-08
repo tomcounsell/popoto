@@ -23,6 +23,11 @@ popoto-memory doctor
 redis-server        # or: valkey-server
 ```
 
+On a PostgreSQL 18+ server instead, export `POPOTO_BACKEND=postgres` and
+`POPOTO_POSTGRES_URL` where Claude Code's hooks will see them (`doctor` then
+prints `postgres reachable` and needs no Redis at all); see
+[On Postgres](../features/harness-integration.md#on-postgres).
+
 Then either the plugin or the manual block. They do the same thing.
 
 ### Plugin
@@ -87,7 +92,8 @@ health check.
 
 ## What is stored, and where
 
-In your Redis or Valkey, in the `DefaultMemory:*` keyspace, tagged with an
+In your Redis or Valkey, in the `DefaultMemory:*` keyspace (on Postgres: the
+`default_memory` table of `POPOTO_POSTGRES_SCHEMA`), tagged with an
 `agent_id` that defaults to the basename of your working directory. Since
 1.9.0 that tag is honored as a read filter on every shipped retrieval path,
 the default lexical/BM25 one included ([#576](https://github.com/tomcounsell/popoto/issues/576)).
@@ -170,6 +176,7 @@ popoto-memory doctor
 | What `doctor` says | What it means |
 |---|---|
 | `redis UNREACHABLE` | No server, or the wrong `POPOTO_MEMORY_URL`. It prints the fix. |
+| `postgres UNREACHABLE` / `UNSUPPORTED` | On `POPOTO_BACKEND=postgres`: no server at `POPOTO_POSTGRES_URL`, or one older than PostgreSQL 18. |
 | `last activity never` | The hooks are not firing. Check that `popoto-memory` is on the `PATH` your harness sees, and that you restarted Claude Code. |
 | `retrieval composite -- QUERY-BLIND` | Ranking is ignoring the prompt text. See [Query-Blind Retrieval](query-blind-retrieval.md). |
 | `FAILURES assemble=N` | Something is raising on the read path. The last five log lines print underneath. |
@@ -192,7 +199,8 @@ claude plugin uninstall popoto-memory@popoto   # or delete the settings block
 pip uninstall popoto
 ```
 
-Your memories stay in your Redis until you delete them:
+Your memories stay in your Redis (or Postgres schema) until you delete them.
+On Redis:
 
 ```bash
 redis-cli --scan --pattern 'DefaultMemory:*' | xargs redis-cli del
