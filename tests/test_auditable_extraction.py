@@ -38,7 +38,7 @@ from popoto.fields.constants import Defaults
 from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
 from popoto.recipes.subconscious_memory import SubconsciousMemory
 from popoto.privacy.never_record import scan_never_record
-from popoto.redis_db import POPOTO_REDIS_DB
+from popoto.redis_db import get_REDIS_DB
 
 # A representative corpus for the candidate generator: multi-sentence prose,
 # a repeated sentence, named entities, acronyms, punctuation variety, and
@@ -514,6 +514,8 @@ class TestCandidateGeneration:
             )
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestDecisionLogCore:
     """Task 3a: composite-key rows, the guarded terminal write, recovery."""
 
@@ -528,9 +530,19 @@ class TestDecisionLogCore:
         )
 
     def _rows_for(self, agent_id, turn_id, candidate_id):
-        """Count raw Redis rows for one composite key, bypassing the ORM."""
+        """The rows stored for one composite key, bypassing the decision log.
+
+        Redis: the raw keys matching the row key. Postgres: the table's rows
+        for that key through the ORM. One row per candidate is the invariant
+        on both."""
+        if DecisionLog()._backend is not None:
+            return list(
+                DecisionRecord.query.filter(
+                    agent_id=agent_id, turn_id=turn_id, candidate_id=candidate_id
+                )
+            )
         key = DecisionLog.row_key(agent_id, turn_id, candidate_id)
-        return POPOTO_REDIS_DB.keys(f"{key}*")
+        return get_REDIS_DB().keys(f"{key}*")
 
     # -- keying ----------------------------------------------------------
 
@@ -579,6 +591,10 @@ class TestDecisionLogCore:
         assert "_auto_key" not in DecisionRecord._meta.fields
         assert DecisionRecord._meta.auto_field_names == set()
 
+    @pytest.mark.redis_only(
+        reason="the Redis key format; Postgres twin: "
+        "test_postgres_decision_log.py::test_the_composite_key_is_a_unique_index"
+    )
     def test_redis_key_joins_key_fields_alphabetically(self):
         # Not declaration order: candidate_id lands in the middle.
         key = DecisionLog.row_key("agent-1", "t-41", "t-41:sentence:0")
@@ -877,7 +893,158 @@ class TestDecisionLogCore:
         assert summary["state:accept"] == 1
         assert "state:reject" not in summary
 
+    # -- the turn_summary contract (#811): a rollup of CURRENT states ------
 
+    def _rollup(self, log, agent, turn="t-41"):
+        """The summary computed from the detail rows -- the contract itself."""
+        out = {}
+        for row in log.list_for_agent(agent):
+            if row.turn_id != turn or not row.is_terminal:
+                continue
+            for field in (f"state:{row.state}", f"reason:{row.reason_code}"):
+                out[field] = out.get(field, 0) + 1
+        return out
+
+    def test_summary_follows_a_terminal_to_terminal_transition(self):
+        log = DecisionLog()
+        c = self._candidate()
+        log.write_terminal("agent-t2t", c, Verdict.REJECT, ReasonCode.NOT_A_FACT)
+        log.write_terminal(
+            "agent-t2t", c, Verdict.ACCEPT, ReasonCode.ACCEPTED, entry_id="E1"
+        )
+
+        assert log.turn_summary("agent-t2t", "t-41") == {
+            "state:accept": 1,
+            "reason:accepted": 1,
+        }
+
+    def test_summary_follows_a_reason_change_within_one_state(self):
+        log = DecisionLog()
+        c = self._candidate()
+        log.write_terminal("agent-rc", c, Verdict.REJECT, ReasonCode.NOT_A_FACT)
+        log.write_terminal("agent-rc", c, Verdict.REJECT, ReasonCode.NOT_MEMORABLE)
+
+        assert log.turn_summary("agent-rc", "t-41") == {
+            "state:reject": 1,
+            "reason:not_memorable": 1,
+        }
+
+    def test_summary_same_verdict_retry_is_a_no_op(self):
+        log = DecisionLog()
+        c = self._candidate()
+        log.write_terminal("agent-retry", c, Verdict.REJECT, ReasonCode.NOT_A_FACT)
+        log.write_terminal("agent-retry", c, Verdict.REJECT, ReasonCode.NOT_A_FACT)
+
+        assert log.turn_summary("agent-retry", "t-41") == {
+            "state:reject": 1,
+            "reason:not_a_fact": 1,
+        }
+
+    def test_summary_transition_among_several_candidates(self):
+        log = DecisionLog()
+        a, b, c = self._candidate(0), self._candidate(1), self._candidate(2)
+        log.write_terminal("agent-multi", a, Verdict.WITHHOLD, ReasonCode.NOT_A_FACT)
+        log.write_terminal("agent-multi", b, Verdict.ACCEPT, ReasonCode.ACCEPTED)
+        log.write_pending("agent-multi", c)
+        # withhold -> reject, accept (no entry_id) -> firewall_drop, pending -> reject
+        log.write_terminal("agent-multi", a, Verdict.REJECT, ReasonCode.NOT_MEMORABLE)
+        log.write_terminal(
+            "agent-multi",
+            b,
+            Verdict.FIREWALL_DROP,
+            ReasonCode.POST_ACCEPT_JOURNAL_BLOCK,
+        )
+        log.write_terminal("agent-multi", c, Verdict.REJECT, ReasonCode.NOT_A_FACT)
+
+        summary = log.turn_summary("agent-multi", "t-41")
+        assert summary == self._rollup(log, "agent-multi")
+        assert summary["state:reject"] == 2
+        assert summary["state:firewall_drop"] == 1
+        assert "state:withhold" not in summary
+        assert "state:accept" not in summary
+
+    def test_summary_counts_an_empty_reason_under_reason_colon(self):
+        log = DecisionLog()
+        log.write_terminal("agent-empty", self._candidate(), Verdict.REJECT, "")
+
+        assert log.turn_summary("agent-empty", "t-41") == {
+            "state:reject": 1,
+            "reason:": 1,
+        }
+
+    def test_refused_write_leaves_the_summary_unchanged(self):
+        log = DecisionLog()
+        c = self._candidate()
+        log.write_terminal(
+            "agent-refused", c, Verdict.ACCEPT, ReasonCode.ACCEPTED, entry_id="E1"
+        )
+        before = log.turn_summary("agent-refused", "t-41")
+
+        assert (
+            log.write_terminal(
+                "agent-refused", c, Verdict.REJECT, ReasonCode.NOT_A_FACT
+            )
+            is False
+        )
+
+        assert log.turn_summary("agent-refused", "t-41") == before
+        row = log.get("agent-refused", "t-41", c.candidate_id)
+        assert row.detail_code == DecisionLog.CONFLICT_REFUSED
+        assert row.entry_id == "E1"
+
+    def test_summary_for_an_unknown_turn_is_empty(self):
+        log = DecisionLog()
+        assert log.turn_summary("agent-nobody", "t-none") == {}
+        assert log.list_for_agent("agent-nobody") == []
+
+    @pytest.mark.redis_only(
+        reason="the stored summary hash exists only on Redis; Postgres derives "
+        "on read. Twin: test_postgres_decision_log.py::"
+        "test_rebuild_turn_summary_is_turn_summary"
+    )
+    def test_rebuild_turn_summary_repairs_a_drifted_hash(self):
+        log = DecisionLog()
+        c = self._candidate()
+        log.write_terminal("agent-drift", c, Verdict.REJECT, ReasonCode.NOT_A_FACT)
+        key = DecisionLog.summary_key("agent-drift", "t-41")
+        # A pre-fix deployment's hash: counts the row never had.
+        get_REDIS_DB().hset(key, mapping={"state:reject": 3, "reason:other": 2})
+        log.write_terminal("agent-drift", c, Verdict.REJECT, ReasonCode.NOT_MEMORABLE)
+
+        raw = get_REDIS_DB().hgetall(key)
+        assert all(int(v) > 0 for v in raw.values()), "no field may go negative"
+
+        rebuilt = log.rebuild_turn_summary("agent-drift", "t-41")
+
+        assert rebuilt == {"state:reject": 1, "reason:not_memorable": 1}
+        assert rebuilt == self._rollup(log, "agent-drift")
+        assert log.turn_summary("agent-drift", "t-41") == rebuilt
+
+    @pytest.mark.redis_only(
+        reason="the stored summary hash exists only on Redis; Postgres has no "
+        "hash to clamp. Postgres twins: "
+        "test_summary_follows_a_terminal_to_terminal_transition[postgres] and "
+        "tests/postgres/test_postgres_decision_log.py::"
+        "test_rebuild_turn_summary_is_turn_summary"
+    )
+    def test_a_transition_clamps_a_field_the_drifted_hash_never_counted(self):
+        log = DecisionLog()
+        c = self._candidate()
+        log.write_terminal("agent-clamp", c, Verdict.REJECT, ReasonCode.NOT_A_FACT)
+        key = DecisionLog.summary_key("agent-clamp", "t-41")
+        get_REDIS_DB().delete(key)  # the hash lost its counts
+        log.write_terminal(
+            "agent-clamp", c, Verdict.ACCEPT, ReasonCode.ACCEPTED, entry_id="E1"
+        )
+
+        assert log.turn_summary("agent-clamp", "t-41") == {
+            "state:accept": 1,
+            "reason:accepted": 1,
+        }
+
+
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestAssemblyWiring:
     """Task 3b: the claim, identity reconciliation, and the opt-in flag."""
 
@@ -916,12 +1083,16 @@ class TestAssemblyWiring:
         assert log.release_claim(*args, "not-my-token") is False
         assert log.acquire_claim(*args) is None, "the real owner still holds it"
 
+    @pytest.mark.redis_only(
+        reason="PTTL of the SET NX PX claim key; Postgres twin: "
+        "test_postgres_decision_log.py::test_claim_carries_a_finite_ttl"
+    )
     def test_claim_carries_a_finite_ttl(self):
         log = DecisionLog()
         args = ("agent-ttl", "t-90", "t-90:sentence:0")
         log.acquire_claim(*args)
 
-        ttl_ms = POPOTO_REDIS_DB.pttl(DecisionLog.claim_key(*args))
+        ttl_ms = get_REDIS_DB().pttl(DecisionLog.claim_key(*args))
 
         assert 0 < ttl_ms <= Defaults.M3_ASSEMBLY_CLAIM_TTL_MS
 
@@ -1193,14 +1364,19 @@ class TestAssemblyWiring:
             "firewall_drop": 1,
         }
 
+    @pytest.mark.redis_only(
+        reason="SCANs and deletes the JournalEntry* keyspace; Postgres twin: "
+        "test_postgres_decision_log.py::"
+        "test_metrics_are_identical_with_the_journal_table_empty"
+    )
     def test_metrics_are_identical_with_the_journal_keyspace_absent(self):
         gold = self._seed_metrics_corpus("agent-isolated")
         before = DecisionLog().compute_metrics("agent-isolated", gold)
 
         # The fake journal holds its entries in memory; drop every real
         # journal key too, so nothing journal-shaped survives to be read.
-        for key in POPOTO_REDIS_DB.scan_iter(match="JournalEntry*"):
-            POPOTO_REDIS_DB.delete(key)
+        for key in get_REDIS_DB().scan_iter(match="JournalEntry*"):
+            get_REDIS_DB().delete(key)
 
         after = DecisionLog().compute_metrics("agent-isolated", gold)
 
@@ -1216,6 +1392,8 @@ class TestAssemblyWiring:
         assert (metrics.precision, metrics.recall, metrics.f1) == (0.0, 0.0, 0.0)
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestSubconsciousMemoryWiring:
     """The opt-in flag. The default path must not move a byte."""
 
@@ -1345,6 +1523,8 @@ class TestSubconsciousMemoryWiring:
         assert all(row.reason_code == ReasonCode.LLM_UNAVAILABLE.value for row in rows)
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestAssemblyAgainstTheRealJournal:
     """The fake journal proves the logic; this proves the integration.
 
@@ -1445,6 +1625,8 @@ class TestAssemblyAgainstTheRealJournal:
             assert fact.text in {entry.statement for entry in entries}
 
 
+@pytest.mark.conformance
+@pytest.mark.usefixtures("backend")
 class TestExtractedFactSpanInvariant:
     """Pins the ``span_start``/``span_end`` invariant documented on
     ``ExtractedFact`` (popoto/extraction/__init__.py): these offsets are

@@ -377,8 +377,7 @@ def test_lifecycle_promotes_a_non_key_tier(pg):
 def test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres(pg):
     """#759 M4b: a ``KeyField`` tier makes every promotion a key migration,
     which Postgres refuses in v2, so ``MemoryLifecycle`` refuses the
-    declaration when it is built -- as ``SubconsciousMemory(
-    auditable_extraction=)`` is -- rather than have ``tick()`` log and skip
+    declaration when it is built, rather than have ``tick()`` log and skip
     every promotion on every pass. That also closes the hazard the skip
     opened: a ``should_forget`` that ignores the tier tombstoned the records
     Redis would have promoted and kept. The message names the declaration
@@ -590,23 +589,193 @@ def test_unlisted_field_call_raises_capability_error(pg):
         pg.field_call(RecIdle._meta.spec, "note", "frobnicate")
 
 
-def test_the_auditable_extraction_path_is_refused_on_postgres(pg):
-    """The decision log is a Redis-only extraction surface (plan §1), so a
-    Postgres-bound ``SubconsciousMemory`` refuses ``auditable_extraction``
-    at construction rather than split its audit trail across two stores;
-    the default path runs."""
+class RecPgPinned(popoto.Model):
+    """Pinned to Postgres whatever the process default is."""
+
+    name = popoto.KeyField()
+    content = popoto.StringField(default="")
+
+    class Meta:
+        backend = "postgres"
+
+
+def _auditable_config(**kwargs):
     from popoto.extraction.decision_log import AuditableExtractionConfig
+
+    return AuditableExtractionConfig(journal=kwargs.pop("journal", object()), **kwargs)
+
+
+def test_the_auditable_extraction_path_runs_on_postgres(pg):
+    """#811: the decision log follows ``DecisionRecord``'s backend, so a
+    Postgres-bound ``SubconsciousMemory`` constructs with
+    ``auditable_extraction`` and the log lands in Postgres next to the
+    journal. The default path still runs."""
+    from popoto.extraction.decision_log import DecisionLog
+    from popoto.extraction.verdict import ReasonCode, Verdict, VerdictResult
+    from popoto.recipes.provenance_journal import ProvenanceJournal
     from popoto.recipes.subconscious_memory import SubconsciousMemory
 
-    with pytest.raises(BackendCapabilityError, match="decision log"):
+    def accept(candidate):
+        return VerdictResult(
+            candidate.candidate_id, Verdict.ACCEPT, ReasonCode.ACCEPTED
+        )
+
+    memory = SubconsciousMemory(
+        agent_id="audit",
+        auditable_extraction=_auditable_config(
+            journal=ProvenanceJournal, verdict_provider=accept
+        ),
+    )
+    assert memory.decision_log is not None
+    facts = memory.extract_memories(
+        "Alice deployed the service on Tuesday.", turn_id="t-audit"
+    )
+    assert facts
+    rows = DecisionLog().list_for_agent("audit")
+    assert rows and all(row.is_terminal for row in rows)
+    plain = SubconsciousMemory(agent_id="plain")
+    assert plain.decision_log is None
+    saved = plain.extract_memories("Alice deployed the service on Tuesday.")
+    assert saved and all(m.agent_id == "plain" for m in saved)
+
+
+def test_a_memory_model_on_postgres_under_a_redis_default_is_refused(pg):
+    """The split trail: the memory model is on Postgres but the process
+    default is Redis, so the decision log would land in Redis. Refused at
+    construction, naming the fix."""
+    from popoto.backends import set_backend
+    from popoto.recipes.provenance_journal import ProvenanceJournal
+    from popoto.recipes.subconscious_memory import SubconsciousMemory
+
+    previous = set_backend("redis")
+    try:
+        with pytest.raises(BackendCapabilityError, match="split its audit trail") as e:
+            SubconsciousMemory(
+                agent_id="audit",
+                model_class=RecPgPinned,
+                content_field="content",
+                auditable_extraction=_auditable_config(journal=ProvenanceJournal),
+            )
+        assert "set_backend('postgres')" in str(e.value)
+    finally:
+        set_backend(previous)
+
+
+def test_a_journal_entry_model_in_another_store_is_refused(pg):
+    """The decision log is on Postgres but the journal's entry model is
+    pinned to Redis: the reconciliation would read one store and write the
+    other, so construction refuses."""
+    from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+    from popoto.recipes.subconscious_memory import SubconsciousMemory
+
+    class RedisEntry(JournalEntry):
+        class Meta:
+            backend = "redis"
+
+    class RedisJournal(ProvenanceJournal):
+        entry_model = RedisEntry
+
+    with pytest.raises(BackendCapabilityError, match="split its audit trail"):
         SubconsciousMemory(
             agent_id="audit",
-            auditable_extraction=AuditableExtractionConfig(journal=object()),
+            auditable_extraction=_auditable_config(journal=RedisJournal),
         )
-    memory = SubconsciousMemory(agent_id="plain")
-    assert memory.decision_log is None
-    saved = memory.extract_memories("Alice deployed the service on Tuesday.")
-    assert saved and all(m.agent_id == "plain" for m in saved)
+
+
+def test_a_postgres_journal_under_a_redis_default_is_refused(pg):
+    """The mirror split trail: the process default is Redis (so the decision
+    log would land there) but the journal's entry model is pinned to
+    Postgres. Also refused."""
+    from popoto.backends import set_backend
+    from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+    from popoto.recipes.subconscious_memory import SubconsciousMemory
+
+    class PgEntry(JournalEntry):
+        class Meta:
+            backend = "postgres"
+
+    class PgJournal(ProvenanceJournal):
+        entry_model = PgEntry
+
+    previous = set_backend("redis")
+    try:
+        with pytest.raises(BackendCapabilityError, match="split its audit trail"):
+            SubconsciousMemory(
+                agent_id="audit",
+                auditable_extraction=_auditable_config(journal=PgJournal),
+            )
+    finally:
+        set_backend(previous)
+
+
+def test_a_redis_pinned_model_and_journal_under_a_postgres_default_is_refused(pg):
+    """Memory model and journal both pinned to Redis under a Postgres
+    default: the log is in Postgres, the journal in Redis."""
+    from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+    from popoto.recipes.subconscious_memory import SubconsciousMemory
+
+    class RedisEntry2(JournalEntry):
+        class Meta:
+            backend = "redis"
+
+    class RedisJournal2(ProvenanceJournal):
+        entry_model = RedisEntry2
+
+    class RedisModel(RecPgPinned):
+        class Meta:
+            backend = "redis"
+
+    with pytest.raises(BackendCapabilityError, match="split its audit trail"):
+        SubconsciousMemory(
+            agent_id="audit",
+            model_class=RedisModel,
+            content_field="content",
+            auditable_extraction=_auditable_config(journal=RedisJournal2),
+        )
+
+
+def test_a_redis_pinned_model_with_the_default_journal_under_a_postgres_default_is_allowed(
+    pg,
+):
+    """The allowed counterpart: a memory model pinned to Redis under a
+    Postgres process default, with the default journal, constructs. The
+    decision log and journal both follow the process default (Postgres), so
+    the audit trail is one store; only the memory model is elsewhere."""
+    from popoto.backends.routing import non_redis_backend
+    from popoto.extraction.decision_log import DecisionLog, DecisionRecord
+    from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+    from popoto.recipes.subconscious_memory import SubconsciousMemory
+
+    class RedisModel2(RecPgPinned):
+        class Meta:
+            backend = "redis"
+
+    memory = SubconsciousMemory(
+        agent_id="audit",
+        model_class=RedisModel2,
+        content_field="content",
+        auditable_extraction=_auditable_config(journal=ProvenanceJournal),
+    )
+    assert memory.decision_log is not None
+    assert non_redis_backend(RedisModel2) is None
+    log_backend = non_redis_backend(DecisionRecord)
+    assert log_backend is not None and log_backend.name == "postgres"
+    assert non_redis_backend(JournalEntry).name == "postgres"
+    # A write through the log lands in (and reads back from) Postgres.
+    from popoto.extraction.candidates import Candidate
+
+    text = "Alice deployed the service."
+    candidate = Candidate(
+        text=text,
+        turn_id="t-allowed",
+        candidate_id="t-allowed:sentence:0",
+        start=0,
+        end=len(text),
+        generator_rule="sentence",
+    )
+    DecisionLog().write_pending("allowed-case", candidate)
+    rows = DecisionLog().list_for_agent("allowed-case")
+    assert [r.candidate_id for r in rows] == ["t-allowed:sentence:0"]
 
 
 _FIRST_USE_CHILD = """

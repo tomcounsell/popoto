@@ -33,6 +33,13 @@ adapter        Postgres
                ``SET NX PX`` and ``_RELEASE_LUA``) over the candidate table,
                ``popoto_question_bucket (agent, last_turn, expires_at)`` and
                ``popoto_lease (key, token, expires_at)``.
+``_lease``     ``lock`` / ``release``: the same two ops, for any caller that
+               needs a TTL lease (the decision log's assembly claim, #811).
+               ``_qq`` keeps its pair; both names run one implementation.
+``_m3``        the decision log (#811): ``terminal_write`` (the guarded
+               upsert that replaces ``TERMINAL_WRITE_LUA``) and
+               ``turn_summary`` (the aggregate that replaces the per-turn
+               summary hash).
 =============  =============================================================
 
 The engine tables are created on first use under ``pg_advisory_xact_lock``,
@@ -67,6 +74,8 @@ from .schema import engine_table_ddl, quote_ident
 __all__ = [
     "COUNTER_FIELD",
     "IDLE_FIELD",
+    "LEASE_FIELD",
+    "M3_FIELD",
     "QQ_FIELD",
     "RecipeOpsMixin",
     "TOMB_FIELD",
@@ -80,6 +89,8 @@ COUNTER_FIELD = "_counter"
 TOMB_FIELD = "_tomb"
 TOMBPRIOR_FIELD = "_tombprior"
 QQ_FIELD = "_qq"
+LEASE_FIELD = "_lease"
+M3_FIELD = "_m3"
 NEVER_RECORD_FIELD = "_never_record"
 EMBED_CACHE_FIELD = "_embed_cache"
 
@@ -136,6 +147,8 @@ class RecipeOpsMixin:
     _run: Callable[..., tuple[list[tuple[Any, ...]], int]]
     _record_locked: Callable[..., tuple[str, list[Any]]]
     _ensure_engine_table: Callable[..., None]
+    _row_values: Callable[..., dict[str, Any]]
+    _after_write: Callable[..., None]
 
     # -- engine tables ------------------------------------------------------------
 
@@ -215,8 +228,18 @@ class RecipeOpsMixin:
             handlers = {
                 "deliver": self._qq_deliver,
                 "claim": self._qq_claim,
-                "lock": self._qq_lock,
-                "release": self._qq_release,
+                "lock": self._lease_lock,
+                "release": self._lease_release,
+            }
+        elif field == LEASE_FIELD:
+            handlers = {
+                "lock": self._lease_lock,
+                "release": self._lease_release,
+            }
+        elif field == M3_FIELD:
+            handlers = {
+                "terminal_write": self._m3_terminal_write,
+                "turn_summary": self._m3_turn_summary,
             }
         else:
             fs = spec.fields.get(field)
@@ -803,7 +826,7 @@ class RecipeOpsMixin:
         rows, _ = self._run(sql, params, uow=uow, write=True)
         return bool(rows)
 
-    def _qq_lock(
+    def _lease_lock(
         self,
         spec: ModelSpec,
         field: str,
@@ -813,7 +836,9 @@ class RecipeOpsMixin:
         *,
         uow: Optional[UnitOfWork] = None,
     ) -> bool:
-        """``SET key token NX PX ttl``: an expired lease is absent."""
+        """``SET key token NX PX ttl``: an expired lease is absent. Serves the
+        question queue's propose lock (``_qq``) and the decision log's
+        assembly claim (``_lease``)."""
         table = self._engine("popoto_lease")
         rows, _ = self._run(
             f"INSERT INTO {table} AS l (key, token, expires_at) "
@@ -826,7 +851,7 @@ class RecipeOpsMixin:
         )
         return bool(rows)
 
-    def _qq_release(
+    def _lease_release(
         self,
         spec: ModelSpec,
         field: str,
@@ -835,7 +860,8 @@ class RecipeOpsMixin:
         *,
         uow: Optional[UnitOfWork] = None,
     ) -> int:
-        """``_RELEASE_LUA``: delete the lease only while this token owns it."""
+        """``_RELEASE_LUA`` / ``CLAIM_RELEASE_LUA``: delete the lease only
+        while this token owns it."""
         table = self._engine("popoto_lease")
         _, count = self._run(
             f"DELETE FROM {table} WHERE key = %s AND token = %s",
@@ -844,3 +870,79 @@ class RecipeOpsMixin:
             write=True,
         )
         return int(count or 0)
+
+    # -- the decision log (#811) -----------------------------------------------------
+
+    def _m3_terminal_write(
+        self,
+        spec: ModelSpec,
+        field: str,
+        record: Any,
+        refused_detail: str,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> bool:
+        """``TERMINAL_WRITE_LUA``'s guarded write as one statement.
+
+        ``INSERT ... ON CONFLICT (_pk) DO UPDATE ... WHERE NOT (state =
+        'accept' AND entry_id <> '')`` writes a new row, or rewrites an
+        existing one unless it is an assembled accept. When that guard is
+        false the row is locked but not updated and ``RETURNING`` yields
+        nothing; only then does the second branch record ``refused_detail``
+        on the standing row. The branches are mutually exclusive, so the row
+        is modified at most once per statement. Returns ``True`` when the row
+        was written, ``False`` when refused. The record-key advisory lock
+        serialises it with ORM saves of the same row (``write_pending``).
+        Replaces the Redis class-set and index-set bookkeeping, which the
+        table's own indexes cover."""
+        ts = self._table(spec, write=True)
+        names = [n for n in spec.fields if n in ts.field_types]
+        values = self._row_values(ts, record, names)
+        pk = record.db_key.redis_key
+        cols = ["_pk"] + list(values)
+        col_sql = ", ".join(quote_ident(c) for c in cols)
+        slots = ", ".join(["%s"] * len(cols))
+        updates = ", ".join(
+            f"{quote_ident(c)} = EXCLUDED.{quote_ident(c)}"
+            for c in cols[1:]
+            if c not in ts.key_fields
+        )
+        updates += ', "_updated_at" = now(), "_migrated_from" = NULL'
+        guard = "NOT (t.\"state\" = 'accept' AND coalesce(t.\"entry_id\", '') <> '')"
+        sql = (
+            f"WITH up AS (INSERT INTO {ts.qualified} AS t ({col_sql}) "
+            f'VALUES ({slots}) ON CONFLICT ("_pk") DO UPDATE SET {updates} '
+            f"WHERE {guard} RETURNING 1), "
+            f'refuse AS (UPDATE {ts.qualified} SET "detail_code" = %s '
+            'WHERE "_pk" = %s AND NOT EXISTS (SELECT 1 FROM up) RETURNING 1) '
+            "SELECT (SELECT count(*) FROM up), (SELECT count(*) FROM refuse)"
+        )
+        params = [pk] + list(values.values()) + [refused_detail, pk]
+        sql, params = self._record_locked(ts, [pk], sql, params)
+        rows, _ = self._run(sql, params, uow=uow, write=True)
+        self._after_write(ts, uow)
+        return bool(rows) and int(rows[0][0]) > 0
+
+    def _m3_turn_summary(
+        self,
+        spec: ModelSpec,
+        field: str,
+        agent_id: str,
+        turn_id: str,
+        states: Sequence[str],
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> list[tuple[str, Optional[str], int]]:
+        """The per-turn summary hash as an aggregate over the detail rows:
+        ``(state, reason_code, count)`` for the turn's rows whose current
+        state is one of ``states``. One snapshot-consistent read, as
+        ``HGETALL`` is on Redis; derived, so it cannot drift."""
+        ts = self._table(spec)
+        rows, _ = self._run(
+            f'SELECT "state", "reason_code", count(*) FROM {ts.qualified} '
+            'WHERE "agent_id" = %s AND "turn_id" = %s AND "state" = ANY(%s::text[]) '
+            'GROUP BY "state", "reason_code"',
+            [agent_id, turn_id, list(states)],
+            uow=uow,
+        )
+        return [(str(r[0]), r[1], int(r[2])) for r in rows]

@@ -185,15 +185,43 @@ consumes the log at scale, so v1 declines to guess a number rather than
 silently deleting audit evidence early.
 
 The per-turn compact summary (`DecisionLog.turn_summary(agent_id, turn_id)`)
-is a **convenience index over terminal states only** — an O(1) count instead
-of a per-turn row scan — not a completeness fallback. If it ever disagrees
-with the detail rows, the detail rows are right.
+is a **rollup of the rows' current terminal states** — an O(1) count instead
+of a per-turn row scan — not a completeness fallback. Each candidate counts
+once under the `state:<s>` and `reason:<r>` its row holds now, so a candidate
+that moves from one terminal state to another is counted under the new one
+only; zero counts are absent and `pending` never appears. If it ever
+disagrees with the detail rows, the detail rows are right.
+
+On Redis the summary is a hash that the terminal-write script updates in the
+same atomic step as the row. Before #811 that script only incremented, so a
+terminal-to-terminal write (a retried `reject` after a `withhold`, say) left
+the old state's count in place. A hash written that way is repaired by
+`DecisionLog.rebuild_turn_summary(agent_id, turn_id)`, which recomputes it
+from the detail rows in one script call; run it per turn once every process
+has the fix. On Postgres the summary is a `GROUP BY` computed on read and
+cannot drift, so the same call just returns it.
+
+## Backends
+
+`DecisionLog` follows `DecisionRecord`'s backend, the process default, as the
+journal does. On Redis nothing changed beyond the summary fix above. On
+Postgres `SubconsciousMemory(auditable_extraction=...)` constructs and runs
+with no Redis command: rows, the guarded terminal write, the assembly claim
+(a lease row) and the summary all live in Postgres, with the same semantics.
+Construction refuses only the split trail, whenever `auditable_extraction` is
+set: a decision log that would land in Redis while the memory model is on
+Postgres, or a decision log in a different store from the journal entry model
+(in either direction). The error says how to bind the process default. A
+memory model pinned to Redis under a Postgres default keeps its decision log in
+Postgres, next to the journal. See [Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+A process that moves to Postgres starts with an empty decision log.
 
 ## The terminal-write conflict guard
 
 Every terminal write — including the pre-LLM `firewall_drop`, which cannot
 conflict in practice because no prior row exists for a fresh candidate — goes
-through **one conditional Lua script**, run via `EVAL`. There is no
+through **one conditional Lua script**, run via `EVAL` (on Postgres, one
+conditional statement under the row's lock, with the same rule). There is no
 unconditional fast-path write anywhere in `decision_log.py`.
 
 The rule it enforces: a terminal write must not overwrite a row that is
