@@ -104,7 +104,7 @@ keeps its cooperative default byte-identical; only the resolver path inverts
 degrade. Per-record gate errors deny that record with a log line.
 
 Runtime gate failures fail **closed** without raising: tag-resolution failure
-(e.g. Redis errors mid-gating) returns an empty sheet plus a
+(e.g. a storage error mid-gating, on either backend) returns an empty sheet plus a
 `reader gate failed closed` warning. Gate shortfall back-fills from arm
 headroom with capped re-pulls; a shortfall that survives the cap lands as a
 split `warnings` entry, not a silent cut. `metadata["reader_gate"]` reports
@@ -133,3 +133,15 @@ override for the staleness read) and compare `serialize()` output.
 `superseded_collapsed`, `disjunct_groups`, `unresolved`, `gate_rejected`,
 `validity_excluded`, `assembles`, `chain_reads`), the merged `policy`, and the
 `reader`.
+
+## On Postgres
+
+The resolver runs unchanged on a Postgres-bound journal (#759 M4); every test
+in `tests/test_view_resolver.py` runs on both backends except one that counts
+the Redis tag-set read. On Postgres the reader gate's tag check is one id-only
+`SELECT` (`&&` for `any`, `@>` for `all`), and each chain read
+(`annotations_for`) is an ordinary indexed `filter()` on the journal's table.
+The fold itself touches no storage. Retrieval inherits the assembler's
+Postgres behaviour, including its documented differences; see
+[ContextAssembler](postgres-backend.md#contextassembler-m2c) and
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).

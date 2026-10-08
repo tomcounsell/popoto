@@ -23,7 +23,7 @@ class Memory(NeverRecordMixin, Model):
     content = StringField(default="")
 
 Memory(agent_id="a1", content="my key is sk-ant-api03-AAAA...").save()
-# False -- nothing written to Redis
+# False -- nothing written to the store
 
 Memory(agent_id="a1", content="The user prefers dark mode.").save()
 # saved normally
@@ -35,7 +35,8 @@ change on your side.
 
 ## The guaranteed class
 
-Content matching any of these never reaches Redis. Each drop records one
+Content matching any of these never reaches the store (Redis or Postgres).
+Each drop records one
 reason code.
 
 | Reason code | What it catches |
@@ -131,7 +132,8 @@ pattern does run against both renderings.
 ## Where the gate runs
 
 Inside `Model.save()`, before the `WriteFilterMixin` check and before
-`pre_save()` — therefore before serialization, the HSET, and every secondary
+`pre_save()` — therefore before serialization, the HSET (the row write on
+Postgres), and every secondary
 index, BM25 posting, embedding call, and co-occurrence edge. Ordering is the
 whole guarantee: blocked content is never handed to any of those.
 
@@ -150,7 +152,8 @@ that the tombstone design closes.
 The mixin scans the instance's **non-key `str` field values**, and only those:
 
 - **Key fields are excluded** — `KeyField` and `AutoKeyField` values are
-  rendered into the Redis key *name*, which a later drop cannot retract. The
+  rendered into the record key (the Redis key *name*, the `_pk` column on
+  Postgres), which a later drop cannot retract. The
   scan skips them because blocking at `save()` would not unwrite a name that
   earlier records already embedded; a key field carrying secrets is a schema
   problem, not a save-time one.
@@ -180,7 +183,7 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
 ```
 
 This exists for **machine-generated pointers**, not to soften the gate on
-anything a human or a model wrote. `JournalEntry.target` holds a Redis key
+anything a human or a model wrote. `JournalEntry.target` holds a record key
 Popoto itself generated (`JournalEntry:{agent_id}:{uuid4 hex}`), and scanning
 it for payment cards is a category error with a measured cost: a uuid4 hex
 sometimes contains a 13–19 digit run that passes the Luhn checksum, so the
@@ -219,6 +222,8 @@ is the precise point where a never-record tombstone diverges from
 on purpose so writes can be matched against it.
 
 ### Architecture
+
+On Redis:
 
 | Key | Type | Contents |
 |---|---|---|
@@ -289,7 +294,7 @@ deliberately conservative in the over-blocking direction.
 | `NR_ENTROPY_MIN_TOKEN_LEN` | `20` | Shortest token the entropy backstop considers |
 | `NR_ENTROPY_MIN_BITS` | `3.5` | Shannon bits/char threshold. Random base64 sits near 5.5-6.0, random hex near 4.0, English text over the same alphabet well below 3.5 |
 | `NR_ASSIGNMENT_MIN_VALUE_LEN` | `6` | Shortest value after `password=` that counts |
-| `NR_TOMBSTONE_LOG_MAX` | `1000` | Cap on the drop-log LIST |
+| `NR_TOMBSTONE_LOG_MAX` | `1000` | Cap on the drop log (the LIST on Redis, the log table rows per model on Postgres) |
 | `NEVER_RECORD_ENABLED` | env-derived | Kill switch, not a tuning constant |
 
 ## Using the scanner directly
@@ -305,6 +310,35 @@ verdict.blocked    # True
 verdict.reason     # 'credential_prefix'
 verdict.detector   # 'vendor_token'
 ```
+
+## On Postgres
+
+The gate is the same code in `Model.save()`, so a refused save writes no row,
+no companion and no engine-table entry. The audit log moves to two engine
+tables, `popoto_never_record_count` (one row per model and reason, the
+counter) and `popoto_never_record_log` (newest first, trimmed to
+`NR_TOMBSTONE_LOG_MAX` rows per model), written in one statement. See
+[Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+`never_record_counts()` and `never_record_log()` read the tables and return
+the same shapes.
+
+Differences:
+
+- A refused save inside a `transaction()` or a `popoto.batch()` writes its
+  tombstone on that unit's connection, so the tombstone rolls back with the
+  unit and is kept only when the unit commits. On Redis the `pipeline=` is
+  ignored for the tombstone, which is written at once and survives a
+  `reset()`.
+- Best-effort is narrower. An outage (`BackendUnavailableError`,
+  `BackendRetryableError`) on an autocommit tombstone write is swallowed, as
+  any Redis error is. Inside a unit of work the outage propagates, because it
+  has already aborted the caller's transaction, and any other database error
+  propagates as `BackendError` in both cases. The save is refused either way,
+  so neither path fails open.
+
+The conformance tests in `tests/test_never_record_firewall.py` run on both
+backends, and on the Postgres leg the "never persists" sweep covers every
+table in the schema as well as Redis.
 
 ## See Also
 
