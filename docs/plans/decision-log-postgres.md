@@ -7,12 +7,18 @@ created: 2026-10-07
 tracking: https://github.com/tomcounsell/popoto/issues/811
 last_comment_id:
 revision_applied: true
-revision_applied_at: 2026-10-07T17:06:10Z
+revision_applied_at: 2026-10-08T00:00:00Z
 ---
 
 # Decision Log on Postgres
 
 Implementation branch: `feature/decision-log-postgres`.
+
+**Test environment (binding for build, validation and review):**
+- Redis/Valkey on `localhost:6379`, **DB 15 only**. The suite binds DB 15 through `popoto_test_db`; any ad-hoc repro script exports `REDIS_URL=redis://localhost:6379/15` *before* `import popoto`. Never DB 0 (a live agent store on this machine, see CLAUDE.md and #577).
+- Local Postgres 18 at `POSTGRES_URL=postgresql://localhost:5432/postgres` (measured at plan time: `18.6 (Homebrew)`).
+- A worktree venv with `pip install -e ".[dev,embeddings,benchmark,mcp,postgres]"`, whose editable install resolves to the worktree (CLAUDE.md "Verifying in a worktree", trap 1).
+- **The Postgres tests must actually run.** A leg that skips because `POSTGRES_URL` is unset or `psycopg` is missing is a failed validation, not a pass. Every Postgres command in Verification is read with `-rs` and must report zero Postgres skips; the collect-count rows guard against a vacuous leg.
 
 ## Problem
 
@@ -27,11 +33,19 @@ Everything else on the auditable path already runs on Postgres: candidates, verd
   - `SET NX PX` plus a Lua compare-and-delete implement the assembly claim.
   - `EXISTS`, `SCAN` and `HGETALL` back the readers.
 
+**turn_summary drift on Redis (found while resolving Open Question 2):**
+- **Contract.** M3 defines the per-turn summary as "a convenience index" over the detail rows "holding terminal-state counts and reason-code distribution", with "the detail rows ... the sole source of truth" (`docs/plans/auditable_extraction_m3.md:713-722`; also `:257`, `:1342-1344`). The shipped docstring repeats it: "A convenience index over the detail rows, aggregating terminal states only ... if it ever disagrees with the detail rows, the detail rows are right" (`src/popoto/extraction/decision_log.py:1019-1025`), as does `docs/features/auditable-extraction.md:187-190`. M3's Race 1 states the prerequisite outright: "The summary reflects every candidate written for the turn" (`auditable_extraction_m3.md:962-963`). So the summary is meant to equal a count over the rows' current states, never a log of first decisions.
+- **Implementation.** `TERMINAL_WRITE_LUA` bumps the summary only "when the row is new or still non-terminal 'pending'" (`decision_log.py:275-282`). A terminal-to-terminal write that the guard lets through (anything except overwriting an `accept` with an `entry_id`) rewrites the row and leaves the summary alone.
+- **Reproduced on Redis DB 15 at `44afd0f7`:** `write_terminal(reject, not_a_fact)`, then `write_terminal(reject, not_memorable)`, then `write_terminal(accept, accepted, entry_id="E1")` on one candidate leaves the detail row at `accept`/`accepted`, while `turn_summary` returns `{'state:reject': 1, 'reason:not_a_fact': 1}`. The summary disagrees with the row on both keys.
+- **Consumers.** The one in-tree consumer is `SubconsciousMemory._extract_memories_auditable`, which reads `state:firewall_drop` to set `_last_extraction_privacy_dropped` (`recipes/subconscious_memory.py:822-825`). It asks "did this turn drop anything for privacy", a question about current row states. `compute_metrics` reads detail rows only. No consumer needs first-decision counts, and none could tell them apart from current counts in the existing tests, because `test_summary_counts_terminal_states_only` and `test_summary_counts_a_transitioned_candidate_once` (`tests/test_auditable_extraction.py:835-879`) never move a row between two terminal states.
+- **Conclusion.** First-write-only counting is drift from the contract, not the contract. The plan fixes it on Redis and implements the same semantics on Postgres.
+
 **Desired outcome:**
 - On a Postgres-bound process, `SubconsciousMemory(auditable_extraction=...)` constructs.
 - `extract_memories` runs the full flow (candidates, verdicts, decision rows, journal, `ExtractedFact`s) with **zero Redis commands**.
-- Observable semantics match the Redis path, apart from one documented `turn_summary` divergence (see Solution).
-- The Redis path stays byte-identical: same Lua, same keys, same command sequence.
+- Observable semantics are **identical** on both backends, `turn_summary` included. There is no documented divergence.
+- `turn_summary` honours its M3 contract on both backends: it is a rollup of the turn's detail rows' *current* terminal states. The Redis implementation does not do that today when a candidate's terminal state or reason changes after its first terminal write (see "turn_summary drift on Redis" below), so this plan fixes Redis too.
+- Apart from that fix, the Redis path stays byte-identical: same keys, same command sequence, and the same Lua except for the summary-maintenance block in `TERMINAL_WRITE_LUA`.
 - `DecisionLog`'s public signatures are unchanged.
 
 ## Freshness Check
