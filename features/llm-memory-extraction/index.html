@@ -3645,7 +3645,7 @@ information loss the provider exists to avoid.</p>
 <p><strong><code>popoto.extraction.claude</code> is imported lazily.</strong> <code>import popoto</code> and <code>import popoto.extraction</code> never import the <code>anthropic</code> package; only importing <code>popoto.extraction.claude</code> itself does. Constructing <code>ClaudeExtractionProvider</code> without <code>anthropic</code> installed raises <code>ImportError</code> with an install hint.</p>
 <p><strong>An <code>anthropic</code> that is installed but too old raises too, at construction.</strong> The provider passes <code>output_config=</code> to <code>messages.create</code>, which no release before <strong>0.77.0</strong> accepts, and <code>popoto[anthropic]</code> floors the package there. If some other pin puts an older SDK in the environment anyway, constructing <code>ClaudeExtractionProvider</code> raises <code>AnthropicVersionError</code> (<code>popoto.extraction.AnthropicVersionError</code>, a <code>RuntimeError</code> subclass) naming the missing parameter and the required version. It is deliberately distinct from the <code>ImportError</code> above, because "not installed" and "installed but too old" need different remedies. The check runs at construction rather than inside <code>extract()</code> for the reason the next paragraph makes clear: there, a version mismatch would be swallowed and returned as an empty fact list, indistinguishable from "this text contained no facts" (<a href="https://github.com/tomcounsell/popoto/issues/670">#670</a>).</p>
 <p><strong>Fail-open on API/parse errors.</strong> If the API call or response parsing fails for any reason, <code>extract()</code> logs a warning and returns an empty list rather than raising -- a flaky extraction call never crashes the caller's turn loop.</p>
-<p>This is the <em>extraction provider's</em> contract and it is unchanged. Do not read it as the whole recipe's contract: since 1.9.0 <code>SubconsciousMemory.extract_memories</code> re-raises <code>redis.exceptions.ConnectionError</code>/<code>TimeoutError</code> on Redis (see <a href="#on-postgres">On Postgres</a> for the other backend), because a dead Redis returning "no memories" is a lie, while a flaky LLM call returning no facts is the truth. Two different failure domains, two deliberate answers -- see <a href="../../guides/subconscious-memory-recipe/#redis-outages-raise">Redis outages raise</a>.</p>
+<p>This is the <em>extraction provider's</em> contract and it is unchanged. Do not read it as the whole recipe's contract: since 1.9.0 <code>SubconsciousMemory.extract_memories</code> re-raises <code>redis.exceptions.ConnectionError</code>/<code>TimeoutError</code> -- and, since #816, a Postgres-bound model's <code>popoto.backends.BackendUnavailableError</code> (all three are <code>popoto.backends.OUTAGE_ERRORS</code>) -- because a dead store returning "no memories" is a lie, while a flaky LLM call returning no facts is the truth. Two different failure domains, two deliberate answers -- see <a href="../../guides/subconscious-memory-recipe/#backend-outages-raise">Backend outages raise</a>.</p>
 <h2 id="seeding-confidence_field-and-co_occurrence_field">Seeding <code>confidence_field</code> and <code>co_occurrence_field</code><a class="headerlink" href="#seeding-confidence_field-and-co_occurrence_field" title="Permanent link">&para;</a></h2>
 <p>Two more optional <code>SubconsciousMemory</code> kwargs let extracted facts feed other memory-system primitives. Both are opt-in and no-ops unless set:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
@@ -3823,11 +3823,11 @@ testing on your own data before ruling extraction out.</p>
 <code>SubconsciousMemory</code> saves them through the model, so a Postgres-bound model
 stores the facts, seeds <code>confidence_field</code> (the same <code>(0.5 + s) / 2</code> blend, on
 the record's state columns) and links <code>co_occurrence_field</code> pairs in the edge
-table with the same results. One difference in failure handling: the outage
-re-raise above names the Redis exceptions only. A Postgres outage raises
-<code>popoto.backends.BackendUnavailableError</code>, which <code>extract_memories</code> currently
-catches as an ordinary per-fact save failure, logs, and skips, so an
-unreachable database returns fewer (or no) memories rather than raising. See
+table with the same results. Failure handling matches too: a Postgres outage
+raises <code>popoto.backends.BackendUnavailableError</code>, which is in
+<code>popoto.backends.OUTAGE_ERRORS</code>, so <code>extract_memories</code> re-raises it instead of
+logging it as a per-fact save failure (#816). An unreachable database raises
+rather than returning fewer (or no) memories. See
 <a href="../postgres-backend/#topology-and-the-outage-contract">Topology and the outage contract</a>
 and, for the auditable path,
 <a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Recipes, mixins and the queue</a>.</p>

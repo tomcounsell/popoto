@@ -4063,6 +4063,17 @@ the DSN directly:
 <a href="#a-maintenance-dsn-for-pgbouncer-transaction-mode">maintenance DSN</a> and
 <code>grant_main_role=True</code> to opt in to <a href="#two-roles-an-application-role-and-an-owner-role">per-object
 grants</a>.</p>
+<p><strong>The instance rule.</strong> That instance serves every model without
+<code>Meta.backend</code> <em>and</em> every model with <code>Meta.backend = "postgres"</code>: since #816
+a <code>set_backend</code> instance is the backend its own <code>name</code> resolves to, so a
+Postgres-pinned model, <code>resolve_stream_backend(backend="postgres")</code> and a
+publish joining a Postgres transaction all use it, and <code>POPOTO_POSTGRES_URL</code>
+is not consulted for them. (Before #816 a pinned model ignored the instance
+and built its own backend from <code>POPOTO_POSTGRES_URL</code>, raising when it was
+unset or silently using that database when it was set.) A model pinned to a
+<em>different</em> name still resolves by name, and the rule does not apply to
+Redis: <code>Meta.backend = "redis"</code> always resolves to the stock Redis backend,
+even under a Redis-named <code>set_backend</code> instance, exactly as before.</p>
 <p><strong>Laziness.</strong> <code>import popoto</code> never imports <code>psycopg</code>. Defining a
 <code>Meta.backend = "postgres"</code> model never touches the network either: class
 creation only checks the model's fields against a static capability table.
@@ -4638,8 +4649,9 @@ differs, and a token budget can then admit a different record), and the vector
 arm's tie order (records with the same text have the same vector, which Redis
 returns in file-listing order and Postgres by key).</p>
 <p>An outage raises <code>BackendUnavailableError</code> from <code>assemble()</code>, as a Redis
-outage raises <code>ConnectionError</code>; it is in
-<code>popoto.recipes.context_assembler.OUTAGE_ERRORS</code>. That is the retrieval
+outage raises <code>ConnectionError</code>; catch <code>popoto.backends.OUTAGE_ERRORS</code>, which
+holds both (<code>popoto.recipes.context_assembler.OUTAGE_ERRORS</code> is the same
+object since #816). That is the retrieval
 path's rule, not every helper's: the quality helpers behind
 <code>assess_quality</code> and <code>assess()</code> (score spread, feeling-of-knowing,
 staleness) catch every exception and degrade, on both backends (unchanged
@@ -6165,7 +6177,14 @@ while the server waits on a synchronous standby) is counted as dropped even
 though the row is there. Check the row before replaying such a write. Statements inside a <code>transaction()</code> are never retried.</p>
 <p>When Postgres is unreachable, or a connect or statement timeout fires
 (<code>Defaults.PG_CONNECT_TIMEOUT_SECONDS</code>, <code>Defaults.PG_STATEMENT_TIMEOUT_MS</code>),
-the call raises <strong><code>BackendUnavailableError</code></strong>. The backend's health record
+the call raises <strong><code>BackendUnavailableError</code></strong>. To catch an outage on either
+backend, catch <code>popoto.backends.OUTAGE_ERRORS</code> (the redis-py
+<code>ConnectionError</code>/<code>TimeoutError</code> pair plus <code>BackendUnavailableError</code>), not
+<code>popoto.redis_db.OUTAGE_ERRORS</code>, which is the Redis pair only. It is the
+tuple <code>SubconsciousMemory</code>, <code>ContextAssembler</code>, the harness integration's
+one-attempt breaker and <code>popoto-transfer</code> all test against (#816), so a
+Postgres outage re-raises from the recipes instead of reading as "no
+memories". <code>BackendRetryableError</code> is not in it. The backend's health record
 tracks the outage:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">backends</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="n">Note</span><span class="p">)</span>
 <a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="n">backend</span><span class="o">.</span><span class="n">health</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>

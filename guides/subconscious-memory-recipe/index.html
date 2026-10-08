@@ -820,10 +820,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#redis-outages-raise" class="md-nav__link">
+  <a href="#backend-outages-raise" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Redis outages raise
+        Backend outages raise
       
     </span>
   </a>
@@ -3507,10 +3507,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#redis-outages-raise" class="md-nav__link">
+  <a href="#backend-outages-raise" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Redis outages raise
+        Backend outages raise
       
     </span>
   </a>
@@ -3824,17 +3824,18 @@ decision log follows the process default backend, like the journal.</p>
 </ol>
 <p>Modulation is on by default whenever the model carries exactly one <code>ConfidenceField</code>, and forgetting tombstones rather than deletes, so a memory pruned by an unlucky run of dismissals can be brought back with <code>lifecycle.restore(redis_key)</code>. Set <code>Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False</code> to take confidence out of the ranking entirely, without touching model code.</p>
 <p><code>SubconsciousMemory</code> itself does not run lifecycle ticks -- compose it with a <code>MemoryLifecycle</code> instance as shown in <a href="../../recipes/#composing-with-subconsciousmemory">Composing with SubconsciousMemory</a>.</p>
-<h3 id="redis-outages-raise">Redis outages raise<a class="headerlink" href="#redis-outages-raise" title="Permanent link">&para;</a></h3>
-<p>Since 1.9.0, <code>inject_context</code>, <code>extract_memories</code> and <code>report_outcomes</code> re-raise <code>redis.exceptions.ConnectionError</code>/<code>TimeoutError</code> rather than logging them and returning an empty result. A dead server used to be indistinguishable from "this turn had no relevant memories", which is the failure mode that makes a memory layer look like it is working while it is not.</p>
+<h3 id="backend-outages-raise">Backend outages raise<a class="headerlink" href="#backend-outages-raise" title="Permanent link">&para;</a></h3>
+<p>Since 1.9.0, <code>inject_context</code>, <code>extract_memories</code> and <code>report_outcomes</code> re-raise <code>redis.exceptions.ConnectionError</code>/<code>TimeoutError</code> rather than logging them and returning an empty result. A dead server used to be indistinguishable from "this turn had no relevant memories", which is the failure mode that makes a memory layer look like it is working while it is not. Since #816 the same holds on Postgres: a model bound to Postgres raises <code>popoto.backends.BackendUnavailableError</code> when its database is unreachable, and all three methods re-raise it too (before, it was logged and degraded to an empty context, a dropped write or dropped outcomes).</p>
 <p>Wrap the call at your application's turn boundary if a turn must survive an outage:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">OUTAGE_ERRORS</span>   <span class="c1"># redis ConnectionError/TimeoutError, not the builtins</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">OUTAGE_ERRORS</span>   <span class="c1"># redis ConnectionError/TimeoutError + BackendUnavailableError</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">assembly</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">inject_context</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
 <a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">except</span> <span class="n">OUTAGE_ERRORS</span><span class="p">:</span>
 <a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">assembly</span> <span class="o">=</span> <span class="kc">None</span>    <span class="c1"># serve the turn without memory, and alert</span>
 </code></pre></div>
-<p>Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index.</p>
+<p><code>popoto.backends.OUTAGE_ERRORS</code> is the tuple the recipe tests against. <code>popoto.redis_db.OUTAGE_ERRORS</code> is the Redis pair only and misses a Postgres outage; prefer the backend-neutral one even on Redis, so the handler keeps working if the model moves.</p>
+<p>Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index. So does contention: <code>popoto.backends.BackendRetryableError</code> (a deadlock, a serialization failure, an exhausted pool) is not an outage and is not in the tuple.</p>
 <h2 id="tuning">Tuning<a class="headerlink" href="#tuning" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
