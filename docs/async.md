@@ -582,8 +582,9 @@ blocks (`time.sleep`, a sync HTTP client) blocks the whole loop. Keep hooks to
 in-memory work, and do blocking work before or after the `await`.
 
 **What still uses a thread.** `async_check_indexes`, `async_clean_indexes` and
-`async_rebuild_indexes` run in a worker thread on every backend, and so does an
-embedding provider's call.
+`async_rebuild_indexes` run the sync method off the event loop: in a worker
+thread on Redis, on the async backend on Postgres. An embedding provider's call
+runs in a worker thread on every backend.
 
 Details, including pools per event loop and cancellation, are in
 [Async](features/postgres-backend.md#async-m5). The row for `async_*` methods in

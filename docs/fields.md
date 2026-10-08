@@ -2347,7 +2347,8 @@ index each field compiles to is listed in
 `CyclicDecayField`, `ConfidenceField`, `ValidityField`, `CoOccurrenceField`,
 `TDValueField`, `BM25Field`, `EmbeddingField`, `ExistenceFilter`, `FrequencySketch`,
 and `ContentField`. Every popoto mixin is supported, including `PredictionLedgerMixin`,
-`AccessTrackerMixin`, `EventStreamMixin`, `WriteFilterMixin`, and `NeverRecordMixin`.
+`AccessTrackerMixin`, `EventStreamMixin`, `WriteFilterMixin` (no priority tier on
+Postgres), and `NeverRecordMixin`.
 
 **Refused fields and types.** A model that breaks one of these rules raises
 `BackendCapabilityError` (from `popoto.backends`), listing every problem at once:
