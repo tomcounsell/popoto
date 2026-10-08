@@ -59,6 +59,7 @@ import datetime
 import logging
 import os
 import random
+import re
 import threading
 import time
 import weakref
@@ -212,6 +213,13 @@ class MaintenanceDsnMismatchError(BackendError, ValueError):
     ever lands on the wrong database. A configuration error, not an outage:
     the backend's ``health`` is untouched. The message names hosts and
     database names, never a password."""
+
+
+#: The server's text for a missing table, schema or sequence privilege
+#: (``aclcheck_error``): ``permission denied for table "x"``.
+_ACL_DENIED = re.compile(
+    r"permission denied for (table|schema|sequence|relation|view) (\S+)", re.I
+)
 
 
 class MainRolePermissionError(BackendError, PermissionError):
@@ -1210,11 +1218,35 @@ class PostgresBackend(
         )
         self._maintenance_verified = True
 
-    def _main_role_permission_error(self, exc: BaseException) -> Exception:
+    def _main_role_permission_error(
+        self, exc: BaseException, sql: str = ""
+    ) -> BaseException:
         """Wrap a ``permission denied`` on the main DSN
-        (:class:`MainRolePermissionError`) with where to find the grants."""
+        (:class:`MainRolePermissionError`) with where to find the grants --
+        only when it is a table, schema or sequence privilege on popoto's own
+        schema. Any other ``InsufficientPrivilege`` (a function such as
+        ``pg_read_file``, a role attribute) is returned unchanged, so the
+        caller re-raises the raw error: the grants SQL would not fix it.
+
+        The server's text is the signal (``permission denied for table X``;
+        ``aclcheck_error`` sets no ``diag.table_name``), so a server running
+        with a translated ``lc_messages`` is not recognised and keeps its raw
+        error. The object must also be popoto's: the schema named is
+        ``self.schema``, or the statement refers to it."""
+        diag = getattr(exc, "diag", None)
+        text = (getattr(diag, "message_primary", None) or str(exc)).strip()
+        m = _ACL_DENIED.match(text)
+        if m is None:
+            return exc
+        kind, name = m.group(1).lower(), m.group(2).strip('"')
+        if kind == "schema":
+            ours = name == self.schema
+        else:
+            ours = self.schema in sql
+        if not ours:
+            return exc
         return MainRolePermissionError(
-            f"the main Postgres role was refused access in schema "
+            f"the main Postgres role was refused access to a {kind} in schema "
             f"{self.schema!r}: {exc}. When the tables are created by another "
             f"role (a maintenance DSN, {MAINTENANCE_URL_ENV}), popoto grants "
             "the main role nothing unless asked: run the SQL in "
@@ -1418,7 +1450,10 @@ class PostgresBackend(
                 # run it again: no internal retry, one popoto type.
                 raise _retryable(exc) from exc
             except psycopg.errors.InsufficientPrivilege as exc:
-                raise self._main_role_permission_error(exc) from exc
+                wrapped = self._main_role_permission_error(exc, sql)
+                if wrapped is exc:
+                    raise
+                raise wrapped from exc
             except psycopg.OperationalError as exc:
                 raise self._fail(exc, write=write) from exc
             # A multi-statement message (a lock, then the statement) replies
@@ -1451,7 +1486,10 @@ class PostgresBackend(
                     raise _retryable(exc, attempt) from exc
                 _sleep(random.uniform(0.005, 0.05) * attempt)
             except psycopg.errors.InsufficientPrivilege as exc:
-                raise self._main_role_permission_error(exc) from exc
+                wrapped = self._main_role_permission_error(exc, sql)
+                if wrapped is exc:
+                    raise
+                raise wrapped from exc
             except psycopg.OperationalError as exc:
                 busy = _busy(exc)
                 if busy is not None:  # contention, not an outage
