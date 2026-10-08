@@ -154,6 +154,7 @@ def _cmd_hook(args: Any) -> int:
 
     # No bind_connection here: MemoryService.__init__ owns that, so every
     # entry point resolves POPOTO_MEMORY_URL the same way.
+    _bound_postgres_connect_timeout()
     try:
         from . import hooks
 
@@ -180,6 +181,29 @@ def _cmd_hook(args: Any) -> int:
         except Exception:
             pass
     return 0
+
+
+def _bound_postgres_connect_timeout() -> None:
+    """Cap the Postgres connect wait at the hook's own budget (#814).
+
+    The Redis connection the integration binds gets a 1-second connect and
+    socket timeout (``HOOK_SOCKET_TIMEOUT_SECONDS``) because the read hook
+    sits on the user's prompt path. The Postgres backend's connect timeout,
+    ``Defaults.PG_CONNECT_TIMEOUT_SECONDS``, is 5 s, so a Postgres outage
+    would stall every prompt five times longer than a Redis one. Lowered
+    here and only here: the hook subcommand is a process of its own, so this
+    reaches no host application; an in-process caller (the Hermes plugin,
+    the MCP server) keeps the library default. Raising it is never done --
+    a smaller value set by the operator wins.
+    """
+    try:
+        from ..fields.constants import Defaults
+        from .config import HOOK_SOCKET_TIMEOUT_SECONDS
+
+        if Defaults.PG_CONNECT_TIMEOUT_SECONDS > HOOK_SOCKET_TIMEOUT_SECONDS:
+            Defaults.PG_CONNECT_TIMEOUT_SECONDS = HOOK_SOCKET_TIMEOUT_SECONDS
+    except Exception:
+        pass
 
 
 def _cmd_mcp() -> int:

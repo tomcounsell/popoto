@@ -12,6 +12,13 @@ A Redis or Valkey server on `localhost:6379`, and `pip install popoto`. The
 redis-server        # or: valkey-server
 ```
 
+Or a PostgreSQL 18+ server instead of Redis, with `pip install 'popoto[postgres]'`:
+
+```bash
+export POPOTO_BACKEND=postgres
+export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents
+```
+
 ## Run it
 
 ```bash
