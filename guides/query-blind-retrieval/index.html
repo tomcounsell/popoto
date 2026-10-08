@@ -747,6 +747,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3239,6 +3250,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3370,6 +3392,17 @@ and the proactive push path in the same call, deduplicates, and applies one
 budget across both. A model carrying <code>BM25Field</code> <strong>and</strong> <code>CyclicDecayField</code>
 gets query-relevant results and proactively surfaced ones in a single ranked
 list, with <code>AssemblyResult.proactive</code> naming which came from where.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>Mode selection is the same on a Postgres-bound model, and so are the rankings:
+composite pull is one <code>SELECT</code> (<code>rank_composite</code>), and lexical and hybrid pull
+run <code>BM25Field.search</code> with corpus-wide statistics, returning the same keys in
+the same order as Redis. Backfilling is easier there: <code>BM25Field</code> postings
+live in a companion table, and <code>Memory.rebuild_indexes()</code> writes the missing
+postings for live records from their stored text (<code>check_indexes()</code> reports
+them as <code>missing</code> first), so the re-save loop above is optional. See
+<a href="../../features/postgres-backend/#contextassembler-m2c">ContextAssembler</a>,
+<a href="../../features/postgres-backend/#bm25">BM25</a> and
+<a href="../../features/postgres-backend/#index-maintenance-and-transfer-m5">Index maintenance and transfer</a>.</p>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../../features/context-assembler/#pull-path-modes-retrieval_mode">ContextAssembler retrieval modes</a>

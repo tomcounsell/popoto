@@ -1125,6 +1125,19 @@ budget across both. A model carrying `BM25Field` **and** `CyclicDecayField`
 gets query-relevant results and proactively surfaced ones in a single ranked
 list, with `AssemblyResult.proactive` naming which came from where.
 
+## On Postgres
+
+Mode selection is the same on a Postgres-bound model, and so are the rankings:
+composite pull is one `SELECT` (`rank_composite`), and lexical and hybrid pull
+run `BM25Field.search` with corpus-wide statistics, returning the same keys in
+the same order as Redis. Backfilling is easier there: `BM25Field` postings
+live in a companion table, and `Memory.rebuild_indexes()` writes the missing
+postings for live records from their stored text (`check_indexes()` reports
+them as `missing` first), so the re-save loop above is optional. See
+[ContextAssembler](../features/postgres-backend.md#contextassembler-m2c),
+[BM25](../features/postgres-backend.md#bm25) and
+[Index maintenance and transfer](../features/postgres-backend.md#index-maintenance-and-transfer-m5).
+
 ## See also
 
 - [ContextAssembler retrieval modes](../features/context-assembler.md#pull-path-modes-retrieval_mode)
@@ -1219,7 +1232,7 @@ splitting and logs that cost on first use. See
 It states no importance or confidence opinion, so the caller-supplied
 `importance` is used and `ConfidenceField` stays at its prior. An optional
 `max_chars` truncates very long turns; leave it unset unless turns are large
-enough to threaten Redis value limits, since truncating is the same
+enough to threaten the store's value size limits, since truncating is the same
 information loss the provider exists to avoid.
 
 ## The `SubconsciousMemory` Default: `HeuristicExtractionProvider`
@@ -1260,7 +1273,7 @@ The model and prompt are pinned module constants (`EXTRACTION_MODEL`, `EXTRACTIO
 
 **Fail-open on API/parse errors.** If the API call or response parsing fails for any reason, `extract()` logs a warning and returns an empty list rather than raising -- a flaky extraction call never crashes the caller's turn loop.
 
-This is the *extraction provider's* contract and it is unchanged. Do not read it as the whole recipe's contract: since 1.9.0 `SubconsciousMemory.extract_memories` re-raises `redis.exceptions.ConnectionError`/`TimeoutError`, because a dead Redis returning "no memories" is a lie, while a flaky LLM call returning no facts is the truth. Two different failure domains, two deliberate answers -- see [Redis outages raise](../guides/subconscious-memory-recipe.md#redis-outages-raise).
+This is the *extraction provider's* contract and it is unchanged. Do not read it as the whole recipe's contract: since 1.9.0 `SubconsciousMemory.extract_memories` re-raises `redis.exceptions.ConnectionError`/`TimeoutError` on Redis (see [On Postgres](#on-postgres) for the other backend), because a dead Redis returning "no memories" is a lie, while a flaky LLM call returning no facts is the truth. Two different failure domains, two deliberate answers -- see [Redis outages raise](../guides/subconscious-memory-recipe.md#redis-outages-raise).
 
 ## Seeding `confidence_field` and `co_occurrence_field`
 
@@ -1284,7 +1297,7 @@ Since `HeuristicExtractionProvider` never sets `entities` or `confidence`, both 
 
 ### The Confidence Blend Nuance
 
-`ConfidenceField` has no per-instance "set initial value" API. When a `Memory` record is saved, its companion confidence hash is seeded with the field's fixed `initial_confidence` (a prior pseudo-observation), not with anything from the extracted fact. `_seed_confidence()`'s call to `update_confidence(signal=fact.confidence)` is therefore the **first evidence update against that prior**, not a hard override.
+`ConfidenceField` has no per-instance "set initial value" API. When a `Memory` record is saved, its confidence state (a companion hash entry on Redis, the record's state columns on Postgres) is seeded with the field's fixed `initial_confidence` (a prior pseudo-observation), not with anything from the extracted fact. `_seed_confidence()`'s call to `update_confidence(signal=fact.confidence)` is therefore the **first evidence update against that prior**, not a hard override.
 
 Concretely, for the default `initial_confidence=0.5`, seeding with a fact confidence of `s` yields a stored confidence of:
 
@@ -1425,6 +1438,21 @@ ground truth is a specific turn. It does not measure extraction as an addition
 alongside raw turns, and it does not generalise to corpora where the raw unit
 is too long or too noisy to retrieve directly. Those are the cases worth
 testing on your own data before ruling extraction out.
+
+## On Postgres
+
+Extraction is storage-independent: providers return `ExtractedFact`s and
+`SubconsciousMemory` saves them through the model, so a Postgres-bound model
+stores the facts, seeds `confidence_field` (the same `(0.5 + s) / 2` blend, on
+the record's state columns) and links `co_occurrence_field` pairs in the edge
+table with the same results. One difference in failure handling: the outage
+re-raise above names the Redis exceptions only. A Postgres outage raises
+`popoto.backends.BackendUnavailableError`, which `extract_memories` currently
+catches as an ordinary per-fact save failure, logs, and skips, so an
+unreachable database returns fewer (or no) memories rather than raising. See
+[Topology and the outage contract](postgres-backend.md#topology-and-the-outage-contract)
+and, for the auditable path,
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
 
 ## See Also
 
@@ -2029,7 +2057,7 @@ mid-session. When they are only read once, writing to them is invisible to
 the prefix, so capture costs nothing.
 
 Popoto's write path holds this by construction: the `Stop` hook writes to
-Redis and touches no file the harness is reading. Nothing in
+the store (Redis, for `MemoryService`) and touches no file the harness is reading. Nothing in
 `MemoryService.capture()` mutates prompt-visible state.
 
 The rule has a price, and you should pay it knowingly: a memory written at
@@ -2206,6 +2234,19 @@ The honest way to price the memory layer is not to measure the injected
 block. Run the same scripted session twice, once with memory enabled and
 once without, and compare total cache creation plus uncached input. That
 difference is what memory actually costs.
+
+## On Postgres
+
+The four rules are about prompt position, not storage, so they hold unchanged
+for a Postgres-bound model: `ContextAssembler.assemble(exclude_keys=...)` and
+`SubconsciousMemory.inject_context(exclude_keys=...)` filter candidates before
+selection on both backends (the suppression tests in
+`tests/test_context_assembler.py` run on both legs). The automatic per-session suppression is the part that does not
+carry over: it lives in `MemoryService`, the Redis-only harness integration,
+which keeps the injected keys in a Redis set. A Postgres application gets the
+same effect by passing the previous turns' keys itself. See
+[ContextAssembler](postgres-backend.md#contextassembler-m2c) and
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
 
 ## Related
 
@@ -3084,13 +3125,13 @@ A `SortedField` subclass where records lose retrieval weight over time following
 
 ## Overview
 
-The sorted set score is always a timestamp. A Lua script computes decay-ranked results at query time:
+The stored value is always a timestamp: the decay clock. Decay-ranked results are computed at query time, on the server:
 
 ```text
 decayed_score = base_score * elapsed_days ^ (-decay_rate)
 ```
 
-With the default `decay_rate=0.1`, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days. All computation happens server-side in Lua — no round trips for ranking.
+With the default `decay_rate=0.1`, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days. All computation happens server-side (a Lua script on Redis, one `SELECT` on Postgres) — no round trips for ranking.
 
 ## Parameters
 
@@ -3238,11 +3279,11 @@ field.members(memory, "relevance", 0, 9)                # -> 10 stalest keys, on
 field.members(memory, "relevance", 0, 9, reverse=True)   # -> 10 freshest keys, one ZREVRANGE
 ```
 
-`members()` returns Redis keys as `str`, ordered by score (`reverse=True` walks from the highest score down). `start`/`stop` follow `ZRANGE` bounds: inclusive, negative values count from the end, and `stop < start` returns `[]`.
+`members()` returns record keys (`redis_key`, the same string on both backends) as `str`, ordered by score (`reverse=True` walks from the highest score down). `start`/`stop` follow `ZRANGE` bounds: inclusive, negative values count from the end, and `stop < start` returns `[]`.
 
 ### Ranking a partition ZSET directly
 
-`rank_decayed()` runs the decay script against one already-resolved partition ZSET key and returns the flat `[member, score, member, score, ...]` reply. It is the seam a caller uses when it holds records rather than filter kwargs, and therefore cannot go through `Query.top_by_decay()`.
+On Redis, `rank_decayed()` runs the decay script against one already-resolved partition ZSET key and returns the flat `[member, score, member, score, ...]` reply. It is the seam a caller uses when it holds records rather than filter kwargs, and therefore cannot go through `Query.top_by_decay()`.
 
 It is also what `Query.top_by_decay()` and `composite_score()` use internally: since [#662](https://github.com/tomcounsell/popoto/issues/662) every decay `EVAL` in the library goes through this method, so each of the two `KEYS` layouts exists in exactly one place — this implementation and the `CyclicDecayField` override. Nothing in `models/query.py` or `recipes/` names a `KEYS` index any more.
 
@@ -3427,6 +3468,8 @@ for ranges and provenance.
 
 ## Architecture
 
+The Redis implementation:
+
 - **Redis key pattern**: `ClassName:_field_name` (sorted set with timestamp scores)
 - **Lua script**: Computes `base_score * elapsed_days^(-decay_rate)` server-side, reads base scores from model hash via cmsgpack
 - **Confidence join**: the `ConfidenceField` `:data` hash is passed as `KEYS[2]`, with strength `s` as
@@ -3435,6 +3478,32 @@ for ranges and provenance.
   member, issued only when modulation is active. (`CyclicDecayField` forks this script and binds the
   confidence hash at `KEYS[4]` instead — see its docs.)
 - **Inheritance**: Extends `SortedFieldMixin` + `Field`
+
+## On Postgres
+
+On a Postgres-bound model the clock is the field's own `double precision`
+column (epoch seconds), indexed with its partition columns, and
+`top_by_decay` runs the script's formula as one `SELECT`, operation for
+operation in `double precision`, so scores match the Redis ones (see
+[Ranking and memory state](postgres-backend.md#ranking-and-memory-state-m2a)).
+Confidence modulation, the validity gate and the partitioned-confidence
+`QueryException` behave as above; `count()` and `members()` read the
+partition's rows in `ZRANGE` order. Differences, each a row in
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour):
+
+- `rank_decayed(zset_key, …)` raises `BackendCapabilityError`: there is no
+  sorted set to name. Use `top_by_decay`, or `Query.top_by_relevance()`
+  (Postgres only, see [Fusion and `recall()`](postgres-backend.md#fusion-and-recall)).
+- A reload after `touch()` sees the touched time; on Redis `touch` moves only
+  the sorted-set score and the hash keeps the save-time value.
+- A NaN score ranks last with every real score in order; on Redis its place
+  is arbitrary.
+- `save(update_fields=[…])` that names the field but not an unsaved change to
+  its partition column keeps the record in its stored partition.
+
+`Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO` (the script's pre-trim budget) is
+read only on the Redis path; the `KEYS` layout and the cmsgpack base-score
+read described above are Redis detail.
 
 ## See Also
 
@@ -3453,7 +3522,7 @@ A `DecayingSortedField` subclass that adds cyclical resonance and homeostatic pr
 
 ## Overview
 
-`CyclicDecayField` extends `DecayingSortedField` with two additional temporal forces computed atomically in a single Lua script:
+`CyclicDecayField` extends `DecayingSortedField` with two additional temporal forces computed atomically in one server-side step (a single Lua script on Redis, one SQL expression on Postgres):
 
 1. **Cyclical resonance**: Periodic boosts following cosine curves. A record about Q1 renewals can resurface every January.
 2. **Homeostatic pressure**: Urgency that builds linearly the longer an item goes unresolved. Discharged by calling `resolve_pressure()`.
@@ -3700,11 +3769,25 @@ The scoring formula below, the save-time merge (#698's three-way rule) and
 `strengthen_cycle` / `weaken_cycle` / `resolve_pressure` are the same SQL
 transcriptions of the three scripts, bit for bit, and the ranking has the same
 missing validity gate. See
-[Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+[Long-tail fields](postgres-backend.md#long-tail-fields-m5).
+
+Differences, from
+[Documented divergences](postgres-backend.md#records-and-other-behaviour):
+
+- `rank_decayed(zset_key, …)` raises `BackendCapabilityError`; rank with
+  `top_by_decay` (or `top_by_relevance`), which work on both backends.
+- A NaN score ranks last and every other score keeps its place.
+- `strengthen_cycle` / `weaken_cycle` / `resolve_pressure` on a record that
+  no longer exists (or has expired) write nothing, where Redis writes orphan
+  companion entries.
+- A non-numeric factor raises `ValueError`, and `import_state` refuses a
+  non-numeric cycle slot with `ValueError`.
+- The `$CyclicDecayF:` hashes described under
+  [Redis Data Model](#redis-data-model) are not used.
 
 ## Scoring Formula
 
-The extended Lua script computes per member:
+The extended Lua script (on Postgres, its SQL transcription) computes per member:
 
 ```
 elapsed_days = max((now - last_updated) / 86400, 0.01)
@@ -3785,13 +3868,14 @@ When used with [ObservationProtocol](observation-protocol.md), cycle amplitudes 
 
 # ConfidenceField
 
-A `Field` subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule.
+A `Field` subclass that tracks confidence metadata per member, updated atomically (a Lua script on Redis, one `UPDATE` on Postgres) using a capped-evidence Bayesian rule.
 
 ## Overview
 
 `ConfidenceField` maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. The update rule is a **capped-evidence Bayesian** (also called "forgetful Bayesian"): within an evidence window it is an exact running mean — order-invariant and prior-weighted; beyond the cap it is bounded exponential forgetting at a constant rate.
 
-The field stores its metadata in a companion Redis hash:
+On Redis the field stores its metadata in a companion hash (on Postgres, in
+four columns on the record's row; see [On Postgres](#on-postgres)):
 
 - `{confidence, evidence_count, corroborations, contradictions}`
 
@@ -3801,7 +3885,7 @@ The field stores its metadata in a companion Redis hash:
 |-----------|------|---------|-------------|
 | `initial_confidence` | float | 0.5 | Starting confidence for new members (0-1). Acts as one prior pseudo-observation in the running mean. |
 | `evidence_cap` | int | 20 | Maximum effective evidence count. Within this window updates are a running mean; beyond it updates apply a fixed gain of `1/(cap+1)`, producing bounded exponential forgetting. Must be an integer ≥ 1. |
-| `partition_by` | str or tuple | `()` | Field name(s) to partition the companion hash by. Splits the single Redis hash into per-partition hashes for efficient reads. |
+| `partition_by` | str or tuple | `()` | Field name(s) to partition the companion hash by. On Redis, splits the single companion hash into per-partition hashes for efficient reads. |
 
 > **Warning — same cap across processes**: The `evidence_cap` is passed per-call and is NOT stored in the companion hash. All processes updating the same companion hash entry must be configured with identical `evidence_cap` values. Divergent caps produce silently inconsistent gain schedules with no runtime detection.
 
@@ -3903,7 +3987,7 @@ The comparison uses an epsilon guard: discharge fires only when `conf < 0.1 - 1e
 Atomically update confidence using the capped-evidence Bayesian formula.
 
 - **signal**: Float 0-1. Values >= 0.5 corroborate, < 0.5 contradict.
-- **pipeline**: Optional Redis pipeline to queue the update on.
+- **pipeline**: Optional Redis pipeline to queue the update on (on Postgres, the backend's `transaction()` or a `popoto.batch()`; see [On Postgres](#on-postgres)).
 - **Returns**: The new confidence value — or `None` when queued on a pipeline.
 - **Raises**: `TypeError` if unsaved or wrong field type; `ValueError` if signal out of range.
 
@@ -3922,7 +4006,7 @@ records is now one `execute()` (`inject_context` went from 25 round trips per
 turn to 8). If you passed `pipeline=` before and relied on the returned
 float, read the value back with `get_confidence` after `execute()`.
 
-> **Warning**: All processes calling `update_confidence` on the same companion hash entry must use identical `evidence_cap` values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.
+> **Warning**: All processes calling `update_confidence` on the same companion hash entry must use identical `evidence_cap` values. The cap is not stored (on either backend) and divergent values produce silently inconsistent update trajectories.
 
 ### `ConfidenceField.get_confidence(instance, field_name)`
 
@@ -3940,7 +4024,7 @@ Note: `evidence_count` reflects real observations only — the prior pseudo-coun
 
 ### Inspecting Companion Hash Keys
 
-Each `ConfidenceField` stores its confidence metadata in a companion Redis hash alongside
+On Redis, each `ConfidenceField` stores its confidence metadata in a companion hash alongside
 the main model hash. The public companion key methods let you build these Redis keys
 for debugging, monitoring, or direct Redis inspection without reverse-engineering
 suffix conventions.
@@ -4068,6 +4152,32 @@ forgetting is persisted back onto the record: the decay path is a pure reader of
 | `$ConfidencF:{Model}:{field}:data` | HASH | Unpartitioned: all members' confidence metadata |
 | `$ConfidencF:{Model}:{field}:data:{partition_value}` | HASH | Partitioned: members in one partition |
 
+## On Postgres
+
+On a Postgres-bound model the attribute is its own `double precision`
+column and the evidence state is four more on the record's row
+(`<f>__conf`, `<f>__n`, `<f>__corr`, `<f>__contra`); `NULL` state is the seed,
+so a re-save never resets it. `update_confidence` is the script's arithmetic
+as one `UPDATE … RETURNING`, so the stored confidence is bit-identical to the
+Redis one (see
+[Ranking and memory state](postgres-backend.md#ranking-and-memory-state-m2a)).
+A partitioned field needs no separate storage: its partition is the row's
+partition columns, and queries still need the partition filters.
+
+- `pipeline=` takes the backend's `transaction()` or a `popoto.batch()`: the
+  update runs inside it and its value is returned and the attribute synced
+  (the `update_confidence(…, pipeline=uow)` row in
+  [Records and other behaviour](postgres-backend.md#records-and-other-behaviour)).
+  A Redis pipeline cannot carry the write: the update runs at once and
+  returns `None`.
+- The companion-hash APIs work on Redis structures only and raise
+  `BackendCapabilityError` on a Postgres model: `get_confidence_filtered`
+  (an `HSCAN` pattern) and `migrate_to_partitioned`. `get_data_hash_key` and
+  the key patterns above name Redis keys that a Postgres model never writes.
+- The state of an expired `Meta.ttl` record goes with its row; see the
+  expired-record state row in
+  [Records and other behaviour](postgres-backend.md#records-and-other-behaviour).
+
 ## Working Example: Popoto Kitchen
 
 The [Popoto Kitchen example app](https://github.com/tomcounsell/popoto/tree/main/examples)
@@ -4105,7 +4215,7 @@ for the full source.
 
 # TDValueField
 
-A `DecimalField` subclass that adds one operation the ordinary save path cannot express: an **atomic temporal-difference update** of a single hash field, performed server-side in one Lua script.
+A `DecimalField` subclass that adds one operation the ordinary save path cannot express: an **atomic temporal-difference update** of a single hash field, performed server-side in one step (a Lua script on Redis, one `UPDATE` on Postgres).
 
 ## Overview
 
@@ -4169,7 +4279,7 @@ Raises `ValueError` if the instance is unsaved, or if `field_name` is not a `TDV
 
 ## Storage and encoding
 
-The value is written as the `__Decimal__` tagged dict that every `DecimalField` uses, encoded with `cmsgpack` inside the script so it is byte-interchangeable with what Python's msgpack encoder produces.
+On Redis, the value is written as the `__Decimal__` tagged dict that every `DecimalField` uses, encoded with `cmsgpack` inside the script so it is byte-interchangeable with what Python's msgpack encoder produces.
 
 This matters beyond tidiness. `DecayingSortedField` reads a `base_score_field` straight out of the member's hash in its own Lua and falls back to `1.0` for any encoding it does not recognize. A `PolicyEntry` declares `expected_value = DecayingSortedField(base_score_field="q_value")`, so if `TDValueField` wrote any other encoding, the decay clock would silently fall back to a magnitude of 1.0 rather than error. Keeping `TDValueField` a `DecimalField` subclass — `type is Decimal` — is what keeps that contract.
 
@@ -4178,7 +4288,20 @@ This matters beyond tidiness. `DecayingSortedField` reads a `base_score_field` s
 On a Postgres-bound model (#759 M5) the field is a `numeric` column and
 `td_update` is one `UPDATE` with the script's arithmetic in the same order,
 storing the script's `tostring` of the new value and replying its `tostring`
-of the TD error. See [Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+of the TD error. A `DecayingSortedField` that names the field as its
+`base_score_field` reads the column. See
+[Long-tail fields](postgres-backend.md#long-tail-fields-m5).
+
+Differences, from
+[Documented divergences](postgres-backend.md#records-and-other-behaviour):
+
+- `td_update(…, pipeline=uow)` with a Postgres `transaction()` or
+  `popoto.batch()` runs inside it and returns the TD error; a Redis pipeline
+  queues the script and returns `None`.
+- On a record that no longer exists (or has expired) nothing is written, and
+  the reply is computed from `Q = 0`; Redis writes an orphan hash entry.
+- A NaN value is stored as `numeric` `NaN`, and a stored `Decimal('-0')`
+  reads as `0` (the stored values compare equal).
 
 ## Valkey compatibility
 
@@ -4196,17 +4319,17 @@ Core commands only — `HGET`, `HSET`, and `cmsgpack` inside the script. No Redi
 
 # CoOccurrenceField
 
-A `Field` subclass that maintains weighted association edges between model instances using Redis sorted sets, with BFS graph propagation for multi-hop associative retrieval.
+A `Field` subclass that maintains weighted association edges between model instances (a sorted set per record on Redis, an edge table on Postgres), with BFS graph propagation for multi-hop associative retrieval.
 
 ## Overview
 
-`CoOccurrenceField` provides an ORM-level primitive for weighted, decaying edges between model instances. Each instance gets its own Redis sorted set storing edges to other instances with weights. Weights strengthen via `strengthen()` and decay via `weaken_all()`.
+`CoOccurrenceField` provides an ORM-level primitive for weighted, decaying edges between model instances. On Redis each instance gets its own sorted set storing edges to other instances with weights; on Postgres each field has one edge table with a row per directed edge. Weights strengthen via `strengthen()` and decay via `weaken_all()`.
 
 The field supports:
 - **Symmetric mode** (default): edges are bidirectional
 - **Asymmetric mode**: edges are unidirectional
 - **Edge pruning**: automatic removal of lowest-weight edges when `max_edges` is exceeded
-- **BFS propagation**: server-side Lua script traverses edges across hops with exponential decay
+- **BFS propagation**: a server-side traversal (a Lua script on Redis, SQL on Postgres) walks edges across hops with exponential decay
 
 ## Parameters
 
@@ -4219,7 +4342,7 @@ The field supports:
 
 ## Redis Key Pattern
 
-Each PK gets its own sorted set:
+On Redis, each PK gets its own sorted set:
 
 ```
 $CoOcF:{ClassName}:{field_name}:{pk}  ->  ZSET { target_pk: weight, ... }
@@ -4398,6 +4521,37 @@ Symmetric mirroring is *not* re-run on import. Each record carries its own edge
 set, so a full export of the model restores both directions naturally; a filtered
 export that includes one endpoint but not the other yields a one-directional edge.
 
+## On Postgres
+
+On a Postgres-bound model each field is one edge table,
+`<table>__<f>__edge (src, dst, weight)`, with no foreign key (as on Redis,
+any two key strings can be linked). `link`, `strengthen`, `unlink` and
+`weaken_all` are single statements with the scripts' arithmetic and
+replies, taken behind the record-key locks of the sets they write, so a
+`link`'s count-then-prune is atomic and no committed set exceeds
+`max_edges`. `propagate` is one recursive SQL statement while `ceil(depth) <= 2` and one
+statement per layer beyond that, with the Lua's visited rule; answers are
+identical to Redis's. See
+[Co-occurrence graph](postgres-backend.md#co-occurrence-graph-m4) for the
+statements, the deep-walk timings and the seeded probe.
+
+`pipeline=` takes the backend's `transaction()` or a `popoto.batch()`, and
+the write joins it; a Redis pipeline cannot carry the write, so it runs at
+once. Differences, each a row in
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour):
+
+- A NaN weight in `link`, `strengthen` or `weaken_all` raises `ValueError`
+  (Redis: `ResponseError`) with the same text, and the whole write rolls
+  back, including a symmetric write's first direction.
+- `import_state` refuses a NaN weight before writing, leaving the edge set
+  unchanged; on Redis the set is deleted first and left empty.
+- `get_linked(…, limit=None)` and a NaN `min_weight` raise `ValueError` with
+  redis-py's and the server's text.
+- Equal weights in `propagate()`'s result are ordered by key, bytewise.
+
+The `ZREVRANGE` neighbour-selection bias above applies on Postgres too: the
+neighbour query orders by the stored, unclamped weight.
+
 ## Synergy with Other Fields
 
 ### With DecayingSortedField
@@ -4432,7 +4586,7 @@ effective_weights = [(pk, w * confidence) for pk, w in linked]
 
 # ExistenceFilter and FrequencySketch
 
-Probabilistic data structures for O(1) membership checks and approximate frequency counting — implemented as Lua-backed Redis operations.
+Probabilistic data structures for O(1) membership checks and approximate frequency counting — implemented as Lua-backed operations on Redis, and as exact token tables on Postgres (see [On Postgres](#on-postgres)).
 
 ## Overview
 
@@ -4441,7 +4595,7 @@ Two complementary primitives for fast pre-filtering:
 - **ExistenceFilter** — Bloom filter for "do I know anything about X?" checks. False positives possible, false negatives impossible.
 - **FrequencySketch** — Count-Min Sketch for approximate frequency counting. Overestimates possible, underestimates impossible.
 
-Both operate entirely in Redis via Lua scripts, requiring no client-side state.
+On Redis both operate entirely server-side via Lua scripts, requiring no client-side state. The descriptions of false positives, overestimates, bit arrays and hash versions below are the Redis implementation.
 
 ## ExistenceFilter
 
@@ -4506,7 +4660,7 @@ For example, saving a model with fingerprint `"kubernetes deployment guide"` add
 
 **Query normalization:** Queries are tokenized using the same rules. For multi-token queries, `might_exist()` returns `True` if ANY token matches. For `get_frequency()`, the minimum frequency across tokens is returned.
 
-### Architecture
+### Architecture (Redis)
 
 - **Redis key pattern**: `$EF:{ClassName}:{field_name}` (string used as bit array, followed by a 4-byte version marker on v2 filters)
 - **Lua script**: Computes k hash positions, sets/checks bits atomically
@@ -4617,7 +4771,7 @@ reason for the rolling-upgrade rule.
 Tokens from deleted records drop out of a converted filter, as in any rebuild
 from records. Export/import never carries the bits: importing into a
 destination with no filter creates one in the field's `hash_version`.
-Postgres keeps an exact token table and has no hash to version.
+Postgres keeps an exact token table and has no hash to version (see [On Postgres](#on-postgres)).
 
 Every script declares the filter, the lock and the staging key in `KEYS`.
 
@@ -4658,7 +4812,7 @@ memory.save()  # Increments again
 count = Memory.freq.get_frequency(Memory, "kubernetes")  # ~2
 ```
 
-### Architecture
+### Architecture (Redis)
 
 - **Redis key pattern**: `$FS:{ClassName}:{field_name}` (hash with counter rows)
 - **Lua script**: Each of the 7 rows uses an independent per-row polynomial hash (distinct prime multiplier and modulus per row), restoring the standard CMS error bound: `estimate ≤ true + (e/width)·N` with probability `≥ 1 − e^(−depth)`.
@@ -4669,11 +4823,11 @@ count = Memory.freq.get_frequency(Memory, "kubernetes")  # ~2
 
 ## Batch Operations
 
-When checking multiple keywords at once, use the batch methods to avoid per-keyword round-trips to Redis.
+When checking multiple keywords at once, use the batch methods to avoid per-keyword round-trips to the server.
 
 ### might_exist_batch()
 
-Checks multiple fingerprints in a single Redis round-trip via a single Lua EVAL call. Returns a dict mapping each fingerprint to its boolean result.
+Checks multiple fingerprints in one round-trip (a single Lua `EVAL` on Redis, one `SELECT` on Postgres). Returns a dict mapping each fingerprint to its boolean result.
 
 ```python
 # Instead of N separate might_exist() calls:
@@ -4700,7 +4854,7 @@ if hit_count == 0:
 
 ### Performance
 
-Both batch methods execute a single `EVAL` command regardless of input size, so latency is constant (one round-trip) rather than linear in the number of keywords. This matters most for hook/subprocess callers where import time and connection setup dominate -- batching amortizes that cost across all keywords.
+Both batch methods execute a single `EVAL` command (on Postgres, a single `SELECT`) regardless of input size, so latency is constant (one round-trip) rather than linear in the number of keywords. This matters most for hook/subprocess callers where import time and connection setup dominate -- batching amortizes that cost across all keywords.
 
 ### Integration Pattern: Subprocess Callers
 
@@ -4721,7 +4875,7 @@ print(json.dumps(results))
     capture_output=True, text=True
 )
 hits = json.loads(result.stdout)
-# One process spawn + one Redis round-trip for all keywords
+# One process spawn + one round-trip for all keywords
 ```
 
 Compare this to calling `might_exist()` in a loop -- each call would either require its own subprocess (paying import cost each time) or a single subprocess with a loop (one import but N round-trips). The batch API gives you one import and one round-trip.
@@ -4737,6 +4891,31 @@ Compare this to calling `might_exist()` in a loop -- each call would either requ
 | Count known keywords without details | `might_exist_count()` |
 | Rank query terms by selectivity (IDF) | `BM25Field.get_idf()` |
 | Frequency-based write filtering | FrequencySketch |
+
+## On Postgres
+
+On a Postgres-bound model neither primitive is probabilistic. An
+`ExistenceFilter` is a token table, `<table>__<f>__tok (token, _pk)`, holding
+each live record's tokens; a `FrequencySketch` is a count table,
+`<table>__<f>__cnt (token, count)`. Saves keep both in step; a delete
+cascades to the token rows, while the count table, like the sketch, is never
+decremented. See
+[Membership](postgres-backend.md#membership). The differences are rows in
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour):
+
+- `might_exist` (and the batch and count forms) is exact: no false
+  positives, and a deleted record is forgotten. On a `Meta.ttl` model an
+  expired record's tokens stop counting at once.
+- `get_frequency` is the exact number of saves, never decremented, as the
+  sketch never is.
+- `fill_ratio` is an estimate, `1 - e^(-k·n/m)` for the `n` distinct tokens
+  stored, the fill a bloom of the field's parameters would have.
+
+The Redis-only parts do not apply: `capacity`, `error_rate` and the sketch's
+width and depth only size the `fill_ratio` estimate, `hash_version` and
+`rebuild_indexes(bloom_hash_version=2)` are accepted and ignored (there is no
+bit array to version), `field.hash_version(Model)` returns `None`, and
+`check_indexes()` reports no `legacy_hash` or `stale_bloom_staging` entries.
 
 ## See Also
 
@@ -4841,7 +5020,7 @@ When a proactive system pushes memories into agent context:
 ObservationProtocol.on_surfaced(memories, reason="proactive")
 ```
 
-This creates `RecallProposal` entries in a Redis sorted set for tracking. Proposals expire after 1 hour (configurable via `RecallProposal.DEFAULT_TTL`).
+This creates `RecallProposal` entries for tracking (a sorted set on Redis, a row of the `popoto_recall_proposal` engine table on Postgres). Proposals expire after 1 hour (configurable via `RecallProposal.DEFAULT_TTL`).
 
 ## Tuning Constants
 
@@ -4928,7 +5107,7 @@ reported on scores byte-identically to pre-modulation Popoto.
 
 Internal ORM infrastructure for tracking proactively surfaced memories.
 
-- **Key pattern**: `$RP:{ClassName}:pending:{partition}` (sorted set scored by surfaced_at)
+- **Key pattern** (Redis): `$RP:{ClassName}:pending:{partition}` (sorted set scored by surfaced_at). On Postgres: one engine table per schema, `popoto_recall_proposal (model, part, member, surfaced_at)`, created on first use.
 - **Lifecycle**: pending -> acted | used | dismissed | deferred | contradicted | expired
 - **TTL**: 3600s (1 hour). Unresolved proposals are treated as deferred.
 
@@ -4941,6 +5120,22 @@ pending = RecallProposal.get_pending(Memory, partition="default")
 # Expire stale proposals
 expired = RecallProposal.expire_stale(Memory, ttl=3600)
 ```
+
+## On Postgres
+
+On a Postgres-bound model `on_context_used` applies the whole effects matrix
+in **one transaction per backend**: the batch's rows are locked `FOR UPDATE`
+in `_pk` order, then each instance's effects run in that order and its
+proposal is resolved. Unsaved instances are skipped as on Redis. A deadlock or
+serialization failure retries the whole batch up to
+`Defaults.PG_TRANSACTION_RETRIES` times and then raises
+`BackendRetryableError`; with a `transaction()` or `popoto.batch()` passed as
+`pipeline` the batch runs inside it and the error is raised at once for you to
+retry. Because the batch is one transaction, it is all-or-nothing, where a
+Redis pipeline applies whatever commands succeeded. See
+[Ranking and memory state](postgres-backend.md#ranking-and-memory-state-m2a)
+and, for the cycle and ledger effects,
+[Long-tail fields](postgres-backend.md#long-tail-fields-m5).
 
 ## See Also
 
@@ -5038,8 +5233,9 @@ SupersessionProtocol.chain(new)  # -> [old, new], oldest first
 
 ## Keyspace
 
-`ValidityField` owns six Redis keys per model/field, all under the
-`$ValidityF:{Model}:{field}` prefix. No bytes are written into the model's own
+On Redis, `ValidityField` owns six keys per model/field, all under the
+`$ValidityF:{Model}:{field}` prefix (Postgres keeps the same state on the
+record's row; see [On Postgres](#on-postgres)). No bytes are written into the model's own
 hash — chain links live in derived state so an append-only journal can adopt
 the field unchanged.
 
@@ -5299,7 +5495,7 @@ a pointer left naming a hard-deleted record reads as "no incumbent", the same wa
 `chain()` reads a dangling link. Only an incumbent the caller named explicitly
 raises. That is what keeps a partial `import_state` transfer supersedable.
 
-**Pipeline-mode caveat.** The `ResponseError` -> typed-exception remap lives on
+**Pipeline-mode caveat (Redis).** The `ResponseError` -> typed-exception remap lives on
 `execute_supersede`'s non-pipeline branch. On a caller-supplied pipeline,
 redis-py raises during `pipe.execute()` result parsing — long after
 `execute_supersede` returned — so you get a raw
@@ -5389,8 +5585,8 @@ effective = ValidityField.get_valid_from(
 obj.validity = effective
 obj.save()
 
-# Or make the declared value authoritative -- plain ZADD, no NX, so it
-# overwrites the score ZADD NX refused to update:
+# Or make the declared value authoritative (Redis) -- plain ZADD, no NX, so
+# it overwrites the score ZADD NX refused to update:
 vf_key, _ = ValidityField.get_interval_keys(Fact, "validity")
 popoto.get_redis().zadd(vf_key, {obj.db_key.redis_key: float(obj.validity)})
 obj.save()
@@ -5614,6 +5810,44 @@ including `DefaultMemory`, does.
   exception — refusing outright would break adopters who legitimately want
   bounded history.
 
+## On Postgres
+
+On a Postgres-bound model the interval and the chain live on the record's own
+row (`<f>__valid_from`, `<f>__invalid_at`, `<f>__ingested_at` as
+`double precision` epoch seconds, `'Infinity'` = open; `<f>__supersedes` /
+`<f>__superseded_by`), and the open-claim pointer is a companion table whose
+`member` references the record `ON DELETE CASCADE`. `supersede` is
+`SUPERSEDE_LUA` phase for phase in one transaction, behind a per-(model,
+field) advisory lock, and raises the same typed errors with the same text.
+The exclusion rule, the `as_of` filters, the kill switch and the cyclic-decay
+gap all behave as on Redis, and every gate is one `WHERE` term on the row. See
+[Validity and supersession (M3)](postgres-backend.md#validity-and-supersession-m3).
+
+What differs (each a row of
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour)):
+
+- `save_and_supersede` / `save_and_invalidate` whose close fails roll the
+  whole unit back, so the successor is not saved either; on Redis
+  `MULTI`/`EXEC` keeps it.
+- A pointer cannot name a record that does not exist: `import_state` for an
+  unstored record raises `ValidityMemberAbsentError`, and
+  `execute_supersede(mode="open")` on a member with no record writes nothing.
+- With the backend's `transaction()` as `pipeline`, the closed key is
+  returned and a typed error raised at the call, so the pipeline-mode caveat
+  above does not apply; a Redis pipeline is refused with `ValueError`.
+- A NaN `valid_from` on save is refused before anything is written, with
+  `ModelException`; a NaN `as_of` in a range read raises `QueryException`
+  where Redis raises `ResponseError`, with the same text.
+- On a `Meta.ttl` model the interval and pointer expire with the row: a chain
+  walk stops at an expired record as at a hard delete, rather than reaching
+  entries that outlive it. The TTL warning still fires.
+
+Redis-only machinery does not apply: the pre-trim and its
+`Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO` (read only by the Redis
+`DECAY_SCORE_LUA` path), the "What gating costs" figures, and the raw `ZADD`
+reconciliation above. To adopt the effective start on Postgres, use the
+`get_valid_from` form.
+
 ## See Also
 
 - [Provenance Journal](provenance-journal.md) — this feature's first real
@@ -5639,7 +5873,7 @@ including `DefaultMemory`, does.
   supersession loser's interval; it reaches this mechanism only through
   `ProvenanceJournal.supersede()`, never by calling
   `save_and_supersede()` itself, so the journal annotation and the close stay
-  in one `MULTI`/`EXEC`
+  in one `MULTI`/`EXEC` (one transaction on Postgres)
 
 ---
 
@@ -5915,7 +6149,8 @@ touching Redis, so a caller never has to issue a read just to find out whether
 an annotation actually changed membership.
 
 `target_closed` is `Optional[bool]`, and which of the three values you get
-depends on who owns the pipeline:
+depends on who owns the pipeline (on Redis; on Postgres the close is always
+known at the call, see [On Postgres](#on-postgres)):
 
 - **The journal owns it** (no `pipeline=` argument): a real `bool`, read from
   the supersede script's own reply. `False` for `append`/`confirm` (neither
@@ -5962,8 +6197,9 @@ docstrings on each method for the exact raise conditions.
 
 ## The one-transaction annotate-and-close sequence, stated precisely
 
-`supersede()` and `retract()` queue two things into a single Redis
-`MULTI`/`EXEC`: the annotation's `save()`, and the interval close. Both are
+On Redis, `supersede()` and `retract()` queue two things into a single
+`MULTI`/`EXEC` (on Postgres, one transaction that does roll back; see
+[On Postgres](#on-postgres)): the annotation's `save()`, and the interval close. Both are
 queued by one call —
 `SupersessionProtocol.save_and_invalidate(entry, closes=<the target instance>,
 at=<instant>, pipeline=<the shared pipe>)` — which is the supported combined
@@ -6009,7 +6245,7 @@ client can see the annotation entry (it isn't written yet) or a closed target
 with no annotation (the invalidate script hasn't run yet); when `EXEC`
 returns, both are true together.
 
-**The property that does not hold, and is not claimed: rollback.** Redis
+**The property that does not hold on Redis, and is not claimed: rollback.** Redis
 `MULTI`/`EXEC` does not roll back sibling commands when one command errors at
 execute time — this is documented behavior, and it is the same rationale the
 ORM's own eager-EVAL design (issue #476) already depends on. A command-level
@@ -6236,8 +6472,8 @@ occurrence of the record's *key* does not:
    That Set belongs to the *annotating* record, not the erased one, so the
    sweep does not touch it and the erased key survives, escaped, inside its
    name. Erase the annotations too if that matters.
-2. **`stream:journal` entries.** Every journal mutation is `XADD`ed to the
-   event stream carrying the record's `pk` and its `target` metadata field,
+2. **`stream:journal` entries.** Every journal mutation is appended to the
+   event stream (`XADD` on Redis, the backend's events table on Postgres) carrying the record's `pk` and its `target` metadata field,
    retained up to `_stream_max_length` (10,000 entries) regardless of
    `hard_delete`. Trim or delete the stream separately if required.
 
@@ -6264,9 +6500,37 @@ occurrence of the record's *key* does not:
   Adding one means declaring your own model with the journal field set plus
   the embedding field — **not** subclassing `JournalEntry`, which loses every
   field (see [Do not subclass `JournalEntry`](#do-not-subclass-journalentry)).
-- **`target_closed` is `None`, not `False`, on a caller-supplied pipeline.**
+- **`target_closed` is `None`, not `False`, on a caller-supplied Redis pipeline.**
   Nothing has executed at that point, so the journal reports "unknown" rather
   than guessing. Read `results[close_index]` after your own `execute()`.
+
+## On Postgres
+
+A Postgres-bound `JournalEntry` is a row with `ValidityField`'s interval and
+chain columns on it, and `supersede()` / `retract()` append the annotation
+and close the target in **one transaction**: the journal's own, or the
+caller's when the backend's `transaction()` or a `popoto.batch()` is passed
+as `pipeline=`. Any other `pipeline=` object, a Redis pipeline included, is
+refused with `ValueError` before anything is written. Its mutation log is the
+backend's events table, appended in the same transaction, so a rolled-back
+write leaves no stream entry, and a Postgres-bound journal and its reconciler
+send Redis no command. See
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+
+What differs from the Redis sections above (the `ProvenanceJournal` with a
+caller `pipeline=` row and the `AppendOnlyMixin` row of
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour)):
+
+- With a caller unit of work, `target_closed` is the real `bool` at the call
+  and `close_index` is `None`; there is nothing to read after `execute()`.
+- Rollback holds: a close that fails after the pre-flight raises its typed
+  error and the annotation is rolled back with it, where Redis keeps the
+  queued annotation.
+- The append-only guard reads inside the transaction, so two saves of one key
+  in one unit of work refuse the second (TOCTOU shape 2 above is closed).
+- `hard_delete` deletes the row (its open-claim pointer cascades) and clears
+  the `<f>__supersedes` / `<f>__superseded_by` columns of the records that
+  named it. Stream entries are not removed, as on Redis.
 
 ## See Also
 
@@ -6471,7 +6735,7 @@ audit but is excluded from selection and from confirmation counts.
 
 Every resolved conflict closes the loser through `ProvenanceJournal.supersede()`,
 which appends a `supersede` annotation and closes the target's interval in one
-`MULTI`/`EXEC`. It has to be that call rather than `save_and_supersede()` applied
+`MULTI`/`EXEC` (one transaction on Postgres). It has to be that call rather than `save_and_supersede()` applied
 to the winner: the winner is already persisted, so re-saving it would raise
 `AppendOnlyViolation` — the same rule as "nothing here mutates a persisted
 entry".
@@ -6571,6 +6835,20 @@ line of `CONVENTION_BOOK_V1` is a **version bump, not an edit**: replay pins the
 wording that produced a merge, so a silent reword would make history
 irreproducible.
 
+## On Postgres
+
+Reconciliation runs unchanged on a Postgres-bound journal: `ClaimClass` and
+`ClaimMembership` are ordinary model rows, the reconciler-side embedding cache
+is the `popoto_embedding_cache (model, member, vector)` engine table instead
+of the `POPOTO:M5:embedding_cache` hash (`erase_entry` drops the row there),
+and `reconciliation_consumer` reads the journal's stream from the backend's
+events table. A Postgres-bound journal and its reconciler send Redis no
+command. The single-writer invariant is a deployment contract and applies on
+both backends. The one behavioral difference is inherited from the journal:
+a loser's close that fails rolls back its `supersede` annotation too (see
+[Provenance Journal, On Postgres](provenance-journal.md#on-postgres)). See
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+
 ## See Also
 
 - [Provenance Journal](provenance-journal.md) — the append-only log this stage
@@ -6581,7 +6859,7 @@ irreproducible.
 - [ValidityField and SupersessionProtocol](validity-and-supersession.md) — the
   membership mechanism that closes a supersession loser's interval, reached
   only through `ProvenanceJournal.supersede()` so the annotation and the close
-  share one `MULTI`/`EXEC`
+  share one `MULTI`/`EXEC` (one transaction on Postgres)
 - [Reference Resolution](reference-resolution.md) — the M4 stage upstream:
   its distilled `statement` is what a capture reconciles on, and its
   `valid_from` is a declared value this stage never recomputes
@@ -6624,7 +6902,7 @@ Each now has a repair path: propose a question, let the queue ration it, and fee
 | `question_text` | The question, phrased by the producer |
 | `kind` | One of `disjunction`, `confirmation`, `referent` |
 | `ambiguity_signal` | One of `disjunction`, `gate_refusal`, `evidence_gap` |
-| `target_keys` | Redis keys of the facts the answer would resolve |
+| `target_keys` | Record keys of the facts the answer would resolve (the same key strings on either backend) |
 | `options` | `[{"label": str, "acted": [keys], "contradicted": [keys]}]` |
 | `status` | `pending`, `delivered`, `answered`, `cooled`, `expired` |
 | `ask_count`, `delivered_turn` | Delivery history, written by the delivery script |
@@ -6670,14 +6948,14 @@ A key listed as both `acted` and `contradicted` in one option is a producer bug,
 
 ## The budget
 
-At most one delivery per `QUESTION_BUDGET_TURNS` (K) turns, per agent. A Lua script grants the token **and** claims a candidate in one step:
+At most one delivery per `QUESTION_BUDGET_TURNS` (K) turns, per agent. A Lua script (on Postgres, one statement behind the agent's bucket advisory lock) grants the token **and** claims a candidate in one step:
 
 - It grants only when there is no prior ask or `turn >= last_ask_turn + K`.
 - A regressed turn (`turn < last_ask_turn`) never grants, and `last_ask_turn` is never rewound.
 - `last_ask_turn` is written only when a candidate is actually claimed, so budget is never spent when nothing is delivered.
 - The bucket key carries a wall-clock TTL backstop (`QUESTION_BUCKET_TTL_SECONDS`, 7 days). A host whose turn counter reset after a restart is locked out for at most that long, never forever.
 
-The counter lives in Redis, not in process memory, so a restart does not refill the budget.
+The counter lives in the store (Redis, or a Postgres table), not in process memory, so a restart does not refill the budget.
 
 ## Relevance timing
 
@@ -6721,7 +6999,7 @@ Deflections are checked first so a non-answer is never scored as an answer. An L
 
 An `answered` reply never overwrites anything. It is applied as defeasible evidence through the existing observation machinery:
 
-1. **Claim.** A Lua compare-and-set flips `status` from `delivered` (or `pending`) to `answered` and writes `answer_option`. If the status was anything else, the call returns `AnswerResult(applied=False, reason="not_open")` and changes nothing. That includes a reply that arrives after an ignored question was already moved to `cooled`: the late reply is not applied, and the question can be asked again after its cooldown.
+1. **Claim.** A compare-and-set (a Lua script on Redis, a conditional `UPDATE` on Postgres) flips `status` from `delivered` (or `pending`) to `answered` and writes `answer_option`. If the status was anything else, the call returns `AnswerResult(applied=False, reason="not_open")` and changes nothing. That includes a reply that arrives after an ignored question was already moved to `cooled`: the late reply is not applied, and the question can be asked again after its cooldown.
 2. **Apply.** The chosen option's `acted` keys map to the `acted` outcome and its `contradicted` keys to `contradicted`, applied through `ObservationProtocol.on_context_used`. Each target that declares a `ConfidenceField` then gets `QUESTION_ANSWER_WEIGHT - 1` further `update_confidence` observations at the same signal.
 
 The total is `QUESTION_ANSWER_WEIGHT` observations. `update_confidence` has no weight argument, so this stands in for one. Past `evidence_cap` each observation has gain `1/(cap+1)`, so the evidence count stays capped and a later contradiction keeps its full gain. The claim is "W strong observations", never "dominates".
@@ -6736,7 +7014,7 @@ See [ConfidenceField](confidence-field.md) for the update rule and [ObservationP
 
 ## Fail-closed behavior
 
-`propose*`, `next_question`, `record_answer` and `note_use` log and return `None`, `0` or a non-applied `AnswerResult` on any Redis error. They never raise into the caller. Invalid input is the exception: an unknown `kind` or `ambiguity_signal`, an empty question, or an option whose `acted` and `contradicted` lists overlap raises `ValueError`, because that is a producer bug. `assemble()`'s own outage contract is untouched.
+`propose*`, `next_question`, `record_answer` and `note_use` log and return `None`, `0` or a non-applied `AnswerResult` on any storage error, Redis or Postgres. They never raise into the caller. Invalid input is the exception: an unknown `kind` or `ambiguity_signal`, an empty question, or an option whose `acted` and `contradicted` lists overlap raises `ValueError`, because that is a producer bug. `assemble()`'s own outage contract is untouched.
 
 `AnswerResult.reason` is one of `applied`, `cooled`, `not_open`, `apply_failed`, `disabled`, `error`.
 
@@ -6806,6 +7084,21 @@ if q is not None:
     print(outcome.applied, outcome.reason, outcome.option_index)
     # True applied 0
 ```
+
+## On Postgres
+
+A Postgres-bound queue keeps candidates as `question_candidate` rows, the
+token bucket in `popoto_question_bucket (agent, last_turn, expires_at)` and
+the propose lock in `popoto_lease`, where an expired row reads as absent, as
+the Redis TTL makes the key vanish. Delivery is one statement behind the
+agent's advisory lock, so the budget is exact under concurrency as on Redis.
+Two behaviors differ (both rows of
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour)):
+a candidate whose row another transaction holds is skipped for the next
+(`FOR UPDATE SKIP LOCKED`), where Redis's script waits and sees the write;
+and a proposal that duplicates two or more open candidates folds into the
+first in `_pk` order, where Redis uses set order. See
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
 
 ## See Also
 
@@ -7022,21 +7315,6 @@ from the detail rows in one script call; run it per turn once every process
 has the fix. On Postgres the summary is a `GROUP BY` computed on read and
 cannot drift, so the same call just returns it.
 
-## Backends
-
-`DecisionLog` follows `DecisionRecord`'s backend, the process default, as the
-journal does. On Redis nothing changed beyond the summary fix above. On
-Postgres `SubconsciousMemory(auditable_extraction=...)` constructs and runs
-with no Redis command: rows, the guarded terminal write, the assembly claim
-(a lease row) and the summary all live in Postgres, with the same semantics.
-Construction refuses only the split trail, whenever `auditable_extraction` is
-set: a decision log that would land in Redis while the memory model is on
-Postgres, or a decision log in a different store from the journal entry model
-(in either direction). The error says how to bind the process default. A
-memory model pinned to Redis under a Postgres default keeps its decision log in
-Postgres, next to the journal. See [Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
-A process that moves to Postgres starts with an empty decision log.
-
 ## The terminal-write conflict guard
 
 Every terminal write — including the pre-LLM `firewall_drop`, which cannot
@@ -7065,7 +7343,7 @@ hence the dedicated Lua script.
 ## The atomic assembly claim
 
 Before writing a `pending` row, assembly claims the candidate with a single
-atomic op:
+atomic op. On Redis it is:
 
 ```
 SET popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id} <token> NX PX <ttl>
@@ -7074,20 +7352,23 @@ SET popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id} <token> NX PX <ttl>
 `<ttl>` is `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS` (30,000 ms), a pinned in-repo
 constant — not a constructor kwarg, per this project's convention that
 experimental-tuning numbers live in `popoto.fields.constants.Defaults`, not
-as user-facing config surface.
+as user-facing config surface. On Postgres the claim is one upsert on the
+`popoto_lease` table that succeeds only when no unexpired lease holds the
+key, with the same TTL.
 
 The claim closes a TOCTOU window in the dedup probe: without it, two
 runners racing the same `(agent_id, turn_id, candidate_id)` — a duplicated
 delivery racing a crash-retry, both seeing a surviving `pending` row — could
 both probe, both find nothing yet, and both append, producing two permanent
 journal entries (the journal itself can't catch this: `append()` takes no
-idempotency key and `AppendOnlyViolation` only fires when a record's Redis
-key already exists). The claim's *loser* performs no journal write and no
+idempotency key and `AppendOnlyViolation` only fires when a record's key
+already exists). The claim's *loser* performs no journal write and no
 row transition at all — it no-ops and leaves the candidate entirely to the
-winner. Release is token-checked (a small Lua `if GET == token then DEL`) so
+winner. Release is token-checked (a small Lua `if GET == token then DEL` on Redis,
+a `DELETE ... WHERE token = ...` on Postgres) so
 a runner can never delete a claim it no longer owns.
 
-`SET NX PX` was chosen over `WATCH`/`MULTI` compare-and-set deliberately:
+On Redis, `SET NX PX` was chosen over `WATCH`/`MULTI` compare-and-set deliberately:
 `WATCH` needs a dedicated connection held across the transaction plus a
 retry loop, which doesn't compose with Popoto's shared connection pool.
 Both are Valkey-safe (core commands and Lua only, no modules); `SET NX` is
@@ -7249,6 +7530,35 @@ else" becomes a `per_generator_rule` breakdown instead of a single opaque
 aggregate number. Sentence spans are the smallest candidate shape that makes
 the decision log informative — a raw-turn candidate is one candidate per
 turn, with nothing left to discriminate between.
+
+## On Postgres
+
+`DecisionLog` follows `DecisionRecord`'s backend, the process default, as the
+journal does. On Postgres the decision rows live in the `DecisionRecord`
+table, and `SubconsciousMemory(auditable_extraction=...)` runs with no Redis
+command.
+See [Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+
+- The guarded terminal write is one `INSERT ... ON CONFLICT` statement under
+  the record's advisory lock, with the same refusal rule and the same
+  `terminal_conflict_refused` marker.
+- The assembly claim is a `popoto_lease` row, released only by its token.
+- `turn_summary` is a `GROUP BY` over the turn's rows, computed on read, so
+  it cannot drift and `rebuild_turn_summary` just returns it.
+- `list_for_agent` is an indexed `filter(agent_id=...)` query. The Redis
+  `SCAN` and its reason (terminal writes skip the ORM's index sets) do not
+  apply.
+
+Construction refuses a split audit trail with `BackendCapabilityError`
+whenever `auditable_extraction` is set: a decision log that would land in
+Redis while the memory model is on Postgres, or a decision log in a different
+store from the journal entry model (in either direction). The error says how
+to bind the process default. A memory model pinned to Redis under a Postgres
+default keeps its decision log in Postgres, next to the journal.
+
+Limitations: a process that moves to Postgres starts with an empty decision
+log, since nothing copies Redis rows across. `DecisionLog(redis_client=...)`
+pins the Redis path whatever the process default is.
 
 ## See Also
 
@@ -7453,8 +7763,8 @@ is expected to consume:
   Popoto model field is msgpack-packed by the base encoding, but this one
   field is deliberately re-encoded as a JSON string so the reference detail
   (surface offsets, resolved text, assumptions, candidate lists, clarifying
-  questions) stays readable with plain `redis-cli HGET`, not just from
-  Python.
+  questions) stays readable with plain `redis-cli HGET` on Redis, or a plain
+  `SELECT` on Postgres, not just from Python.
 - **The `TurnContext` header**, denormalized onto the row: `speaker`,
   `captured_at`, `timezone`, `window_truncated`.
 - **No TTL.** Matching M3's decision log, rows are unbounded and never
@@ -7468,7 +7778,7 @@ log = ResolutionLog()
 row = log.get("agent-7", "t-41", "t-41:sentence:0")
 ```
 
-`ResolutionLog.write()` never raises — a Redis error or a bad `resolution`
+`ResolutionLog.write()` never raises — a storage error or a bad `resolution`
 shape is caught, logged, and turned into a `False` return, because the
 sidecar is not load-bearing: by the time it runs, the candidate's accept
 outcome and its `res:*` journal tag are already committed
@@ -7543,6 +7853,20 @@ or newer** — older releases do not accept the `output_config` parameter
 this stage passes) and an API key to produce a non-degraded result;
 without either it returns the same degraded `Resolution` the kill switch
 produces, matching M3's fail-open contract.
+
+## On Postgres
+
+`ResolutionRecord` is an ordinary model, so on Postgres each sidecar row is a
+row of its table, written by `save()` and read by `query.get()`. The
+resolution stage itself does not touch storage. Nothing else differs: the
+`res:*` tags and `valid_from` land on the journal entry like any other field,
+and `write()` still catches and logs any storage error. The sidecar follows
+the process default backend, and `SubconsciousMemory` refuses an
+`auditable_extraction` setup that would split the decision log and the
+journal across stores (see
+[Auditable Extraction](auditable-extraction.md#on-postgres)). The
+conformance tests in `tests/test_reference_resolution.py` run on both
+backends.
 
 ## See Also
 
@@ -7711,9 +8035,23 @@ are two engine tables, `popoto_prediction_ledger` and
 `popoto_prediction_error`; `RESOLVE_PREDICTION_LUA` is one statement, and a
 resolved entry reads back exactly as the script's `cmsgpack` re-pack left it
 on Redis. `ObservationProtocol`'s auto-resolve runs inside its batch
-transaction. See [Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+transaction. Like the Redis keys, the ledger is not removed when the record
+is deleted. See [Long-tail fields](postgres-backend.md#long-tail-fields-m5).
+
+Differences, from
+[Documented divergences](postgres-backend.md#records-and-other-behaviour):
+
+- A NaN prediction error (`inf` against a number, `inf - inf`) is refused
+  with `ValueError` before anything is written, and the entry stays
+  unresolved. On Redis the entry reads resolved with a NaN error and no
+  error-set member.
+- The keys of a resolved entry keep the entry's own order (the dicts compare
+  equal), and an integer that rounds to `2**63` or more reads back as the
+  double rather than a platform-dependent value.
 
 ## Architecture
+
+The Redis implementation:
 
 - **Meta hash**: `$PL:{ClassName}:meta:{pk}` — msgpack prediction metadata per instance
 - **Error sorted set**: `$PL:{ClassName}:errors:{partition}` — PKs scored by |error|
@@ -7733,7 +8071,7 @@ transaction. See [Postgres Backend](postgres-backend.md#long-tail-fields-m5).
 
 # CompositeScoreQuery
 
-Multi-factor retrieval for Popoto models. Combines N sorted set indexes with configurable weights via Redis `ZUNIONSTORE` and returns top-K results ranked by composite score.
+Multi-factor retrieval for Popoto models. Combines N sorted set indexes with configurable weights and returns top-K results ranked by composite score: via `ZUNIONSTORE` on Redis, as one `SELECT` on Postgres (see [On Postgres](#on-postgres)).
 
 ## Quick start
 
@@ -7816,6 +8154,8 @@ Also available as `Query.composite_score()` (convenience method that creates a Q
 
 ## How it works
 
+This section describes the Redis implementation.
+
 1. **Index resolution**: Each named index maps to a Redis sorted set key. Native ZSET fields resolve directly. Non-ZSET sources (ConfidenceField, AccessTracker) are materialized into temporary sorted sets.
 
 2. **ZUNIONSTORE**: Redis combines all resolved sorted set keys into a single temporary sorted set with the specified weights and aggregate mode.
@@ -7893,7 +8233,31 @@ Since dividing all scores by a positive constant preserves ordering, temperature
 
 ## Temp key conventions
 
-All temporary keys follow the pattern `$CSQ:{ModelName}:{type}:{uid}` where `uid` is a random 8-character hex string. Keys are deleted in a `finally` block and also set with `EXPIRE 5` as a safety net against process crashes.
+On Redis, all temporary keys follow the pattern `$CSQ:{ModelName}:{type}:{uid}` where `uid` is a random 8-character hex string. Keys are deleted in a `finally` block and also set with `EXPIRE 5` as a safety net against process crashes.
+
+## On Postgres
+
+On a Postgres-bound model `composite_score` takes the same arguments and is one
+`SELECT` over the model's rows: each index is an arm scoring the records its
+Redis sorted set would hold, and the aggregate, tie order (descending key),
+`min_score`, `temperature` and `post_filter` behave as on Redis. No temporary
+keys are written. See
+[Ranking and memory state](postgres-backend.md#ranking-and-memory-state-m2a).
+The same `QueryException`s are raised for unknown fields, missing partition
+filters and missing mixins.
+
+Differences, from
+[Documented divergences](postgres-backend.md#records-and-other-behaviour):
+
+- The `"priority"` index raises `BackendCapabilityError`: the WriteFilter
+  priority tier is not stored on Postgres.
+- A `co_occurrence_boost` or `similarity_boost` key with no record cannot take
+  a top-K slot on Postgres; on Redis it takes one and is dropped at hydration,
+  so Redis can return fewer records (never in another order).
+- A NaN decay score scores 0 in its arm on Postgres; on Redis the composite's
+  `ZADD` refuses it with `ResponseError`.
+- Scores agree to within 1e-9: Redis's decay arm holds `%.14g`-rounded
+  scores where Postgres uses the full `double`.
 
 ---
 
@@ -7940,9 +8304,9 @@ policy.save()
 | Field | Storage | Role |
 |-------|---------|------|
 | `q_value` | Model hash (`TDValueField`) | Learned Q-value; updated by TD(0) |
-| `expected_value` | Sorted set (score) | Pure recency clock; decays with time |
+| `expected_value` | Sorted set score on Redis; its own column on Postgres | Pure recency clock; decays with time |
 
-`expected_value` is a `DecayingSortedField(partition_by="agent_id", base_score_field="q_value")`. The sorted-set score is the decay-weighted access timestamp; `q_value` supplies the base magnitude. Because the two slots are independent, a `save()`, `touch()`, or `"acted"` outcome that refreshes the decay clock does not overwrite the Q-value, and a TD update to `q_value` does not alter the recency clock.
+`expected_value` is a `DecayingSortedField(partition_by="agent_id", base_score_field="q_value")`. The clock (the sorted-set score on Redis) is the decay-weighted access timestamp; `q_value` supplies the base magnitude. Because the two slots are independent, a `save()`, `touch()`, or `"acted"` outcome that refreshes the decay clock does not overwrite the Q-value, and a TD update to `q_value` does not alter the recency clock.
 
 ### Crystallization Handler
 
@@ -8015,11 +8379,19 @@ from popoto.fields.constants import Defaults
 
 ## On Postgres
 
-`PolicyEntry` runs unchanged on a Postgres-bound model (#759 M5): its
-`TDValueField`, `PredictionLedgerMixin`, `ConfidenceField`, decay clock,
-co-occurrence graph and existence filter are all stored there, and its
-`EventStreamMixin` mutation log is still sent to Redis after each write
-commits. See [Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+`PolicyEntry` runs unchanged on a Postgres-bound model (#759 M5); its tests
+run on both backends. `q_value` is a `numeric` column and `td_update` one
+`UPDATE`, the decay clock is the `expected_value` column rather than a sorted
+set score, the ledger, confidence state, co-occurrence edges and existence
+tokens are Postgres columns and tables, and the `EventStreamMixin` mutation
+log is appended to the backend's events tables in the save's own transaction,
+where the crystallization and temporal-discovery `StreamConsumer` handlers
+read it. Two behaviours follow the backend: the existence filter is exact
+rather than a bloom filter, and a reload after `touch()` sees the touched
+clock (both rows of
+[Documented divergences](postgres-backend.md#records-and-other-behaviour)).
+See [Long-tail fields](postgres-backend.md#long-tail-fields-m5) and
+[Event streams and pub/sub](postgres-backend.md#event-streams-and-pubsub-m5).
 
 ## See Also
 
@@ -8327,18 +8699,6 @@ and the assembler re-raises that too. The tuple it tests against is
 `BackendUnavailableError`; catch that one when a model may be bound to either
 backend.
 
-### On Postgres
-
-`ContextAssembler` works unchanged on a model bound to Postgres
-(`Meta.backend = "postgres"`, #759 M2c), and returns the same ranked records
-as on Redis: every stage reaches storage through field and query methods that
-dispatch on the model's backend, the hybrid path ranks BM25 with corpus-wide
-statistics as `BM25Field.search` does, and the post-retrieval effects (staged
-reads for the selected records, competitive suppression for the rest) run as
-bulk statements in one transaction. A Postgres-bound assembler issues no Redis
-command. See [Postgres Backend](postgres-backend.md#contextassembler-m2c) for
-what each stage runs and the few documented differences.
-
 ### Push Path
 
 1. **CyclicDecayField scan**: Find records whose cyclic + pressure score exceeds `DEFAULT_SURFACING_THRESHOLD`.
@@ -8528,6 +8888,36 @@ See [Confidence Gate](#confidence-gate)
 for the full `metadata["gate"]` shape, the fault-tolerant `get_confidence()`
 failure path, and the no-default policy on `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`.
 
+## On Postgres
+
+`ContextAssembler` works unchanged on a model bound to Postgres
+(`Meta.backend = "postgres"`) and returns the same ranked records as on
+Redis. Every stage reaches storage through field and query methods that
+dispatch on the model's backend, the hybrid path ranks BM25 with corpus-wide
+statistics as `BM25Field.search` does (it does not call `recall()`), and the
+post-retrieval effects (staged reads for the selected records, competitive
+suppression for the rest) run as bulk statements in one transaction. A
+Postgres-bound assembler issues no Redis command. See
+[ContextAssembler (M2c)](postgres-backend.md#contextassembler-m2c) for what
+each stage runs.
+
+Differences (the first three are rows in
+[Documented divergences](postgres-backend.md#records-and-other-behaviour)):
+
+- The ExistenceFilter short-circuit is exact, so a cue whose only record was
+  deleted or rewritten short-circuits on Postgres but not on Redis.
+- A reload after `touch()` sees the touched time, so after an `acted`
+  outcome a record's formatted `relevance` can differ, and a token budget can
+  then admit a different record.
+- Records with the same text (and so the same vector) tie by key on
+  Postgres, in file-listing order on Redis.
+- The post-effects are all-or-nothing: a failed statement drops the call's
+  staged reads and suppression signals with one warning, where Redis skips
+  only the failing candidate. Reads are staged only on models with
+  `AccessTrackerMixin`.
+- An outage raises `BackendUnavailableError` (see
+  [Outages are raised, not swallowed](#outages-are-raised-not-swallowed)).
+
 ## See Also
 
 - [Metacognitive Layer](metacognitive-layer.md) — retrieval quality scoring, FOK, and adaptive weight tuning
@@ -8652,7 +9042,7 @@ keeps its cooperative default byte-identical; only the resolver path inverts
 degrade. Per-record gate errors deny that record with a log line.
 
 Runtime gate failures fail **closed** without raising: tag-resolution failure
-(e.g. Redis errors mid-gating) returns an empty sheet plus a
+(e.g. a storage error mid-gating, on either backend) returns an empty sheet plus a
 `reader gate failed closed` warning. Gate shortfall back-fills from arm
 headroom with capped re-pulls; a shortfall that survives the cap lands as a
 split `warnings` entry, not a silent cut. `metadata["reader_gate"]` reports
@@ -8682,6 +9072,18 @@ override for the staleness read) and compare `serialize()` output.
 `validity_excluded`, `assembles`, `chain_reads`), the merged `policy`, and the
 `reader`.
 
+## On Postgres
+
+The resolver runs unchanged on a Postgres-bound journal (#759 M4); every test
+in `tests/test_view_resolver.py` runs on both backends except one that counts
+the Redis tag-set read. On Postgres the reader gate's tag check is one id-only
+`SELECT` (`&&` for `any`, `@>` for `all`), and each chain read
+(`annotations_for`) is an ordinary indexed `filter()` on the journal's table.
+The fold itself touches no storage. Retrieval inherits the assembler's
+Postgres behaviour, including its documented differences; see
+[ContextAssembler](postgres-backend.md#contextassembler-m2c) and
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+
 ---
 
 ## Hybrid Retrieval (BM25 + RRF)
@@ -8706,7 +9108,7 @@ RRF fusion merges these ranked lists without needing comparable score scales. It
 
 ### BM25Field
 
-`BM25Field` maintains a full inverted index and corpus statistics in Redis sorted sets. It computes BM25 scores at query time via a server-side Lua script. No Redis modules required -- works on both Redis and Valkey.
+`BM25Field` maintains a full inverted index and corpus statistics. On Redis it keeps them in sorted sets and computes BM25 scores at query time via a server-side Lua script; no Redis modules are required, so it works on both Redis and Valkey. On Postgres it keeps postings and document-length tables and computes the same formula in SQL (see [On Postgres](#on-postgres)).
 
 ```python
 import popoto
@@ -8719,7 +9121,7 @@ class Memory(popoto.Model):
     content_bm25 = BM25Field(source="raw_content")
 ```
 
-BM25Field is a "side-effect field" -- it does not store a value on the model instance. When a model is saved, the `on_save()` hook reads text from the `source` field, tokenizes it, and atomically updates the inverted index via a Lua script.
+BM25Field is a "side-effect field" -- it does not store a value on the model instance. When a model is saved, the `on_save()` hook reads text from the `source` field, tokenizes it, and atomically updates the inverted index (via a Lua script on Redis, in the record's own save statement on Postgres).
 
 **Parameters:**
 
@@ -8736,7 +9138,7 @@ BM25Field is a "side-effect field" -- it does not store a value on the model ins
 
 **Redis Key Patterns:**
 
-All BM25 data lives in native Redis structures (sorted sets and strings):
+On Redis, all BM25 data lives in native Redis structures (sorted sets and strings):
 
 | Key | Type | Contents |
 |-----|------|----------|
@@ -8782,7 +9184,7 @@ scored = BM25Field.search(Memory, "content_bm25", "redis deployment", limit=50)
 
 **Scoping a search with `allowed_keys`.** The BM25 index is corpus-wide: `search()`
 scores every record of the model, not just one agent's. Pass `allowed_keys` to confine
-it to a set of Redis keys:
+it to a set of record keys (`redis_key`, the same on both backends):
 
 ```python
 scoped = BM25Field.search(
@@ -8811,9 +9213,9 @@ cannot walk an unbounded corpus on every query. At the cap the result is honestl
 short rather than silently empty.
 
 Ordering is deterministic: results are sorted by BM25 score descending, and equal scores
-are tie-broken by `redis_key` ascending (byte-wise) inside the scoring Lua script -- before
-`limit` truncation -- so identical searches always return identical orderings on both Redis
-and Valkey. `keyword_search()` and RRF fusion via `fuse()` inherit this determinism, since
+are tie-broken by `redis_key` ascending (byte-wise) inside the scoring -- before
+`limit` truncation -- so identical searches always return identical orderings on Redis,
+Valkey and Postgres. `keyword_search()` and RRF fusion via `fuse()` inherit this determinism, since
 RRF consumes rank positions.
 
 ### fuse() -- Reciprocal Rank Fusion
@@ -8889,7 +9291,7 @@ and remain retrievable by their own owner.
 
 ### Maintenance
 
-`BM25Field.recompute_stats()` recalculates `avgdl` and `n` from scratch to correct floating-point drift that may accumulate over many incremental updates:
+`BM25Field.recompute_stats()` recalculates `avgdl` and `n` from scratch to correct floating-point drift that may accumulate over many incremental updates on Redis (on Postgres the statistics are counted live and it is a no-op):
 
 ```python
 BM25Field.recompute_stats(Memory, "content_bm25")
@@ -8935,9 +9337,8 @@ def hybrid_search(query: str, limit: int = 10) -> list:
     graph_results = []
     if keyword_results:
         seed_key = keyword_results[0][0]
-        propagated = CoOccurrenceField.propagate(
-            Memory, "associations", seed_key, hops=2, limit=50
-        )
+        associations = Memory._meta.fields["associations"]
+        propagated = associations.propagate(Memory, [seed_key], depth=2)
         graph_results = list(propagated.items())
 
     # 4. Fuse with RRF
@@ -8958,7 +9359,7 @@ def hybrid_search(query: str, limit: int = 10) -> list:
 ### How it works
 
 1. **ExistenceFilter pre-check** -- O(1) Bloom filter test. If the query terms are definitely absent from the corpus, skip retrieval entirely.
-2. **BM25 keyword search** -- Server-side Lua script computes BM25 scores across the inverted index. Returns exact-match precision for technical terms, error codes, and identifiers.
+2. **BM25 keyword search** -- The server computes BM25 scores (a Lua script on Redis, SQL on Postgres) across the inverted index. Returns exact-match precision for technical terms, error codes, and identifiers.
 3. **Semantic search** -- Embedding similarity captures conceptual relevance that keyword matching misses.
 4. **Graph propagation** -- CoOccurrence associations surface related records that share no lexical or semantic overlap with the query but were historically accessed together.
 5. **RRF fusion** -- Reciprocal Rank Fusion merges all ranked lists using rank positions, not raw scores. Documents appearing in multiple lists get boosted. The `k=60` constant smooths rank influence so a #1 result in one list does not overwhelm a consistent #5 across three lists.
@@ -8970,13 +9371,42 @@ def hybrid_search(query: str, limit: int = 10) -> list:
 | `BM25_K1` | Term frequency saturation | Increase (1.5-2.0) for long documents where term repetition is meaningful. Decrease (0.5-1.0) for short texts. |
 | `BM25_B` | Length normalization | 0.75 works well for mixed-length corpora. Set lower (0.3) if short documents should not be penalized. |
 | `k` (RRF) | Rank smoothing | Default 60 is the standard. Lower values (10-20) amplify top-ranked results. Higher values (100+) flatten rank influence. |
-| `limit` per signal | Recall pool size | Over-fetch per signal (50-100) then let RRF select the top-K. Larger pools improve fusion quality at the cost of more Redis operations. |
+| `limit` per signal | Recall pool size | Over-fetch per signal (50-100) then let RRF select the top-K. Larger pools improve fusion quality at the cost of more server work. |
+
+## On Postgres
+
+On a Postgres-bound model each signal keeps its state in the database beside
+the records, written by the record's save statement: BM25 postings and
+document lengths, the embedding as a pgvector `vector(d)` column (pgvector
+must be installed), and the ExistenceFilter as an exact token table. The
+BM25 formula, constants, tokenizer and tie order are Redis's, and
+`keyword_search`, `semantic_search`, `fuse()` and `composite_score` work as
+documented here; `fuse()` scopes the fused set by the builder's filters in
+one `SELECT`. See [Search](postgres-backend.md#search-m2b), with
+[BM25](postgres-backend.md#bm25), [Embeddings](postgres-backend.md#embeddings)
+and [Membership](postgres-backend.md#membership).
+
+`Query.recall()` is available on Postgres only: it runs the BM25 and vector
+arms (and a decay arm, on a model with one `DecayingSortedField`) and the
+weighted RRF in one statement, with per-scope BM25 statistics by default. It
+replaces the hand-written recipe above on a Postgres model. On a Redis model
+it raises `BackendCapabilityError`. See
+[Fusion and recall()](postgres-backend.md#fusion-and-recall).
+
+Differences, from
+[Documented divergences](postgres-backend.md#records-and-other-behaviour):
+the ExistenceFilter pre-check is exact (no false positives, deleted records
+forgotten), `recompute_stats` is a no-op, embeddings are not `.npy` files
+(`garbage_collect` returns `0`), equal vector similarities tie by key, and
+`BM25Field.search(allowed_keys=)` keeps the best
+`max(limit, SCOPED_SEARCH_FETCH_CAP)` records overall, the window Redis's
+widening loop reaches.
 
 ## See also
 
 - [BM25Field in Models and Fields](../fields.md#bm25field) -- field configuration reference
 - [ExistenceFilter](existence-filter.md) -- Bloom filter pre-check
-- [Composite Score Query](composite-score-query.md) -- weighted ZUNIONSTORE fusion (complementary to RRF)
+- [Composite Score Query](composite-score-query.md) -- weighted score fusion (complementary to RRF)
 - [ContextAssembler](context-assembler.md) -- token-budgeted retrieval-to-injection pipeline
 - [Agent Memory Quickstart](../guides/agent-memory-quickstart.md) -- progressive adoption guide
 
@@ -9099,7 +9529,7 @@ messages = [
 ]
 ```
 
-**Performance note:** `assess_quality=True` adds bounded overhead — one `might_exist` call per query cue plus one `get_confidence` read per selected record (up to `max_items` reads). On a warm cache with 10 items, expect roughly 5% additional latency on `assemble()`. Confidence reads are pipelined in a single Redis round-trip batch.
+**Performance note:** `assess_quality=True` adds bounded overhead — one `might_exist` call per query cue plus one `get_confidence` read per selected record (up to `max_items` reads). On a warm cache with 10 items, expect roughly 5% additional latency on `assemble()`. Each confidence read is its own round trip: an `HGET` of the companion hash on Redis, a read of the record's state columns on Postgres.
 
 ### Building `RetrievalQuality` from a custom pipeline
 
@@ -9184,7 +9614,7 @@ Built-in `group_by` string values: `"hour"` (0–23), `"weekday"` (0–6, Monday
 
 Each `stats_dict` value has keys: `count`, `mean`, `stddev`, `p50`, `p90`, `p99`, `max`.
 
-**Implementation note:** `error_summary` reads the error sorted set via `ZREVRANGE` then fetches per-instance metadata via a pipelined batch of `HGET` calls — one call per member. This is one network round-trip regardless of `limit`. Corrupt msgpack entries are logged at warning level and skipped. The function is an eventually-consistent sampling tool, not a transactional snapshot; a resolution landing mid-batch may appear in some rows and not others.
+**Implementation note:** on Redis, `error_summary` reads the error sorted set via `ZREVRANGE` then fetches per-instance metadata via a pipelined batch of `HGET` calls — one call per member. This is one network round-trip regardless of `limit`. Corrupt msgpack entries are logged at warning level and skipped. The function is an eventually-consistent sampling tool, not a transactional snapshot; a resolution landing mid-batch may appear in some rows and not others.
 
 Empty error set returns `{"__all__": {"count": 0, "mean": 0.0, ...}}` rather than raising.
 
@@ -9320,19 +9750,34 @@ adaptive = AdaptiveAssembler(inner, rng=rng)
 
 ## Performance notes
 
-- `assess_quality=True` on `assemble()` adds bounded overhead: one `might_exist` per query cue plus `get_confidence` reads pipelined in a single Redis round-trip for all selected records. Measured at ~5% additional latency on a 10-item selection with a warm cache.
-- `error_summary()` reads the error sorted set with `ZREVRANGE` (one round-trip) then issues all per-instance `HGET` calls in a single pipelined batch regardless of `limit`. The total cost is two Redis round-trips.
-- `AdaptiveAssembler` has no additional Redis overhead beyond the wrapped `ContextAssembler`. The rolling-window bookkeeping is pure in-memory Python.
+- `assess_quality=True` on `assemble()` adds bounded overhead: one `might_exist` per query cue plus one `get_confidence` read per selected record. Measured at ~5% additional latency on a 10-item selection with a warm cache.
+- `error_summary()` costs two round trips regardless of `limit`: on Redis a `ZREVRANGE` of the error sorted set, then one pipelined batch of per-instance `HGET` calls; on Postgres one `SELECT` of the error table's top rows, then one `SELECT` of their ledger entries.
+- `AdaptiveAssembler` has no additional storage overhead beyond the wrapped `ContextAssembler`. The rolling-window bookkeeping is pure in-memory Python.
 
 ---
 
 ## Limitations and v2 roadmap
 
-- **No cross-restart persistence.** `AdaptiveAssembler`'s learned `score_weights` are per-process. If the agent restarts, adaptation starts over from the initial weights. Persisting learned weights to Redis is a v2 scope item.
+- **No cross-restart persistence.** `AdaptiveAssembler`'s learned `score_weights` are per-process. If the agent restarts, adaptation starts over from the initial weights. Persisting learned weights to the store is a v2 scope item.
 - **Source credibility is bookkeeping-only in v1.** The plan design includes per-source credibility weighting of observation signals, but applying it requires a new per-source score index and significant changes to the `_apply_*` dispatch. v1 records the intent; the application is deferred to v2.
 - **No statistical significance testing on keep/revert.** The loop uses mean comparison over a rolling window. A t-test or bootstrap CI before accepting a weight change would reduce noise but slow convergence. Marked as a v2 option.
 - **`quality_metric` is a proxy, not a task metric.** `fok_score * avg_confidence` optimizes retrieval quality as measured by the memory layer, not downstream task performance. Monitor actual task outcomes alongside the adaptive loop. See plan Risk 2 for the Goodhart's Law caution.
-- **`error_summary` is eventually consistent.** Not a transactional snapshot: a resolution landing between the `ZREVRANGE` and the pipelined `HGET` batch may appear in some rows and not others. Use as a sampling/debugging tool, not a real-time gauge.
+- **`error_summary` is eventually consistent.** Not a transactional snapshot: a resolution landing between the two reads (on Redis, the `ZREVRANGE` and the pipelined `HGET` batch) may appear in some rows and not others. Use as a sampling/debugging tool, not a real-time gauge.
+
+## On Postgres
+
+All three tiers run on a Postgres-bound model (#759 M2c, M5); the assembler,
+prediction-ledger and adaptive-assembler tests run on both backends.
+`assess()` and `assess_quality` read the exact `ExistenceFilter` token table
+and the record's confidence columns, and `error_summary` reads the
+`popoto_prediction_ledger` and `popoto_prediction_error` engine tables, with
+the grouping and statistics computed by the same Python on both. Because
+`might_exist` is exact on Postgres, the feeling-of-knowing signal sees no bloom
+false positives, and a cue whose only record was deleted no longer counts as
+known (the `ExistenceFilter.might_exist` row of
+[Documented divergences](postgres-backend.md#records-and-other-behaviour)).
+See [ContextAssembler](postgres-backend.md#contextassembler-m2c) and
+[Long-tail fields](postgres-backend.md#long-tail-fields-m5).
 
 ---
 
@@ -9372,7 +9817,7 @@ class Memory(NeverRecordMixin, Model):
     content = StringField(default="")
 
 Memory(agent_id="a1", content="my key is sk-ant-api03-AAAA...").save()
-# False -- nothing written to Redis
+# False -- nothing written to the store
 
 Memory(agent_id="a1", content="The user prefers dark mode.").save()
 # saved normally
@@ -9384,7 +9829,8 @@ change on your side.
 
 ## The guaranteed class
 
-Content matching any of these never reaches Redis. Each drop records one
+Content matching any of these never reaches the store (Redis or Postgres).
+Each drop records one
 reason code.
 
 | Reason code | What it catches |
@@ -9480,7 +9926,8 @@ pattern does run against both renderings.
 ## Where the gate runs
 
 Inside `Model.save()`, before the `WriteFilterMixin` check and before
-`pre_save()` — therefore before serialization, the HSET, and every secondary
+`pre_save()` — therefore before serialization, the HSET (the row write on
+Postgres), and every secondary
 index, BM25 posting, embedding call, and co-occurrence edge. Ordering is the
 whole guarantee: blocked content is never handed to any of those.
 
@@ -9499,7 +9946,8 @@ that the tombstone design closes.
 The mixin scans the instance's **non-key `str` field values**, and only those:
 
 - **Key fields are excluded** — `KeyField` and `AutoKeyField` values are
-  rendered into the Redis key *name*, which a later drop cannot retract. The
+  rendered into the record key (the Redis key *name*, the `_pk` column on
+  Postgres), which a later drop cannot retract. The
   scan skips them because blocking at `save()` would not unwrite a name that
   earlier records already embedded; a key field carrying secrets is a schema
   problem, not a save-time one.
@@ -9529,7 +9977,7 @@ class JournalEntry(AppendOnlyMixin, NeverRecordMixin, EventStreamMixin, Model):
 ```
 
 This exists for **machine-generated pointers**, not to soften the gate on
-anything a human or a model wrote. `JournalEntry.target` holds a Redis key
+anything a human or a model wrote. `JournalEntry.target` holds a record key
 Popoto itself generated (`JournalEntry:{agent_id}:{uuid4 hex}`), and scanning
 it for payment cards is a category error with a measured cost: a uuid4 hex
 sometimes contains a 13–19 digit run that passes the Luhn checksum, so the
@@ -9568,6 +10016,8 @@ is the precise point where a never-record tombstone diverges from
 on purpose so writes can be matched against it.
 
 ### Architecture
+
+On Redis:
 
 | Key | Type | Contents |
 |---|---|---|
@@ -9638,7 +10088,7 @@ deliberately conservative in the over-blocking direction.
 | `NR_ENTROPY_MIN_TOKEN_LEN` | `20` | Shortest token the entropy backstop considers |
 | `NR_ENTROPY_MIN_BITS` | `3.5` | Shannon bits/char threshold. Random base64 sits near 5.5-6.0, random hex near 4.0, English text over the same alphabet well below 3.5 |
 | `NR_ASSIGNMENT_MIN_VALUE_LEN` | `6` | Shortest value after `password=` that counts |
-| `NR_TOMBSTONE_LOG_MAX` | `1000` | Cap on the drop-log LIST |
+| `NR_TOMBSTONE_LOG_MAX` | `1000` | Cap on the drop log (the LIST on Redis, the log table rows per model on Postgres) |
 | `NEVER_RECORD_ENABLED` | env-derived | Kill switch, not a tuning constant |
 
 ## Using the scanner directly
@@ -9654,6 +10104,35 @@ verdict.blocked    # True
 verdict.reason     # 'credential_prefix'
 verdict.detector   # 'vendor_token'
 ```
+
+## On Postgres
+
+The gate is the same code in `Model.save()`, so a refused save writes no row,
+no companion and no engine-table entry. The audit log moves to two engine
+tables, `popoto_never_record_count` (one row per model and reason, the
+counter) and `popoto_never_record_log` (newest first, trimmed to
+`NR_TOMBSTONE_LOG_MAX` rows per model), written in one statement. See
+[Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+`never_record_counts()` and `never_record_log()` read the tables and return
+the same shapes.
+
+Differences:
+
+- A refused save inside a `transaction()` or a `popoto.batch()` writes its
+  tombstone on that unit's connection, so the tombstone rolls back with the
+  unit and is kept only when the unit commits. On Redis the `pipeline=` is
+  ignored for the tombstone, which is written at once and survives a
+  `reset()`.
+- Best-effort is narrower. An outage (`BackendUnavailableError`,
+  `BackendRetryableError`) on an autocommit tombstone write is swallowed, as
+  any Redis error is. Inside a unit of work the outage propagates, because it
+  has already aborted the caller's transaction, and any other database error
+  propagates as `BackendError` in both cases. The save is refused either way,
+  so neither path fails open.
+
+The conformance tests in `tests/test_never_record_firewall.py` run on both
+backends, and on the Postgres leg the "never persists" sweep covers every
+table in the schema as well as Redis.
 
 ## See Also
 
@@ -9722,8 +10201,8 @@ negative prior — the prior itself needs only the `ExistenceFilter` and its
 
 A model with no `ExistenceFilter`, or one whose filter has no `fingerprint_fn`,
 has no content identity — there is nothing a buried record could match against.
-Those models skip the consult entirely and issue **zero** extra Redis commands
-on `save()`. Write behavior is byte-identical to a Popoto without this feature,
+Those models skip the consult entirely and issue **zero** extra commands on
+`save()`, on either backend. Write behavior is byte-identical to a Popoto without this feature,
 structurally rather than because a flag happens to be off.
 
 ## What it does to a score
@@ -9799,8 +10278,9 @@ disagree.
 
 ## Storage
 
-Three keys per model, all deliberately **outside** the model's own keyspace, so
-no query, index scan, or key-set walk can surface them:
+On Redis, three keys per model, all deliberately **outside** the model's own
+keyspace, so no query, index scan, or key-set walk can surface them (for
+Postgres, see [On Postgres](#on-postgres)):
 
 | Key | Type | Holds |
 |---|---|---|
@@ -9823,8 +10303,8 @@ pre-feature behavior and loses nothing else:
 TombstonePriorStore(Memory).purge_all()
 ```
 
-To inspect the keys by hand, use Popoto's own accessor rather than building a
-client, so you are looking at the database Popoto is actually bound to:
+To inspect the Redis keys by hand, use Popoto's own accessor rather than
+building a client, so you are looking at the database Popoto is actually bound to:
 
 ```python
 import popoto
@@ -9834,7 +10314,7 @@ popoto.get_redis().hgetall("$TOMBPRIOR:Memory:stats")
 
 ## Failure behavior
 
-Every Redis call on this path is best-effort. If the bookkeeping is unreachable
+Every storage call on this path is best-effort, on either backend. If the bookkeeping is unreachable
 or a stored count is unreadable, the write is admitted **unchanged** and a
 warning is logged — a memory system whose `save()` dies because a telemetry hash
 is down is worse than one that occasionally misses a drawdown. Symmetrically, a
@@ -9860,6 +10340,21 @@ kwargs — they are experimental tuning knobs, not per-model configuration:
 | `TOMBSTONE_PRIOR_LIMIT` | 1000 | Distinct fingerprints retained per model |
 | `TOMBSTONE_PRIOR_DECAY` | 0.5 | Multiplier compounded per prior burial |
 | `TOMBSTONE_PRIOR_FLOOR` | 0.05 | Strongest suppression possible |
+
+## On Postgres
+
+`TombstonePriorStore` keeps the prior in two engine tables instead of the
+`$TOMBPRIOR:` keys: `popoto_tombstone_prior` holds one row per model and
+digest, with the burial count and the last burial time together (the Redis
+`burials` hash and `index` zset in one row), and `popoto_tombstone_stats`
+holds one row per model with `penalized` and `drawdown_total`. See
+[Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+The scoring, the digest-only storage, the `TOMBSTONE_PRIOR_LIMIT` retention
+(oldest burial first), the best-effort failure behavior and the kill switch
+are the same. The two stats counters move together in one upsert, and
+`purge_all()` deletes the model's rows from both tables and returns how many
+fingerprints it removed. Inspect the state with SQL against those tables
+rather than `get_redis()`, which reaches only Redis.
 
 ## See also
 
@@ -9914,12 +10409,12 @@ PolicyEntry composes these primitives:
 |-----------|-------------------|
 | `AutoKeyField` | Unique entry ID |
 | `KeyField` | Agent partitioning, state fingerprinting, action type |
-| `TDValueField` (`q_value`) | Learned Q-value stored in the model hash; owns the atomic TD(0) update |
+| `TDValueField` (`q_value`) | Learned Q-value stored with the record (a hash field on Redis, a column on Postgres); owns the atomic TD(0) update |
 | `DecayingSortedField` (`expected_value`) | Pure recency clock; uses `q_value` as base magnitude via `base_score_field` |
 | `ConfidenceField` | Capped-evidence confidence from outcome history |
 | `CoOccurrenceField` | Weighted graph between related policies |
-| `ExistenceFilter` | Bloom filter for fast state lookup |
-| `EventStreamMixin` | Mutation log via Redis Streams |
+| `ExistenceFilter` | Fast state lookup (a Bloom filter on Redis, an exact token table on Postgres) |
+| `EventStreamMixin` | Mutation log (Redis Streams on Redis, the events tables on Postgres) |
 | `AccessTrackerMixin` | Read pattern tracking |
 | `PredictionLedgerMixin` | Outcome prediction and resolution |
 
@@ -9933,7 +10428,7 @@ The `crystallization_handler` is an async function designed for use with `Stream
 4. Creates a PolicyEntry when evidence exceeds thresholds:
    - Minimum events: `MIN_EVENTS_FOR_CRYSTALLIZATION` (default: 3)
    - Wilson CI lower bound > `WILSON_CI_THRESHOLD` (default: 0.6)
-5. Uses ExistenceFilter (Bloom filter) to skip likely-duplicate entries
+5. Uses ExistenceFilter (a Bloom filter on Redis) to skip likely-duplicate entries
 
 ```python
 from popoto.streams import StreamConsumer
@@ -9961,9 +10456,9 @@ Calendar-accurate monthly or yearly discovery (e.g. via variable-length bucketin
 ## Q-Value Updates
 
 `TDValueField` owns the TD(0) update. It is a `DecimalField` subclass that
-stores the learned value in the model hash exactly as a plain `DecimalField`
-does, and adds one operation the ordinary save path cannot express — an atomic
-read-modify-write of that single hash field:
+stores the learned value exactly as a plain `DecimalField` does (in the model
+hash on Redis), and adds one operation the ordinary save path cannot express —
+an atomic read-modify-write of that single field:
 
 ```
 Q(s,a) <- Q(s,a) + alpha * [reward + gamma * max_Q(s',a') - Q(s,a)]
@@ -9973,7 +10468,8 @@ Q(s,a) <- Q(s,a) + alpha * [reward + gamma * max_Q(s',a') - Q(s,a)]
 - **gamma** (discount factor): Importance of future rewards (default: 0.95)
 - Returns TD error (positive = better than expected)
 
-The read and the write happen inside one Lua script, so concurrent updates to
+On Redis the read and the write happen inside one Lua script (on Postgres, one
+`UPDATE`), so concurrent updates to
 the same entry serialize at the server instead of racing through a client-side
 `HGET` / compute / `HSET` round trip.
 
@@ -9986,16 +10482,16 @@ want TD updates on a model of your own. See
 
 ### Storage architecture
 
-Q-values live in two separate slots that never overwrite each other:
+Q-values live in two separate slots that never overwrite each other (described here as they are on Redis; on Postgres both are columns of the record's row):
 
-- **`q_value` (model hash)** — the learned value. Updated by `update_q_value()` via `HGET`/`HSET` on the model hash key. A `save()` or `touch()` on the instance does not reset it.
+- **`q_value` (model hash)** — the learned value. Updated by `update_q_value()` through the TD script on the model hash key. A `save()` or `touch()` on the instance does not reset it.
 - **`expected_value` (sorted set)** — a pure recency/decay clock. Its score is the decay-weighted access timestamp multiplied by the `q_value` magnitude. Writing a new TD estimate via `update_q_value()` does not disturb this clock.
 
 This separation means `Q(s,a)` survives every access pattern — `save()`, `touch()`, and `"acted"` outcome resolution — intact.
 
 ### Negative Q-values
 
-`DecayingSortedField` includes a sign-preserving guard in its decay Lua script: negative Q-values retain their sign through the decay calculation. Policies that have been penalized remain penalized after aging.
+`DecayingSortedField` includes a sign-preserving guard in its decay Lua script (and the Postgres `rank_decayed` statement keeps the same sign rule): negative Q-values retain their sign through the decay calculation. Policies that have been penalized remain penalized after aging.
 
 ## Tuning Constants
 
@@ -10014,7 +10510,20 @@ All numeric constants have been validated via parameter sweep ([tuning guide](tu
 
 - **WriteFilterMixin excluded**: The crystallization handler IS the write gate. Dual gating makes debugging harder.
 - **Recipe, not core**: Lives in `popoto.recipes` to demonstrate composition without coupling to the ORM core.
-- **Bloom filter false positives**: ~1% of legitimate crystallizations may be skipped due to ExistenceFilter's error rate. Acceptable for reference use; production systems needing zero misses should add a secondary check.
+- **Bloom filter false positives** (Redis only): ~1% of legitimate crystallizations may be skipped due to ExistenceFilter's error rate; on Postgres the filter is exact. Acceptable for reference use; production systems needing zero misses should add a secondary check.
+
+## On Postgres
+
+The recipe runs unchanged on a Postgres-bound `PolicyEntry`: `td_update` is
+one `UPDATE` behind the record's key lock, the clock is the `expected_value`
+column, and the mutation log is appended to the backend's events tables in
+the save's own transaction, where `StreamConsumer` reads it. The existence
+pre-check is exact there, so the Bloom false-positive skip above does not
+happen, and a reload after `touch()` sees the touched clock (both rows of
+[Documented divergences](../features/postgres-backend.md#records-and-other-behaviour)).
+See [PolicyCache](../features/policy-cache.md#on-postgres),
+[Long-tail fields](../features/postgres-backend.md#long-tail-fields-m5) and
+[Event streams and pub/sub](../features/postgres-backend.md#event-streams-and-pubsub-m5).
 
 ---
 
@@ -10125,7 +10634,7 @@ Crystallization is **idempotent via watermark**: re-running on an unchanged epis
 
 - **One crystallizer per partition.** Concurrent crystallization of the same partition is not coordinated — two processes reading the same episode set and both calling `_observe_episodes` will double-observe episodes, inflating confidence counts. Run a single crystallizer per partition.
 - **NTP-synced writers.** The watermark guarantee assumes episode writers and the crystallizer are within ordinary NTP clock synchronization. A writer whose clock lags behind the current watermark will record episodes with `recorded_at` timestamps below the watermark; the strict `>` filter skips those episodes permanently on all subsequent runs.
-- **`last_reinforced` stores episode time, not crystallize time.** The stored score for `last_reinforced` equals the maximum observed episode `recorded_at` — which may predate the wall-clock time the crystallize call ran. An operator running `ZSCORE` on the recency index reads "newest episode processed", not "when crystallize last ran". Under batched or nightly crystallization, patterns will rank correspondingly older in recency-weighted recall (`DEFAULT_SCORE_WEIGHTS` weights `last_reinforced` at 0.4) than they would under wall-clock semantics.
+- **`last_reinforced` stores episode time, not crystallize time.** The stored score for `last_reinforced` equals the maximum observed episode `recorded_at` — which may predate the wall-clock time the crystallize call ran. An operator reading the stored value (`ZSCORE` on the recency index on Redis, the `last_reinforced` column on Postgres) reads "newest episode processed", not "when crystallize last ran". Under batched or nightly crystallization, patterns will rank correspondingly older in recency-weighted recall (`DEFAULT_SCORE_WEIGHTS` weights `last_reinforced` at 0.4) than they would under wall-clock semantics.
 
 Note: within the evidence window, the capped-evidence update rule is order-invariant (to ~1e-12), which bounds — but does not eliminate — confidence drift if the single-crystallizer constraint is violated. Do not rely on commutativity as a substitute for the operational constraint.
 
@@ -10233,6 +10742,18 @@ fp = compute_fingerprint({"task": "deploy", "env": "staging"})  # SHA-256, 16 he
 
 This produces deterministic 16-hex-char fingerprints suitable for use as a `KeyField` value.
 
+## On Postgres
+
+`TrajectoryMemory` runs unchanged on Postgres-bound models; `tests/test_trajectory_memory.py`
+runs on both backends. Episodes and patterns are rows, `crystallize()` reads a
+partition's episodes with one filtered query (the watermark comparison runs in
+Python, as on Redis), confidence is one
+`UPDATE` with the same capped-evidence arithmetic, and `recall()`'s
+`composite_score` is one `SELECT` (`rank_composite`). The single-crystallizer
+constraint above still applies: nothing in the recipe coordinates two
+crystallizers on either backend. See
+[Ranking and memory state](../features/postgres-backend.md#ranking-and-memory-state-m2a).
+
 ## See Also
 
 * [ContextAssembler](../features/context-assembler.md) — retrieval-to-injection bridge for **semantic** memory
@@ -10254,7 +10775,7 @@ and feeds it to an LLM for grounded responses.
 > **Prerequisites:**
 >
 > - `pip install popoto[voyage]` (or `popoto[openai]` for OpenAI embeddings)
-> - Redis running on `localhost:6379`
+> - Redis running on `localhost:6379` (or a Postgres database with pgvector; see [On Postgres](#on-postgres))
 > - An API key for your embedding provider
 > - An API key for your LLM (this recipe uses OpenAI, but any LLM works)
 
@@ -10483,11 +11004,33 @@ async def async_ask(session_id: str, question: str) -> str:
 
 ## Key Points
 
-- **ContentField** stores large text on the filesystem, keeping Redis lean
+- **ContentField** stores large text on the filesystem on Redis, keeping the hashes lean (on Postgres it is a `text` column)
 - **EmbeddingField** auto-generates vectors on save -- no manual embedding calls
 - **semantic_search()** handles embedding the query, computing similarity, and hydrating results
 - Combined with `indexes`, semantic search blends meaning-based retrieval with decay, confidence, and other memory signals
 - Conversation history with `DecayingSortedField` ensures recent context surfaces first
+
+## On Postgres
+
+The recipe runs on Postgres-bound models without code changes, once the
+database has the pgvector extension (`CREATE EXTENSION vector`; popoto never
+creates it) and the embedding provider is configured before the models' first
+use, since the vector column's dimension is read from it then. Differences
+from the Redis path:
+
+- `ContentField` holds the text in a `text` column, so `content_path` is not
+  used for those models.
+- `EmbeddingField` stores the vector in a pgvector column instead of `.npy`
+  files; a save still embeds the source text and a provider failure still
+  writes nothing. `garbage_collect()` returns `0`.
+- `semantic_search()` works as on Redis: it loads every vector of the model
+  (`load_embeddings`, here a read of the column) and scores them in numpy, so
+  it does not use the HNSW index; that index serves the `ContextAssembler`
+  hybrid path and `recall()`. `indexes=` blending gives the same order as
+  Redis.
+
+See [Embeddings](../features/postgres-backend.md#embeddings) and
+[Fusion and recall()](../features/postgres-backend.md#fusion-and-recall).
 
 ## See Also
 
@@ -10613,7 +11156,8 @@ report_outcomes(event_id, outcome_map, *, apply_effects=False, instances=None)
 
 For each `memory_key -> outcome` in `outcome_map` whose key was injected in this
 event, appends `{key, outcome, at}` to the event's `outcomes`. Keys are the same
-redis keys stored in `injected` (i.e. `instance.db_key.redis_key`); outcomes are
+record keys stored in `injected` (i.e. `instance.db_key.redis_key`, the same
+string on both backends); outcomes are
 validated against `ObservationProtocol.VALID_OUTCOMES`.
 
 Record-only by default — telemetry is pure observation and does not double-apply
@@ -10647,9 +11191,9 @@ already stores the fused score, so they need no schema change).
 
 ## Scope and constraints
 
-- **Valkey-safe:** only core commands. The injection trace uses read-only
-  pipelined `ZSCORE`; the event write is an ordinary model `save()`. No modules,
-  no Lua.
+- **Valkey-safe:** only core commands. On Redis the injection trace uses
+  read-only pipelined `ZSCORE`; the event write is an ordinary model `save()`.
+  No modules, no Lua.
 - **TTL mandatory:** `AssemblyEvent.Meta.ttl` bounds the store; the recorder can
   shorten but the record always expires.
 - **Not self-benchmarking:** no before/after gates and no automated tuning. This
@@ -10659,6 +11203,17 @@ already stores the fused score, so they need no schema change).
 - **Namespace:** popoto owns model-keyed, queryable, TTL'd records
   (`AssemblyEvent:*`); a deployment's own counter namespace (e.g. `analytics:*`)
   is separate by design.
+
+## On Postgres
+
+Telemetry runs unchanged on a Postgres-bound process (#759 M5); every test in
+`tests/test_memory_telemetry.py` runs on both backends. `AssemblyEvent` is a
+table row whose `Meta.ttl` sets the `_expires_at` column, so an event expires
+there as on Redis and is invisible to every read from that instant, and the
+trace's score proxy reads the backend (the partition's decay ranking or the
+sorted column) instead of pipelined `ZSCORE`. See
+[Record expiry](postgres-backend.md#record-expiry-m5) and
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
 
 ## See Also
 
@@ -10697,7 +11252,7 @@ runtime.
 ## Bulk Operations
 
 Popoto provides bulk operation methods for efficient batch processing using
-Redis pipelines. These methods significantly reduce network round-trips
+Redis pipelines (one transaction per call on Postgres). These methods significantly reduce network round-trips
 compared to individual operations, making them ideal for importing data,
 batch updates, and cleanup tasks.
 
@@ -10956,7 +11511,7 @@ documentation and examples.
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `_ttl` | `int` or `None` | Value of `Meta.ttl` | Time-to-live in seconds. Set to `None` to make the instance permanent. Takes precedence over `Meta.ttl`. |
-| `_expire_at` | `datetime` or `None` | `None` | Absolute expiration timestamp. Calls Redis `EXPIREAT` on save. |
+| `_expire_at` | `datetime` or `None` | `None` | Absolute expiration timestamp. Calls Redis `EXPIREAT` on save (sets the `_expires_at` column on Postgres). |
 
 !!! warning
     Setting both `_ttl` and `_expire_at` on the same instance raises a
@@ -11339,7 +11894,7 @@ The sweep grid and the metrics it reports are described in
 
 ## StreamConsumer
 
-A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.
+A Redis Streams consumer group framework for background processing (on Postgres it runs over the backend's events tables). Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.
 
 ### Basic usage
 
@@ -11440,6 +11995,42 @@ count = consumer.process_batch_sync()
 
 This is generic infrastructure — the processing logic is application code. One use case: pattern crystallization from raw events into `PolicyCache` entries.
 
+## On Postgres
+
+Most of these recipes run unchanged on a Postgres-bound model. What differs:
+
+- **Bulk operations**: `bulk_create`, `bulk_update` and `bulk_delete` each
+  run inside one `transaction()`, so a unique conflict anywhere rolls back the
+  whole batch ([Transactions](features/postgres-backend.md#transactions)).
+  The warning about raw `DEL`/`FLUSHDB` is Redis advice; on Postgres the
+  secondary indexes are the table's own B-trees.
+- **Index maintenance**: only the companion tables (BM25 postings, vector
+  rows, existence tokens, open-claim pointers) can drift, and
+  `rebuild_indexes()` ends with `REINDEX TABLE CONCURRENTLY`; the bloom
+  `legacy_hash` conversion does not apply
+  ([Index maintenance and transfer](features/postgres-backend.md#index-maintenance-and-transfer-m5)).
+- **Instance TTL**: `_ttl` and `_expire_at` set the `_expires_at` column and
+  need `Meta.ttl` on the model; without it the save raises
+  `BackendCapabilityError`, one of the
+  [Documented divergences](features/postgres-backend.md#records-and-other-behaviour)
+  ([Record expiry](features/postgres-backend.md#record-expiry-m5)).
+- **Exceptions**: `save(migrate_key=True)` that changes a key field raises
+  `BackendCapabilityError`, so the `KeyMutationError` example above has no
+  migration path; create the new record and delete the old one. Postgres also
+  raises the `popoto.backends` errors: `BackendUnavailableError` for an
+  outage, `BackendRetryableError` after retries run out, and
+  `BackendCapabilityError` for an unsupported operation
+  ([Topology and the outage contract](features/postgres-backend.md#topology-and-the-outage-contract)).
+- **Benchmarking**: the external benchmark harness runs on Redis only.
+- **MemoryLifecycle**: tombstones live in `popoto_tombstone`, and a
+  `KeyField` tier is refused when the lifecycle is built (promotion would be
+  a key migration); declare the tier as an `IndexedField`
+  ([Recipes, mixins and the queue](features/postgres-backend.md#recipes-mixins-and-the-queue-m4)).
+- **StreamConsumer**: the same consumer logic (retries, reclaim,
+  dead-lettering) runs over the events tables, with `XAUTOCLAIM` taking
+  pending rows `FOR UPDATE SKIP LOCKED` and blocking reads waiting on
+  `LISTEN` ([Event streams and pub/sub](features/postgres-backend.md#event-streams-and-pubsub-m5)).
+
 ---
 
 ## Magic Numbers
@@ -11525,8 +12116,9 @@ decay rate or a threshold. They are set by argument, not by measurement:
   is also the shortest accepted password in a `scheme://user:password@host`
   URL.
 - `NR_TOMBSTONE_LOG_MAX` (1000) caps the `$NR:{Class}:drops` LIST to a recent
-  window. The `$NR:{Class}:counts` HASH is unbounded and is the authoritative
-  count; the list exists for recent-drop inspection, not auditing at scale.
+  window (on Postgres, the `popoto_never_record_log` rows). The
+  `$NR:{Class}:counts` HASH (`popoto_never_record_count` on Postgres) is
+  unbounded and is the authoritative count; the list exists for recent-drop inspection, not auditing at scale.
 
 `NEVER_RECORD_ENABLED` is not a tuning constant at all — like
 `DATETIME_KEY_LEGACY`, it is a deploy-level kill switch. It is default `True`
@@ -11570,7 +12162,7 @@ is default-on via auto-detection, and setting this `False` restores pre-modulati
 byte-for-byte without editing any model definition.
 
 `VALIDITY_GATE_PRETRIM_MAX_RATIO` ([#585](https://github.com/tomcounsell/popoto/issues/585))
-caps how much larger the validity exclusion sets may be than the partition being scanned before
+is a Redis-only knob. It caps how much larger the validity exclusion sets may be than the partition being scanned before
 the gate abandons the up-front pre-trim (two `ZRANGEBYSCORE` range reads into a Lua lookup table)
 and falls back to the per-member `ZSCORE` pair. Below the cap the pre-trim wins — validity-gated
 `top_by_decay` measured at 0.94x ungated on a 20k partition; the measured crossover is around 5x,
@@ -11925,6 +12517,55 @@ pytest tests/benchmarks/test_factory.py tests/benchmarks/test_split.py tests/ben
 
 Results are saved to `tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json` with a `latest.json` symlink pointing to the most recent run. Each result file includes performance metadata (p50/p95/p99 query durations, wall-clock time, platform info).
 
+## On Postgres
+
+The behavioural constants in the catalog above are read in Python before a
+call reaches the backend, or passed to it as arguments, so they govern a
+Postgres-bound model the same way; the decay ones (`DECAY_RATE`,
+`DECAY_CONFIDENCE_MODULATION_STRENGTH`, `DECAY_CONFIDENCE_MODULATION_ENABLED`)
+and `CONFIDENCE_EVIDENCE_CAP` are read by the Postgres statements directly.
+The sweep results themselves were all measured on Redis: the harness has no
+Postgres leg (see [Parametric Sweep](../features/parametric-sweep.md#on-postgres)).
+
+Redis-path only, with no effect on Postgres:
+
+- `VALIDITY_GATE_PRETRIM_MAX_RATIO`: an argument to the Redis decay script's
+  validity gate. Postgres ANDs the validity gate into the ranking statement
+  ([Validity and supersession](../features/postgres-backend.md#validity-and-supersession-m3)).
+- `SORTED_PUSHDOWN_OVERFETCH_MARGIN`: the Redis filter's sorted-field
+  pushdown. Postgres compiles the filter, order and limit into one `SELECT`.
+- `BLOOM_REBUILD_LOCK_TTL_MS`: the Redis bloom-filter conversion in
+  `rebuild_indexes()`. The Postgres existence filter is an exact table, and
+  `rebuild_indexes()` there runs the backend's index maintenance instead
+  ([Index maintenance and transfer](../features/postgres-backend.md#index-maintenance-and-transfer-m5)).
+
+Postgres-only `PG_*` Defaults, all read at call time. They bound latency,
+connections and maintenance cost rather than a score, so none is swept:
+
+- Connections and outages: `PG_POOL_MAX_SIZE` (4), `PG_CONNECT_TIMEOUT_SECONDS`
+  (5), `PG_STATEMENT_TIMEOUT_MS` (30000), `PG_OUTAGE_LOG_WINDOW_SECONDS` (60),
+  and the first-use DDL waits `PG_DDL_LOCK_TIMEOUT_MS`,
+  `PG_DDL_SCHEMA_LOCK_TIMEOUT_MS` and `PG_DDL_STATEMENT_TIMEOUT_MS`
+  ([Topology and the outage contract](../features/postgres-backend.md#topology-and-the-outage-contract)).
+- Transactions: `PG_TRANSACTION_RETRIES` (3), the retry count for deadlock and serialization failures
+  ([Transactions](../features/postgres-backend.md#transactions)).
+- Search: `PG_VECTOR_EXACT_MAX` (5000), `PG_HNSW_EF_SEARCH` (100),
+  `PG_RECALL_ARM_DEPTH` (50), `PG_BACKFILL_BATCH` (4) and
+  `PG_BACKFILL_BUDGET_SECONDS` (1)
+  ([Search](../features/postgres-backend.md#search-m2b)).
+- Graph: `PG_GRAPH_RECURSIVE_MAX_LAYERS` (2), which picks the recursive or
+  per-layer statement for `propagate()`; both return the same answer
+  ([Co-occurrence graph](../features/postgres-backend.md#co-occurrence-graph-m4)).
+- Expiry: `PG_REAPER_BATCH` (20), `PG_REAPER_INTERVAL_SECONDS` (1) and
+  `PG_REAPER_LOCK_TIMEOUT_MS` (50)
+  ([Record expiry](../features/postgres-backend.md#record-expiry-m5)).
+- Index maintenance: `PG_MAINTAIN_LOCK_TIMEOUT_MS`,
+  `PG_MAINTAIN_STATEMENT_TIMEOUT_MS` and `PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS`
+  ([Index maintenance and transfer](../features/postgres-backend.md#index-maintenance-and-transfer-m5)).
+- Pub/sub listening: the `PG_LISTEN_QUEUE_*`, `PG_LISTEN_KEEPALIVES*` and
+  `PG_LISTEN_LIVENESS_*` constants for the shared `LISTEN` session
+  ([Event streams and pub/sub](../features/postgres-backend.md#event-streams-and-pubsub-m5)).
+
 ---
 
 ## Parametric Sweep
@@ -12094,10 +12735,22 @@ Type[Scenario] x 50          SweepPoint results       SweepPoint results
 ## Design Decisions
 
 - **Deterministic seeds**: `ScenarioFactory.default_seeds()` uses `random.Random(42)` for reproducible seed generation. Each scenario uses `random.Random(seed_id)` internally.
-- **No parallelism**: Sequential execution avoids Redis key conflicts and is fast enough (target: under 60 seconds for a full ratchet run).
+- **No parallelism**: Sequential execution avoids key conflicts in the shared Redis benchmark database and is fast enough (target: under 60 seconds for a full ratchet run).
 - **Immutable harness**: The factory generates standard `Scenario` subclasses. No changes to `SweepRunner`, `ResultsAggregator`, `Scenario` base, metrics, or `apply_overrides`.
 - **No auto-writes**: The ratchet proposes changes for human review. It never modifies `constants.py`.
 - **Tier 4 excluded**: Recipe-layer scenarios use fixture-driven multi-turn simulation, which is too complex for parametric generation. Tier 4 continues to use hand-crafted scenarios exclusively.
+
+## On Postgres
+
+The sweep harness is Redis-only. Generated scenarios write through the global
+Redis client directly (`ScenarioFactory` backdates relevance with a `ZADD` on
+the record's `:relevance` key, and `Scenario` cleanup scans and deletes Redis
+keys), so there is no Postgres leg and every sweep and ratchet number describes
+the Redis path. The `PG_*` Defaults are deliberately excluded from the sweep
+registry (`tests/benchmarks/test_defaults_sync.py` lists them as deployment
+knobs that bound latency or maintenance cost, not scores). See
+[Ranking and memory state](postgres-backend.md#ranking-and-memory-state-m2a)
+for how the ranking constants apply on Postgres.
 
 ## Related
 

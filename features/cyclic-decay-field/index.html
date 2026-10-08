@@ -3617,7 +3617,7 @@
 <h1 id="cyclicdecayfield">CyclicDecayField<a class="headerlink" href="#cyclicdecayfield" title="Permanent link">&para;</a></h1>
 <p>A <code>DecayingSortedField</code> subclass that adds cyclical resonance and homeostatic pressure to time-weighted scoring.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
-<p><code>CyclicDecayField</code> extends <code>DecayingSortedField</code> with two additional temporal forces computed atomically in a single Lua script:</p>
+<p><code>CyclicDecayField</code> extends <code>DecayingSortedField</code> with two additional temporal forces computed atomically in one server-side step (a single Lua script on Redis, one SQL expression on Postgres):</p>
 <ol>
 <li><strong>Cyclical resonance</strong>: Periodic boosts following cosine curves. A record about Q1 renewals can resurface every January.</li>
 <li><strong>Homeostatic pressure</strong>: Urgency that builds linearly the longer an item goes unresolved. Discharged by calling <code>resolve_pressure()</code>.</li>
@@ -3887,9 +3887,23 @@ The scoring formula below, the save-time merge (#698's three-way rule) and
 <code>strengthen_cycle</code> / <code>weaken_cycle</code> / <code>resolve_pressure</code> are the same SQL
 transcriptions of the three scripts, bit for bit, and the ranking has the same
 missing validity gate. See
-<a href="../postgres-backend/#long-tail-fields-m5">Postgres Backend</a>.</p>
+<a href="../postgres-backend/#long-tail-fields-m5">Long-tail fields</a>.</p>
+<p>Differences, from
+<a href="../postgres-backend/#records-and-other-behaviour">Documented divergences</a>:</p>
+<ul>
+<li><code>rank_decayed(zset_key, …)</code> raises <code>BackendCapabilityError</code>; rank with
+  <code>top_by_decay</code> (or <code>top_by_relevance</code>), which work on both backends.</li>
+<li>A NaN score ranks last and every other score keeps its place.</li>
+<li><code>strengthen_cycle</code> / <code>weaken_cycle</code> / <code>resolve_pressure</code> on a record that
+  no longer exists (or has expired) write nothing, where Redis writes orphan
+  companion entries.</li>
+<li>A non-numeric factor raises <code>ValueError</code>, and <code>import_state</code> refuses a
+  non-numeric cycle slot with <code>ValueError</code>.</li>
+<li>The <code>$CyclicDecayF:</code> hashes described under
+  <a href="#redis-data-model">Redis Data Model</a> are not used.</li>
+</ul>
 <h2 id="scoring-formula">Scoring Formula<a class="headerlink" href="#scoring-formula" title="Permanent link">&para;</a></h2>
-<p>The extended Lua script computes per member:</p>
+<p>The extended Lua script (on Postgres, its SQL transcription) computes per member:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>elapsed_days = max((now - last_updated) / 86400, 0.01)
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>decay = base_score * elapsed_days ^ (-decay_rate)
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>cyclic = sum(amplitude * cos(2 * pi * (now - phase) / period) for each cycle)

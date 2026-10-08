@@ -1902,6 +1902,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3338,6 +3349,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3409,7 +3431,7 @@
 </tr>
 <tr>
 <td><code>TDValueField</code> (<code>q_value</code>)</td>
-<td>Learned Q-value stored in the model hash; owns the atomic TD(0) update</td>
+<td>Learned Q-value stored with the record (a hash field on Redis, a column on Postgres); owns the atomic TD(0) update</td>
 </tr>
 <tr>
 <td><code>DecayingSortedField</code> (<code>expected_value</code>)</td>
@@ -3425,11 +3447,11 @@
 </tr>
 <tr>
 <td><code>ExistenceFilter</code></td>
-<td>Bloom filter for fast state lookup</td>
+<td>Fast state lookup (a Bloom filter on Redis, an exact token table on Postgres)</td>
 </tr>
 <tr>
 <td><code>EventStreamMixin</code></td>
-<td>Mutation log via Redis Streams</td>
+<td>Mutation log (Redis Streams on Redis, the events tables on Postgres)</td>
 </tr>
 <tr>
 <td><code>AccessTrackerMixin</code></td>
@@ -3450,7 +3472,7 @@
 <li>Creates a PolicyEntry when evidence exceeds thresholds:</li>
 <li>Minimum events: <code>MIN_EVENTS_FOR_CRYSTALLIZATION</code> (default: 3)</li>
 <li>Wilson CI lower bound &gt; <code>WILSON_CI_THRESHOLD</code> (default: 0.6)</li>
-<li>Uses ExistenceFilter (Bloom filter) to skip likely-duplicate entries</li>
+<li>Uses ExistenceFilter (a Bloom filter on Redis) to skip likely-duplicate entries</li>
 </ol>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.streams</span><span class="w"> </span><span class="kn">import</span> <span class="n">StreamConsumer</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
@@ -3471,9 +3493,9 @@
 <p>Calendar-accurate monthly or yearly discovery (e.g. via variable-length bucketing or a per-bucket-vector chi-squared statistic) is a possible future feature; no such helper ships today.</p>
 <h2 id="q-value-updates">Q-Value Updates<a class="headerlink" href="#q-value-updates" title="Permanent link">&para;</a></h2>
 <p><code>TDValueField</code> owns the TD(0) update. It is a <code>DecimalField</code> subclass that
-stores the learned value in the model hash exactly as a plain <code>DecimalField</code>
-does, and adds one operation the ordinary save path cannot express — an atomic
-read-modify-write of that single hash field:</p>
+stores the learned value exactly as a plain <code>DecimalField</code> does (in the model
+hash on Redis), and adds one operation the ordinary save path cannot express —
+an atomic read-modify-write of that single field:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>Q(s,a) &lt;- Q(s,a) + alpha * [reward + gamma * max_Q(s',a') - Q(s,a)]
 </code></pre></div>
 <ul>
@@ -3481,7 +3503,8 @@ read-modify-write of that single hash field:</p>
 <li><strong>gamma</strong> (discount factor): Importance of future rewards (default: 0.95)</li>
 <li>Returns TD error (positive = better than expected)</li>
 </ul>
-<p>The read and the write happen inside one Lua script, so concurrent updates to
+<p>On Redis the read and the write happen inside one Lua script (on Postgres, one
+<code>UPDATE</code>), so concurrent updates to
 the same entry serialize at the server instead of racing through a client-side
 <code>HGET</code> / compute / <code>HSET</code> round trip.</p>
 <p><code>update_q_value()</code> is a convenience wrapper over
@@ -3491,14 +3514,14 @@ when you are working with <code>PolicyEntry</code>; reach for the field directly
 want TD updates on a model of your own. See
 <a href="../../features/td-value-field/">TDValueField</a>.</p>
 <h3 id="storage-architecture">Storage architecture<a class="headerlink" href="#storage-architecture" title="Permanent link">&para;</a></h3>
-<p>Q-values live in two separate slots that never overwrite each other:</p>
+<p>Q-values live in two separate slots that never overwrite each other (described here as they are on Redis; on Postgres both are columns of the record's row):</p>
 <ul>
-<li><strong><code>q_value</code> (model hash)</strong> — the learned value. Updated by <code>update_q_value()</code> via <code>HGET</code>/<code>HSET</code> on the model hash key. A <code>save()</code> or <code>touch()</code> on the instance does not reset it.</li>
+<li><strong><code>q_value</code> (model hash)</strong> — the learned value. Updated by <code>update_q_value()</code> through the TD script on the model hash key. A <code>save()</code> or <code>touch()</code> on the instance does not reset it.</li>
 <li><strong><code>expected_value</code> (sorted set)</strong> — a pure recency/decay clock. Its score is the decay-weighted access timestamp multiplied by the <code>q_value</code> magnitude. Writing a new TD estimate via <code>update_q_value()</code> does not disturb this clock.</li>
 </ul>
 <p>This separation means <code>Q(s,a)</code> survives every access pattern — <code>save()</code>, <code>touch()</code>, and <code>"acted"</code> outcome resolution — intact.</p>
 <h3 id="negative-q-values">Negative Q-values<a class="headerlink" href="#negative-q-values" title="Permanent link">&para;</a></h3>
-<p><code>DecayingSortedField</code> includes a sign-preserving guard in its decay Lua script: negative Q-values retain their sign through the decay calculation. Policies that have been penalized remain penalized after aging.</p>
+<p><code>DecayingSortedField</code> includes a sign-preserving guard in its decay Lua script (and the Postgres <code>rank_decayed</code> statement keeps the same sign rule): negative Q-values retain their sign through the decay calculation. Policies that have been penalized remain penalized after aging.</p>
 <h2 id="tuning-constants">Tuning Constants<a class="headerlink" href="#tuning-constants" title="Permanent link">&para;</a></h2>
 <p>All numeric constants have been validated via parameter sweep (<a href="../tuning-magic-numbers/">tuning guide</a>):</p>
 <table>
@@ -3546,8 +3569,19 @@ want TD updates on a model of your own. See
 <ul>
 <li><strong>WriteFilterMixin excluded</strong>: The crystallization handler IS the write gate. Dual gating makes debugging harder.</li>
 <li><strong>Recipe, not core</strong>: Lives in <code>popoto.recipes</code> to demonstrate composition without coupling to the ORM core.</li>
-<li><strong>Bloom filter false positives</strong>: ~1% of legitimate crystallizations may be skipped due to ExistenceFilter's error rate. Acceptable for reference use; production systems needing zero misses should add a secondary check.</li>
+<li><strong>Bloom filter false positives</strong> (Redis only): ~1% of legitimate crystallizations may be skipped due to ExistenceFilter's error rate; on Postgres the filter is exact. Acceptable for reference use; production systems needing zero misses should add a secondary check.</li>
 </ul>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>The recipe runs unchanged on a Postgres-bound <code>PolicyEntry</code>: <code>td_update</code> is
+one <code>UPDATE</code> behind the record's key lock, the clock is the <code>expected_value</code>
+column, and the mutation log is appended to the backend's events tables in
+the save's own transaction, where <code>StreamConsumer</code> reads it. The existence
+pre-check is exact there, so the Bloom false-positive skip above does not
+happen, and a reload after <code>touch()</code> sees the touched clock (both rows of
+<a href="../../features/postgres-backend/#records-and-other-behaviour">Documented divergences</a>).
+See <a href="../../features/policy-cache/#on-postgres">PolicyCache</a>,
+<a href="../../features/postgres-backend/#long-tail-fields-m5">Long-tail fields</a> and
+<a href="../../features/postgres-backend/#event-streams-and-pubsub-m5">Event streams and pub/sub</a>.</p>
 
 
 

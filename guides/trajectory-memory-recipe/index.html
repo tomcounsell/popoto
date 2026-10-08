@@ -1981,6 +1981,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3450,6 +3461,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3565,7 +3587,7 @@
 <ul>
 <li><strong>One crystallizer per partition.</strong> Concurrent crystallization of the same partition is not coordinated — two processes reading the same episode set and both calling <code>_observe_episodes</code> will double-observe episodes, inflating confidence counts. Run a single crystallizer per partition.</li>
 <li><strong>NTP-synced writers.</strong> The watermark guarantee assumes episode writers and the crystallizer are within ordinary NTP clock synchronization. A writer whose clock lags behind the current watermark will record episodes with <code>recorded_at</code> timestamps below the watermark; the strict <code>&gt;</code> filter skips those episodes permanently on all subsequent runs.</li>
-<li><strong><code>last_reinforced</code> stores episode time, not crystallize time.</strong> The stored score for <code>last_reinforced</code> equals the maximum observed episode <code>recorded_at</code> — which may predate the wall-clock time the crystallize call ran. An operator running <code>ZSCORE</code> on the recency index reads "newest episode processed", not "when crystallize last ran". Under batched or nightly crystallization, patterns will rank correspondingly older in recency-weighted recall (<code>DEFAULT_SCORE_WEIGHTS</code> weights <code>last_reinforced</code> at 0.4) than they would under wall-clock semantics.</li>
+<li><strong><code>last_reinforced</code> stores episode time, not crystallize time.</strong> The stored score for <code>last_reinforced</code> equals the maximum observed episode <code>recorded_at</code> — which may predate the wall-clock time the crystallize call ran. An operator reading the stored value (<code>ZSCORE</code> on the recency index on Redis, the <code>last_reinforced</code> column on Postgres) reads "newest episode processed", not "when crystallize last ran". Under batched or nightly crystallization, patterns will rank correspondingly older in recency-weighted recall (<code>DEFAULT_SCORE_WEIGHTS</code> weights <code>last_reinforced</code> at 0.4) than they would under wall-clock semantics.</li>
 </ul>
 <p>Note: within the evidence window, the capped-evidence update rule is order-invariant (to ~1e-12), which bounds — but does not eliminate — confidence drift if the single-crystallizer constraint is violated. Do not rely on commutativity as a substitute for the operational constraint.</p>
 <p>The canonical sequence is the <strong>modal trajectory</strong> across the group, with ties broken by the most recent episode. Anything fancier (edit-distance, n-gram similarity, custom aggregators) is intentionally out of scope.</p>
@@ -3711,6 +3733,16 @@ pass <code>confidence_modulation_field=False</code> on <code>last_reinforced</co
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">fp</span> <span class="o">=</span> <span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"deploy"</span><span class="p">,</span> <span class="s2">"env"</span><span class="p">:</span> <span class="s2">"staging"</span><span class="p">})</span>  <span class="c1"># SHA-256, 16 hex chars</span>
 </code></pre></div>
 <p>This produces deterministic 16-hex-char fingerprints suitable for use as a <code>KeyField</code> value.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p><code>TrajectoryMemory</code> runs unchanged on Postgres-bound models; <code>tests/test_trajectory_memory.py</code>
+runs on both backends. Episodes and patterns are rows, <code>crystallize()</code> reads a
+partition's episodes with one filtered query (the watermark comparison runs in
+Python, as on Redis), confidence is one
+<code>UPDATE</code> with the same capped-evidence arithmetic, and <code>recall()</code>'s
+<code>composite_score</code> is one <code>SELECT</code> (<code>rank_composite</code>). The single-crystallizer
+constraint above still applies: nothing in the recipe coordinates two
+crystallizers on either backend. See
+<a href="../../features/postgres-backend/#ranking-and-memory-state-m2a">Ranking and memory state</a>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../../features/context-assembler/">ContextAssembler</a> — retrieval-to-injection bridge for <strong>semantic</strong> memory</li>

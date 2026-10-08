@@ -1315,10 +1315,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#architecture" class="md-nav__link">
+  <a href="#architecture-redis" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Architecture
+        Architecture (Redis)
       
     </span>
   </a>
@@ -1376,10 +1376,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#architecture_1" class="md-nav__link">
+  <a href="#architecture-redis_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Architecture
+        Architecture (Redis)
       
     </span>
   </a>
@@ -1457,6 +1457,17 @@
     <span class="md-ellipsis">
       
         When to Use Which
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
       
     </span>
   </a>
@@ -3401,10 +3412,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#architecture" class="md-nav__link">
+  <a href="#architecture-redis" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Architecture
+        Architecture (Redis)
       
     </span>
   </a>
@@ -3462,10 +3473,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#architecture_1" class="md-nav__link">
+  <a href="#architecture-redis_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Architecture
+        Architecture (Redis)
       
     </span>
   </a>
@@ -3550,6 +3561,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3581,14 +3603,14 @@
 
 
 <h1 id="existencefilter-and-frequencysketch">ExistenceFilter and FrequencySketch<a class="headerlink" href="#existencefilter-and-frequencysketch" title="Permanent link">&para;</a></h1>
-<p>Probabilistic data structures for O(1) membership checks and approximate frequency counting — implemented as Lua-backed Redis operations.</p>
+<p>Probabilistic data structures for O(1) membership checks and approximate frequency counting — implemented as Lua-backed operations on Redis, and as exact token tables on Postgres (see <a href="#on-postgres">On Postgres</a>).</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
 <p>Two complementary primitives for fast pre-filtering:</p>
 <ul>
 <li><strong>ExistenceFilter</strong> — Bloom filter for "do I know anything about X?" checks. False positives possible, false negatives impossible.</li>
 <li><strong>FrequencySketch</strong> — Count-Min Sketch for approximate frequency counting. Overestimates possible, underestimates impossible.</li>
 </ul>
-<p>Both operate entirely in Redis via Lua scripts, requiring no client-side state.</p>
+<p>On Redis both operate entirely server-side via Lua scripts, requiring no client-side state. The descriptions of false positives, overestimates, bit arrays and hash versions below are the Redis implementation.</p>
 <h2 id="existencefilter">ExistenceFilter<a class="headerlink" href="#existencefilter" title="Permanent link">&para;</a></h2>
 <h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
 <table>
@@ -3664,7 +3686,7 @@
 - Duplicate tokens are removed</p>
 <p><strong>Fallback:</strong> If tokenization produces zero tokens (e.g., the fingerprint is all stop words or very short), the raw fingerprint string is stored lowercased as a single entry.</p>
 <p><strong>Query normalization:</strong> Queries are tokenized using the same rules. For multi-token queries, <code>might_exist()</code> returns <code>True</code> if ANY token matches. For <code>get_frequency()</code>, the minimum frequency across tokens is returned.</p>
-<h3 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h3>
+<h3 id="architecture-redis">Architecture (Redis)<a class="headerlink" href="#architecture-redis" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Redis key pattern</strong>: <code>$EF:{ClassName}:{field_name}</code> (string used as bit array, followed by a 4-byte version marker on v2 filters)</li>
 <li><strong>Lua script</strong>: Computes k hash positions, sets/checks bits atomically</li>
@@ -3770,7 +3792,7 @@ reason for the rolling-upgrade rule.</p>
 <p>Tokens from deleted records drop out of a converted filter, as in any rebuild
 from records. Export/import never carries the bits: importing into a
 destination with no filter creates one in the field's <code>hash_version</code>.
-Postgres keeps an exact token table and has no hash to version.</p>
+Postgres keeps an exact token table and has no hash to version (see <a href="#on-postgres">On Postgres</a>).</p>
 <p>Every script declares the filter, the lock and the staging key in <code>KEYS</code>.</p>
 <h2 id="frequencysketch">FrequencySketch<a class="headerlink" href="#frequencysketch" title="Permanent link">&para;</a></h2>
 <h3 id="parameters_1">Parameters<a class="headerlink" href="#parameters_1" title="Permanent link">&para;</a></h3>
@@ -3824,7 +3846,7 @@ Postgres keeps an exact token table and has no hash to version.</p>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># Get approximate count (may overestimate, never underestimates)</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">count</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">freq</span><span class="o">.</span><span class="n">get_frequency</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">"kubernetes"</span><span class="p">)</span>  <span class="c1"># ~2</span>
 </code></pre></div>
-<h3 id="architecture_1">Architecture<a class="headerlink" href="#architecture_1" title="Permanent link">&para;</a></h3>
+<h3 id="architecture-redis_1">Architecture (Redis)<a class="headerlink" href="#architecture-redis_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Redis key pattern</strong>: <code>$FS:{ClassName}:{field_name}</code> (hash with counter rows)</li>
 <li><strong>Lua script</strong>: Each of the 7 rows uses an independent per-row polynomial hash (distinct prime multiplier and modulus per row), restoring the standard CMS error bound: <code>estimate ≤ true + (e/width)·N</code> with probability <code>≥ 1 − e^(−depth)</code>.</li>
@@ -3835,9 +3857,9 @@ Postgres keeps an exact token table and has no hash to version.</p>
 <p>The <code>2000 → 2003</code> default width change and the switch to per-row independent polynomial hashes mean <strong>existing <code>$FS:*</code> Redis/Valkey hashes are keyed under the old arithmetic and are NOT migrated</strong>. There is no migration shim — the substrate layer is beta and breaking the serialized sketch format is acceptable. Any <code>FrequencySketch</code> persisted before this change will return stale counts until the underlying <code>$FS:{Class}:{field}</code> key is deleted (<code>DEL $FS:YourClass:field_name</code>) and the sketch is rebuilt from source events (by re-saving the relevant model instances).</p>
 </div>
 <h2 id="batch-operations">Batch Operations<a class="headerlink" href="#batch-operations" title="Permanent link">&para;</a></h2>
-<p>When checking multiple keywords at once, use the batch methods to avoid per-keyword round-trips to Redis.</p>
+<p>When checking multiple keywords at once, use the batch methods to avoid per-keyword round-trips to the server.</p>
 <h3 id="might_exist_batch">might_exist_batch()<a class="headerlink" href="#might_exist_batch" title="Permanent link">&para;</a></h3>
-<p>Checks multiple fingerprints in a single Redis round-trip via a single Lua EVAL call. Returns a dict mapping each fingerprint to its boolean result.</p>
+<p>Checks multiple fingerprints in one round-trip (a single Lua <code>EVAL</code> on Redis, one <code>SELECT</code> on Postgres). Returns a dict mapping each fingerprint to its boolean result.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Instead of N separate might_exist() calls:</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">bloom</span><span class="o">.</span><span class="n">might_exist_batch</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="p">[</span><span class="s2">"kubernetes"</span><span class="p">,</span> <span class="s2">"deployment"</span><span class="p">,</span> <span class="s2">"postgres"</span><span class="p">])</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># {"kubernetes": True, "deployment": True, "postgres": False}</span>
@@ -3855,7 +3877,7 @@ Postgres keeps an exact token table and has no hash to version.</p>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="k">return</span> <span class="p">[]</span>  <span class="c1"># Nothing relevant -- skip the expensive query</span>
 </code></pre></div>
 <h3 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h3>
-<p>Both batch methods execute a single <code>EVAL</code> command regardless of input size, so latency is constant (one round-trip) rather than linear in the number of keywords. This matters most for hook/subprocess callers where import time and connection setup dominate -- batching amortizes that cost across all keywords.</p>
+<p>Both batch methods execute a single <code>EVAL</code> command (on Postgres, a single <code>SELECT</code>) regardless of input size, so latency is constant (one round-trip) rather than linear in the number of keywords. This matters most for hook/subprocess callers where import time and connection setup dominate -- batching amortizes that cost across all keywords.</p>
 <h3 id="integration-pattern-subprocess-callers">Integration Pattern: Subprocess Callers<a class="headerlink" href="#integration-pattern-subprocess-callers" title="Permanent link">&para;</a></h3>
 <p>For callers that invoke existence checks from a subprocess or hook (where Python import cost is significant), the batch API minimizes overhead:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span><span class="o">,</span><span class="w"> </span><span class="nn">json</span>
@@ -3872,7 +3894,7 @@ Postgres keeps an exact token table and has no hash to version.</p>
 <a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>    <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="p">)</span>
 <a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="n">hits</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
-<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="c1"># One process spawn + one Redis round-trip for all keywords</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="c1"># One process spawn + one round-trip for all keywords</span>
 </code></pre></div>
 <p>Compare this to calling <code>might_exist()</code> in a loop -- each call would either require its own subprocess (paying import cost each time) or a single subprocess with a loop (one import but N round-trips). The batch API gives you one import and one round-trip.</p>
 <h2 id="when-to-use-which">When to Use Which<a class="headerlink" href="#when-to-use-which" title="Permanent link">&para;</a></h2>
@@ -3914,6 +3936,29 @@ Postgres keeps an exact token table and has no hash to version.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On a Postgres-bound model neither primitive is probabilistic. An
+<code>ExistenceFilter</code> is a token table, <code>&lt;table&gt;__&lt;f&gt;__tok (token, _pk)</code>, holding
+each live record's tokens; a <code>FrequencySketch</code> is a count table,
+<code>&lt;table&gt;__&lt;f&gt;__cnt (token, count)</code>. Saves keep both in step; a delete
+cascades to the token rows, while the count table, like the sketch, is never
+decremented. See
+<a href="../postgres-backend/#membership">Membership</a>. The differences are rows in
+<a href="../postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>:</p>
+<ul>
+<li><code>might_exist</code> (and the batch and count forms) is exact: no false
+  positives, and a deleted record is forgotten. On a <code>Meta.ttl</code> model an
+  expired record's tokens stop counting at once.</li>
+<li><code>get_frequency</code> is the exact number of saves, never decremented, as the
+  sketch never is.</li>
+<li><code>fill_ratio</code> is an estimate, <code>1 - e^(-k·n/m)</code> for the <code>n</code> distinct tokens
+  stored, the fill a bloom of the field's parameters would have.</li>
+</ul>
+<p>The Redis-only parts do not apply: <code>capacity</code>, <code>error_rate</code> and the sketch's
+width and depth only size the <code>fill_ratio</code> estimate, <code>hash_version</code> and
+<code>rebuild_indexes(bloom_hash_version=2)</code> are accepted and ignored (there is no
+bit array to version), <code>field.hash_version(Model)</code> returns <code>None</code>, and
+<code>check_indexes()</code> reports no <code>legacy_hash</code> or <code>stale_bloom_staging</code> entries.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../../reference/popoto/fields/existence_filter/">API Reference: ExistenceFilter</a> — method signatures and parameters</li>

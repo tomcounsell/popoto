@@ -1520,6 +1520,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3494,6 +3505,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3874,7 +3896,8 @@ coupling_enabled, pipeline, close_index)</code> — a typed result readable with
 touching Redis, so a caller never has to issue a read just to find out whether
 an annotation actually changed membership.</p>
 <p><code>target_closed</code> is <code>Optional[bool]</code>, and which of the three values you get
-depends on who owns the pipeline:</p>
+depends on who owns the pipeline (on Redis; on Postgres the close is always
+known at the call, see <a href="#on-postgres">On Postgres</a>):</p>
 <ul>
 <li><strong>The journal owns it</strong> (no <code>pipeline=</code> argument): a real <code>bool</code>, read from
   the supersede script's own reply. <code>False</code> for <code>append</code>/<code>confirm</code> (neither
@@ -3915,8 +3938,9 @@ target, a cross-agent target, a backdated <code>at</code>, or a non-transactiona
 caller-supplied pipeline (<code>ValueError</code> in each of those cases). See the
 docstrings on each method for the exact raise conditions.</p>
 <h2 id="the-one-transaction-annotate-and-close-sequence-stated-precisely">The one-transaction annotate-and-close sequence, stated precisely<a class="headerlink" href="#the-one-transaction-annotate-and-close-sequence-stated-precisely" title="Permanent link">&para;</a></h2>
-<p><code>supersede()</code> and <code>retract()</code> queue two things into a single Redis
-<code>MULTI</code>/<code>EXEC</code>: the annotation's <code>save()</code>, and the interval close. Both are
+<p>On Redis, <code>supersede()</code> and <code>retract()</code> queue two things into a single
+<code>MULTI</code>/<code>EXEC</code> (on Postgres, one transaction that does roll back; see
+<a href="#on-postgres">On Postgres</a>): the annotation's <code>save()</code>, and the interval close. Both are
 queued by one call —
 <code>SupersessionProtocol.save_and_invalidate(entry, closes=&lt;the target instance&gt;,
 at=&lt;instant&gt;, pipeline=&lt;the shared pipe&gt;)</code> — which is the supported combined
@@ -3956,7 +3980,7 @@ without the close. Between the transaction opening and <code>EXEC</code>, no oth
 client can see the annotation entry (it isn't written yet) or a closed target
 with no annotation (the invalidate script hasn't run yet); when <code>EXEC</code>
 returns, both are true together.</p>
-<p><strong>The property that does not hold, and is not claimed: rollback.</strong> Redis
+<p><strong>The property that does not hold on Redis, and is not claimed: rollback.</strong> Redis
 <code>MULTI</code>/<code>EXEC</code> does not roll back sibling commands when one command errors at
 execute time — this is documented behavior, and it is the same rationale the
 ORM's own eager-EVAL design (issue #476) already depends on. A command-level
@@ -4155,8 +4179,8 @@ occurrence of the record's <em>key</em> does not:</p>
    That Set belongs to the <em>annotating</em> record, not the erased one, so the
    sweep does not touch it and the erased key survives, escaped, inside its
    name. Erase the annotations too if that matters.</li>
-<li><strong><code>stream:journal</code> entries.</strong> Every journal mutation is <code>XADD</code>ed to the
-   event stream carrying the record's <code>pk</code> and its <code>target</code> metadata field,
+<li><strong><code>stream:journal</code> entries.</strong> Every journal mutation is appended to the
+   event stream (<code>XADD</code> on Redis, the backend's events table on Postgres) carrying the record's <code>pk</code> and its <code>target</code> metadata field,
    retained up to <code>_stream_max_length</code> (10,000 entries) regardless of
    <code>hard_delete</code>. Trim or delete the stream separately if required.</li>
 </ol>
@@ -4183,9 +4207,35 @@ occurrence of the record's <em>key</em> does not:</p>
   Adding one means declaring your own model with the journal field set plus
   the embedding field — <strong>not</strong> subclassing <code>JournalEntry</code>, which loses every
   field (see <a href="#do-not-subclass-journalentry">Do not subclass <code>JournalEntry</code></a>).</li>
-<li><strong><code>target_closed</code> is <code>None</code>, not <code>False</code>, on a caller-supplied pipeline.</strong>
+<li><strong><code>target_closed</code> is <code>None</code>, not <code>False</code>, on a caller-supplied Redis pipeline.</strong>
   Nothing has executed at that point, so the journal reports "unknown" rather
   than guessing. Read <code>results[close_index]</code> after your own <code>execute()</code>.</li>
+</ul>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>A Postgres-bound <code>JournalEntry</code> is a row with <code>ValidityField</code>'s interval and
+chain columns on it, and <code>supersede()</code> / <code>retract()</code> append the annotation
+and close the target in <strong>one transaction</strong>: the journal's own, or the
+caller's when the backend's <code>transaction()</code> or a <code>popoto.batch()</code> is passed
+as <code>pipeline=</code>. Any other <code>pipeline=</code> object, a Redis pipeline included, is
+refused with <code>ValueError</code> before anything is written. Its mutation log is the
+backend's events table, appended in the same transaction, so a rolled-back
+write leaves no stream entry, and a Postgres-bound journal and its reconciler
+send Redis no command. See
+<a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Recipes, mixins and the queue</a>.</p>
+<p>What differs from the Redis sections above (the <code>ProvenanceJournal</code> with a
+caller <code>pipeline=</code> row and the <code>AppendOnlyMixin</code> row of
+<a href="../postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>):</p>
+<ul>
+<li>With a caller unit of work, <code>target_closed</code> is the real <code>bool</code> at the call
+  and <code>close_index</code> is <code>None</code>; there is nothing to read after <code>execute()</code>.</li>
+<li>Rollback holds: a close that fails after the pre-flight raises its typed
+  error and the annotation is rolled back with it, where Redis keeps the
+  queued annotation.</li>
+<li>The append-only guard reads inside the transaction, so two saves of one key
+  in one unit of work refuse the second (TOCTOU shape 2 above is closed).</li>
+<li><code>hard_delete</code> deletes the row (its open-claim pointer cascades) and clears
+  the <code>&lt;f&gt;__supersedes</code> / <code>&lt;f&gt;__superseded_by</code> columns of the records that
+  named it. Stream entries are not removed, as on Redis.</li>
 </ul>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>

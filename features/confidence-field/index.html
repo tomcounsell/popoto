@@ -1419,6 +1419,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#working-example-popoto-kitchen" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3639,6 +3650,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#working-example-popoto-kitchen" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3681,10 +3703,11 @@
 
 
 <h1 id="confidencefield">ConfidenceField<a class="headerlink" href="#confidencefield" title="Permanent link">&para;</a></h1>
-<p>A <code>Field</code> subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule.</p>
+<p>A <code>Field</code> subclass that tracks confidence metadata per member, updated atomically (a Lua script on Redis, one <code>UPDATE</code> on Postgres) using a capped-evidence Bayesian rule.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
 <p><code>ConfidenceField</code> maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. The update rule is a <strong>capped-evidence Bayesian</strong> (also called "forgetful Bayesian"): within an evidence window it is an exact running mean — order-invariant and prior-weighted; beyond the cap it is bounded exponential forgetting at a constant rate.</p>
-<p>The field stores its metadata in a companion Redis hash:</p>
+<p>On Redis the field stores its metadata in a companion hash (on Postgres, in
+four columns on the record's row; see <a href="#on-postgres">On Postgres</a>):</p>
 <ul>
 <li><code>{confidence, evidence_count, corroborations, contradictions}</code></li>
 </ul>
@@ -3715,7 +3738,7 @@
 <td><code>partition_by</code></td>
 <td>str or tuple</td>
 <td><code>()</code></td>
-<td>Field name(s) to partition the companion hash by. Splits the single Redis hash into per-partition hashes for efficient reads.</td>
+<td>Field name(s) to partition the companion hash by. On Redis, splits the single companion hash into per-partition hashes for efficient reads.</td>
 </tr>
 </tbody>
 </table>
@@ -3826,7 +3849,7 @@
 <p>Atomically update confidence using the capped-evidence Bayesian formula.</p>
 <ul>
 <li><strong>signal</strong>: Float 0-1. Values &gt;= 0.5 corroborate, &lt; 0.5 contradict.</li>
-<li><strong>pipeline</strong>: Optional Redis pipeline to queue the update on.</li>
+<li><strong>pipeline</strong>: Optional Redis pipeline to queue the update on (on Postgres, the backend's <code>transaction()</code> or a <code>popoto.batch()</code>; see <a href="#on-postgres">On Postgres</a>).</li>
 <li><strong>Returns</strong>: The new confidence value — or <code>None</code> when queued on a pipeline.</li>
 <li><strong>Raises</strong>: <code>TypeError</code> if unsaved or wrong field type; <code>ValueError</code> if signal out of range.</li>
 </ul>
@@ -3845,7 +3868,7 @@ records is now one <code>execute()</code> (<code>inject_context</code> went from
 turn to 8). If you passed <code>pipeline=</code> before and relied on the returned
 float, read the value back with <code>get_confidence</code> after <code>execute()</code>.</p>
 <blockquote>
-<p><strong>Warning</strong>: All processes calling <code>update_confidence</code> on the same companion hash entry must use identical <code>evidence_cap</code> values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.</p>
+<p><strong>Warning</strong>: All processes calling <code>update_confidence</code> on the same companion hash entry must use identical <code>evidence_cap</code> values. The cap is not stored (on either backend) and divergent values produce silently inconsistent update trajectories.</p>
 </blockquote>
 <h3 id="confidencefieldget_confidenceinstance-field_name"><code>ConfidenceField.get_confidence(instance, field_name)</code><a class="headerlink" href="#confidencefieldget_confidenceinstance-field_name" title="Permanent link">&para;</a></h3>
 <p>Read the current confidence value.</p>
@@ -3859,7 +3882,7 @@ float, read the value back with <code>get_confidence</code> after <code>execute(
 </ul>
 <p>Note: <code>evidence_count</code> reflects real observations only — the prior pseudo-count is internal to the Lua update and does not inflate this counter.</p>
 <h3 id="inspecting-companion-hash-keys">Inspecting Companion Hash Keys<a class="headerlink" href="#inspecting-companion-hash-keys" title="Permanent link">&para;</a></h3>
-<p>Each <code>ConfidenceField</code> stores its confidence metadata in a companion Redis hash alongside
+<p>On Redis, each <code>ConfidenceField</code> stores its confidence metadata in a companion hash alongside
 the main model hash. The public companion key methods let you build these Redis keys
 for debugging, monitoring, or direct Redis inspection without reverse-engineering
 suffix conventions.</p>
@@ -3974,6 +3997,31 @@ forgetting is persisted back onto the record: the decay path is a pure reader of
 </tr>
 </tbody>
 </table>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On a Postgres-bound model the attribute is its own <code>double precision</code>
+column and the evidence state is four more on the record's row
+(<code>&lt;f&gt;__conf</code>, <code>&lt;f&gt;__n</code>, <code>&lt;f&gt;__corr</code>, <code>&lt;f&gt;__contra</code>); <code>NULL</code> state is the seed,
+so a re-save never resets it. <code>update_confidence</code> is the script's arithmetic
+as one <code>UPDATE … RETURNING</code>, so the stored confidence is bit-identical to the
+Redis one (see
+<a href="../postgres-backend/#ranking-and-memory-state-m2a">Ranking and memory state</a>).
+A partitioned field needs no separate storage: its partition is the row's
+partition columns, and queries still need the partition filters.</p>
+<ul>
+<li><code>pipeline=</code> takes the backend's <code>transaction()</code> or a <code>popoto.batch()</code>: the
+  update runs inside it and its value is returned and the attribute synced
+  (the <code>update_confidence(…, pipeline=uow)</code> row in
+  <a href="../postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>).
+  A Redis pipeline cannot carry the write: the update runs at once and
+  returns <code>None</code>.</li>
+<li>The companion-hash APIs work on Redis structures only and raise
+  <code>BackendCapabilityError</code> on a Postgres model: <code>get_confidence_filtered</code>
+  (an <code>HSCAN</code> pattern) and <code>migrate_to_partitioned</code>. <code>get_data_hash_key</code> and
+  the key patterns above name Redis keys that a Postgres model never writes.</li>
+<li>The state of an expired <code>Meta.ttl</code> record goes with its row; see the
+  expired-record state row in
+  <a href="../postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>.</li>
+</ul>
 <h2 id="working-example-popoto-kitchen">Working Example: Popoto Kitchen<a class="headerlink" href="#working-example-popoto-kitchen" title="Permanent link">&para;</a></h2>
 <p>The <a href="https://github.com/tomcounsell/popoto/tree/main/examples">Popoto Kitchen example app</a>
 includes a <code>ReviewScore</code> model that demonstrates <code>ConfidenceField</code> with

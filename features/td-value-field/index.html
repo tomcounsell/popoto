@@ -3359,7 +3359,7 @@
 
 
 <h1 id="tdvaluefield">TDValueField<a class="headerlink" href="#tdvaluefield" title="Permanent link">&para;</a></h1>
-<p>A <code>DecimalField</code> subclass that adds one operation the ordinary save path cannot express: an <strong>atomic temporal-difference update</strong> of a single hash field, performed server-side in one Lua script.</p>
+<p>A <code>DecimalField</code> subclass that adds one operation the ordinary save path cannot express: an <strong>atomic temporal-difference update</strong> of a single hash field, performed server-side in one step (a Lua script on Redis, one <code>UPDATE</code> on Postgres).</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
 <p><code>TDValueField</code> stores a learned value — a Q-value, in reinforcement-learning terms — in the model hash exactly as a plain <code>DecimalField</code> does. Nothing lives outside the hash. What it adds is <code>td_update()</code>, which applies the TD(0) rule</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Q(s,a) &lt;- Q(s,a) + alpha * [reward + gamma * max Q(s',a') - Q(s,a)]
@@ -3450,13 +3450,26 @@
 <h2 id="the-in-memory-attribute-is-not-refreshed">The in-memory attribute is not refreshed<a class="headerlink" href="#the-in-memory-attribute-is-not-refreshed" title="Permanent link">&para;</a></h2>
 <p><code>td_update()</code> returns the TD error, not the new value, and does not write back to the Python object. This is intentional: recomputing the new value client-side would duplicate the arithmetic and the encoding this field exists to own, and re-reading it would add a command to a wire sequence that is otherwise exactly one script call. <strong>Reload the instance to observe the new value.</strong></p>
 <h2 id="storage-and-encoding">Storage and encoding<a class="headerlink" href="#storage-and-encoding" title="Permanent link">&para;</a></h2>
-<p>The value is written as the <code>__Decimal__</code> tagged dict that every <code>DecimalField</code> uses, encoded with <code>cmsgpack</code> inside the script so it is byte-interchangeable with what Python's msgpack encoder produces.</p>
+<p>On Redis, the value is written as the <code>__Decimal__</code> tagged dict that every <code>DecimalField</code> uses, encoded with <code>cmsgpack</code> inside the script so it is byte-interchangeable with what Python's msgpack encoder produces.</p>
 <p>This matters beyond tidiness. <code>DecayingSortedField</code> reads a <code>base_score_field</code> straight out of the member's hash in its own Lua and falls back to <code>1.0</code> for any encoding it does not recognize. A <code>PolicyEntry</code> declares <code>expected_value = DecayingSortedField(base_score_field="q_value")</code>, so if <code>TDValueField</code> wrote any other encoding, the decay clock would silently fall back to a magnitude of 1.0 rather than error. Keeping <code>TDValueField</code> a <code>DecimalField</code> subclass — <code>type is Decimal</code> — is what keeps that contract.</p>
 <h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
 <p>On a Postgres-bound model (#759 M5) the field is a <code>numeric</code> column and
 <code>td_update</code> is one <code>UPDATE</code> with the script's arithmetic in the same order,
 storing the script's <code>tostring</code> of the new value and replying its <code>tostring</code>
-of the TD error. See <a href="../postgres-backend/#long-tail-fields-m5">Postgres Backend</a>.</p>
+of the TD error. A <code>DecayingSortedField</code> that names the field as its
+<code>base_score_field</code> reads the column. See
+<a href="../postgres-backend/#long-tail-fields-m5">Long-tail fields</a>.</p>
+<p>Differences, from
+<a href="../postgres-backend/#records-and-other-behaviour">Documented divergences</a>:</p>
+<ul>
+<li><code>td_update(…, pipeline=uow)</code> with a Postgres <code>transaction()</code> or
+  <code>popoto.batch()</code> runs inside it and returns the TD error; a Redis pipeline
+  queues the script and returns <code>None</code>.</li>
+<li>On a record that no longer exists (or has expired) nothing is written, and
+  the reply is computed from <code>Q = 0</code>; Redis writes an orphan hash entry.</li>
+<li>A NaN value is stored as <code>numeric</code> <code>NaN</code>, and a stored <code>Decimal('-0')</code>
+  reads as <code>0</code> (the stored values compare equal).</li>
+</ul>
 <h2 id="valkey-compatibility">Valkey compatibility<a class="headerlink" href="#valkey-compatibility" title="Permanent link">&para;</a></h2>
 <p>Core commands only — <code>HGET</code>, <code>HSET</code>, and <code>cmsgpack</code> inside the script. No Redis-module commands (<code>BF.</code>, <code>CMS.</code>, <code>TOPK.</code>, <code>TS.</code>, <code>JSON.</code>), so this field behaves identically on Redis and Valkey.</p>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>

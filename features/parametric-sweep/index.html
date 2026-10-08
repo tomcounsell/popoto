@@ -2123,6 +2123,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3328,6 +3339,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3542,11 +3564,21 @@
 <h2 id="design-decisions">Design Decisions<a class="headerlink" href="#design-decisions" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Deterministic seeds</strong>: <code>ScenarioFactory.default_seeds()</code> uses <code>random.Random(42)</code> for reproducible seed generation. Each scenario uses <code>random.Random(seed_id)</code> internally.</li>
-<li><strong>No parallelism</strong>: Sequential execution avoids Redis key conflicts and is fast enough (target: under 60 seconds for a full ratchet run).</li>
+<li><strong>No parallelism</strong>: Sequential execution avoids key conflicts in the shared Redis benchmark database and is fast enough (target: under 60 seconds for a full ratchet run).</li>
 <li><strong>Immutable harness</strong>: The factory generates standard <code>Scenario</code> subclasses. No changes to <code>SweepRunner</code>, <code>ResultsAggregator</code>, <code>Scenario</code> base, metrics, or <code>apply_overrides</code>.</li>
 <li><strong>No auto-writes</strong>: The ratchet proposes changes for human review. It never modifies <code>constants.py</code>.</li>
 <li><strong>Tier 4 excluded</strong>: Recipe-layer scenarios use fixture-driven multi-turn simulation, which is too complex for parametric generation. Tier 4 continues to use hand-crafted scenarios exclusively.</li>
 </ul>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>The sweep harness is Redis-only. Generated scenarios write through the global
+Redis client directly (<code>ScenarioFactory</code> backdates relevance with a <code>ZADD</code> on
+the record's <code>:relevance</code> key, and <code>Scenario</code> cleanup scans and deletes Redis
+keys), so there is no Postgres leg and every sweep and ratchet number describes
+the Redis path. The <code>PG_*</code> Defaults are deliberately excluded from the sweep
+registry (<code>tests/benchmarks/test_defaults_sync.py</code> lists them as deployment
+knobs that bound latency or maintenance cost, not scores). See
+<a href="../postgres-backend/#ranking-and-memory-state-m2a">Ranking and memory state</a>
+for how the ranking constants apply on Postgres.</p>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../../guides/tuning-magic-numbers/">Tuning Magic Numbers</a> -- constant catalog and benchmark methodology</li>

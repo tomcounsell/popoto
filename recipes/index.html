@@ -2263,6 +2263,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3836,6 +3847,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3875,7 +3897,7 @@ risk of version skew between the code on disk and the version reported at
 runtime.</p>
 <h2 id="bulk-operations">Bulk Operations<a class="headerlink" href="#bulk-operations" title="Permanent link">&para;</a></h2>
 <p>Popoto provides bulk operation methods for efficient batch processing using
-Redis pipelines. These methods significantly reduce network round-trips
+Redis pipelines (one transaction per call on Postgres). These methods significantly reduce network round-trips
 compared to individual operations, making them ideal for importing data,
 batch updates, and cleanup tasks.</p>
 <h3 id="choosing-a-batch-size">Choosing a Batch Size<a class="headerlink" href="#choosing-a-batch-size" title="Permanent link">&para;</a></h3>
@@ -4142,7 +4164,7 @@ documentation and examples.</p>
 <td><code>_expire_at</code></td>
 <td><code>datetime</code> or <code>None</code></td>
 <td><code>None</code></td>
-<td>Absolute expiration timestamp. Calls Redis <code>EXPIREAT</code> on save.</td>
+<td>Absolute expiration timestamp. Calls Redis <code>EXPIREAT</code> on save (sets the <code>_expires_at</code> column on Postgres).</td>
 </tr>
 </tbody>
 </table>
@@ -4555,7 +4577,7 @@ non-negative literal.</p>
 <p>The sweep grid and the metrics it reports are described in
 <a href="../features/parametric-sweep/">Parametric Sweep</a>.</p>
 <h2 id="streamconsumer">StreamConsumer<a class="headerlink" href="#streamconsumer" title="Permanent link">&para;</a></h2>
-<p>A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.</p>
+<p>A Redis Streams consumer group framework for background processing (on Postgres it runs over the backend's events tables). Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.</p>
 <h3 id="basic-usage">Basic usage<a class="headerlink" href="#basic-usage" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.streams</span><span class="w"> </span><span class="kn">import</span> <span class="n">StreamConsumer</span>
 <a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>
@@ -4710,6 +4732,41 @@ non-negative literal.</p>
 <a id="__codelineno-24-19" name="__codelineno-24-19" href="#__codelineno-24-19"></a><span class="n">count</span> <span class="o">=</span> <span class="n">consumer</span><span class="o">.</span><span class="n">process_batch_sync</span><span class="p">()</span>
 </code></pre></div>
 <p>This is generic infrastructure — the processing logic is application code. One use case: pattern crystallization from raw events into <code>PolicyCache</code> entries.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>Most of these recipes run unchanged on a Postgres-bound model. What differs:</p>
+<ul>
+<li><strong>Bulk operations</strong>: <code>bulk_create</code>, <code>bulk_update</code> and <code>bulk_delete</code> each
+  run inside one <code>transaction()</code>, so a unique conflict anywhere rolls back the
+  whole batch (<a href="../features/postgres-backend/#transactions">Transactions</a>).
+  The warning about raw <code>DEL</code>/<code>FLUSHDB</code> is Redis advice; on Postgres the
+  secondary indexes are the table's own B-trees.</li>
+<li><strong>Index maintenance</strong>: only the companion tables (BM25 postings, vector
+  rows, existence tokens, open-claim pointers) can drift, and
+  <code>rebuild_indexes()</code> ends with <code>REINDEX TABLE CONCURRENTLY</code>; the bloom
+  <code>legacy_hash</code> conversion does not apply
+  (<a href="../features/postgres-backend/#index-maintenance-and-transfer-m5">Index maintenance and transfer</a>).</li>
+<li><strong>Instance TTL</strong>: <code>_ttl</code> and <code>_expire_at</code> set the <code>_expires_at</code> column and
+  need <code>Meta.ttl</code> on the model; without it the save raises
+  <code>BackendCapabilityError</code>, one of the
+  <a href="../features/postgres-backend/#records-and-other-behaviour">Documented divergences</a>
+  (<a href="../features/postgres-backend/#record-expiry-m5">Record expiry</a>).</li>
+<li><strong>Exceptions</strong>: <code>save(migrate_key=True)</code> that changes a key field raises
+  <code>BackendCapabilityError</code>, so the <code>KeyMutationError</code> example above has no
+  migration path; create the new record and delete the old one. Postgres also
+  raises the <code>popoto.backends</code> errors: <code>BackendUnavailableError</code> for an
+  outage, <code>BackendRetryableError</code> after retries run out, and
+  <code>BackendCapabilityError</code> for an unsupported operation
+  (<a href="../features/postgres-backend/#topology-and-the-outage-contract">Topology and the outage contract</a>).</li>
+<li><strong>Benchmarking</strong>: the external benchmark harness runs on Redis only.</li>
+<li><strong>MemoryLifecycle</strong>: tombstones live in <code>popoto_tombstone</code>, and a
+  <code>KeyField</code> tier is refused when the lifecycle is built (promotion would be
+  a key migration); declare the tier as an <code>IndexedField</code>
+  (<a href="../features/postgres-backend/#recipes-mixins-and-the-queue-m4">Recipes, mixins and the queue</a>).</li>
+<li><strong>StreamConsumer</strong>: the same consumer logic (retries, reclaim,
+  dead-lettering) runs over the events tables, with <code>XAUTOCLAIM</code> taking
+  pending rows <code>FOR UPDATE SKIP LOCKED</code> and blocking reads waiting on
+  <code>LISTEN</code> (<a href="../features/postgres-backend/#event-streams-and-pubsub-m5">Event streams and pub/sub</a>).</li>
+</ul>
 
 
 

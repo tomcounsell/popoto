@@ -968,6 +968,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3395,6 +3406,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3512,7 +3534,7 @@ that the model can actually quote something you injected.</p>
 mid-session. When they are only read once, writing to them is invisible to
 the prefix, so capture costs nothing.</p>
 <p>Popoto's write path holds this by construction: the <code>Stop</code> hook writes to
-Redis and touches no file the harness is reading. Nothing in
+the store (Redis, for <code>MemoryService</code>) and touches no file the harness is reading. Nothing in
 <code>MemoryService.capture()</code> mutates prompt-visible state.</p>
 <p>The rule has a price, and you should pay it knowingly: a memory written at
 turn five does not reach any session-start file until the next session.
@@ -3655,6 +3677,17 @@ the tail.</p>
 block. Run the same scripted session twice, once with memory enabled and
 once without, and compare total cache creation plus uncached input. That
 difference is what memory actually costs.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>The four rules are about prompt position, not storage, so they hold unchanged
+for a Postgres-bound model: <code>ContextAssembler.assemble(exclude_keys=...)</code> and
+<code>SubconsciousMemory.inject_context(exclude_keys=...)</code> filter candidates before
+selection on both backends (the suppression tests in
+<code>tests/test_context_assembler.py</code> run on both legs). The automatic per-session suppression is the part that does not
+carry over: it lives in <code>MemoryService</code>, the Redis-only harness integration,
+which keeps the injected keys in a Redis set. A Postgres application gets the
+same effect by passing the previous turns' keys itself. See
+<a href="../postgres-backend/#contextassembler-m2c">ContextAssembler</a> and
+<a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Recipes, mixins and the queue</a>.</p>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../harness-integration/">Harness Integration</a> — where the hooks attach</li>

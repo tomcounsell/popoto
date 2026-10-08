@@ -1638,6 +1638,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3216,6 +3227,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3352,7 +3374,7 @@ re-expose the cooperative degrade the gate exists to invert. Bare <code>assemble
 keeps its cooperative default byte-identical; only the resolver path inverts
 degrade. Per-record gate errors deny that record with a log line.</p>
 <p>Runtime gate failures fail <strong>closed</strong> without raising: tag-resolution failure
-(e.g. Redis errors mid-gating) returns an empty sheet plus a
+(e.g. a storage error mid-gating, on either backend) returns an empty sheet plus a
 <code>reader gate failed closed</code> warning. Gate shortfall back-fills from arm
 headroom with capped re-pulls; a shortfall that survives the cap lands as a
 split <code>warnings</code> entry, not a silent cut. <code>metadata["reader_gate"]</code> reports
@@ -3377,6 +3399,16 @@ override for the staleness read) and compare <code>serialize()</code> output.
 <code>superseded_collapsed</code>, <code>disjunct_groups</code>, <code>unresolved</code>, <code>gate_rejected</code>,
 <code>validity_excluded</code>, <code>assembles</code>, <code>chain_reads</code>), the merged <code>policy</code>, and the
 <code>reader</code>.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>The resolver runs unchanged on a Postgres-bound journal (#759 M4); every test
+in <code>tests/test_view_resolver.py</code> runs on both backends except one that counts
+the Redis tag-set read. On Postgres the reader gate's tag check is one id-only
+<code>SELECT</code> (<code>&amp;&amp;</code> for <code>any</code>, <code>@&gt;</code> for <code>all</code>), and each chain read
+(<code>annotations_for</code>) is an ordinary indexed <code>filter()</code> on the journal's table.
+The fold itself touches no storage. Retrieval inherits the assembler's
+Postgres behaviour, including its documented differences; see
+<a href="../postgres-backend/#contextassembler-m2c">ContextAssembler</a> and
+<a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Recipes, mixins and the queue</a>.</p>
 
 
 

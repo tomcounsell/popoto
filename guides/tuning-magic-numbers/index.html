@@ -2298,6 +2298,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3724,6 +3735,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3926,8 +3948,9 @@ decay rate or a threshold. They are set by argument, not by measurement:</p>
   is also the shortest accepted password in a <code>scheme://user:password@host</code>
   URL.</li>
 <li><code>NR_TOMBSTONE_LOG_MAX</code> (1000) caps the <code>$NR:{Class}:drops</code> LIST to a recent
-  window. The <code>$NR:{Class}:counts</code> HASH is unbounded and is the authoritative
-  count; the list exists for recent-drop inspection, not auditing at scale.</li>
+  window (on Postgres, the <code>popoto_never_record_log</code> rows). The
+  <code>$NR:{Class}:counts</code> HASH (<code>popoto_never_record_count</code> on Postgres) is
+  unbounded and is the authoritative count; the list exists for recent-drop inspection, not auditing at scale.</li>
 </ul>
 <p><code>NEVER_RECORD_ENABLED</code> is not a tuning constant at all — like
 <code>DATETIME_KEY_LEGACY</code>, it is a deploy-level kill switch. It is default <code>True</code>
@@ -3996,7 +4019,7 @@ data-loss behavior on the first save after upgrading an over-cap deployment.</p>
 is default-on via auto-detection, and setting this <code>False</code> restores pre-modulation behavior
 byte-for-byte without editing any model definition.</p>
 <p><code>VALIDITY_GATE_PRETRIM_MAX_RATIO</code> (<a href="https://github.com/tomcounsell/popoto/issues/585">#585</a>)
-caps how much larger the validity exclusion sets may be than the partition being scanned before
+is a Redis-only knob. It caps how much larger the validity exclusion sets may be than the partition being scanned before
 the gate abandons the up-front pre-trim (two <code>ZRANGEBYSCORE</code> range reads into a Lua lookup table)
 and falls back to the per-member <code>ZSCORE</code> pair. Below the cap the pre-trim wins — validity-gated
 <code>top_by_decay</code> measured at 0.94x ungated on a 20k partition; the measured crossover is around 5x,
@@ -4606,6 +4629,53 @@ blast radius</em>, not answer quality.</p>
 <a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>pytest<span class="w"> </span>tests/benchmarks/test_factory.py<span class="w"> </span>tests/benchmarks/test_split.py<span class="w"> </span>tests/benchmarks/test_ratchet.py<span class="w"> </span>-x<span class="w"> </span>-q
 </code></pre></div>
 <p>Results are saved to <code>tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json</code> with a <code>latest.json</code> symlink pointing to the most recent run. Each result file includes performance metadata (p50/p95/p99 query durations, wall-clock time, platform info).</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>The behavioural constants in the catalog above are read in Python before a
+call reaches the backend, or passed to it as arguments, so they govern a
+Postgres-bound model the same way; the decay ones (<code>DECAY_RATE</code>,
+<code>DECAY_CONFIDENCE_MODULATION_STRENGTH</code>, <code>DECAY_CONFIDENCE_MODULATION_ENABLED</code>)
+and <code>CONFIDENCE_EVIDENCE_CAP</code> are read by the Postgres statements directly.
+The sweep results themselves were all measured on Redis: the harness has no
+Postgres leg (see <a href="../../features/parametric-sweep/#on-postgres">Parametric Sweep</a>).</p>
+<p>Redis-path only, with no effect on Postgres:</p>
+<ul>
+<li><code>VALIDITY_GATE_PRETRIM_MAX_RATIO</code>: an argument to the Redis decay script's
+  validity gate. Postgres ANDs the validity gate into the ranking statement
+  (<a href="../../features/postgres-backend/#validity-and-supersession-m3">Validity and supersession</a>).</li>
+<li><code>SORTED_PUSHDOWN_OVERFETCH_MARGIN</code>: the Redis filter's sorted-field
+  pushdown. Postgres compiles the filter, order and limit into one <code>SELECT</code>.</li>
+<li><code>BLOOM_REBUILD_LOCK_TTL_MS</code>: the Redis bloom-filter conversion in
+  <code>rebuild_indexes()</code>. The Postgres existence filter is an exact table, and
+  <code>rebuild_indexes()</code> there runs the backend's index maintenance instead
+  (<a href="../../features/postgres-backend/#index-maintenance-and-transfer-m5">Index maintenance and transfer</a>).</li>
+</ul>
+<p>Postgres-only <code>PG_*</code> Defaults, all read at call time. They bound latency,
+connections and maintenance cost rather than a score, so none is swept:</p>
+<ul>
+<li>Connections and outages: <code>PG_POOL_MAX_SIZE</code> (4), <code>PG_CONNECT_TIMEOUT_SECONDS</code>
+  (5), <code>PG_STATEMENT_TIMEOUT_MS</code> (30000), <code>PG_OUTAGE_LOG_WINDOW_SECONDS</code> (60),
+  and the first-use DDL waits <code>PG_DDL_LOCK_TIMEOUT_MS</code>,
+  <code>PG_DDL_SCHEMA_LOCK_TIMEOUT_MS</code> and <code>PG_DDL_STATEMENT_TIMEOUT_MS</code>
+  (<a href="../../features/postgres-backend/#topology-and-the-outage-contract">Topology and the outage contract</a>).</li>
+<li>Transactions: <code>PG_TRANSACTION_RETRIES</code> (3), the retry count for deadlock and serialization failures
+  (<a href="../../features/postgres-backend/#transactions">Transactions</a>).</li>
+<li>Search: <code>PG_VECTOR_EXACT_MAX</code> (5000), <code>PG_HNSW_EF_SEARCH</code> (100),
+  <code>PG_RECALL_ARM_DEPTH</code> (50), <code>PG_BACKFILL_BATCH</code> (4) and
+  <code>PG_BACKFILL_BUDGET_SECONDS</code> (1)
+  (<a href="../../features/postgres-backend/#search-m2b">Search</a>).</li>
+<li>Graph: <code>PG_GRAPH_RECURSIVE_MAX_LAYERS</code> (2), which picks the recursive or
+  per-layer statement for <code>propagate()</code>; both return the same answer
+  (<a href="../../features/postgres-backend/#co-occurrence-graph-m4">Co-occurrence graph</a>).</li>
+<li>Expiry: <code>PG_REAPER_BATCH</code> (20), <code>PG_REAPER_INTERVAL_SECONDS</code> (1) and
+  <code>PG_REAPER_LOCK_TIMEOUT_MS</code> (50)
+  (<a href="../../features/postgres-backend/#record-expiry-m5">Record expiry</a>).</li>
+<li>Index maintenance: <code>PG_MAINTAIN_LOCK_TIMEOUT_MS</code>,
+  <code>PG_MAINTAIN_STATEMENT_TIMEOUT_MS</code> and <code>PG_MAINTAIN_CLEANUP_LOCK_TIMEOUT_MS</code>
+  (<a href="../../features/postgres-backend/#index-maintenance-and-transfer-m5">Index maintenance and transfer</a>).</li>
+<li>Pub/sub listening: the <code>PG_LISTEN_QUEUE_*</code>, <code>PG_LISTEN_KEEPALIVES*</code> and
+  <code>PG_LISTEN_LIVENESS_*</code> constants for the shared <code>LISTEN</code> session
+  (<a href="../../features/postgres-backend/#event-streams-and-pubsub-m5">Event streams and pub/sub</a>).</li>
+</ul>
 
 
 

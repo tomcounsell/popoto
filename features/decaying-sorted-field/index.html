@@ -1351,6 +1351,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3604,6 +3615,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3637,10 +3659,10 @@
 <h1 id="decayingsortedfield">DecayingSortedField<a class="headerlink" href="#decayingsortedfield" title="Permanent link">&para;</a></h1>
 <p>A <code>SortedField</code> subclass where records lose retrieval weight over time following a power-law decay curve. This is the foundational primitive for agent memory — most subsequent primitives depend on time-weighted scoring.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
-<p>The sorted set score is always a timestamp. A Lua script computes decay-ranked results at query time:</p>
+<p>The stored value is always a timestamp: the decay clock. Decay-ranked results are computed at query time, on the server:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>decayed_score = base_score * elapsed_days ^ (-decay_rate)
 </code></pre></div>
-<p>With the default <code>decay_rate=0.1</code>, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days. All computation happens server-side in Lua — no round trips for ranking.</p>
+<p>With the default <code>decay_rate=0.1</code>, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days. All computation happens server-side (a Lua script on Redis, one <code>SELECT</code> on Postgres) — no round trips for ranking.</p>
 <h2 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -3818,9 +3840,9 @@ for how membership is evaluated at a past instant.</p>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">field</span><span class="o">.</span><span class="n">members</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">"relevance"</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">9</span><span class="p">)</span>                <span class="c1"># -&gt; 10 stalest keys, one ZRANGE</span>
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">field</span><span class="o">.</span><span class="n">members</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">"relevance"</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>   <span class="c1"># -&gt; 10 freshest keys, one ZREVRANGE</span>
 </code></pre></div>
-<p><code>members()</code> returns Redis keys as <code>str</code>, ordered by score (<code>reverse=True</code> walks from the highest score down). <code>start</code>/<code>stop</code> follow <code>ZRANGE</code> bounds: inclusive, negative values count from the end, and <code>stop &lt; start</code> returns <code>[]</code>.</p>
+<p><code>members()</code> returns record keys (<code>redis_key</code>, the same string on both backends) as <code>str</code>, ordered by score (<code>reverse=True</code> walks from the highest score down). <code>start</code>/<code>stop</code> follow <code>ZRANGE</code> bounds: inclusive, negative values count from the end, and <code>stop &lt; start</code> returns <code>[]</code>.</p>
 <h3 id="ranking-a-partition-zset-directly">Ranking a partition ZSET directly<a class="headerlink" href="#ranking-a-partition-zset-directly" title="Permanent link">&para;</a></h3>
-<p><code>rank_decayed()</code> runs the decay script against one already-resolved partition ZSET key and returns the flat <code>[member, score, member, score, ...]</code> reply. It is the seam a caller uses when it holds records rather than filter kwargs, and therefore cannot go through <code>Query.top_by_decay()</code>.</p>
+<p>On Redis, <code>rank_decayed()</code> runs the decay script against one already-resolved partition ZSET key and returns the flat <code>[member, score, member, score, ...]</code> reply. It is the seam a caller uses when it holds records rather than filter kwargs, and therefore cannot go through <code>Query.top_by_decay()</code>.</p>
 <p>It is also what <code>Query.top_by_decay()</code> and <code>composite_score()</code> use internally: since <a href="https://github.com/tomcounsell/popoto/issues/662">#662</a> every decay <code>EVAL</code> in the library goes through this method, so each of the two <code>KEYS</code> layouts exists in exactly one place — this implementation and the <code>CyclicDecayField</code> override. Nothing in <code>models/query.py</code> or <code>recipes/</code> names a <code>KEYS</code> index any more.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">field</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">"relevance"</span><span class="p">]</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">zkey</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_sortedset_db_key</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">"relevance"</span><span class="p">)</span><span class="o">.</span><span class="n">redis_key</span>
@@ -3983,6 +4005,7 @@ query raises <code>QueryException</code> naming the filters it needs:</p>
 <p>See <a href="../../guides/tuning-magic-numbers/#decayingsortedfield-cyclicdecayfield">Tuning Magic Numbers</a>
 for ranges and provenance.</p>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
+<p>The Redis implementation:</p>
 <ul>
 <li><strong>Redis key pattern</strong>: <code>ClassName:_field_name</code> (sorted set with timestamp scores)</li>
 <li><strong>Lua script</strong>: Computes <code>base_score * elapsed_days^(-decay_rate)</code> server-side, reads base scores from model hash via cmsgpack</li>
@@ -3993,6 +4016,30 @@ for ranges and provenance.</p>
   confidence hash at <code>KEYS[4]</code> instead — see its docs.)</li>
 <li><strong>Inheritance</strong>: Extends <code>SortedFieldMixin</code> + <code>Field</code></li>
 </ul>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On a Postgres-bound model the clock is the field's own <code>double precision</code>
+column (epoch seconds), indexed with its partition columns, and
+<code>top_by_decay</code> runs the script's formula as one <code>SELECT</code>, operation for
+operation in <code>double precision</code>, so scores match the Redis ones (see
+<a href="../postgres-backend/#ranking-and-memory-state-m2a">Ranking and memory state</a>).
+Confidence modulation, the validity gate and the partitioned-confidence
+<code>QueryException</code> behave as above; <code>count()</code> and <code>members()</code> read the
+partition's rows in <code>ZRANGE</code> order. Differences, each a row in
+<a href="../postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>:</p>
+<ul>
+<li><code>rank_decayed(zset_key, …)</code> raises <code>BackendCapabilityError</code>: there is no
+  sorted set to name. Use <code>top_by_decay</code>, or <code>Query.top_by_relevance()</code>
+  (Postgres only, see <a href="../postgres-backend/#fusion-and-recall">Fusion and <code>recall()</code></a>).</li>
+<li>A reload after <code>touch()</code> sees the touched time; on Redis <code>touch</code> moves only
+  the sorted-set score and the hash keeps the save-time value.</li>
+<li>A NaN score ranks last with every real score in order; on Redis its place
+  is arbitrary.</li>
+<li><code>save(update_fields=[…])</code> that names the field but not an unsaved change to
+  its partition column keeps the record in its stored partition.</li>
+</ul>
+<p><code>Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO</code> (the script's pre-trim budget) is
+read only on the Redis path; the <code>KEYS</code> layout and the cmsgpack base-score
+read described above are Redis detail.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../cyclic-decay-field/">CyclicDecayField</a> — adds cyclical resonance and homeostatic pressure</li>

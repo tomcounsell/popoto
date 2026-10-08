@@ -1542,6 +1542,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3594,6 +3605,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3699,8 +3721,9 @@ four are explicit application calls. Whether this should stay imperative
 is <a href="https://github.com/tomcounsell/popoto/issues/693">issue #693</a>.</p>
 </div>
 <h2 id="keyspace">Keyspace<a class="headerlink" href="#keyspace" title="Permanent link">&para;</a></h2>
-<p><code>ValidityField</code> owns six Redis keys per model/field, all under the
-<code>$ValidityF:{Model}:{field}</code> prefix. No bytes are written into the model's own
+<p>On Redis, <code>ValidityField</code> owns six keys per model/field, all under the
+<code>$ValidityF:{Model}:{field}</code> prefix (Postgres keeps the same state on the
+record's row; see <a href="#on-postgres">On Postgres</a>). No bytes are written into the model's own
 hash — chain links live in derived state so an append-only journal can adopt
 the field unchanged.</p>
 <table>
@@ -4004,7 +4027,7 @@ assertions keep their meaning.</p>
 a pointer left naming a hard-deleted record reads as "no incumbent", the same way
 <code>chain()</code> reads a dangling link. Only an incumbent the caller named explicitly
 raises. That is what keeps a partial <code>import_state</code> transfer supersedable.</p>
-<p><strong>Pipeline-mode caveat.</strong> The <code>ResponseError</code> -&gt; typed-exception remap lives on
+<p><strong>Pipeline-mode caveat (Redis).</strong> The <code>ResponseError</code> -&gt; typed-exception remap lives on
 <code>execute_supersede</code>'s non-pipeline branch. On a caller-supplied pipeline,
 redis-py raises during <code>pipe.execute()</code> result parsing — long after
 <code>execute_supersede</code> returned — so you get a raw
@@ -4080,8 +4103,8 @@ to <code>update_fields</code>.</p>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">obj</span><span class="o">.</span><span class="n">validity</span> <span class="o">=</span> <span class="n">effective</span>
 <a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="c1"># Or make the declared value authoritative -- plain ZADD, no NX, so it</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># overwrites the score ZADD NX refused to update:</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="c1"># Or make the declared value authoritative (Redis) -- plain ZADD, no NX, so</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># it overwrites the score ZADD NX refused to update:</span>
 <a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="n">vf_key</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">ValidityField</span><span class="o">.</span><span class="n">get_interval_keys</span><span class="p">(</span><span class="n">Fact</span><span class="p">,</span> <span class="s2">"validity"</span><span class="p">)</span>
 <a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">vf_key</span><span class="p">,</span> <span class="p">{</span><span class="n">obj</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">validity</span><span class="p">)})</span>
 <a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
@@ -4275,6 +4298,41 @@ read it there, and in the comment above the call site in
   bounded history.</p>
 </li>
 </ul>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On a Postgres-bound model the interval and the chain live on the record's own
+row (<code>&lt;f&gt;__valid_from</code>, <code>&lt;f&gt;__invalid_at</code>, <code>&lt;f&gt;__ingested_at</code> as
+<code>double precision</code> epoch seconds, <code>'Infinity'</code> = open; <code>&lt;f&gt;__supersedes</code> /
+<code>&lt;f&gt;__superseded_by</code>), and the open-claim pointer is a companion table whose
+<code>member</code> references the record <code>ON DELETE CASCADE</code>. <code>supersede</code> is
+<code>SUPERSEDE_LUA</code> phase for phase in one transaction, behind a per-(model,
+field) advisory lock, and raises the same typed errors with the same text.
+The exclusion rule, the <code>as_of</code> filters, the kill switch and the cyclic-decay
+gap all behave as on Redis, and every gate is one <code>WHERE</code> term on the row. See
+<a href="../postgres-backend/#validity-and-supersession-m3">Validity and supersession (M3)</a>.</p>
+<p>What differs (each a row of
+<a href="../postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>):</p>
+<ul>
+<li><code>save_and_supersede</code> / <code>save_and_invalidate</code> whose close fails roll the
+  whole unit back, so the successor is not saved either; on Redis
+  <code>MULTI</code>/<code>EXEC</code> keeps it.</li>
+<li>A pointer cannot name a record that does not exist: <code>import_state</code> for an
+  unstored record raises <code>ValidityMemberAbsentError</code>, and
+  <code>execute_supersede(mode="open")</code> on a member with no record writes nothing.</li>
+<li>With the backend's <code>transaction()</code> as <code>pipeline</code>, the closed key is
+  returned and a typed error raised at the call, so the pipeline-mode caveat
+  above does not apply; a Redis pipeline is refused with <code>ValueError</code>.</li>
+<li>A NaN <code>valid_from</code> on save is refused before anything is written, with
+  <code>ModelException</code>; a NaN <code>as_of</code> in a range read raises <code>QueryException</code>
+  where Redis raises <code>ResponseError</code>, with the same text.</li>
+<li>On a <code>Meta.ttl</code> model the interval and pointer expire with the row: a chain
+  walk stops at an expired record as at a hard delete, rather than reaching
+  entries that outlive it. The TTL warning still fires.</li>
+</ul>
+<p>Redis-only machinery does not apply: the pre-trim and its
+<code>Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO</code> (read only by the Redis
+<code>DECAY_SCORE_LUA</code> path), the "What gating costs" figures, and the raw <code>ZADD</code>
+reconciliation above. To adopt the effective start on Postgres, use the
+<code>get_valid_from</code> form.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../provenance-journal/">Provenance Journal</a> — this feature's first real
@@ -4300,7 +4358,7 @@ read it there, and in the comment above the call site in
   supersession loser's interval; it reaches this mechanism only through
   <code>ProvenanceJournal.supersede()</code>, never by calling
   <code>save_and_supersede()</code> itself, so the journal annotation and the close stay
-  in one <code>MULTI</code>/<code>EXEC</code></li>
+  in one <code>MULTI</code>/<code>EXEC</code> (one transaction on Postgres)</li>
 </ul>
 
 

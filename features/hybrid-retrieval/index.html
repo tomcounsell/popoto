@@ -1762,6 +1762,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3418,6 +3429,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3481,7 +3503,7 @@
 <p>RRF fusion merges these ranked lists without needing comparable score scales. It uses rank position, not raw scores, so BM25 scores and cosine similarities combine naturally.</p>
 <h2 id="components">Components<a class="headerlink" href="#components" title="Permanent link">&para;</a></h2>
 <h3 id="bm25field">BM25Field<a class="headerlink" href="#bm25field" title="Permanent link">&para;</a></h3>
-<p><code>BM25Field</code> maintains a full inverted index and corpus statistics in Redis sorted sets. It computes BM25 scores at query time via a server-side Lua script. No Redis modules required -- works on both Redis and Valkey.</p>
+<p><code>BM25Field</code> maintains a full inverted index and corpus statistics. On Redis it keeps them in sorted sets and computes BM25 scores at query time via a server-side Lua script; no Redis modules are required, so it works on both Redis and Valkey. On Postgres it keeps postings and document-length tables and computes the same formula in SQL (see <a href="#on-postgres">On Postgres</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.bm25_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">BM25Field</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.content_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ContentField</span>
@@ -3491,7 +3513,7 @@
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">raw_content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">content_bm25</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"raw_content"</span><span class="p">)</span>
 </code></pre></div>
-<p>BM25Field is a "side-effect field" -- it does not store a value on the model instance. When a model is saved, the <code>on_save()</code> hook reads text from the <code>source</code> field, tokenizes it, and atomically updates the inverted index via a Lua script.</p>
+<p>BM25Field is a "side-effect field" -- it does not store a value on the model instance. When a model is saved, the <code>on_save()</code> hook reads text from the <code>source</code> field, tokenizes it, and atomically updates the inverted index (via a Lua script on Redis, in the record's own save statement on Postgres).</p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -3534,7 +3556,7 @@
 </tbody>
 </table>
 <p><strong>Redis Key Patterns:</strong></p>
-<p>All BM25 data lives in native Redis structures (sorted sets and strings):</p>
+<p>On Redis, all BM25 data lives in native Redis structures (sorted sets and strings):</p>
 <table>
 <thead>
 <tr>
@@ -3625,7 +3647,7 @@
 </code></pre></div>
 <p><strong>Scoping a search with <code>allowed_keys</code>.</strong> The BM25 index is corpus-wide: <code>search()</code>
 scores every record of the model, not just one agent's. Pass <code>allowed_keys</code> to confine
-it to a set of Redis keys:</p>
+it to a set of record keys (<code>redis_key</code>, the same on both backends):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">scoped</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="o">.</span><span class="n">search</span><span class="p">(</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">Memory</span><span class="p">,</span> <span class="s2">"content_bm25"</span><span class="p">,</span> <span class="s2">"redis deployment"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">allowed_keys</span><span class="o">=</span><span class="p">{</span><span class="n">m</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"beta"</span><span class="p">)},</span>
@@ -3664,9 +3686,9 @@ fetch window until <code>limit</code> in-scope hits are found, capped so a nearl
 cannot walk an unbounded corpus on every query. At the cap the result is honestly
 short rather than silently empty.</p>
 <p>Ordering is deterministic: results are sorted by BM25 score descending, and equal scores
-are tie-broken by <code>redis_key</code> ascending (byte-wise) inside the scoring Lua script -- before
-<code>limit</code> truncation -- so identical searches always return identical orderings on both Redis
-and Valkey. <code>keyword_search()</code> and RRF fusion via <code>fuse()</code> inherit this determinism, since
+are tie-broken by <code>redis_key</code> ascending (byte-wise) inside the scoring -- before
+<code>limit</code> truncation -- so identical searches always return identical orderings on Redis,
+Valkey and Postgres. <code>keyword_search()</code> and RRF fusion via <code>fuse()</code> inherit this determinism, since
 RRF consumes rank positions.</p>
 <h3 id="fuse-reciprocal-rank-fusion">fuse() -- Reciprocal Rank Fusion<a class="headerlink" href="#fuse-reciprocal-rank-fusion" title="Permanent link">&para;</a></h3>
 <p>The <code>fuse()</code> method on <code>QueryBuilder</code> combines heterogeneous ranked lists using the RRF formula:</p>
@@ -3755,7 +3777,7 @@ in-scope candidates instead of returning short.</p>
 <p>Scope is not deletion: out-of-scope records stay in the store and in the BM25 index,
 and remain retrievable by their own owner.</p>
 <h3 id="maintenance">Maintenance<a class="headerlink" href="#maintenance" title="Permanent link">&para;</a></h3>
-<p><code>BM25Field.recompute_stats()</code> recalculates <code>avgdl</code> and <code>n</code> from scratch to correct floating-point drift that may accumulate over many incremental updates:</p>
+<p><code>BM25Field.recompute_stats()</code> recalculates <code>avgdl</code> and <code>n</code> from scratch to correct floating-point drift that may accumulate over many incremental updates on Redis (on Postgres the statistics are counted live and it is a no-op):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">BM25Field</span><span class="o">.</span><span class="n">recompute_stats</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">"content_bm25"</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="hybrid-retrieval-recipe">Hybrid Retrieval Recipe<a class="headerlink" href="#hybrid-retrieval-recipe" title="Permanent link">&para;</a></h2>
@@ -3795,29 +3817,28 @@ and remain retrievable by their own owner.</p>
 <a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a>    <span class="n">graph_results</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a>    <span class="k">if</span> <span class="n">keyword_results</span><span class="p">:</span>
 <a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a>        <span class="n">seed_key</span> <span class="o">=</span> <span class="n">keyword_results</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>        <span class="n">propagated</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="o">.</span><span class="n">propagate</span><span class="p">(</span>
-<a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>            <span class="n">Memory</span><span class="p">,</span> <span class="s2">"associations"</span><span class="p">,</span> <span class="n">seed_key</span><span class="p">,</span> <span class="n">hops</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span>
-<a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>        <span class="p">)</span>
-<a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>        <span class="n">graph_results</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">propagated</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
-<a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>
-<a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a>    <span class="c1"># 4. Fuse with RRF</span>
-<a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">fuse</span><span class="p">(</span>
-<a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a>        <span class="n">keyword</span><span class="o">=</span><span class="n">keyword_results</span><span class="p">,</span>
-<a id="__codelineno-8-44" name="__codelineno-8-44" href="#__codelineno-8-44"></a>        <span class="n">semantic</span><span class="o">=</span><span class="p">[</span>
-<a id="__codelineno-8-45" name="__codelineno-8-45" href="#__codelineno-8-45"></a>            <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">m</span><span class="o">.</span><span class="n">_similarity_score</span><span class="p">)</span>
-<a id="__codelineno-8-46" name="__codelineno-8-46" href="#__codelineno-8-46"></a>            <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">semantic_results</span>
-<a id="__codelineno-8-47" name="__codelineno-8-47" href="#__codelineno-8-47"></a>        <span class="p">],</span>
-<a id="__codelineno-8-48" name="__codelineno-8-48" href="#__codelineno-8-48"></a>        <span class="n">graph</span><span class="o">=</span><span class="n">graph_results</span><span class="p">,</span>
-<a id="__codelineno-8-49" name="__codelineno-8-49" href="#__codelineno-8-49"></a>        <span class="n">k</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span>
-<a id="__codelineno-8-50" name="__codelineno-8-50" href="#__codelineno-8-50"></a>        <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
-<a id="__codelineno-8-51" name="__codelineno-8-51" href="#__codelineno-8-51"></a>    <span class="p">)</span>
-<a id="__codelineno-8-52" name="__codelineno-8-52" href="#__codelineno-8-52"></a>
-<a id="__codelineno-8-53" name="__codelineno-8-53" href="#__codelineno-8-53"></a>    <span class="k">return</span> <span class="n">results</span>
+<a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>        <span class="n">associations</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">"associations"</span><span class="p">]</span>
+<a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>        <span class="n">propagated</span> <span class="o">=</span> <span class="n">associations</span><span class="o">.</span><span class="n">propagate</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="p">[</span><span class="n">seed_key</span><span class="p">],</span> <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>        <span class="n">graph_results</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">propagated</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+<a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>
+<a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>    <span class="c1"># 4. Fuse with RRF</span>
+<a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">fuse</span><span class="p">(</span>
+<a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a>        <span class="n">keyword</span><span class="o">=</span><span class="n">keyword_results</span><span class="p">,</span>
+<a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a>        <span class="n">semantic</span><span class="o">=</span><span class="p">[</span>
+<a id="__codelineno-8-44" name="__codelineno-8-44" href="#__codelineno-8-44"></a>            <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">m</span><span class="o">.</span><span class="n">_similarity_score</span><span class="p">)</span>
+<a id="__codelineno-8-45" name="__codelineno-8-45" href="#__codelineno-8-45"></a>            <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">semantic_results</span>
+<a id="__codelineno-8-46" name="__codelineno-8-46" href="#__codelineno-8-46"></a>        <span class="p">],</span>
+<a id="__codelineno-8-47" name="__codelineno-8-47" href="#__codelineno-8-47"></a>        <span class="n">graph</span><span class="o">=</span><span class="n">graph_results</span><span class="p">,</span>
+<a id="__codelineno-8-48" name="__codelineno-8-48" href="#__codelineno-8-48"></a>        <span class="n">k</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span>
+<a id="__codelineno-8-49" name="__codelineno-8-49" href="#__codelineno-8-49"></a>        <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+<a id="__codelineno-8-50" name="__codelineno-8-50" href="#__codelineno-8-50"></a>    <span class="p">)</span>
+<a id="__codelineno-8-51" name="__codelineno-8-51" href="#__codelineno-8-51"></a>
+<a id="__codelineno-8-52" name="__codelineno-8-52" href="#__codelineno-8-52"></a>    <span class="k">return</span> <span class="n">results</span>
 </code></pre></div>
 <h3 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h3>
 <ol>
 <li><strong>ExistenceFilter pre-check</strong> -- O(1) Bloom filter test. If the query terms are definitely absent from the corpus, skip retrieval entirely.</li>
-<li><strong>BM25 keyword search</strong> -- Server-side Lua script computes BM25 scores across the inverted index. Returns exact-match precision for technical terms, error codes, and identifiers.</li>
+<li><strong>BM25 keyword search</strong> -- The server computes BM25 scores (a Lua script on Redis, SQL on Postgres) across the inverted index. Returns exact-match precision for technical terms, error codes, and identifiers.</li>
 <li><strong>Semantic search</strong> -- Embedding similarity captures conceptual relevance that keyword matching misses.</li>
 <li><strong>Graph propagation</strong> -- CoOccurrence associations surface related records that share no lexical or semantic overlap with the query but were historically accessed together.</li>
 <li><strong>RRF fusion</strong> -- Reciprocal Rank Fusion merges all ranked lists using rank positions, not raw scores. Documents appearing in multiple lists get boosted. The <code>k=60</code> constant smooths rank influence so a #1 result in one list does not overwhelm a consistent #5 across three lists.</li>
@@ -3850,15 +3871,40 @@ and remain retrievable by their own owner.</p>
 <tr>
 <td><code>limit</code> per signal</td>
 <td>Recall pool size</td>
-<td>Over-fetch per signal (50-100) then let RRF select the top-K. Larger pools improve fusion quality at the cost of more Redis operations.</td>
+<td>Over-fetch per signal (50-100) then let RRF select the top-K. Larger pools improve fusion quality at the cost of more server work.</td>
 </tr>
 </tbody>
 </table>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On a Postgres-bound model each signal keeps its state in the database beside
+the records, written by the record's save statement: BM25 postings and
+document lengths, the embedding as a pgvector <code>vector(d)</code> column (pgvector
+must be installed), and the ExistenceFilter as an exact token table. The
+BM25 formula, constants, tokenizer and tie order are Redis's, and
+<code>keyword_search</code>, <code>semantic_search</code>, <code>fuse()</code> and <code>composite_score</code> work as
+documented here; <code>fuse()</code> scopes the fused set by the builder's filters in
+one <code>SELECT</code>. See <a href="../postgres-backend/#search-m2b">Search</a>, with
+<a href="../postgres-backend/#bm25">BM25</a>, <a href="../postgres-backend/#embeddings">Embeddings</a>
+and <a href="../postgres-backend/#membership">Membership</a>.</p>
+<p><code>Query.recall()</code> is available on Postgres only: it runs the BM25 and vector
+arms (and a decay arm, on a model with one <code>DecayingSortedField</code>) and the
+weighted RRF in one statement, with per-scope BM25 statistics by default. It
+replaces the hand-written recipe above on a Postgres model. On a Redis model
+it raises <code>BackendCapabilityError</code>. See
+<a href="../postgres-backend/#fusion-and-recall">Fusion and recall()</a>.</p>
+<p>Differences, from
+<a href="../postgres-backend/#records-and-other-behaviour">Documented divergences</a>:
+the ExistenceFilter pre-check is exact (no false positives, deleted records
+forgotten), <code>recompute_stats</code> is a no-op, embeddings are not <code>.npy</code> files
+(<code>garbage_collect</code> returns <code>0</code>), equal vector similarities tie by key, and
+<code>BM25Field.search(allowed_keys=)</code> keeps the best
+<code>max(limit, SCOPED_SEARCH_FETCH_CAP)</code> records overall, the window Redis's
+widening loop reaches.</p>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../../fields/#bm25field">BM25Field in Models and Fields</a> -- field configuration reference</li>
 <li><a href="../existence-filter/">ExistenceFilter</a> -- Bloom filter pre-check</li>
-<li><a href="../composite-score-query/">Composite Score Query</a> -- weighted ZUNIONSTORE fusion (complementary to RRF)</li>
+<li><a href="../composite-score-query/">Composite Score Query</a> -- weighted score fusion (complementary to RRF)</li>
 <li><a href="../context-assembler/">ContextAssembler</a> -- token-budgeted retrieval-to-injection pipeline</li>
 <li><a href="../../guides/agent-memory-quickstart/">Agent Memory Quickstart</a> -- progressive adoption guide</li>
 </ul>

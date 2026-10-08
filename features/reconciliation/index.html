@@ -1526,6 +1526,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3450,6 +3461,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3656,7 +3678,7 @@ audit but is excluded from selection and from confirmation counts.</p>
 <h3 id="exactly-one-supersession-mechanism">Exactly one supersession mechanism<a class="headerlink" href="#exactly-one-supersession-mechanism" title="Permanent link">&para;</a></h3>
 <p>Every resolved conflict closes the loser through <code>ProvenanceJournal.supersede()</code>,
 which appends a <code>supersede</code> annotation and closes the target's interval in one
-<code>MULTI</code>/<code>EXEC</code>. It has to be that call rather than <code>save_and_supersede()</code> applied
+<code>MULTI</code>/<code>EXEC</code> (one transaction on Postgres). It has to be that call rather than <code>save_and_supersede()</code> applied
 to the winner: the winner is already persisted, so re-saving it would raise
 <code>AppendOnlyViolation</code> — the same rule as "nothing here mutates a persisted
 entry".</p>
@@ -3734,6 +3756,18 @@ aliases the code reads by name: <code>M5_SHORTLIST_CAP</code>, <code>M5_SYMMETRY
 line of <code>CONVENTION_BOOK_V1</code> is a <strong>version bump, not an edit</strong>: replay pins the
 wording that produced a merge, so a silent reword would make history
 irreproducible.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>Reconciliation runs unchanged on a Postgres-bound journal: <code>ClaimClass</code> and
+<code>ClaimMembership</code> are ordinary model rows, the reconciler-side embedding cache
+is the <code>popoto_embedding_cache (model, member, vector)</code> engine table instead
+of the <code>POPOTO:M5:embedding_cache</code> hash (<code>erase_entry</code> drops the row there),
+and <code>reconciliation_consumer</code> reads the journal's stream from the backend's
+events table. A Postgres-bound journal and its reconciler send Redis no
+command. The single-writer invariant is a deployment contract and applies on
+both backends. The one behavioral difference is inherited from the journal:
+a loser's close that fails rolls back its <code>supersede</code> annotation too (see
+<a href="../provenance-journal/#on-postgres">Provenance Journal, On Postgres</a>). See
+<a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Recipes, mixins and the queue</a>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../provenance-journal/">Provenance Journal</a> — the append-only log this stage
@@ -3744,7 +3778,7 @@ irreproducible.</p>
 <li><a href="../validity-and-supersession/">ValidityField and SupersessionProtocol</a> — the
   membership mechanism that closes a supersession loser's interval, reached
   only through <code>ProvenanceJournal.supersede()</code> so the annotation and the close
-  share one <code>MULTI</code>/<code>EXEC</code></li>
+  share one <code>MULTI</code>/<code>EXEC</code> (one transaction on Postgres)</li>
 <li><a href="../reference-resolution/">Reference Resolution</a> — the M4 stage upstream:
   its distilled <code>statement</code> is what a capture reconciles on, and its
   <code>valid_from</code> is a declared value this stage never recomputes</li>

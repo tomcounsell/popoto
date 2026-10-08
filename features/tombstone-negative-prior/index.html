@@ -1795,6 +1795,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3316,6 +3327,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3390,8 +3412,8 @@ negative prior — the prior itself needs only the <code>ExistenceFilter</code> 
 <code>fingerprint_fn</code>.</p>
 <p>A model with no <code>ExistenceFilter</code>, or one whose filter has no <code>fingerprint_fn</code>,
 has no content identity — there is nothing a buried record could match against.
-Those models skip the consult entirely and issue <strong>zero</strong> extra Redis commands
-on <code>save()</code>. Write behavior is byte-identical to a Popoto without this feature,
+Those models skip the consult entirely and issue <strong>zero</strong> extra commands on
+<code>save()</code>, on either backend. Write behavior is byte-identical to a Popoto without this feature,
 structurally rather than because a flag happens to be off.</p>
 <h2 id="what-it-does-to-a-score">What it does to a score<a class="headerlink" href="#what-it-does-to-a-score" title="Permanent link">&para;</a></h2>
 <p>Burials are recorded automatically when
@@ -3481,8 +3503,9 @@ as the source of the fingerprint string.</p>
 those writes gave up. Both move together in one transaction, so they cannot
 disagree.</p>
 <h2 id="storage">Storage<a class="headerlink" href="#storage" title="Permanent link">&para;</a></h2>
-<p>Three keys per model, all deliberately <strong>outside</strong> the model's own keyspace, so
-no query, index scan, or key-set walk can surface them:</p>
+<p>On Redis, three keys per model, all deliberately <strong>outside</strong> the model's own
+keyspace, so no query, index scan, or key-set walk can surface them (for
+Postgres, see <a href="#on-postgres">On Postgres</a>):</p>
 <table>
 <thead>
 <tr>
@@ -3519,14 +3542,14 @@ it behaves identically on Redis and Valkey.</p>
 pre-feature behavior and loses nothing else:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">TombstonePriorStore</span><span class="p">(</span><span class="n">Memory</span><span class="p">)</span><span class="o">.</span><span class="n">purge_all</span><span class="p">()</span>
 </code></pre></div>
-<p>To inspect the keys by hand, use Popoto's own accessor rather than building a
-client, so you are looking at the database Popoto is actually bound to:</p>
+<p>To inspect the Redis keys by hand, use Popoto's own accessor rather than
+building a client, so you are looking at the database Popoto is actually bound to:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">popoto</span><span class="o">.</span><span class="n">get_redis</span><span class="p">()</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="s2">"$TOMBPRIOR:Memory:stats"</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="failure-behavior">Failure behavior<a class="headerlink" href="#failure-behavior" title="Permanent link">&para;</a></h2>
-<p>Every Redis call on this path is best-effort. If the bookkeeping is unreachable
+<p>Every storage call on this path is best-effort, on either backend. If the bookkeeping is unreachable
 or a stored count is unreadable, the write is admitted <strong>unchanged</strong> and a
 warning is logged — a memory system whose <code>save()</code> dies because a telemetry hash
 is down is worse than one that occasionally misses a drawdown. Symmetrically, a
@@ -3568,6 +3591,19 @@ kwargs — they are experimental tuning knobs, not per-model configuration:</p>
 </tr>
 </tbody>
 </table>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p><code>TombstonePriorStore</code> keeps the prior in two engine tables instead of the
+<code>$TOMBPRIOR:</code> keys: <code>popoto_tombstone_prior</code> holds one row per model and
+digest, with the burial count and the last burial time together (the Redis
+<code>burials</code> hash and <code>index</code> zset in one row), and <code>popoto_tombstone_stats</code>
+holds one row per model with <code>penalized</code> and <code>drawdown_total</code>. See
+<a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Postgres Backend</a>.
+The scoring, the digest-only storage, the <code>TOMBSTONE_PRIOR_LIMIT</code> retention
+(oldest burial first), the best-effort failure behavior and the kill switch
+are the same. The two stats counters move together in one upsert, and
+<code>purge_all()</code> deletes the model's rows from both tables and returns how many
+fingerprints it removed. Inspect the state with SQL against those tables
+rather than <code>get_redis()</code>, which reaches only Redis.</p>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../existence-filter/">ExistenceFilter</a> — the source of the content fingerprint</li>

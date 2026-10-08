@@ -886,6 +886,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3461,6 +3472,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3598,7 +3620,7 @@ splitting and logs that cost on first use. See
 <p>It states no importance or confidence opinion, so the caller-supplied
 <code>importance</code> is used and <code>ConfidenceField</code> stays at its prior. An optional
 <code>max_chars</code> truncates very long turns; leave it unset unless turns are large
-enough to threaten Redis value limits, since truncating is the same
+enough to threaten the store's value size limits, since truncating is the same
 information loss the provider exists to avoid.</p>
 <h2 id="the-subconsciousmemory-default-heuristicextractionprovider">The <code>SubconsciousMemory</code> Default: <code>HeuristicExtractionProvider</code><a class="headerlink" href="#the-subconsciousmemory-default-heuristicextractionprovider" title="Permanent link">&para;</a></h2>
 <p>Zero-dependency, stdlib-only, and used automatically when no <code>extraction_provider</code> is passed to <code>SubconsciousMemory</code>. It splits text on sentence-ending punctuation (<code>.!?</code>) followed by whitespace or end-of-string, strips each sentence, and drops any shorter than <code>min_length</code> (default 10 chars). Every surviving sentence becomes an <code>ExtractedFact</code> with no entities and <code>importance=None</code>, <code>confidence=None</code> -- so downstream wiring always falls back to the caller-supplied <code>importance</code> and never touches <code>confidence_field</code>.</p>
@@ -3623,7 +3645,7 @@ information loss the provider exists to avoid.</p>
 <p><strong><code>popoto.extraction.claude</code> is imported lazily.</strong> <code>import popoto</code> and <code>import popoto.extraction</code> never import the <code>anthropic</code> package; only importing <code>popoto.extraction.claude</code> itself does. Constructing <code>ClaudeExtractionProvider</code> without <code>anthropic</code> installed raises <code>ImportError</code> with an install hint.</p>
 <p><strong>An <code>anthropic</code> that is installed but too old raises too, at construction.</strong> The provider passes <code>output_config=</code> to <code>messages.create</code>, which no release before <strong>0.77.0</strong> accepts, and <code>popoto[anthropic]</code> floors the package there. If some other pin puts an older SDK in the environment anyway, constructing <code>ClaudeExtractionProvider</code> raises <code>AnthropicVersionError</code> (<code>popoto.extraction.AnthropicVersionError</code>, a <code>RuntimeError</code> subclass) naming the missing parameter and the required version. It is deliberately distinct from the <code>ImportError</code> above, because "not installed" and "installed but too old" need different remedies. The check runs at construction rather than inside <code>extract()</code> for the reason the next paragraph makes clear: there, a version mismatch would be swallowed and returned as an empty fact list, indistinguishable from "this text contained no facts" (<a href="https://github.com/tomcounsell/popoto/issues/670">#670</a>).</p>
 <p><strong>Fail-open on API/parse errors.</strong> If the API call or response parsing fails for any reason, <code>extract()</code> logs a warning and returns an empty list rather than raising -- a flaky extraction call never crashes the caller's turn loop.</p>
-<p>This is the <em>extraction provider's</em> contract and it is unchanged. Do not read it as the whole recipe's contract: since 1.9.0 <code>SubconsciousMemory.extract_memories</code> re-raises <code>redis.exceptions.ConnectionError</code>/<code>TimeoutError</code>, because a dead Redis returning "no memories" is a lie, while a flaky LLM call returning no facts is the truth. Two different failure domains, two deliberate answers -- see <a href="../../guides/subconscious-memory-recipe/#redis-outages-raise">Redis outages raise</a>.</p>
+<p>This is the <em>extraction provider's</em> contract and it is unchanged. Do not read it as the whole recipe's contract: since 1.9.0 <code>SubconsciousMemory.extract_memories</code> re-raises <code>redis.exceptions.ConnectionError</code>/<code>TimeoutError</code> on Redis (see <a href="#on-postgres">On Postgres</a> for the other backend), because a dead Redis returning "no memories" is a lie, while a flaky LLM call returning no facts is the truth. Two different failure domains, two deliberate answers -- see <a href="../../guides/subconscious-memory-recipe/#redis-outages-raise">Redis outages raise</a>.</p>
 <h2 id="seeding-confidence_field-and-co_occurrence_field">Seeding <code>confidence_field</code> and <code>co_occurrence_field</code><a class="headerlink" href="#seeding-confidence_field-and-co_occurrence_field" title="Permanent link">&para;</a></h2>
 <p>Two more optional <code>SubconsciousMemory</code> kwargs let extracted facts feed other memory-system primitives. Both are opt-in and no-ops unless set:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
@@ -3641,7 +3663,7 @@ information loss the provider exists to avoid.</p>
 </ul>
 <p>Since <code>HeuristicExtractionProvider</code> never sets <code>entities</code> or <code>confidence</code>, both kwargs are effectively inert with the default provider -- they only do work once an entity/confidence-emitting provider (like <code>ClaudeExtractionProvider</code>) is configured.</p>
 <h3 id="the-confidence-blend-nuance">The Confidence Blend Nuance<a class="headerlink" href="#the-confidence-blend-nuance" title="Permanent link">&para;</a></h3>
-<p><code>ConfidenceField</code> has no per-instance "set initial value" API. When a <code>Memory</code> record is saved, its companion confidence hash is seeded with the field's fixed <code>initial_confidence</code> (a prior pseudo-observation), not with anything from the extracted fact. <code>_seed_confidence()</code>'s call to <code>update_confidence(signal=fact.confidence)</code> is therefore the <strong>first evidence update against that prior</strong>, not a hard override.</p>
+<p><code>ConfidenceField</code> has no per-instance "set initial value" API. When a <code>Memory</code> record is saved, its confidence state (a companion hash entry on Redis, the record's state columns on Postgres) is seeded with the field's fixed <code>initial_confidence</code> (a prior pseudo-observation), not with anything from the extracted fact. <code>_seed_confidence()</code>'s call to <code>update_confidence(signal=fact.confidence)</code> is therefore the <strong>first evidence update against that prior</strong>, not a hard override.</p>
 <p>Concretely, for the default <code>initial_confidence=0.5</code>, seeding with a fact confidence of <code>s</code> yields a stored confidence of:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>(0.5 + s) / 2
 </code></pre></div>
@@ -3796,6 +3818,19 @@ ground truth is a specific turn. It does not measure extraction as an addition
 alongside raw turns, and it does not generalise to corpora where the raw unit
 is too long or too noisy to retrieve directly. Those are the cases worth
 testing on your own data before ruling extraction out.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>Extraction is storage-independent: providers return <code>ExtractedFact</code>s and
+<code>SubconsciousMemory</code> saves them through the model, so a Postgres-bound model
+stores the facts, seeds <code>confidence_field</code> (the same <code>(0.5 + s) / 2</code> blend, on
+the record's state columns) and links <code>co_occurrence_field</code> pairs in the edge
+table with the same results. One difference in failure handling: the outage
+re-raise above names the Redis exceptions only. A Postgres outage raises
+<code>popoto.backends.BackendUnavailableError</code>, which <code>extract_memories</code> currently
+catches as an ordinary per-fact save failure, logs, and skips, so an
+unreachable database returns fewer (or no) memories rather than raising. See
+<a href="../postgres-backend/#topology-and-the-outage-contract">Topology and the outage contract</a>
+and, for the auditable path,
+<a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Recipes, mixins and the queue</a>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../auditable-extraction/">Auditable Extraction</a> -- the opt-in candidate/verdict/decision-log path, with offline precision/recall</li>

@@ -1413,6 +1413,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#synergy-with-other-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3543,6 +3554,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#synergy-with-other-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3613,14 +3635,14 @@
 
 
 <h1 id="cooccurrencefield">CoOccurrenceField<a class="headerlink" href="#cooccurrencefield" title="Permanent link">&para;</a></h1>
-<p>A <code>Field</code> subclass that maintains weighted association edges between model instances using Redis sorted sets, with BFS graph propagation for multi-hop associative retrieval.</p>
+<p>A <code>Field</code> subclass that maintains weighted association edges between model instances (a sorted set per record on Redis, an edge table on Postgres), with BFS graph propagation for multi-hop associative retrieval.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
-<p><code>CoOccurrenceField</code> provides an ORM-level primitive for weighted, decaying edges between model instances. Each instance gets its own Redis sorted set storing edges to other instances with weights. Weights strengthen via <code>strengthen()</code> and decay via <code>weaken_all()</code>.</p>
+<p><code>CoOccurrenceField</code> provides an ORM-level primitive for weighted, decaying edges between model instances. On Redis each instance gets its own sorted set storing edges to other instances with weights; on Postgres each field has one edge table with a row per directed edge. Weights strengthen via <code>strengthen()</code> and decay via <code>weaken_all()</code>.</p>
 <p>The field supports:
 - <strong>Symmetric mode</strong> (default): edges are bidirectional
 - <strong>Asymmetric mode</strong>: edges are unidirectional
 - <strong>Edge pruning</strong>: automatic removal of lowest-weight edges when <code>max_edges</code> is exceeded
-- <strong>BFS propagation</strong>: server-side Lua script traverses edges across hops with exponential decay</p>
+- <strong>BFS propagation</strong>: a server-side traversal (a Lua script on Redis, SQL on Postgres) walks edges across hops with exponential decay</p>
 <h2 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -3659,7 +3681,7 @@
 </tbody>
 </table>
 <h2 id="redis-key-pattern">Redis Key Pattern<a class="headerlink" href="#redis-key-pattern" title="Permanent link">&para;</a></h2>
-<p>Each PK gets its own sorted set:</p>
+<p>On Redis, each PK gets its own sorted set:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>$CoOcF:{ClassName}:{field_name}:{pk}  -&gt;  ZSET { target_pk: weight, ... }
 </code></pre></div>
 <p>Example:
@@ -3788,6 +3810,34 @@ history that never happened.</p>
 <p>Symmetric mirroring is <em>not</em> re-run on import. Each record carries its own edge
 set, so a full export of the model restores both directions naturally; a filtered
 export that includes one endpoint but not the other yields a one-directional edge.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On a Postgres-bound model each field is one edge table,
+<code>&lt;table&gt;__&lt;f&gt;__edge (src, dst, weight)</code>, with no foreign key (as on Redis,
+any two key strings can be linked). <code>link</code>, <code>strengthen</code>, <code>unlink</code> and
+<code>weaken_all</code> are single statements with the scripts' arithmetic and
+replies, taken behind the record-key locks of the sets they write, so a
+<code>link</code>'s count-then-prune is atomic and no committed set exceeds
+<code>max_edges</code>. <code>propagate</code> is one recursive SQL statement while <code>ceil(depth) &lt;= 2</code> and one
+statement per layer beyond that, with the Lua's visited rule; answers are
+identical to Redis's. See
+<a href="../postgres-backend/#co-occurrence-graph-m4">Co-occurrence graph</a> for the
+statements, the deep-walk timings and the seeded probe.</p>
+<p><code>pipeline=</code> takes the backend's <code>transaction()</code> or a <code>popoto.batch()</code>, and
+the write joins it; a Redis pipeline cannot carry the write, so it runs at
+once. Differences, each a row in
+<a href="../postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>:</p>
+<ul>
+<li>A NaN weight in <code>link</code>, <code>strengthen</code> or <code>weaken_all</code> raises <code>ValueError</code>
+  (Redis: <code>ResponseError</code>) with the same text, and the whole write rolls
+  back, including a symmetric write's first direction.</li>
+<li><code>import_state</code> refuses a NaN weight before writing, leaving the edge set
+  unchanged; on Redis the set is deleted first and left empty.</li>
+<li><code>get_linked(…, limit=None)</code> and a NaN <code>min_weight</code> raise <code>ValueError</code> with
+  redis-py's and the server's text.</li>
+<li>Equal weights in <code>propagate()</code>'s result are ordered by key, bytewise.</li>
+</ul>
+<p>The <code>ZREVRANGE</code> neighbour-selection bias above applies on Postgres too: the
+neighbour query orders by the stored, unclamped weight.</p>
 <h2 id="synergy-with-other-fields">Synergy with Other Fields<a class="headerlink" href="#synergy-with-other-fields" title="Permanent link">&para;</a></h2>
 <h3 id="with-decayingsortedfield">With DecayingSortedField<a class="headerlink" href="#with-decayingsortedfield" title="Permanent link">&para;</a></h3>
 <p>Propagated weights can identify related records for boosting retrieval scores:</p>

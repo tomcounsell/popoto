@@ -1878,6 +1878,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3594,6 +3605,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3751,7 +3773,7 @@
 <a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>    <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"user"</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="s2">"What's our Kubernetes strategy?"</span><span class="p">},</span>
 <a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="p">]</span>
 </code></pre></div>
-<p><strong>Performance note:</strong> <code>assess_quality=True</code> adds bounded overhead — one <code>might_exist</code> call per query cue plus one <code>get_confidence</code> read per selected record (up to <code>max_items</code> reads). On a warm cache with 10 items, expect roughly 5% additional latency on <code>assemble()</code>. Confidence reads are pipelined in a single Redis round-trip batch.</p>
+<p><strong>Performance note:</strong> <code>assess_quality=True</code> adds bounded overhead — one <code>might_exist</code> call per query cue plus one <code>get_confidence</code> read per selected record (up to <code>max_items</code> reads). On a warm cache with 10 items, expect roughly 5% additional latency on <code>assemble()</code>. Each confidence read is its own round trip: an <code>HGET</code> of the companion hash on Redis, a read of the record's state columns on Postgres.</p>
 <h3 id="building-retrievalquality-from-a-custom-pipeline">Building <code>RetrievalQuality</code> from a custom pipeline<a class="headerlink" href="#building-retrievalquality-from-a-custom-pipeline" title="Permanent link">&para;</a></h3>
 <p>If you run your own retrieval (BM25, RRF, hybrid, vector recall) and want the metacognitive signal without adopting <code>ContextAssembler</code>, call the <code>RetrievalQuality.from_records()</code> classmethod on the already-retrieved list:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">RetrievalQuality</span>
@@ -3819,7 +3841,7 @@
 </code></pre></div>
 <p>Built-in <code>group_by</code> string values: <code>"hour"</code> (0–23), <code>"weekday"</code> (0–6, Monday=0), <code>"day"</code> (ISO date string). Unknown strings raise <code>ValueError</code> listing the known options.</p>
 <p>Each <code>stats_dict</code> value has keys: <code>count</code>, <code>mean</code>, <code>stddev</code>, <code>p50</code>, <code>p90</code>, <code>p99</code>, <code>max</code>.</p>
-<p><strong>Implementation note:</strong> <code>error_summary</code> reads the error sorted set via <code>ZREVRANGE</code> then fetches per-instance metadata via a pipelined batch of <code>HGET</code> calls — one call per member. This is one network round-trip regardless of <code>limit</code>. Corrupt msgpack entries are logged at warning level and skipped. The function is an eventually-consistent sampling tool, not a transactional snapshot; a resolution landing mid-batch may appear in some rows and not others.</p>
+<p><strong>Implementation note:</strong> on Redis, <code>error_summary</code> reads the error sorted set via <code>ZREVRANGE</code> then fetches per-instance metadata via a pipelined batch of <code>HGET</code> calls — one call per member. This is one network round-trip regardless of <code>limit</code>. Corrupt msgpack entries are logged at warning level and skipped. The function is an eventually-consistent sampling tool, not a transactional snapshot; a resolution landing mid-batch may appear in some rows and not others.</p>
 <p>Empty error set returns <code>{"__all__": {"count": 0, "mean": 0.0, ...}}</code> rather than raising.</p>
 <h3 id="used-outcome-in-observationprotocol"><code>"used"</code> outcome in <code>ObservationProtocol</code><a class="headerlink" href="#used-outcome-in-observationprotocol" title="Permanent link">&para;</a></h3>
 <p>The <code>"used"</code> outcome records that the agent read and reasoned over a memory but did not act on it in the response. It is strictly distinct from <code>"deferred"</code>:</p>
@@ -3965,19 +3987,32 @@
 <hr />
 <h2 id="performance-notes">Performance notes<a class="headerlink" href="#performance-notes" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>assess_quality=True</code> on <code>assemble()</code> adds bounded overhead: one <code>might_exist</code> per query cue plus <code>get_confidence</code> reads pipelined in a single Redis round-trip for all selected records. Measured at ~5% additional latency on a 10-item selection with a warm cache.</li>
-<li><code>error_summary()</code> reads the error sorted set with <code>ZREVRANGE</code> (one round-trip) then issues all per-instance <code>HGET</code> calls in a single pipelined batch regardless of <code>limit</code>. The total cost is two Redis round-trips.</li>
-<li><code>AdaptiveAssembler</code> has no additional Redis overhead beyond the wrapped <code>ContextAssembler</code>. The rolling-window bookkeeping is pure in-memory Python.</li>
+<li><code>assess_quality=True</code> on <code>assemble()</code> adds bounded overhead: one <code>might_exist</code> per query cue plus one <code>get_confidence</code> read per selected record. Measured at ~5% additional latency on a 10-item selection with a warm cache.</li>
+<li><code>error_summary()</code> costs two round trips regardless of <code>limit</code>: on Redis a <code>ZREVRANGE</code> of the error sorted set, then one pipelined batch of per-instance <code>HGET</code> calls; on Postgres one <code>SELECT</code> of the error table's top rows, then one <code>SELECT</code> of their ledger entries.</li>
+<li><code>AdaptiveAssembler</code> has no additional storage overhead beyond the wrapped <code>ContextAssembler</code>. The rolling-window bookkeeping is pure in-memory Python.</li>
 </ul>
 <hr />
 <h2 id="limitations-and-v2-roadmap">Limitations and v2 roadmap<a class="headerlink" href="#limitations-and-v2-roadmap" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>No cross-restart persistence.</strong> <code>AdaptiveAssembler</code>'s learned <code>score_weights</code> are per-process. If the agent restarts, adaptation starts over from the initial weights. Persisting learned weights to Redis is a v2 scope item.</li>
+<li><strong>No cross-restart persistence.</strong> <code>AdaptiveAssembler</code>'s learned <code>score_weights</code> are per-process. If the agent restarts, adaptation starts over from the initial weights. Persisting learned weights to the store is a v2 scope item.</li>
 <li><strong>Source credibility is bookkeeping-only in v1.</strong> The plan design includes per-source credibility weighting of observation signals, but applying it requires a new per-source score index and significant changes to the <code>_apply_*</code> dispatch. v1 records the intent; the application is deferred to v2.</li>
 <li><strong>No statistical significance testing on keep/revert.</strong> The loop uses mean comparison over a rolling window. A t-test or bootstrap CI before accepting a weight change would reduce noise but slow convergence. Marked as a v2 option.</li>
 <li><strong><code>quality_metric</code> is a proxy, not a task metric.</strong> <code>fok_score * avg_confidence</code> optimizes retrieval quality as measured by the memory layer, not downstream task performance. Monitor actual task outcomes alongside the adaptive loop. See plan Risk 2 for the Goodhart's Law caution.</li>
-<li><strong><code>error_summary</code> is eventually consistent.</strong> Not a transactional snapshot: a resolution landing between the <code>ZREVRANGE</code> and the pipelined <code>HGET</code> batch may appear in some rows and not others. Use as a sampling/debugging tool, not a real-time gauge.</li>
+<li><strong><code>error_summary</code> is eventually consistent.</strong> Not a transactional snapshot: a resolution landing between the two reads (on Redis, the <code>ZREVRANGE</code> and the pipelined <code>HGET</code> batch) may appear in some rows and not others. Use as a sampling/debugging tool, not a real-time gauge.</li>
 </ul>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>All three tiers run on a Postgres-bound model (#759 M2c, M5); the assembler,
+prediction-ledger and adaptive-assembler tests run on both backends.
+<code>assess()</code> and <code>assess_quality</code> read the exact <code>ExistenceFilter</code> token table
+and the record's confidence columns, and <code>error_summary</code> reads the
+<code>popoto_prediction_ledger</code> and <code>popoto_prediction_error</code> engine tables, with
+the grouping and statistics computed by the same Python on both. Because
+<code>might_exist</code> is exact on Postgres, the feeling-of-knowing signal sees no bloom
+false positives, and a cue whose only record was deleted no longer counts as
+known (the <code>ExistenceFilter.might_exist</code> row of
+<a href="../postgres-backend/#records-and-other-behaviour">Documented divergences</a>).
+See <a href="../postgres-backend/#contextassembler-m2c">ContextAssembler</a> and
+<a href="../postgres-backend/#long-tail-fields-m5">Long-tail fields</a>.</p>
 <hr />
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>

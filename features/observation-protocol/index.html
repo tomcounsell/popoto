@@ -1420,6 +1420,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3406,6 +3417,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3554,7 +3576,7 @@ method on it (<code>touch</code>, <code>confirm_access</code>, <code>strengthen_
 <p>When a proactive system pushes memories into agent context:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">ObservationProtocol</span><span class="o">.</span><span class="n">on_surfaced</span><span class="p">(</span><span class="n">memories</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="s2">"proactive"</span><span class="p">)</span>
 </code></pre></div>
-<p>This creates <code>RecallProposal</code> entries in a Redis sorted set for tracking. Proposals expire after 1 hour (configurable via <code>RecallProposal.DEFAULT_TTL</code>).</p>
+<p>This creates <code>RecallProposal</code> entries for tracking (a sorted set on Redis, a row of the <code>popoto_recall_proposal</code> engine table on Postgres). Proposals expire after 1 hour (configurable via <code>RecallProposal.DEFAULT_TTL</code>).</p>
 <h2 id="tuning-constants">Tuning Constants<a class="headerlink" href="#tuning-constants" title="Permanent link">&para;</a></h2>
 <p>All constants are configurable via <code>Defaults</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
@@ -3720,7 +3742,7 @@ reported on scores byte-identically to pre-modulation Popoto.</p>
 <h2 id="recallproposal">RecallProposal<a class="headerlink" href="#recallproposal" title="Permanent link">&para;</a></h2>
 <p>Internal ORM infrastructure for tracking proactively surfaced memories.</p>
 <ul>
-<li><strong>Key pattern</strong>: <code>$RP:{ClassName}:pending:{partition}</code> (sorted set scored by surfaced_at)</li>
+<li><strong>Key pattern</strong> (Redis): <code>$RP:{ClassName}:pending:{partition}</code> (sorted set scored by surfaced_at). On Postgres: one engine table per schema, <code>popoto_recall_proposal (model, part, member, surfaced_at)</code>, created on first use.</li>
 <li><strong>Lifecycle</strong>: pending -&gt; acted | used | dismissed | deferred | contradicted | expired</li>
 <li><strong>TTL</strong>: 3600s (1 hour). Unresolved proposals are treated as deferred.</li>
 </ul>
@@ -3732,6 +3754,20 @@ reported on scores byte-identically to pre-modulation Popoto.</p>
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># Expire stale proposals</span>
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">expired</span> <span class="o">=</span> <span class="n">RecallProposal</span><span class="o">.</span><span class="n">expire_stale</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="mi">3600</span><span class="p">)</span>
 </code></pre></div>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On a Postgres-bound model <code>on_context_used</code> applies the whole effects matrix
+in <strong>one transaction per backend</strong>: the batch's rows are locked <code>FOR UPDATE</code>
+in <code>_pk</code> order, then each instance's effects run in that order and its
+proposal is resolved. Unsaved instances are skipped as on Redis. A deadlock or
+serialization failure retries the whole batch up to
+<code>Defaults.PG_TRANSACTION_RETRIES</code> times and then raises
+<code>BackendRetryableError</code>; with a <code>transaction()</code> or <code>popoto.batch()</code> passed as
+<code>pipeline</code> the batch runs inside it and the error is raised at once for you to
+retry. Because the batch is one transaction, it is all-or-nothing, where a
+Redis pipeline applies whatever commands succeeded. See
+<a href="../postgres-backend/#ranking-and-memory-state-m2a">Ranking and memory state</a>
+and, for the cycle and ledger effects,
+<a href="../postgres-backend/#long-tail-fields-m5">Long-tail fields</a>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../metacognitive-layer/">Metacognitive Layer</a> — full <code>"used"</code> outcome documentation, <code>error_summary</code>, and <code>AdaptiveAssembler</code></li>

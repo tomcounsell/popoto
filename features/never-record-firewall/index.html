@@ -1801,6 +1801,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3384,6 +3395,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3435,7 +3457,7 @@ core.</p>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">Memory</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"a1"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"my key is sk-ant-api03-AAAA..."</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># False -- nothing written to Redis</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># False -- nothing written to the store</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">Memory</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"a1"</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"The user prefers dark mode."</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="c1"># saved normally</span>
@@ -3444,7 +3466,8 @@ core.</p>
 the Claude Code / Codex / Hermes / OpenClaw harness are gated with no code
 change on your side.</p>
 <h2 id="the-guaranteed-class">The guaranteed class<a class="headerlink" href="#the-guaranteed-class" title="Permanent link">&para;</a></h2>
-<p>Content matching any of these never reaches Redis. Each drop records one
+<p>Content matching any of these never reaches the store (Redis or Postgres).
+Each drop records one
 reason code.</p>
 <table>
 <thead>
@@ -3577,7 +3600,8 @@ high-entropy token, so scoring it there blocked ordinary sentences. Split
 pattern does run against both renderings.</p>
 <h2 id="where-the-gate-runs">Where the gate runs<a class="headerlink" href="#where-the-gate-runs" title="Permanent link">&para;</a></h2>
 <p>Inside <code>Model.save()</code>, before the <code>WriteFilterMixin</code> check and before
-<code>pre_save()</code> — therefore before serialization, the HSET, and every secondary
+<code>pre_save()</code> — therefore before serialization, the HSET (the row write on
+Postgres), and every secondary
 index, BM25 posting, embedding call, and co-occurrence edge. Ordering is the
 whole guarantee: blocked content is never handed to any of those.</p>
 <p>A blocked save returns <code>False</code>, the same contract <code>WriteFilterMixin</code> already
@@ -3592,7 +3616,8 @@ that the tombstone design closes.</p>
 <p>The mixin scans the instance's <strong>non-key <code>str</code> field values</strong>, and only those:</p>
 <ul>
 <li><strong>Key fields are excluded</strong> — <code>KeyField</code> and <code>AutoKeyField</code> values are
-  rendered into the Redis key <em>name</em>, which a later drop cannot retract. The
+  rendered into the record key (the Redis key <em>name</em>, the <code>_pk</code> column on
+  Postgres), which a later drop cannot retract. The
   scan skips them because blocking at <code>save()</code> would not unwrite a name that
   earlier records already embedded; a key field carrying secrets is a schema
   problem, not a save-time one.</li>
@@ -3618,7 +3643,7 @@ fields <strong>by name</strong> without re-deriving the key-field rule:</p>
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>                <span class="k">yield</span> <span class="n">value</span>
 </code></pre></div>
 <p>This exists for <strong>machine-generated pointers</strong>, not to soften the gate on
-anything a human or a model wrote. <code>JournalEntry.target</code> holds a Redis key
+anything a human or a model wrote. <code>JournalEntry.target</code> holds a record key
 Popoto itself generated (<code>JournalEntry:{agent_id}:{uuid4 hex}</code>), and scanning
 it for payment cards is a category error with a measured cost: a uuid4 hex
 sometimes contains a 13–19 digit run that passes the Luhn checksum, so the
@@ -3650,6 +3675,7 @@ is the precise point where a never-record tombstone diverges from
 <a href="../../recipes/"><code>MemoryLifecycle</code></a>'s <code>Tombstone</code>, which stores a fingerprint
 on purpose so writes can be matched against it.</p>
 <h3 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h3>
+<p>On Redis:</p>
 <table>
 <thead>
 <tr>
@@ -3745,7 +3771,7 @@ deliberately conservative in the over-blocking direction.</p>
 <tr>
 <td><code>NR_TOMBSTONE_LOG_MAX</code></td>
 <td><code>1000</code></td>
-<td>Cap on the drop-log LIST</td>
+<td>Cap on the drop log (the LIST on Redis, the log table rows per model on Postgres)</td>
 </tr>
 <tr>
 <td><code>NEVER_RECORD_ENABLED</code></td>
@@ -3764,6 +3790,32 @@ a pipeline before anything is constructed.</p>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">verdict</span><span class="o">.</span><span class="n">reason</span>     <span class="c1"># 'credential_prefix'</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">verdict</span><span class="o">.</span><span class="n">detector</span>   <span class="c1"># 'vendor_token'</span>
 </code></pre></div>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>The gate is the same code in <code>Model.save()</code>, so a refused save writes no row,
+no companion and no engine-table entry. The audit log moves to two engine
+tables, <code>popoto_never_record_count</code> (one row per model and reason, the
+counter) and <code>popoto_never_record_log</code> (newest first, trimmed to
+<code>NR_TOMBSTONE_LOG_MAX</code> rows per model), written in one statement. See
+<a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Postgres Backend</a>.
+<code>never_record_counts()</code> and <code>never_record_log()</code> read the tables and return
+the same shapes.</p>
+<p>Differences:</p>
+<ul>
+<li>A refused save inside a <code>transaction()</code> or a <code>popoto.batch()</code> writes its
+  tombstone on that unit's connection, so the tombstone rolls back with the
+  unit and is kept only when the unit commits. On Redis the <code>pipeline=</code> is
+  ignored for the tombstone, which is written at once and survives a
+  <code>reset()</code>.</li>
+<li>Best-effort is narrower. An outage (<code>BackendUnavailableError</code>,
+  <code>BackendRetryableError</code>) on an autocommit tombstone write is swallowed, as
+  any Redis error is. Inside a unit of work the outage propagates, because it
+  has already aborted the caller's transaction, and any other database error
+  propagates as <code>BackendError</code> in both cases. The save is refused either way,
+  so neither path fails open.</li>
+</ul>
+<p>The conformance tests in <code>tests/test_never_record_firewall.py</code> run on both
+backends, and on the Postgres leg the "never persists" sweep covers every
+table in the schema as well as Redis.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../../fields/#neverrecordmixin">NeverRecordMixin reference</a></li>

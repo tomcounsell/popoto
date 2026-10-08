@@ -1959,6 +1959,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3294,6 +3305,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3485,7 +3507,8 @@ telemetry can never grow a store past the scale posture.</p>
 </code></pre></div>
 <p>For each <code>memory_key -&gt; outcome</code> in <code>outcome_map</code> whose key was injected in this
 event, appends <code>{key, outcome, at}</code> to the event's <code>outcomes</code>. Keys are the same
-redis keys stored in <code>injected</code> (i.e. <code>instance.db_key.redis_key</code>); outcomes are
+record keys stored in <code>injected</code> (i.e. <code>instance.db_key.redis_key</code>, the same
+string on both backends); outcomes are
 validated against <code>ObservationProtocol.VALID_OUTCOMES</code>.</p>
 <p>Record-only by default — telemetry is pure observation and does not double-apply
 confidence/decay effects. Pass <code>apply_effects=True</code> (with <code>instances=</code>) to also
@@ -3531,9 +3554,9 @@ joined outcome; injections without one are counted as <code>pending</code>.</p>
 already stores the fused score, so they need no schema change).</p>
 <h2 id="scope-and-constraints">Scope and constraints<a class="headerlink" href="#scope-and-constraints" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Valkey-safe:</strong> only core commands. The injection trace uses read-only
-  pipelined <code>ZSCORE</code>; the event write is an ordinary model <code>save()</code>. No modules,
-  no Lua.</li>
+<li><strong>Valkey-safe:</strong> only core commands. On Redis the injection trace uses
+  read-only pipelined <code>ZSCORE</code>; the event write is an ordinary model <code>save()</code>.
+  No modules, no Lua.</li>
 <li><strong>TTL mandatory:</strong> <code>AssemblyEvent.Meta.ttl</code> bounds the store; the recorder can
   shorten but the record always expires.</li>
 <li><strong>Not self-benchmarking:</strong> no before/after gates and no automated tuning. This
@@ -3544,6 +3567,15 @@ already stores the fused score, so they need no schema change).</p>
   (<code>AssemblyEvent:*</code>); a deployment's own counter namespace (e.g. <code>analytics:*</code>)
   is separate by design.</li>
 </ul>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>Telemetry runs unchanged on a Postgres-bound process (#759 M5); every test in
+<code>tests/test_memory_telemetry.py</code> runs on both backends. <code>AssemblyEvent</code> is a
+table row whose <code>Meta.ttl</code> sets the <code>_expires_at</code> column, so an event expires
+there as on Redis and is invisible to every read from that instant, and the
+trace's score proxy reads the backend (the partition's decay ranking or the
+sorted column) instead of pipelined <code>ZSCORE</code>. See
+<a href="../postgres-backend/#record-expiry-m5">Record expiry</a> and
+<a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Recipes, mixins and the queue</a>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../context-assembler/">ContextAssembler</a> — the retrieval-to-injection bridge and the <code>emit_trace</code> hook</li>

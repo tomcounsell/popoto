@@ -1740,17 +1740,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#on-postgres" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        On Postgres
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#push-path" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1876,6 +1865,17 @@
     <span class="md-ellipsis">
       
         Confidence Gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
       
     </span>
   </a>
@@ -3629,17 +3629,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#on-postgres" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        On Postgres
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#push-path" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3765,6 +3754,17 @@
     <span class="md-ellipsis">
       
         Confidence Gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
       
     </span>
   </a>
@@ -4197,16 +4197,6 @@ and the assembler re-raises that too. The tuple it tests against is
 <code>popoto.recipes.context_assembler.OUTAGE_ERRORS</code>, the Redis pair plus
 <code>BackendUnavailableError</code>; catch that one when a model may be bound to either
 backend.</p>
-<h3 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h3>
-<p><code>ContextAssembler</code> works unchanged on a model bound to Postgres
-(<code>Meta.backend = "postgres"</code>, #759 M2c), and returns the same ranked records
-as on Redis: every stage reaches storage through field and query methods that
-dispatch on the model's backend, the hybrid path ranks BM25 with corpus-wide
-statistics as <code>BM25Field.search</code> does, and the post-retrieval effects (staged
-reads for the selected records, competitive suppression for the rest) run as
-bulk statements in one transaction. A Postgres-bound assembler issues no Redis
-command. See <a href="../postgres-backend/#contextassembler-m2c">Postgres Backend</a> for
-what each stage runs and the few documented differences.</p>
 <h3 id="push-path">Push Path<a class="headerlink" href="#push-path" title="Permanent link">&para;</a></h3>
 <ol>
 <li><strong>CyclicDecayField scan</strong>: Find records whose cyclic + pressure score exceeds <code>DEFAULT_SURFACING_THRESHOLD</code>.</li>
@@ -4384,6 +4374,34 @@ assembler itself never proposes a question. See <a href="../question-queue/">Que
 <p>See <a href="#confidence-gate">Confidence Gate</a>
 for the full <code>metadata["gate"]</code> shape, the fault-tolerant <code>get_confidence()</code>
 failure path, and the no-default policy on <code>EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD</code>.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p><code>ContextAssembler</code> works unchanged on a model bound to Postgres
+(<code>Meta.backend = "postgres"</code>) and returns the same ranked records as on
+Redis. Every stage reaches storage through field and query methods that
+dispatch on the model's backend, the hybrid path ranks BM25 with corpus-wide
+statistics as <code>BM25Field.search</code> does (it does not call <code>recall()</code>), and the
+post-retrieval effects (staged reads for the selected records, competitive
+suppression for the rest) run as bulk statements in one transaction. A
+Postgres-bound assembler issues no Redis command. See
+<a href="../postgres-backend/#contextassembler-m2c">ContextAssembler (M2c)</a> for what
+each stage runs.</p>
+<p>Differences (the first three are rows in
+<a href="../postgres-backend/#records-and-other-behaviour">Documented divergences</a>):</p>
+<ul>
+<li>The ExistenceFilter short-circuit is exact, so a cue whose only record was
+  deleted or rewritten short-circuits on Postgres but not on Redis.</li>
+<li>A reload after <code>touch()</code> sees the touched time, so after an <code>acted</code>
+  outcome a record's formatted <code>relevance</code> can differ, and a token budget can
+  then admit a different record.</li>
+<li>Records with the same text (and so the same vector) tie by key on
+  Postgres, in file-listing order on Redis.</li>
+<li>The post-effects are all-or-nothing: a failed statement drops the call's
+  staged reads and suppression signals with one warning, where Redis skips
+  only the failing candidate. Reads are staged only on models with
+  <code>AccessTrackerMixin</code>.</li>
+<li>An outage raises <code>BackendUnavailableError</code> (see
+  <a href="#outages-are-raised-not-swallowed">Outages are raised, not swallowed</a>).</li>
+</ul>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../metacognitive-layer/">Metacognitive Layer</a> — retrieval quality scoring, FOK, and adaptive weight tuning</li>

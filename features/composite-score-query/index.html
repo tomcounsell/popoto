@@ -1626,6 +1626,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3360,6 +3371,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3381,7 +3403,7 @@
 
 
 <h1 id="compositescorequery">CompositeScoreQuery<a class="headerlink" href="#compositescorequery" title="Permanent link">&para;</a></h1>
-<p>Multi-factor retrieval for Popoto models. Combines N sorted set indexes with configurable weights via Redis <code>ZUNIONSTORE</code> and returns top-K results ranked by composite score.</p>
+<p>Multi-factor retrieval for Popoto models. Combines N sorted set indexes with configurable weights and returns top-K results ranked by composite score: via <code>ZUNIONSTORE</code> on Redis, as one <code>SELECT</code> on Postgres (see <a href="#on-postgres">On Postgres</a>).</p>
 <h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">DecayingSortedField</span><span class="p">,</span> <span class="n">ConfidenceField</span>
@@ -3537,6 +3559,7 @@
 </tbody>
 </table>
 <h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
+<p>This section describes the Redis implementation.</p>
 <ol>
 <li>
 <p><strong>Index resolution</strong>: Each named index maps to a Redis sorted set key. Native ZSET fields resolve directly. Non-ZSET sources (ConfidenceField, AccessTracker) are materialized into temporary sorted sets.</p>
@@ -3647,7 +3670,29 @@
 </tbody>
 </table>
 <h2 id="temp-key-conventions">Temp key conventions<a class="headerlink" href="#temp-key-conventions" title="Permanent link">&para;</a></h2>
-<p>All temporary keys follow the pattern <code>$CSQ:{ModelName}:{type}:{uid}</code> where <code>uid</code> is a random 8-character hex string. Keys are deleted in a <code>finally</code> block and also set with <code>EXPIRE 5</code> as a safety net against process crashes.</p>
+<p>On Redis, all temporary keys follow the pattern <code>$CSQ:{ModelName}:{type}:{uid}</code> where <code>uid</code> is a random 8-character hex string. Keys are deleted in a <code>finally</code> block and also set with <code>EXPIRE 5</code> as a safety net against process crashes.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>On a Postgres-bound model <code>composite_score</code> takes the same arguments and is one
+<code>SELECT</code> over the model's rows: each index is an arm scoring the records its
+Redis sorted set would hold, and the aggregate, tie order (descending key),
+<code>min_score</code>, <code>temperature</code> and <code>post_filter</code> behave as on Redis. No temporary
+keys are written. See
+<a href="../postgres-backend/#ranking-and-memory-state-m2a">Ranking and memory state</a>.
+The same <code>QueryException</code>s are raised for unknown fields, missing partition
+filters and missing mixins.</p>
+<p>Differences, from
+<a href="../postgres-backend/#records-and-other-behaviour">Documented divergences</a>:</p>
+<ul>
+<li>The <code>"priority"</code> index raises <code>BackendCapabilityError</code>: the WriteFilter
+  priority tier is not stored on Postgres.</li>
+<li>A <code>co_occurrence_boost</code> or <code>similarity_boost</code> key with no record cannot take
+  a top-K slot on Postgres; on Redis it takes one and is dropped at hydration,
+  so Redis can return fewer records (never in another order).</li>
+<li>A NaN decay score scores 0 in its arm on Postgres; on Redis the composite's
+  <code>ZADD</code> refuses it with <code>ResponseError</code>.</li>
+<li>Scores agree to within 1e-9: Redis's decay arm holds <code>%.14g</code>-rounded
+  scores where Postgres uses the full <code>double</code>.</li>
+</ul>
 
 
 

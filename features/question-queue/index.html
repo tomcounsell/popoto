@@ -1581,6 +1581,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3504,6 +3515,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3569,7 +3591,7 @@
 </tr>
 <tr>
 <td><code>target_keys</code></td>
-<td>Redis keys of the facts the answer would resolve</td>
+<td>Record keys of the facts the answer would resolve (the same key strings on either backend)</td>
 </tr>
 <tr>
 <td><code>options</code></td>
@@ -3643,14 +3665,14 @@
 </ol>
 <p><code>last_seen_turn</code> is set when the candidate is proposed. It is bumped when a producer re-observes the same ambiguity, or when the host calls <code>note_use(agent_id, keys, turn)</code> with the keys it just injected. There is no probabilistic score, so every delivered question traces back to the evidence that let it through.</p>
 <h2 id="the-budget">The budget<a class="headerlink" href="#the-budget" title="Permanent link">&para;</a></h2>
-<p>At most one delivery per <code>QUESTION_BUDGET_TURNS</code> (K) turns, per agent. A Lua script grants the token <strong>and</strong> claims a candidate in one step:</p>
+<p>At most one delivery per <code>QUESTION_BUDGET_TURNS</code> (K) turns, per agent. A Lua script (on Postgres, one statement behind the agent's bucket advisory lock) grants the token <strong>and</strong> claims a candidate in one step:</p>
 <ul>
 <li>It grants only when there is no prior ask or <code>turn &gt;= last_ask_turn + K</code>.</li>
 <li>A regressed turn (<code>turn &lt; last_ask_turn</code>) never grants, and <code>last_ask_turn</code> is never rewound.</li>
 <li><code>last_ask_turn</code> is written only when a candidate is actually claimed, so budget is never spent when nothing is delivered.</li>
 <li>The bucket key carries a wall-clock TTL backstop (<code>QUESTION_BUCKET_TTL_SECONDS</code>, 7 days). A host whose turn counter reset after a restart is locked out for at most that long, never forever.</li>
 </ul>
-<p>The counter lives in Redis, not in process memory, so a restart does not refill the budget.</p>
+<p>The counter lives in the store (Redis, or a Postgres table), not in process memory, so a restart does not refill the budget.</p>
 <h2 id="relevance-timing">Relevance timing<a class="headerlink" href="#relevance-timing" title="Permanent link">&para;</a></h2>
 <p>Pass <code>query_cues</code> (a string or an iterable of tokens) to <code>next_question()</code>. A candidate is deliverable only if at least one cue token overlaps its <code>cue_tokens</code>, so a question about meeting times is not asked in the middle of a database migration. <code>query_cues=None</code> turns timing off.</p>
 <h2 id="expiry-and-dedup">Expiry and dedup<a class="headerlink" href="#expiry-and-dedup" title="Permanent link">&para;</a></h2>
@@ -3699,7 +3721,7 @@
 <h2 id="answers-are-evidence">Answers are evidence<a class="headerlink" href="#answers-are-evidence" title="Permanent link">&para;</a></h2>
 <p>An <code>answered</code> reply never overwrites anything. It is applied as defeasible evidence through the existing observation machinery:</p>
 <ol>
-<li><strong>Claim.</strong> A Lua compare-and-set flips <code>status</code> from <code>delivered</code> (or <code>pending</code>) to <code>answered</code> and writes <code>answer_option</code>. If the status was anything else, the call returns <code>AnswerResult(applied=False, reason="not_open")</code> and changes nothing. That includes a reply that arrives after an ignored question was already moved to <code>cooled</code>: the late reply is not applied, and the question can be asked again after its cooldown.</li>
+<li><strong>Claim.</strong> A compare-and-set (a Lua script on Redis, a conditional <code>UPDATE</code> on Postgres) flips <code>status</code> from <code>delivered</code> (or <code>pending</code>) to <code>answered</code> and writes <code>answer_option</code>. If the status was anything else, the call returns <code>AnswerResult(applied=False, reason="not_open")</code> and changes nothing. That includes a reply that arrives after an ignored question was already moved to <code>cooled</code>: the late reply is not applied, and the question can be asked again after its cooldown.</li>
 <li><strong>Apply.</strong> The chosen option's <code>acted</code> keys map to the <code>acted</code> outcome and its <code>contradicted</code> keys to <code>contradicted</code>, applied through <code>ObservationProtocol.on_context_used</code>. Each target that declares a <code>ConfidenceField</code> then gets <code>QUESTION_ANSWER_WEIGHT - 1</code> further <code>update_confidence</code> observations at the same signal.</li>
 </ol>
 <p>The total is <code>QUESTION_ANSWER_WEIGHT</code> observations. <code>update_confidence</code> has no weight argument, so this stands in for one. Past <code>evidence_cap</code> each observation has gain <code>1/(cap+1)</code>, so the evidence count stays capped and a later contradiction keeps its full gain. The claim is "W strong observations", never "dominates".</p>
@@ -3711,7 +3733,7 @@
 </ul>
 <p>See <a href="../confidence-field/">ConfidenceField</a> for the update rule and <a href="../observation-protocol/">ObservationProtocol</a> for the outcome vocabulary.</p>
 <h2 id="fail-closed-behavior">Fail-closed behavior<a class="headerlink" href="#fail-closed-behavior" title="Permanent link">&para;</a></h2>
-<p><code>propose*</code>, <code>next_question</code>, <code>record_answer</code> and <code>note_use</code> log and return <code>None</code>, <code>0</code> or a non-applied <code>AnswerResult</code> on any Redis error. They never raise into the caller. Invalid input is the exception: an unknown <code>kind</code> or <code>ambiguity_signal</code>, an empty question, or an option whose <code>acted</code> and <code>contradicted</code> lists overlap raises <code>ValueError</code>, because that is a producer bug. <code>assemble()</code>'s own outage contract is untouched.</p>
+<p><code>propose*</code>, <code>next_question</code>, <code>record_answer</code> and <code>note_use</code> log and return <code>None</code>, <code>0</code> or a non-applied <code>AnswerResult</code> on any storage error, Redis or Postgres. They never raise into the caller. Invalid input is the exception: an unknown <code>kind</code> or <code>ambiguity_signal</code>, an empty question, or an option whose <code>acted</code> and <code>contradicted</code> lists overlap raises <code>ValueError</code>, because that is a producer bug. <code>assemble()</code>'s own outage contract is untouched.</p>
 <p><code>AnswerResult.reason</code> is one of <code>applied</code>, <code>cooled</code>, <code>not_open</code>, <code>apply_failed</code>, <code>disabled</code>, <code>error</code>.</p>
 <h2 id="kill-switch">Kill switch<a class="headerlink" href="#kill-switch" title="Permanent link">&para;</a></h2>
 <p>Set <code>POPOTO_QUESTION_QUEUE_DISABLE=1</code> (any of the usual truthy strings) to turn the queue off. It is read on every call, not at import, so it can be flipped on a running deploy without editing model code. Disabled, producers write nothing, <code>next_question()</code> returns <code>None</code>, and <code>record_answer()</code> returns <code>reason="disabled"</code>.</p>
@@ -3806,6 +3828,19 @@
 <a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">outcome</span><span class="o">.</span><span class="n">applied</span><span class="p">,</span> <span class="n">outcome</span><span class="o">.</span><span class="n">reason</span><span class="p">,</span> <span class="n">outcome</span><span class="o">.</span><span class="n">option_index</span><span class="p">)</span>
 <a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>    <span class="c1"># True applied 0</span>
 </code></pre></div>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>A Postgres-bound queue keeps candidates as <code>question_candidate</code> rows, the
+token bucket in <code>popoto_question_bucket (agent, last_turn, expires_at)</code> and
+the propose lock in <code>popoto_lease</code>, where an expired row reads as absent, as
+the Redis TTL makes the key vanish. Delivery is one statement behind the
+agent's advisory lock, so the budget is exact under concurrency as on Redis.
+Two behaviors differ (both rows of
+<a href="../postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>):
+a candidate whose row another transaction holds is skipped for the next
+(<code>FOR UPDATE SKIP LOCKED</code>), where Redis's script waits and sees the write;
+and a proposal that duplicates two or more open candidates folds into the
+first in <code>_pk</code> order, where Redis uses set order. See
+<a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Recipes, mixins and the queue</a>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../context-assembler/#confidence-gate">ContextAssembler</a> - the gate whose refusals feed <code>propose_from_gate</code></li>

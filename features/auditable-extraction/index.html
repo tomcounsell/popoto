@@ -1504,17 +1504,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#backends" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Backends
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#the-terminal-write-conflict-guard" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1585,6 +1574,17 @@
     <span class="md-ellipsis">
       
         Why the v1 candidate shape is the one #510 measured worst — on purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
       
     </span>
   </a>
@@ -3382,17 +3382,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#backends" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Backends
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#the-terminal-write-conflict-guard" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3463,6 +3452,17 @@
     <span class="md-ellipsis">
       
         Why the v1 candidate shape is the one #510 measured worst — on purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
       
     </span>
   </a>
@@ -3712,19 +3712,6 @@ the old state's count in place. A hash written that way is repaired by
 from the detail rows in one script call; run it per turn once every process
 has the fix. On Postgres the summary is a <code>GROUP BY</code> computed on read and
 cannot drift, so the same call just returns it.</p>
-<h2 id="backends">Backends<a class="headerlink" href="#backends" title="Permanent link">&para;</a></h2>
-<p><code>DecisionLog</code> follows <code>DecisionRecord</code>'s backend, the process default, as the
-journal does. On Redis nothing changed beyond the summary fix above. On
-Postgres <code>SubconsciousMemory(auditable_extraction=...)</code> constructs and runs
-with no Redis command: rows, the guarded terminal write, the assembly claim
-(a lease row) and the summary all live in Postgres, with the same semantics.
-Construction refuses only the split trail, whenever <code>auditable_extraction</code> is
-set: a decision log that would land in Redis while the memory model is on
-Postgres, or a decision log in a different store from the journal entry model
-(in either direction). The error says how to bind the process default. A
-memory model pinned to Redis under a Postgres default keeps its decision log in
-Postgres, next to the journal. See <a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Postgres Backend</a>.
-A process that moves to Postgres starts with an empty decision log.</p>
 <h2 id="the-terminal-write-conflict-guard">The terminal-write conflict guard<a class="headerlink" href="#the-terminal-write-conflict-guard" title="Permanent link">&para;</a></h2>
 <p>Every terminal write — including the pre-LLM <code>firewall_drop</code>, which cannot
 conflict in practice because no prior row exists for a fresh candidate — goes
@@ -3748,24 +3735,27 @@ assembly claim only buys mutual exclusion on a key, never inspects <code>state</
 hence the dedicated Lua script.</p>
 <h2 id="the-atomic-assembly-claim">The atomic assembly claim<a class="headerlink" href="#the-atomic-assembly-claim" title="Permanent link">&para;</a></h2>
 <p>Before writing a <code>pending</code> row, assembly claims the candidate with a single
-atomic op:</p>
+atomic op. On Redis it is:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>SET popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id} &lt;token&gt; NX PX &lt;ttl&gt;
 </code></pre></div>
 <p><code>&lt;ttl&gt;</code> is <code>Defaults.M3_ASSEMBLY_CLAIM_TTL_MS</code> (30,000 ms), a pinned in-repo
 constant — not a constructor kwarg, per this project's convention that
 experimental-tuning numbers live in <code>popoto.fields.constants.Defaults</code>, not
-as user-facing config surface.</p>
+as user-facing config surface. On Postgres the claim is one upsert on the
+<code>popoto_lease</code> table that succeeds only when no unexpired lease holds the
+key, with the same TTL.</p>
 <p>The claim closes a TOCTOU window in the dedup probe: without it, two
 runners racing the same <code>(agent_id, turn_id, candidate_id)</code> — a duplicated
 delivery racing a crash-retry, both seeing a surviving <code>pending</code> row — could
 both probe, both find nothing yet, and both append, producing two permanent
 journal entries (the journal itself can't catch this: <code>append()</code> takes no
-idempotency key and <code>AppendOnlyViolation</code> only fires when a record's Redis
-key already exists). The claim's <em>loser</em> performs no journal write and no
+idempotency key and <code>AppendOnlyViolation</code> only fires when a record's key
+already exists). The claim's <em>loser</em> performs no journal write and no
 row transition at all — it no-ops and leaves the candidate entirely to the
-winner. Release is token-checked (a small Lua <code>if GET == token then DEL</code>) so
+winner. Release is token-checked (a small Lua <code>if GET == token then DEL</code> on Redis,
+a <code>DELETE ... WHERE token = ...</code> on Postgres) so
 a runner can never delete a claim it no longer owns.</p>
-<p><code>SET NX PX</code> was chosen over <code>WATCH</code>/<code>MULTI</code> compare-and-set deliberately:
+<p>On Redis, <code>SET NX PX</code> was chosen over <code>WATCH</code>/<code>MULTI</code> compare-and-set deliberately:
 <code>WATCH</code> needs a dedicated connection held across the transaction plus a
 retry loop, which doesn't compose with Popoto's shared connection pool.
 Both are Valkey-safe (core commands and Lua only, no modules); <code>SET NX</code> is
@@ -3904,6 +3894,32 @@ else" becomes a <code>per_generator_rule</code> breakdown instead of a single op
 aggregate number. Sentence spans are the smallest candidate shape that makes
 the decision log informative — a raw-turn candidate is one candidate per
 turn, with nothing left to discriminate between.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p><code>DecisionLog</code> follows <code>DecisionRecord</code>'s backend, the process default, as the
+journal does. On Postgres the decision rows live in the <code>DecisionRecord</code>
+table, and <code>SubconsciousMemory(auditable_extraction=...)</code> runs with no Redis
+command.
+See <a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Postgres Backend</a>.</p>
+<ul>
+<li>The guarded terminal write is one <code>INSERT ... ON CONFLICT</code> statement under
+  the record's advisory lock, with the same refusal rule and the same
+  <code>terminal_conflict_refused</code> marker.</li>
+<li>The assembly claim is a <code>popoto_lease</code> row, released only by its token.</li>
+<li><code>turn_summary</code> is a <code>GROUP BY</code> over the turn's rows, computed on read, so
+  it cannot drift and <code>rebuild_turn_summary</code> just returns it.</li>
+<li><code>list_for_agent</code> is an indexed <code>filter(agent_id=...)</code> query. The Redis
+  <code>SCAN</code> and its reason (terminal writes skip the ORM's index sets) do not
+  apply.</li>
+</ul>
+<p>Construction refuses a split audit trail with <code>BackendCapabilityError</code>
+whenever <code>auditable_extraction</code> is set: a decision log that would land in
+Redis while the memory model is on Postgres, or a decision log in a different
+store from the journal entry model (in either direction). The error says how
+to bind the process default. A memory model pinned to Redis under a Postgres
+default keeps its decision log in Postgres, next to the journal.</p>
+<p>Limitations: a process that moves to Postgres starts with an empty decision
+log, since nothing copies Redis rows across. <code>DecisionLog(redis_client=...)</code>
+pins the Redis path whatever the process default is.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../llm-memory-extraction/">LLM Memory Extraction</a> — the pluggable

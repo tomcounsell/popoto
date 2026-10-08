@@ -3458,12 +3458,12 @@
 </tr>
 <tr>
 <td><code>expected_value</code></td>
-<td>Sorted set (score)</td>
+<td>Sorted set score on Redis; its own column on Postgres</td>
 <td>Pure recency clock; decays with time</td>
 </tr>
 </tbody>
 </table>
-<p><code>expected_value</code> is a <code>DecayingSortedField(partition_by="agent_id", base_score_field="q_value")</code>. The sorted-set score is the decay-weighted access timestamp; <code>q_value</code> supplies the base magnitude. Because the two slots are independent, a <code>save()</code>, <code>touch()</code>, or <code>"acted"</code> outcome that refreshes the decay clock does not overwrite the Q-value, and a TD update to <code>q_value</code> does not alter the recency clock.</p>
+<p><code>expected_value</code> is a <code>DecayingSortedField(partition_by="agent_id", base_score_field="q_value")</code>. The clock (the sorted-set score on Redis) is the decay-weighted access timestamp; <code>q_value</code> supplies the base magnitude. Because the two slots are independent, a <code>save()</code>, <code>touch()</code>, or <code>"acted"</code> outcome that refreshes the decay clock does not overwrite the Q-value, and a TD update to <code>q_value</code> does not alter the recency clock.</p>
 <h3 id="crystallization-handler">Crystallization Handler<a class="headerlink" href="#crystallization-handler" title="Permanent link">&para;</a></h3>
 <p>Automatic pattern detection via StreamConsumer:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.policy_cache</span><span class="w"> </span><span class="kn">import</span> <span class="n">crystallization_handler</span>
@@ -3553,11 +3553,19 @@ update on a model that is not a <code>PolicyEntry</code>.</p>
 <li><code>chi_squared_uniform(observed)</code> — chi-squared test against uniform distribution</li>
 </ul>
 <h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
-<p><code>PolicyEntry</code> runs unchanged on a Postgres-bound model (#759 M5): its
-<code>TDValueField</code>, <code>PredictionLedgerMixin</code>, <code>ConfidenceField</code>, decay clock,
-co-occurrence graph and existence filter are all stored there, and its
-<code>EventStreamMixin</code> mutation log is still sent to Redis after each write
-commits. See <a href="../postgres-backend/#long-tail-fields-m5">Postgres Backend</a>.</p>
+<p><code>PolicyEntry</code> runs unchanged on a Postgres-bound model (#759 M5); its tests
+run on both backends. <code>q_value</code> is a <code>numeric</code> column and <code>td_update</code> one
+<code>UPDATE</code>, the decay clock is the <code>expected_value</code> column rather than a sorted
+set score, the ledger, confidence state, co-occurrence edges and existence
+tokens are Postgres columns and tables, and the <code>EventStreamMixin</code> mutation
+log is appended to the backend's events tables in the save's own transaction,
+where the crystallization and temporal-discovery <code>StreamConsumer</code> handlers
+read it. Two behaviours follow the backend: the existence filter is exact
+rather than a bloom filter, and a reload after <code>touch()</code> sees the touched
+clock (both rows of
+<a href="../postgres-backend/#records-and-other-behaviour">Documented divergences</a>).
+See <a href="../postgres-backend/#long-tail-fields-m5">Long-tail fields</a> and
+<a href="../postgres-backend/#event-streams-and-pubsub-m5">Event streams and pub/sub</a>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../context-assembler/">ContextAssembler</a> — retrieval-to-injection bridge</li>
