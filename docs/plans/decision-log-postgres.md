@@ -7,7 +7,7 @@ created: 2026-10-07
 tracking: https://github.com/tomcounsell/popoto/issues/811
 last_comment_id:
 revision_applied: true
-revision_applied_at: 2026-10-08T00:00:00Z
+revision_applied_at: 2026-10-08T01:08:59Z
 ---
 
 # Decision Log on Postgres
@@ -43,7 +43,7 @@ Everything else on the auditable path already runs on Postgres: candidates, verd
 **Desired outcome:**
 - On a Postgres-bound process, `SubconsciousMemory(auditable_extraction=...)` constructs.
 - `extract_memories` runs the full flow (candidates, verdicts, decision rows, journal, `ExtractedFact`s) with **zero Redis commands**.
-- Observable semantics are **identical** on both backends, `turn_summary` included. There is no documented divergence.
+- Observable semantics are **identical** on both backends, `turn_summary` included.
 - `turn_summary` honours its M3 contract on both backends: it is a rollup of the turn's detail rows' *current* terminal states. The Redis implementation does not do that today when a candidate's terminal state or reason changes after its first terminal write (see "turn_summary drift on Redis" below), so this plan fixes Redis too.
 - Apart from that fix, the Redis path stays byte-identical: same keys, same command sequence, and the same Lua except for the summary-maintenance block in `TERMINAL_WRITE_LUA`.
 - `DecisionLog`'s public signatures are unchanged.
@@ -78,7 +78,7 @@ Everything else on the auditable path already runs on Postgres: candidates, verd
 
 ## Prior Art
 
-- **#562 / PR #591** (M3, auditable extraction) introduced `DecisionLog`, `TERMINAL_WRITE_LUA` and the claim. This is the Redis implementation that must stay byte-identical.
+- **#562 / PR #591** (M3, auditable extraction) introduced `DecisionLog`, `TERMINAL_WRITE_LUA` and the claim. This is the Redis implementation that must stay byte-identical apart from the summary fix. Its plan (`docs/plans/auditable_extraction_m3.md`) is also the source of the `turn_summary` contract.
 - **#563 / PR #622** (M4, reference resolution) added `ResolutionLog`, a plain model whose write never raises. `assemble` calls it. It already works on Postgres (spike-3).
 - **PR #782** (#759 M4b: recipes, mixins and the question queue on Postgres) is the most relevant precedent:
   - It established the `field_call` pseudo-field adapter pattern.
@@ -155,6 +155,19 @@ All spikes ran against local Postgres (`postgresql://localhost:5432/postgres`) t
 - **Confidence**: high
 - **Impact on plan**: `ResolutionLog` needs no change. It only needs coverage in the zero-Redis flow test.
 
+### spike-4: The Redis summary fix behaves as specified
+- **Assumption**: "Decrement-old / increment-new inside `TERMINAL_WRITE_LUA`, with `cmsgpack.unpack` on the prior state and reason, keeps the hash equal to the rollup of current terminal states."
+- **Method**: prototype. The Technical Approach block was monkeypatched into `dl.TERMINAL_WRITE_LUA` in a scratch script, with `REDIS_URL=redis://localhost:6379/15` set before import, against Redis 8.10.2. `src/` was not changed.
+- **Finding**: Confirmed for every shape:
+  - Same `reject(not_a_fact)` twice gives `{'state:reject': 1, 'reason:not_a_fact': 1}`.
+  - Then `reject(not_memorable)` gives `{'state:reject': 1, 'reason:not_memorable': 1}`.
+  - Then `accept(accepted, E1)` gives `{'state:accept': 1, 'reason:accepted': 1}`.
+  - A refused `reject` returns `False` and leaves the summary unchanged.
+  - `withhold` → `firewall_drop` on a second candidate, and `pending` → `reject` on a third, give exactly one count per candidate under its current state and reason.
+  - Before the patch, the same script's first three writes left `{'state:reject': 1, 'reason:not_a_fact': 1}` against an `accept` row (the drift in Problem).
+- **Confidence**: high
+- **Impact on plan**: The Redis fix is a contained change to one Lua block, with no ARGV/KEYS change and no new Python on the write path.
+
 ## Data Flow
 
 1. **Entry point**: the host calls `SubconsciousMemory.extract_memories(...)` with `auditable_extraction=` configured (`recipes/subconscious_memory.py`, `_extract_memories_auditable`, around line 732).
@@ -179,11 +192,12 @@ All spikes ran against local Postgres (`postgresql://localhost:5432/postgres`) t
 
 - **New dependencies**: none.
 - **Interface changes**:
-  - None public. `DecisionLog(redis_client=None)` and every method signature are unchanged.
+  - One additive public method, `DecisionLog.rebuild_turn_summary(agent_id, turn_id) -> Dict[str, int]`, the repair for Redis summary hashes written before the fix. `DecisionLog(redis_client=None)` and every existing method signature are unchanged.
+  - One behaviour change on Redis: `turn_summary` now follows a candidate's current terminal state (a fix to the M3 contract; CHANGELOG **Fixed**).
   - Internally there are two new Postgres pseudo-field adapters: `_m3` / `terminal_write`, and `_lease` / `lock` + `release`, which generalises `_qq_lock` / `_qq_release`. The `_qq` `lock` / `release` ops stay registered and delegate to the shared functions, so the question queue is unchanged.
 - **Coupling**: lower. `SubconsciousMemory`'s backend check shrinks to the split-trail case only, and `DecisionLog` follows the same `non_redis_backend(Model)` dispatch as `ProvenanceJournal` and `question_queue`.
 - **Data ownership**: unchanged. `DecisionRecord` follows the process-default backend. The default `JournalEntry` and `ResolutionRecord` follow the same rule, so with the default journal the decision log, the journal and the resolution sidecar always land in the same store. A journal configured with a custom `entry_model` (`ProvenanceJournal.entry_model`, `recipes/provenance_journal.py:596`) can set its own `Meta.backend`. The narrowed refusal guards that case explicitly (see Technical Approach and Risk 4).
-- **Reversibility**: easy. Reverting restores the refusal. There is no data migration: Postgres rows live in an ordinary typed table (`decision_record`) plus lease rows that expire.
+- **Reversibility**: easy. Reverting restores the refusal and the old Redis summary counting. There is no data migration: Postgres rows live in an ordinary typed table (`decision_record`) plus lease rows that expire, and Redis summary hashes keep their shape (same key, same field names).
 
 ## Appetite
 
@@ -288,22 +302,28 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
   -- The summary is a rollup of the rows' CURRENT terminal states: each
   -- candidate contributes one state:<s> and one reason:<r>. A write that
   -- moves a row off a terminal state takes back that state's counts first.
+  -- ARGV[6] / ARGV[7] are the new state:/reason: fields, in that order
+  -- (decision_log.py summary_fields).
   local n = tonumber(ARGV[5])
   local is_new = (prev_state == false or prev_state == nil or prev_state == ARGV[4])
   if not is_new then
-      local prev_reason = redis.call('HGET', KEYS[1], 'reason_code')
-      local old_fields = {
-          'state:' .. cmsgpack.unpack(prev_state),
-          'reason:' .. (prev_reason and cmsgpack.unpack(prev_reason) or ''),
-      }
-      -- ARGV[6] / ARGV[7] are the new state:/reason: fields, in that order.
-      if old_fields[1] ~= ARGV[6] or old_fields[2] ~= ARGV[7] then
-          for _, f in ipairs(old_fields) do
-              if redis.call('HINCRBY', KEYS[2], f, -1) <= 0 then
-                  redis.call('HDEL', KEYS[2], f)
+      local decoded_state = cmsgpack.unpack(prev_state)
+      if decoded_state == '' then
+          is_new = true  -- never counted (bare ORM save with defaults)
+      else
+          local prev_reason = redis.call('HGET', KEYS[1], 'reason_code')
+          local old_fields = {
+              'state:' .. decoded_state,
+              'reason:' .. (prev_reason and cmsgpack.unpack(prev_reason) or ''),
+          }
+          if old_fields[1] ~= ARGV[6] or old_fields[2] ~= ARGV[7] then
+              for _, f in ipairs(old_fields) do
+                  if redis.call('HINCRBY', KEYS[2], f, -1) <= 0 then
+                      redis.call('HDEL', KEYS[2], f)
+                  end
               end
+              is_new = true
           end
-          is_new = true
       end
   end
   if is_new then
@@ -312,13 +332,14 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
       end
   end
   ```
+  This exact block was prototyped as spike-4.
   Notes for the builder:
   - The decrement compares the two fields as a pair. When only the reason changes, decrementing and re-incrementing the unchanged `state:` field nets to zero, which is correct. Comparing both avoids two wasted round-trips inside the script when nothing changed (a same-verdict retry, M3 Race 2).
   - `cmsgpack.unpack` is already used by in-repo Lua (`backends/redis.py:840`). It is a Lua library bundled with both Redis and Valkey, not a module, so it is Valkey-safe. Popoto packs `str` values as msgpack `str` (`_packb` → `msgpack.packb`), which `cmsgpack` decodes; it cannot read the `bin` type, which never occurs for these two fields.
   - `HDEL` at `<= 0` keeps the stored hash equal to the rollup, so `"state:reject" not in summary` keeps holding after a row leaves `reject`. The `<= 0` (not `== 0`) also clamps a hash that drifted before this fix: decrementing a field that was never counted removes it rather than storing `-1`.
   - The `state:` / `reason:` prefixes are now spelled in two places, Python (`summary_fields`) and Lua. Add a comment at each pointing to the other, and a test that pins the agreement (the conformance test does).
   - `ARGV` order is unchanged: Python already passes `state:` first and `reason:` second (`decision_log.py:514-517`). The script relies on that order; add a comment saying so.
-  - A prior state that decodes to something outside the terminal vocabulary other than `pending` (in practice only `""`, from a row created by a bare ORM `save()` with defaults, which `DecisionLog` never does) is treated like `pending`: it was never counted, so nothing is decremented. Implement this by comparing the decoded prior state against `''` alongside the existing `ARGV[4]` check, so the ARGV layout stays unchanged.
+  - A prior state of `""` (from a row created by a bare ORM `save()` with defaults, which `DecisionLog` never does) is treated like `pending`: it was never counted, so nothing is decremented. The block above checks the decoded value, so the ARGV layout stays unchanged.
 - **Redis: `rebuild_turn_summary` (repair).** A second script, `TURN_SUMMARY_REBUILD_LUA`, runs as one `EVAL`, so concurrent `TERMINAL_WRITE_LUA` calls serialize around it:
   - `KEYS[1]` = the summary hash, `KEYS[2]` / `KEYS[3]` = the `agent_id` and `turn_id` KeyField index Sets (from `key_field_index_keys`).
   - `SINTER KEYS[2] KEYS[3]` gives the turn's row keys. For each row it `HGET`s `state` and `reason_code`, decodes them with `cmsgpack.unpack`, and counts terminal ones. The terminal-state names come in as `ARGV`, so the script does not hard-code the vocabulary.
@@ -388,7 +409,7 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
 - **A Postgres counter table for `turn_summary`.** A `popoto_*` counter engine table bumped inside the guarded statement could mirror the Redis hash, but it adds a second structure that can disagree with the rows. The indexed `GROUP BY` answers the same question from the rows themselves. Do not build the table.
 - **Auto-repairing drifted Redis hashes on read.** Calling `rebuild_turn_summary` from `turn_summary`, or on a schedule, turns an O(1) read into a scan and puts an undeclared-key script on the hot path. Repair stays an explicit operator call, and the CHANGELOG tells operators when to run it.
 - **Generalising the summary into a reusable "maintained rollup" primitive.** One consumer does not justify it.
-- **Making `DecisionLog` follow the memory model's `Meta.backend`.** Threading a model or backend through `DecisionLog()` or `AuditableExtractionConfig` changes public signatures and splits the trail from the journal, which follows the process default. Defer it to the open question.
+- **Making `DecisionLog` follow the memory model's `Meta.backend`.** Threading a model or backend through `DecisionLog()` or `AuditableExtractionConfig` changes public signatures and splits the trail from the journal, which follows the process default. The maintainer approved the process-default rule (Open Question 1), so this is out of scope.
 - **Unifying `_RedisRecorder` into a shared fixture.** It already exists twice, and a third copy, or an import from `test_postgres_recipes.py`, is fine. A refactor is a separate chore.
 - **The stale MemoryTelemetry `Meta.ttl` sentence** in the same `postgres-backend.md` paragraph. When the builder deletes the SubconsciousMemory sentence and the remaining text is clearly stale, they should fix it in the same edit. They should not go auditing other doc paragraphs.
 - **Retention, TTL or a stale-`pending` sweeper for decision rows.** That belongs to M9 (#568).
@@ -548,7 +569,7 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 - [ ] `get`, `list_for_agent`, `list_pending`, `turn_summary` and `compute_metrics` agree across the legs on the shared suite.
 - [ ] `turn_summary` has one contract on both backends: after any sequence of writes it equals the rollup of the rows' current terminal states. The terminal-to-terminal, reason-change, same-verdict-retry, multi-candidate, empty-reason and refused-write conformance tests pass on **both** legs.
 - [ ] On Redis, no summary field is ever negative, and `rebuild_turn_summary` restores a seeded drifted hash to the rollup. On Postgres, `rebuild_turn_summary == turn_summary`.
-- [ ] No backend divergence is documented anywhere: `grep -rn "divergen" docs/features/ CHANGELOG.md src/popoto/extraction/decision_log.py` finds nothing about `turn_summary`.
+- [ ] No doc, docstring or CHANGELOG entry describes `turn_summary` as behaving differently on the two backends: `grep -rn "divergen" docs/features/ CHANGELOG.md src/popoto/extraction/decision_log.py` finds nothing about `turn_summary`.
 - [ ] The CHANGELOG has a **Fixed** entry for the Redis `turn_summary` change, naming `rebuild_turn_summary`.
 - [ ] Fail-open parity tests exist for each of these:
   - verdict-provider failure;
@@ -592,7 +613,7 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 
 - **Validator**
   - Name: decision-log-validator
-  - Role: Run both legs, lint, black and the mypy ratchet, and diff-review that the Redis path is byte-identical.
+  - Role: Run both legs (Redis DB 15, Postgres 18; no Postgres skips), lint, black and the mypy ratchet, and diff-review that the Redis path is byte-identical outside the summary block.
   - Agent Type: validator
   - Resume: true
 
@@ -697,7 +718,7 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 | No stale snapshot import in the auditable tests | `grep -c "from popoto.redis_db import POPOTO_REDIS_DB" tests/test_auditable_extraction.py` | match count == 0 |
 | Refusal test inverted | `grep -c "def test_the_auditable_extraction_path_is_refused_on_postgres" tests/postgres/test_postgres_recipes.py` | match count == 0 |
 | No `redis.call` removed outside the summary block | `git diff origin/main -- src/popoto/extraction/decision_log.py \| grep '^-' \| grep 'redis\.call' \| grep -vc HINCRBY` | match count == 0 |
-| No backend divergence documented | `grep -rn "divergen" docs/features/auditable-extraction.md docs/features/postgres-backend.md CHANGELOG.md src/popoto/extraction/decision_log.py` | match count == 0 for `turn_summary` |
+| No backend-specific `turn_summary` wording | `grep -rn "divergen" docs/features/auditable-extraction.md docs/features/postgres-backend.md CHANGELOG.md src/popoto/extraction/decision_log.py` | match count == 0 for `turn_summary` |
 | CHANGELOG Fixed entry | `grep -c "rebuild_turn_summary" CHANGELOG.md` | output > 0 |
 | Doc sentence removed | `grep -c "decision log in Redis" docs/features/postgres-backend.md` | match count == 0 |
 | Zero-Redis test exists | `grep -c "_RedisRecorder" tests/postgres/test_postgres_decision_log.py` | output > 0 |
@@ -706,6 +727,8 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 ## Critique Results
 
 Verdict: **READY TO BUILD (with concerns)**. Revision pass applied 2026-10-07T17:06:10Z.
+
+Second revision 2026-10-08: applied the maintainer's answers to the three Open Questions. Q2 replaced the planned Postgres-only `turn_summary` divergence with one contract on both backends, which includes a Redis fix (see Open Questions). This revision has not been re-critiqued.
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
@@ -721,6 +744,8 @@ Verdict: **READY TO BUILD (with concerns)**. Revision pass applied 2026-10-07T17
 
 ## Open Questions
 
-1. **Store-selection rule.** The plan keys the decision log on `DecisionRecord`'s backend, which is the process default and the same rule the journal and `ResolutionRecord` follow. It keeps a narrowed `BackendCapabilityError` for two cases. The first is a memory model on Postgres via `Meta.backend` while the process default is Redis. The second is a journal whose custom `entry_model` sits in a different store from `DecisionRecord`. Outside those cases, the same-store guarantee holds only for the default `JournalEntry`. Is that the right cut, or should the mixed shape be allowed and documented instead?
-2. **`turn_summary` divergence.** On Postgres the summary is derived from the detail rows, so it always reflects current terminal states. Redis counts each candidate's first terminal write only. Is that divergence acceptable for a "convenience index"? The alternative is a counter engine table that reproduces Redis's first-write-only counting, which the #759 doctrine discourages.
-3. **Data-location change.** A memory model with `Meta.backend="redis"` under a Postgres process default would move its decision log from Redis to Postgres, co-locating it with the journal. Is a CHANGELOG callout enough, or should that shape keep its decision log in Redis?
+All three were answered by the maintainer on 2026-10-08. They are recorded here as resolved decisions.
+
+1. **Store-selection rule — RESOLVED: approved as planned.** The decision log follows `DecisionRecord`'s backend (the process default, the same rule as the journal and `ResolutionRecord`). `BackendCapabilityError` is raised only when the decision log would land in Redis, or in a different store from the journal. Applied in Technical Approach ("Refusal guard"), Risk 4 and Task 2.
+2. **`turn_summary` semantics — RESOLVED: no backend divergence.** The maintainer rejected shipping a documented divergence ("something sounds wrong here, like we are cutting corners. let's be thorough and complete with this system. no excuses for not doing good complete work."). Investigation found that the M3 contract is a rollup of the detail rows' current terminal states (`auditable_extraction_m3.md:713-722`, `:962-963`; `decision_log.py:1019-1024`; `docs/features/auditable-extraction.md:187-190`), and that Redis's first-terminal-write-only counting (`decision_log.py:267-274`) drifts from it (reproduced on DB 15). The plan fixes Redis atomically in `TERMINAL_WRITE_LUA`, derives the same contract on Postgres with an indexed `GROUP BY`, adds `rebuild_turn_summary` to repair pre-fix hashes, pins the contract with conformance tests on both legs, and records the Redis change under CHANGELOG **Fixed**. Applied in Problem, Solution, Technical Approach, Test Impact, Rabbit Holes, Risk 1b, Documentation, Success Criteria and Tasks 1-3.
+3. **Data-location change — RESOLVED: a CHANGELOG callout is enough.** A memory model with `Meta.backend="redis"` under a Postgres process default moves its decision log to Postgres, next to the journal. It is documented in the CHANGELOG `### Added` entry. Applied in Risk 4 and Documentation.
