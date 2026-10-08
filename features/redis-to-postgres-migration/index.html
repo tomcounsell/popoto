@@ -3936,13 +3936,35 @@ snapshot. Each key family of a migrated model has a disposition, recorded in
 <li><strong>irreplaceable</strong>: carried. This covers record hashes, confidence
   evidence, access counters and staged reads, edges, validity, cycles and
   pressure, and the prediction ledger.</li>
-<li><strong>rebuildable</strong>: rebuilt by the save. This covers class sets, key and
-  sorted indexes, BM25, existence filters and geo.</li>
+<li><strong>rebuildable</strong>: rebuilt by the save. This covers class sets, key,
+  indexed-field (<code>$IndexF</code>), unique-field (<code>$UniquF</code>) and sorted-field
+  (<code>$SortF</code>) indexes, BM25, existence filters and geo. The prefixes are the
+  ones the field classes really write (<code>"UniqueField".strip("Field")</code> is
+  <code>Uniqu</code>, not <code>Unique</code>), and a test derives each one from the field classes
+  so a rename fails the suite instead of a client's migration. It also covers
+  the <code>$IdxPtr:</code> pointer keys every <code>IndexedField</code> and <code>UniqueField</code> writes:
+  each one only names the <code>$IndexF</code> Set its record currently sits in, which
+  is derived from the field value, so it is counted and skipped (#822).
+  <code>JournalEntry</code> writes five per entry.</li>
 <li><strong>not carried</strong>: dropped by design and counted. This covers the access
-  log, the frequency sketch, write-filter priority and the event stream.</li>
-<li><strong>expected empty</strong>: <code>$TOMBPRIOR</code>, legacy <code>$IdxPtr</code> pointers, and NUL-byte
-  index-pointer fields. Any key here <strong>stops the run</strong> (exit code 3) before
-  anything is written.</li>
+  log, the frequency sketch, write-filter priority, the event stream, and
+  three families that are transient or telemetry rather than record state:
+  <code>$RP:</code> pending recall proposals (a one-hour observation queue; unresolved
+  ones count as deferred), <code>$NR:</code> never-record refusal counts and drop log
+  (<code>roundtrip_policy = "rebuild"</code>), and <code>$CSQ:</code> query temp keys (they carry a
+  TTL and exist only while a query runs). Each is counted in the report's
+  lossy section.</li>
+<li><strong>unsupported</strong>: <code>$TOMB:&lt;Model&gt;:data</code> and <code>:index</code>, the tombstone archive
+  of deleted records. It holds deleted-record payloads for <code>restore()</code> and
+  the tool has no carry path for it, so it <strong>stops the run</strong> (exit code 3)
+  before anything is written, and <code>--accept-unclassified</code> does not waive it.
+  Clear it first (the model's tombstone <code>purge_all()</code>), or accept losing the
+  restore window and migrate without it.</li>
+<li><strong>expected empty</strong>: <code>$TOMBPRIOR</code> and the NUL-byte index-pointer fields of
+  the pre-#476 in-hash scheme. Any key here <strong>stops the run</strong> (exit code 3)
+  before anything is written. The pre-#540 pointer side keys
+  (<code>&lt;record key&gt;\x00idxptr\x00&lt;field&gt;</code>) sit in the record namespace and are
+  not hashes, so they stop the run too.</li>
 </ul>
 <p>A key family the tool does not recognize also stops the run, unless you pass
 <code>--accept-unclassified</code> after reading <code>inventory.json</code>. Keys of other models

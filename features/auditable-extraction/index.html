@@ -3710,8 +3710,27 @@ terminal-to-terminal write (a retried <code>reject</code> after a <code>withhold
 the old state's count in place. A hash written that way is repaired by
 <code>DecisionLog.rebuild_turn_summary(agent_id, turn_id)</code>, which recomputes it
 from the detail rows in one script call; run it per turn once every process
-has the fix. On Postgres the summary is a <code>GROUP BY</code> computed on read and
-cannot drift, so the same call just returns it.</p>
+has the fix. Until then, while old and new processes both write, or when new
+writes land on a hash that drifted before the fix, a transition can take back
+counts the hash never held, so it may undercount until rebuilt. On Postgres
+the summary is a <code>GROUP BY</code> computed on read and cannot drift, so the same
+call just returns it.</p>
+<p><strong>One Redis-only drift remains, by design (#822).</strong> <code>write_pending</code> is a
+plain row save with no summary step, so a <code>pending</code> write over a row that is
+already terminal does not take back that row's counts, and the terminal write
+that follows treats <code>pending</code> as new. The path that reaches it: a non-<code>accept</code>
+verdict takes no assembly claim, so an unclaimed <code>reject</code> (or <code>withhold</code>, or
+<code>firewall_drop</code>) can land between <code>assemble</code>'s row read and its
+<code>write_pending</code>. The sequence <code>reject</code>, then <code>pending</code>, then <code>accept</code> leaves
+the Redis hash at <code>{state:reject: 1, reason:not_a_fact: 1, state:accept: 1,
+reason:accepted: 1}</code> for a single <code>accept</code> row. The rows are right and the
+hash over-counts; <code>rebuild_turn_summary</code> repairs it. Postgres derives the
+summary from the rows and returns <code>{state:accept: 1, reason:accepted: 1}</code>.
+The Redis wire is unchanged: making the pending write take back the counts
+would mean a Lua twin of the save, which this fix does not add. Read
+<code>turn_summary</code> on Redis as a fast estimate, and use the rows (or a rebuild)
+where an exact count matters. Pinned on both legs by
+<code>test_auditable_extraction.py::TestAssemblyAgainstTheRealJournal::test_a_pending_write_over_a_terminal_row_is_a_documented_divergence</code>.</p>
 <h2 id="the-terminal-write-conflict-guard">The terminal-write conflict guard<a class="headerlink" href="#the-terminal-write-conflict-guard" title="Permanent link">&para;</a></h2>
 <p>Every terminal write — including the pre-LLM <code>firewall_drop</code>, which cannot
 conflict in practice because no prior row exists for a fresh candidate — goes
@@ -3911,15 +3930,37 @@ See <a href="../postgres-backend/#recipes-mixins-and-the-queue-m4">Postgres Back
   <code>SCAN</code> and its reason (terminal writes skip the ORM's index sets) do not
   apply.</li>
 </ul>
-<p>Construction refuses a split audit trail with <code>BackendCapabilityError</code>
-whenever <code>auditable_extraction</code> is set: a decision log that would land in
-Redis while the memory model is on Postgres, or a decision log in a different
-store from the journal entry model (in either direction). The error says how
-to bind the process default. A memory model pinned to Redis under a Postgres
-default keeps its decision log in Postgres, next to the journal.</p>
-<p>Limitations: a process that moves to Postgres starts with an empty decision
-log, since nothing copies Redis rows across. <code>DecisionLog(redis_client=...)</code>
-pins the Redis path whatever the process default is.</p>
+<p>Construction refuses only the split trail, whenever <code>auditable_extraction</code> is
+set: a decision log that would land in Redis while the memory model is on
+Postgres, or a decision log in a different store from the journal entry model
+(in either direction). The error names which side is on which backend and
+gives the fix for that direction. Under a Redis default it says to bind the
+default with <code>set_backend("postgres")</code> (or <code>POPOTO_BACKEND=postgres</code>), or to
+remove the single pin. Under a Postgres default with a Redis-pinned journal it
+says to remove the journal entry model's <code>Meta.backend</code> pin, since the default
+is already Postgres. A memory model pinned to Redis under a Postgres default
+keeps its decision log in Postgres, next to the journal.</p>
+<p>A process that moves to Postgres starts with an empty decision log. To bring
+the existing rows across, run the
+<a href="../redis-to-postgres-migration/">migration tool</a> with both
+<code>--model popoto.extraction.decision_log:DecisionRecord</code> and
+<code>--model popoto.recipes.provenance_journal:JournalEntry</code>, so each row's
+<code>entry_id</code> arrives with the journal entry it names. The summary hash and the
+claim keys are left behind on purpose: Postgres derives the summary, and a
+claim is a lease. <code>DecisionLog(redis_client=...)</code> pins the Redis path whatever
+the process default is.</p>
+<p>The one difference between the backends is the Redis-only summary drift
+described above, which Postgres does not have.</p>
+<p><strong>Units of work and the connection pool.</strong> The decision log joins neither a
+caller's <code>transaction()</code> nor <code>popoto.batch()</code>, on either backend. Its writes
+autocommit, as the Lua scripts do on Redis. On Postgres each statement
+therefore needs its own pooled connection. While four or more <code>transaction()</code>
+blocks are open at once (<code>Defaults.PG_POOL_MAX_SIZE</code> is 4), every connection
+is held, so each of the log's statements waits
+<code>Defaults.PG_CONNECT_TIMEOUT_SECONDS</code> and then raises <code>BackendBusyError</code>. That
+is the backend's general busy-pool limit
+(<a href="../postgres-backend/#topology-and-the-outage-contract">Postgres Backend</a>).
+Keep fewer concurrent units than the pool size while extraction runs.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../llm-memory-extraction/">LLM Memory Extraction</a> — the pluggable
