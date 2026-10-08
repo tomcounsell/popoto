@@ -85,12 +85,22 @@ NON_FIELD_FAMILIES = {
 
 
 def _field_prefixes():
-    # Importing every field module registers every class.
+    """``{field_class_key: class name}`` for the Field classes popoto ships.
+
+    Walked from ``Field``'s subclasses rather than read from the global
+    registry, which also holds classes other tests define."""
     import popoto.fields as pf
 
     for mod in pkgutil.iter_modules(pf.__path__):
         importlib.import_module(f"popoto.fields.{mod.name}")
-    return {str(k): v for k, v in _FIELD_CLASS_KEYS.items()}
+    out = {}
+    stack = [popoto.Field]
+    while stack:
+        cls = stack.pop()
+        stack.extend(cls.__subclasses__())
+        if cls.__module__.startswith("popoto.") and cls is not popoto.Field:
+            out[str(cls.field_class_key)] = cls.__name__
+    return out
 
 
 def test_every_field_prefix_the_code_writes_is_in_the_inventory():
