@@ -51,6 +51,16 @@ class SelExplicitRedis(popoto.Model):
         backend = "redis"
 
 
+class SelPinnedPostgres(popoto.Model):
+    """Only ever *resolved* below, never saved or queried: the instance it
+    resolves to is a Redis backend wearing the Postgres name."""
+
+    name = popoto.KeyField()
+
+    class Meta:
+        backend = "postgres"
+
+
 @pytest.fixture
 def unpinned(monkeypatch):
     """Lift the session pin for one test and restore it afterwards."""
@@ -113,6 +123,118 @@ def test_meta_backend_wins_over_the_default(unpinned):
     assert get_backend(SelProbe) is sentinel
     explicit = get_backend(SelExplicitRedis)
     assert explicit is not sentinel and isinstance(explicit, RedisBackend)
+
+
+# -- a set_backend instance serves the models pinned to its name (#816) -------
+#
+# Identity only. The stand-in is a RedisBackend renamed "postgres": model and
+# field code branch on ``backend.name``, so running a save or query on it would
+# take Postgres code paths against a Redis implementation. Every assertion
+# below is ``is`` / ``is not`` on resolution, never a model operation.
+
+
+@pytest.fixture
+def no_postgres_env(unpinned, monkeypatch):
+    """No ``POPOTO_POSTGRES_URL`` and no cached ``"postgres"`` instance, so an
+    env build of ``"postgres"`` can only raise. Restores the cache after."""
+    monkeypatch.delenv("POPOTO_POSTGRES_URL", raising=False)
+    cached = backends._swap_instance("postgres", None)
+    yield
+    backends._swap_instance("postgres", cached)
+
+
+def _postgres_named_stand_in() -> RedisBackend:
+    inst = RedisBackend()
+    inst.name = "postgres"
+    return inst
+
+
+def test_postgres_named_instance_serves_postgres_pinned_models(no_postgres_env):
+    inst = _postgres_named_stand_in()
+    set_backend(inst)
+    assert backends._resolve(SelPinnedPostgres) is inst
+    assert get_backend(SelPinnedPostgres) is inst
+    assert backends._instance("postgres") is inst
+
+
+def test_every_name_based_lookup_agrees_with_the_model_path(no_postgres_env):
+    """spike-1: streams and pub/sub resolve ``"postgres"`` through
+    ``_instance`` directly, so a fix in ``_resolve`` alone would split a
+    model's writes from a publish joining its transaction."""
+    from popoto.backends import UnitOfWork
+    from popoto.pubsub.publisher import _native_backend
+    from popoto.streams import resolve_stream_backend
+
+    inst = _postgres_named_stand_in()
+    set_backend(inst)
+    assert resolve_stream_backend(backend="postgres") is inst
+    unit = UnitOfWork(None, backend="postgres")
+    assert _native_backend(object(), unit) is inst
+
+
+def test_a_different_meta_backend_still_resolves_by_name(no_postgres_env):
+    """The other direction of ``test_meta_backend_wins_over_the_default``: a
+    Postgres-named default does not capture a Redis-pinned model."""
+    inst = _postgres_named_stand_in()
+    set_backend(inst)
+    explicit = get_backend(SelExplicitRedis)
+    assert explicit is not inst and isinstance(explicit, RedisBackend)
+
+
+def test_redis_named_instance_does_not_serve_postgres_pinned_models(
+    no_postgres_env,
+):
+    set_backend(RedisBackend())
+    with pytest.raises(BackendUnavailableError, match="POPOTO_POSTGRES_URL"):
+        backends._resolve(SelPinnedPostgres)
+
+
+def test_the_instance_beats_a_previously_cached_entry(no_postgres_env):
+    other = _postgres_named_stand_in()
+    inst = _postgres_named_stand_in()
+    previous = backends._swap_instance("postgres", other)
+    try:
+        assert backends._instance("postgres") is other
+        set_backend(inst)
+        assert backends._instance("postgres") is inst
+        assert backends._resolve(SelPinnedPostgres) is inst
+    finally:
+        backends._swap_instance("postgres", previous)
+
+
+def test_clearing_the_default_stops_serving_the_instance(no_postgres_env):
+    """The instance is never cached, so nothing outlives ``set_backend(None)``."""
+    inst = _postgres_named_stand_in()
+    set_backend(inst)
+    assert backends._instance("postgres") is inst
+    set_backend(None)
+    assert "postgres" not in backends._instances
+    with pytest.raises(BackendUnavailableError, match="POPOTO_POSTGRES_URL"):
+        backends._instance("postgres")
+
+
+@pytest.mark.parametrize(
+    "default",
+    [pytest.param("postgres", id="name"), pytest.param(object(), id="nameless")],
+)
+def test_only_a_named_instance_matches(no_postgres_env, default):
+    """A string default, or an instance with no ``name``, never matches: the
+    lookup falls through to the environment exactly as before."""
+    set_backend(default)
+    with pytest.raises(BackendUnavailableError, match="POPOTO_POSTGRES_URL"):
+        backends._instance("postgres")
+
+
+def test_redis_pinned_resolution_is_unchanged_under_a_redis_instance(unpinned):
+    """Concern 1 pin: the match is for non-Redis names only. A Redis-named
+    instance serves un-pinned models, and ``Meta.backend = "redis"`` keeps the
+    stock cached backend -- the pre-#816 behaviour."""
+    custom = RedisBackend()
+    set_backend(custom)
+    assert get_backend(SelProbe) is custom
+    assert get_backend(SelExplicitRedis) is not custom
+    assert backends._instance("redis") is not custom
+    assert backends._instance("redis") is get_backend(SelExplicitRedis)
 
 
 def test_meta_backend_must_be_a_known_name():
