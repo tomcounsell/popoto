@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 
 import popoto.migrate_redis_to_postgres as tool
-from popoto.migrate_redis_to_postgres import __main__ as entry
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -28,9 +27,10 @@ def _entry_point() -> str:
 
 def test_the_console_script_points_at_console_main():
     module_name, _, attribute = _entry_point().partition(":")
-    assert module_name == "popoto.migrate_redis_to_postgres.__main__"
+    # The package, never __main__.py: that file must only delegate (#792).
+    assert module_name == "popoto.migrate_redis_to_postgres"
     assert attribute == "console_main"
-    assert callable(getattr(entry, attribute))
+    assert callable(getattr(tool, attribute))
 
 
 @pytest.mark.parametrize(
@@ -43,7 +43,7 @@ def test_the_console_script_points_at_console_main():
 def test_help_names_the_form_that_was_used(monkeypatch, capsys, argv0, prog):
     monkeypatch.setattr(sys, "argv", [argv0, "--help"])
     with pytest.raises(SystemExit) as done:
-        entry.console_main(["--help"])
+        tool.console_main(["--help"])
     assert done.value.code == 0
     assert capsys.readouterr().out.startswith(f"usage: {prog}")
 
@@ -61,9 +61,9 @@ def test_console_main_finds_a_mapping_module_in_the_working_directory(
         seen["obj"] = tool._import_object("rel110_mapping_probe:MAPPINGS")
         return 0
 
-    monkeypatch.setattr(entry, "main", fake_main)
+    monkeypatch.setattr(tool, "main", fake_main)
     try:
-        assert entry.console_main([]) == 0
+        assert tool.console_main([]) == 0
     finally:
         sys.modules.pop("rel110_mapping_probe", None)
     assert seen["obj"] == []

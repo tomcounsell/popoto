@@ -3748,6 +3748,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def console_main(argv: Optional[Sequence[str]] = None) -> int:
+    """The ``popoto-migrate-redis-to-postgres`` console script. ``python -m``
+    puts the working directory on ``sys.path``, which is how ``--mapping
+    myapp.memory_migration:MAPPINGS`` finds the operator's module; a console
+    script starts with its own ``bin`` directory there instead. Add the
+    working directory, so both forms import the same modules."""
+    cwd = os.getcwd()
+    if cwd not in sys.path and "" not in sys.path:
+        sys.path.insert(0, cwd)
+    return main(argv)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")

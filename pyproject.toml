@@ -162,7 +162,7 @@ Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
 [project.scripts]
 popoto-memory = "popoto.integrations.cli:main"
 popoto-transfer = "popoto.transfer.cli:main"
-popoto-migrate-redis-to-postgres = "popoto.migrate_redis_to_postgres.__main__:console_main"
+popoto-migrate-redis-to-postgres = "popoto.migrate_redis_to_postgres:console_main"
 
 [project.entry-points.pytest11]
 popoto = "popoto.pytest_plugin"
