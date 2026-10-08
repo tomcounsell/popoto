@@ -7,13 +7,15 @@ for example a field that maintains its own companion hash in Redis alongside the
 model's primary hash, the way `ConfidenceField` and `CyclicDecayField` do.
 
 !!! note
-    Custom fields that override storage hooks are Redis-only. The [Postgres backend](features/postgres-backend.md) refuses them with `BackendCapabilityError` when the model is declared with `Meta.backend = "postgres"`, or on first use when the model takes the process default.
+    Custom fields that override storage hooks are Redis-only. A model with
+    `Meta.backend = "postgres"` refuses them when the class is defined. See
+    [On Postgres](#on-postgres).
 
 This page documents the contract a `Field` subclass should follow, with a focus on
 the round-trip protocol every field author must satisfy: `roundtrip_policy`,
 `roundtrip_note`, `export_state`, `import_state`, and `remap_references`. These five
 members exist so that [`popoto.transfer`](guides/export-import.md) — the export/import
-driver — can move records between Redis instances without losing state that only your
+driver — can move records between stores without losing state that only your
 field knows how to serialize. The first four cover state; the fifth covers *references*,
 and is only consulted when the import regenerates keys.
 
@@ -338,3 +340,49 @@ field needs `"carry"` (fully) or `"partial"` (partly), plus the corresponding
 
 See [Export & Import](guides/export-import.md) for the user-facing guide to running
 an export/import and reading the resulting report.
+
+## On Postgres
+
+The hooks and Lua scripts on this page run on the Redis backend only. A Postgres
+model stores each built-in field type with SQL written for that type, so popoto
+cannot run a custom field's own storage code there.
+
+**What is refused.** A field class you define that overrides any of these five
+hooks, in its own class body or in any class of yours between it and popoto's
+class, cannot be used on a model with `Meta.backend = "postgres"`:
+
+- `on_save`
+- `on_delete`
+- `filter_query`
+- `format_value_pre_save`
+- `pre_save_validate`
+
+The model class itself fails to define, with `BackendCapabilityError` (from
+`popoto.backends`):
+
+```text
+B cannot use the 'postgres' backend: h (myapp.fields.Hooky) overrides on_save;
+hook-overriding custom fields are Redis-only
+```
+
+A model that takes the process default backend (`POPOTO_BACKEND=postgres`) is
+checked at its first use instead.
+
+**What is accepted.** A subclass that overrides none of the five hooks is stored as
+the nearest popoto class it inherits from. A `Field` subclass that only adds
+methods or validation in `__init__` becomes a column of its `type`, with the same
+type restrictions as `Field` (see [Fields: On Postgres](fields.md#on-postgres)).
+
+**There is no registration API.** You cannot teach the Postgres backend a new
+field kind. If your field needs its own storage, keep the models that use it on
+Redis, or express the state with built-in fields.
+
+**What still applies.** The round-trip members (`roundtrip_policy`,
+`roundtrip_note`, `export_state`, `import_state`, `remap_references`) are used by
+`popoto.transfer` on both backends. On a Postgres import, `import_state` may
+receive a `uow=` keyword, so accept `**kwargs` (see
+[The round-trip obligation](#the-round-trip-obligation)). `run_lua` and
+`field_class_key` describe Redis keys and scripts and have no Postgres
+counterpart.
+
+See [Selecting the backend](features/postgres-backend.md#selecting-the-backend).

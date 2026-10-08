@@ -1,6 +1,7 @@
 # TTL (Time-to-Live)
 
-Popoto supports automatic data expiration through Redis TTL. You can set
+Popoto supports automatic data expiration. On Redis it uses the key's TTL; on
+Postgres it uses an expiry column (see [On Postgres](#on-postgres)). You can set
 expiration at the model level (all instances expire after a fixed duration),
 override it per-instance, or set an absolute expiration timestamp.
 
@@ -24,12 +25,12 @@ class AgentSession(Model):
         ttl = 7776000  # 90 days (90 * 24 * 60 * 60)
 ```
 
-When you save an instance, Popoto calls Redis `EXPIRE` on the key with the
+When you save an instance on Redis, Popoto calls `EXPIRE` on the key with the
 configured TTL. After that many seconds, Redis removes the key automatically:
 
 ```python
 session = AgentSession.create(agent_name="assistant", context="planning task")
-# Redis will delete this session after 90 days
+# The session expires after 90 days
 ```
 
 ### TTL Resets on Every Save
@@ -47,7 +48,7 @@ session.save()
     Background processes that update records will extend the expiration window.
     If a periodic job calls `save()` on a session, that session may never expire.
 
-### What Happens When a Key Expires
+### What Happens When a Key Expires (Redis)
 
 When Redis removes an expired key, subsequent `load()` or `query.get()` calls
 return `None`. Orphaned secondary index entries — an index still naming a key
@@ -92,7 +93,7 @@ important_session.save()
 ## Absolute Expiration
 
 Instead of a relative duration, you can set an exact expiration time using
-`_expire_at`. This accepts a `datetime` object and calls Redis `EXPIREAT`:
+`_expire_at`. This accepts a `datetime` object (on Redis, Popoto calls `EXPIREAT`):
 
 ```python
 from datetime import datetime, timedelta
@@ -176,6 +177,52 @@ campaign.save()
 print(AgentSession._meta.ttl)
 # => 7776000
 ```
+
+## On Postgres
+
+`Meta.ttl`, `_ttl` and `_expire_at` work on a Postgres model, with the same meaning:
+`_ttl` overrides `Meta.ttl`, `_ttl = None` makes a record permanent, and every save
+restarts the clock.
+
+**How it maps.** A `Meta.ttl` model's table gets one more column, `_expires_at`
+(`NULL` means the record never expires). A save sets it from `_ttl` (added to the
+database server's clock) or `_expire_at`. Every read skips a row the instant it
+expires, whether or not the row has been deleted yet, so `load()`, `get()`,
+`filter()`, `count()` and `keys()` see live records only. There are no orphaned
+index entries to clean up: the indexes belong to the row.
+
+**Deletion.** Expired rows are deleted by a reaper that runs after writes to the
+same table: up to 20 rows at a time, at most once a second per table and process.
+Reads never delete. Correctness does not depend on it, because reads already skip
+expired rows, but a table that is only read keeps its expired rows until the next
+write. There is no cron job or CLI to run. Details are in
+[Record expiry](features/postgres-backend.md#record-expiry-m5).
+
+**Differences from Redis:**
+
+- Setting `_ttl` or `_expire_at` on a model without `Meta.ttl` raises
+  `BackendCapabilityError` before anything is written. On Redis it sets the key's
+  TTL. Declare `Meta.ttl` on any model whose records may expire.
+- A `_ttl` that is not a whole number (`1.5`) raises `ModelException`.
+- Removing `Meta.ttl` later from a model whose table has the column raises
+  `SchemaDriftError` on first use, until the column is dropped.
+- To read a record's remaining TTL (here `AgentSession` with `backend = "postgres"`
+  in its `Meta`), ask the backend. It answers as Redis's `TTL`
+  command does (`-2` no live record, `-1` no expiry, else whole seconds):
+
+    ```python
+    from popoto.backends import get_backend, record_id
+
+    backend = get_backend(AgentSession)
+    backend.ttl_remaining(AgentSession._meta.spec, [record_id(session)])
+    # => [7776000]
+    ```
+
+- Per-record TTLs are not carried by [Export & Import](guides/export-import.md) on
+  either backend.
+
+Each of these is a row in
+[Records and other behaviour](features/postgres-backend.md#records-and-other-behaviour).
 
 ## See Also
 

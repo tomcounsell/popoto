@@ -1,7 +1,8 @@
 # Model Meta Options
 
 Every Popoto model can include a `Meta` inner class to configure model-level
-behavior like default ordering, automatic expiration, and composite indexes.
+behavior like the storage backend, default ordering, automatic expiration, and
+composite indexes.
 The `Meta` class is processed at class definition time, and its options
 become available via `ModelClass._meta`. `Meta.backend` also chooses where the
 model is stored: Redis/Valkey (the default) or PostgreSQL.
@@ -12,13 +13,59 @@ You should define a `Meta` class when you want to:
 
 - **Set default ordering** for query results without specifying `order_by`
   every time
-- **Automatically expire data** using Redis TTL (great for temporary orders,
+- **Store a model in Postgres** instead of Redis
+- **Automatically expire data** with a TTL (great for temporary orders,
   sessions, or cached data)
 - **Enforce uniqueness** across multiple fields (composite unique constraints)
 - **Store the model on PostgreSQL** instead of Redis (`backend = "postgres"`)
 
 Without a `Meta` class, your models work fine -- you just configure behavior
 at query time instead.
+
+## backend
+
+`backend` chooses where the model's records are stored: `"redis"` or
+`"postgres"`.
+
+```python
+class Note(Model):
+    owner = KeyField()
+    slug = KeyField()
+    body = Field(type=str)
+
+    class Meta:
+        backend = "postgres"
+```
+
+Without `backend`, the model uses the process default. That default is
+`POPOTO_BACKEND` when it is set, else `"redis"`; it can also be changed at runtime
+with `popoto.backends.set_backend()`. An explicit `Meta.backend` always wins over the
+process default. A Postgres instance passed to `set_backend()` also serves models that
+declare `Meta.backend = "postgres"`, ahead of `POPOTO_POSTGRES_URL`; a model that declares
+`Meta.backend = "redis"` always gets the stock Redis backend.
+
+What to know:
+
+- **Any other value is an error at class definition.** `backend = "mysql"` raises
+  `ModelException: Meta.backend must be one of redis, postgres, got 'mysql'`.
+- **The fields are checked when the class is defined.** With
+  `backend = "postgres"`, a field Postgres cannot store raises
+  `BackendCapabilityError` (from `popoto.backends`) at class definition. A model
+  that gets Postgres from the process default is checked on its first query or
+  save instead. See [Models and Fields](fields.md#on-postgres) for what is
+  supported.
+- **Defining the class never connects.** The connection, the version check, and the
+  table creation all happen on the model's first query or save. The DSN comes from
+  `POPOTO_POSTGRES_URL`, and the `postgres` extra must be installed
+  (`pip install 'popoto[postgres]'`). If either is missing, that first use raises
+  `BackendUnavailableError`.
+- **It is not inherited.** `backend` is read from the class's own `Meta`, so a
+  subclass of an abstract model that sets `backend = "postgres"` does not get it.
+  Set `backend` on each concrete model.
+
+The read value is `Model._meta.backend`, which is `None` when the model takes the
+process default. The rest of the setup (environment variables, schema, roles,
+outages) is in [Selecting the backend](features/postgres-backend.md#selecting-the-backend).
 
 ## order_by
 
@@ -79,11 +126,11 @@ expensive_first = Order.query.all(order_by="-total")
     absolute expiration, and a complete session example, see the
     [TTL documentation](ttl.md).
 
-The `ttl` (time-to-live) option tells Redis to automatically delete model
-instances after a specified number of seconds. When you save a model with a
-TTL, Popoto calls Redis's `EXPIRE` command on the key. After that many
-seconds, Redis removes it automatically -- ideal for completed orders,
-delivery tracking records, or temporary promotions.
+The `ttl` (time-to-live) option deletes model instances automatically after a
+specified number of seconds -- ideal for completed orders, delivery tracking
+records, or temporary promotions. On Redis, saving a model with a TTL calls
+`EXPIRE` on the key, and Redis removes the key after that many seconds. On
+Postgres, the row gets an expiry time instead (see [On Postgres](#on-postgres)).
 
 Adding `ttl` to the Order model from the previous section:
 
@@ -97,7 +144,7 @@ Every order instance now expires 30 days after its most recent save:
 
 ```python
 order = Order.create(customer=alice, restaurant=sakura, total=29.50)
-# => Redis will automatically delete this order after 30 days
+# => The order is deleted automatically after 30 days
 ```
 
 The TTL resets every time you call `save()`. Updating an order 15 days in
@@ -109,7 +156,7 @@ order.save()
 # => TTL resets to 30 days from now
 ```
 
-When a key expires, Redis removes it silently. Any subsequent `load()` or
+When a record expires, it is gone silently. Any subsequent `load()` or
 `query.get()` call returns `None`. Popoto handles orphaned secondary index
 entries gracefully during queries.
 
@@ -147,8 +194,8 @@ vip_order.save()
 ## Absolute Expiration
 
 Instead of a relative TTL, you can set an absolute expiration with
-`_expire_at`. This accepts a `datetime` and tells Redis to delete the key
-at that exact moment.
+`_expire_at`. This accepts a `datetime`, and the record expires at that exact
+moment (`EXPIREAT` on Redis).
 
 ```python
 from datetime import datetime, timedelta
@@ -413,6 +460,25 @@ class BadBackend(Model):
     Because validation happens at import time, you will catch configuration
     errors during development rather than at runtime in production. Define
     your Meta options early and run your test suite to verify them.
+
+## On Postgres
+
+Every option on this page works on a Postgres model. How each one maps:
+
+- **`order_by`**: an `ORDER BY` on the column. With no `order_by` at all, results
+  come back in key order (`_pk`, compared bytewise) rather than Redis's arbitrary set
+  order.
+- **`ttl`, `_ttl`, `_expire_at`**: an `_expires_at` column, filtered out of every
+  read the instant it passes and deleted in small batches after later writes. See
+  [TTL](ttl.md#on-postgres) for the differences, such as `_ttl` on a model without
+  `Meta.ttl` being refused.
+- **`indexes`**: one composite B-tree per entry, `UNIQUE` when the entry is unique.
+  The `ModelException` text on a violation is the same as on Redis.
+- **`backend`**: see [backend](#backend) above.
+
+Removing `Meta.ttl` from a model whose table already has the expiry column raises
+`SchemaDriftError` on first use; see
+[Records and other behaviour](features/postgres-backend.md#records-and-other-behaviour).
 
 See [Models and Fields](fields.md) for field type reference, or
 [Making Queries](query.md) for query filtering and ordering options.

@@ -1,6 +1,7 @@
 # PubSub
 
-Popoto provides real-time messaging through Redis pub/sub channels. In a food delivery app, order status
+Popoto provides real-time messaging through pub/sub channels: Redis pub/sub by default, or
+Postgres `NOTIFY`/`LISTEN` on the Postgres backend (see [On Postgres](#on-postgres)). In a food delivery app, order status
 changes need to reach drivers, customers, and restaurant dashboards the moment they happen. The pub/sub
 pattern lets you broadcast these updates without tight coupling between services -- publishers send messages
 to named channels, and all active subscribers receive them simultaneously.
@@ -67,7 +68,8 @@ publisher.publish(
 
 ## Pipeline Support
 
-Use a Redis pipeline to batch multiple order updates into a single round-trip to Redis. This is
+Use a batch to group multiple order updates. On Redis this is a pipeline: one round-trip.
+On Postgres the messages are delivered when `execute()` commits the batch's transaction. This is
 useful when processing a batch of orders at once, such as marking all orders from a closing
 restaurant as delayed.
 
@@ -81,7 +83,7 @@ publisher.publish(data={"order_id": "order_1", "status": "delayed"}, pipeline=pi
 publisher.publish(data={"order_id": "order_2", "status": "delayed"}, pipeline=pipeline)
 publisher.publish(data={"order_id": "order_3", "status": "delayed"}, pipeline=pipeline)
 
-pipeline.execute()  # All three messages sent in one round-trip
+pipeline.execute()  # All three messages sent together
 ```
 
 !!! tip
@@ -239,18 +241,23 @@ production, INFO level shows subscription setup without the per-message noise.
 On the Postgres backend (`Meta.backend = "postgres"` or
 `POPOTO_BACKEND=postgres`), `Publisher` and `Subscriber` keep this API and
 these message shapes over Postgres `NOTIFY`/`LISTEN`, with no Redis
-connection. A subscriber holds a dedicated `LISTEN` session (never a pooled
-connection; set `POPOTO_POSTGRES_LISTEN_URL`, or the maintenance DSN
-`POPOTO_POSTGRES_MAINTENANCE_URL` it falls back to, to reach the server past
-a transaction-mode pooler) and is polled the same way; call
-`subscriber.pubsub.close()` to end it. Pass `backend="postgres"` to a
+connection. All subscribers in a process share one dedicated `LISTEN` session
+per DSN, outside the connection pool (set `POPOTO_POSTGRES_LISTEN_URL`, or the
+maintenance DSN `POPOTO_POSTGRES_MAINTENANCE_URL` it falls back to, to reach the
+server past a transaction-mode pooler). Each subscriber is polled the same way
+and receives its channels' messages in arrival order; call
+`subscriber.pubsub.close()` to end its subscription. The session closes when the
+last subscriber leaves. Pass `backend="postgres"` to a
 standalone `Publisher` or `Subscriber` to choose it explicitly.
 
 Three things differ:
 
-- **Transactions.** Publishing with the backend's unit of work as
-  `pipeline=` delivers the message when that transaction commits, and never
-  if it rolls back.
+- **Transactions.** Publishing with the backend's unit of work, or a
+  `popoto.batch()`, as `pipeline=` delivers the message when that transaction
+  commits (for a batch, at `execute()`), and never if it rolls back.
+- **Reconnects.** If the shared session drops, it reconnects and re-subscribes
+  every channel, but a message published while it was down is lost: `NOTIFY`
+  keeps nothing for a session that is not listening.
 - **Size.** A message must encode to under 8000 bytes as a `NOTIFY` payload
   (about 5.9 KB of msgpack data); a larger one raises
   `PubSubPayloadTooLarge`, a `PublisherException`, before anything is sent.

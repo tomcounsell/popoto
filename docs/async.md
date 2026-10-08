@@ -1,8 +1,8 @@
 # Async Operations
 
 Food delivery apps handle many simultaneous requests: customers browsing menus, drivers
-updating locations, orders streaming in. Blocking on each Redis call wastes time your
-users do not have. Popoto provides async counterparts for every Model and Query method so
+updating locations, orders streaming in. Blocking on each database call wastes time
+your users do not have. Popoto provides async counterparts for every Model and Query method so
 you can serve all of these requests concurrently without blocking the event loop.
 
 ## Async Model Methods
@@ -378,7 +378,9 @@ async def find_nearest_driver(order):
 
 ### Native Async with redis.asyncio
 
-All async methods use `redis.asyncio` for true non-blocking I/O. This approach
+On the Redis backend, async methods use `redis.asyncio` for true non-blocking I/O.
+(Postgres models use `psycopg`'s async connection instead; see
+[On Postgres](#on-postgres).) This approach
 provides three key properties:
 
 - **No event loop blocking** -- Redis calls use native async I/O so your event
@@ -512,8 +514,8 @@ async def cleanup_inactive():
     print(f"Deleted {count} inactive restaurants")
 ```
 
-All bulk methods use Redis pipelines internally to batch operations, dramatically reducing
-network round-trips. The `batch_size` parameter (default 1000) controls how many instances
+On Redis, all bulk methods use pipelines internally to batch operations, dramatically
+reducing network round-trips. On Postgres, each bulk call runs in one transaction. The `batch_size` parameter (default 1000) controls how many instances
 are processed per pipeline execution.
 
 See [Bulk Operations](recipes.md#bulk-operations) in the Recipes for complete
@@ -546,6 +548,48 @@ Run the async tests with:
 ```bash
 pytest tests/test_async.py tests/test_connection.py tests/test_bulk_operations.py tests/test_migrations.py -v
 ```
+
+## On Postgres
+
+Every `async_*` method on this page works on a Postgres model, with the same
+signature. Reads and writes run on `psycopg`'s async connection on the running event
+loop, not in a worker thread. The SQL, locking, and errors are the sync backend's,
+because the async path runs the same code in a greenlet. `greenlet` comes with the
+`postgres` extra; without it, the methods fall back to a worker thread and log one
+warning.
+
+**Transactions.** Use the model's async backend for a transaction that spans
+several writes:
+
+```python
+from popoto.backends.postgres.aio import get_async_backend
+
+backend = get_async_backend(Order)        # Postgres-bound models only
+async with backend.transaction() as uow:  # one READ COMMITTED transaction
+    await Order(customer=alice, restaurant=sakura, total=10.0).async_save(pipeline=uow)
+    await Order(customer=bob, restaurant=sakura, total=12.0).async_save(pipeline=uow)
+# both committed, or (on an exception) neither
+```
+
+A `popoto.batch()` that async writes joined must be committed with
+`await pipe.async_execute()`. Mixing sync and async writes on one batch or unit of
+work raises `BridgeMisuseError`.
+
+**Model hooks run on the event-loop thread.** Your overrides of `save()`,
+`pre_save()` and `delete()`, and field hooks, run inside the async call with the loop
+running. A hook that calls `asyncio.run()` raises `RuntimeError`, and a hook that
+blocks (`time.sleep`, a sync HTTP client) blocks the whole loop. Keep hooks to
+in-memory work, and do blocking work before or after the `await`.
+
+**What still uses a thread.** `async_check_indexes`, `async_clean_indexes` and
+`async_rebuild_indexes` run the sync method off the event loop: in a worker
+thread on Redis, on the async backend on Postgres. An embedding provider's call
+runs in a worker thread on every backend.
+
+Details, including pools per event loop and cancellation, are in
+[Async](features/postgres-backend.md#async-m5). The row for `async_*` methods in
+[Records and other behaviour](features/postgres-backend.md#records-and-other-behaviour)
+lists the remaining differences.
 
 ## See Also
 
