@@ -4631,9 +4631,9 @@ for a user-defined subclass, <code>custom_class</code> and <code>overrides_hooks
 
 
         <p>A model's storage-relevant shape, built from <code>Model._meta</code>.</p>
-<p>Built lazily by <code>ModelOptions.spec</code> and rebuilt when a field is added
-(the <code>_auto_key</code> field is added at first instantiation, after class
-creation). <code>backend</code> is the explicit <code>Meta.backend</code> or <code>None</code> (the
+<p>Built lazily by <code>ModelOptions.spec</code> and rebuilt when a field is added.
+(The implicit <code>_auto_key</code> is registered at class creation, #826, so it
+is in the first spec built.) <code>backend</code> is the explicit <code>Meta.backend</code> or <code>None</code> (the
 process default applies).</p>
 
 
@@ -4674,9 +4674,9 @@ process default applies).</p>
 <a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="k">class</span><span class="w"> </span><span class="nc">ModelSpec</span><span class="p">:</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="w">    </span><span class="sd">"""A model's storage-relevant shape, built from ``Model._meta``.</span>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    Built lazily by ``ModelOptions.spec`` and rebuilt when a field is added</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">    (the ``_auto_key`` field is added at first instantiation, after class</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">    creation). ``backend`` is the explicit ``Meta.backend`` or ``None`` (the</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    Built lazily by ``ModelOptions.spec`` and rebuilt when a field is added.</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">    (The implicit ``_auto_key`` is registered at class creation, #826, so it</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">    is in the first spec built.) ``backend`` is the explicit ``Meta.backend`` or ``None`` (the</span>
 <a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">    process default applies).</span>
 <a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">    """</span>
 <a id="__codelineno-0-286" name="__codelineno-0-286"></a>
