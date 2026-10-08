@@ -3272,10 +3272,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#on-postgres" class="md-nav__link">
+  <a href="#eventstreammixin-on-postgres" class="md-nav__link">
     <span class="md-ellipsis">
       
-        On Postgres
+        EventStreamMixin on Postgres
       
     </span>
   </a>
@@ -3461,6 +3461,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
   
 </li>
       
@@ -4858,10 +4869,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#on-postgres" class="md-nav__link">
+  <a href="#eventstreammixin-on-postgres" class="md-nav__link">
     <span class="md-ellipsis">
       
-        On Postgres
+        EventStreamMixin on Postgres
       
     </span>
   </a>
@@ -5050,6 +5061,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -5071,8 +5093,8 @@
 
 
 <h1 id="models-and-fields">Models and Fields<a class="headerlink" href="#models-and-fields" title="Permanent link">&para;</a></h1>
-<p>Models are the foundation of Popoto. They define the structure of your Redis-stored
-data using Python classes with field declarations. If you are familiar with Django or
+<p>Models are the foundation of Popoto. They define the structure of your stored data
+using Python classes with field declarations. If you are familiar with Django or
 SQLAlchemy, the pattern will feel natural: inherit from <code>Model</code>, declare fields as
 class attributes, and Popoto handles persistence, indexing, and querying.</p>
 <p>Here is a simple restaurant model to illustrate the basics:</p>
@@ -5085,9 +5107,13 @@ class attributes, and Popoto handles persistence, indexing, and querying.</p>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">location</span> <span class="o">=</span> <span class="n">GeoField</span><span class="p">()</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">active</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">bool</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
-<p>Each field type controls how data is validated, stored, and indexed in Redis. This
-guide covers every field type and its configuration options, working through a food
-delivery system as a running example.</p>
+<p>Each field type controls how data is validated, stored, and indexed. A model is
+stored in Redis unless it selects the Postgres backend (<code>Meta.backend = "postgres"</code>,
+see <a href="../meta/#backend">Model Meta Options</a>). The storage details on this page, such as
+key patterns, sets, and Redis commands, describe the Redis backend. Which fields a
+Postgres model may use is listed in <a href="#on-postgres">On Postgres</a>. This guide covers
+every field type and its configuration options, working through a food delivery
+system as a running example.</p>
 <p>If you need a field type Popoto does not provide, see
 <a href="../field-authoring/">Writing Custom Fields</a> for the <code>Field</code> subclassing contract,
 including the round-trip protocol a field with independent Redis state must
@@ -5113,16 +5139,19 @@ the Redis key <code>Restaurant:Siam Garden</code>. Create a restaurant and retri
 possible read operation. See <a href="../query/">Making Queries</a> for additional ways to
 retrieve instances.</p>
 <h3 id="changing-a-keyfield-value">Changing a KeyField Value<a class="headerlink" href="#changing-a-keyfield-value" title="Permanent link">&para;</a></h3>
-<p>When you change a <code>KeyField</code> value and call <code>save()</code>, the Redis key itself changes.
-Popoto handles the transition automatically: it deletes the old hash, removes the old
-key from the class set, migrates all field indexes (sorted sets, geo sets, unique
-constraints) from the old key to the new one, and adds the new key to the class set.
-Both full saves and partial saves (<code>save(update_fields=[...])</code>) handle this correctly.</p>
+<p>Changing a <code>KeyField</code> value changes the record's key, so Popoto makes you ask for
+it. A plain <code>save()</code> after the change raises <code>KeyMutationError</code> (see
+<a href="../indexed_fields/#immutable-keys-and-key-migration">Immutable Keys and Key Migration</a>).
+Pass <code>migrate_key=True</code> to move the record. On Redis, Popoto then deletes the old
+hash, removes the old key from the class set, migrates all field indexes (sorted
+sets, geo sets, unique constraints) from the old key to the new one, and adds the
+new key to the class set. Both full saves and partial saves
+(<code>save(update_fields=[...])</code>) handle this correctly.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Taco Shack"</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Mexican"</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># Change the KeyField value</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">"Taco Palace"</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Old key is cleaned up, new key is active</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">loaded</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Taco Palace"</span><span class="p">)</span>
@@ -5756,9 +5785,9 @@ and a range-query target.</p>
 <a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a><span class="c1"># =&gt; 2</span>
 </code></pre></div>
 <h2 id="indexedfield">IndexedField<a class="headerlink" href="#indexedfield" title="Permanent link">&para;</a></h2>
-<p><code>IndexedField</code> provides Set-based secondary indexing on non-key fields. Unlike
-<code>KeyField</code>, an <code>IndexedField</code> does not become part of the Redis key -- it only
-enables efficient exact-match queries via <code>filter()</code>.</p>
+<p><code>IndexedField</code> provides Set-based secondary indexing on non-key fields (a B-tree on
+its column on Postgres). Unlike <code>KeyField</code>, an <code>IndexedField</code> does not become part of
+the record's key -- it only enables efficient exact-match queries via <code>filter()</code>.</p>
 <p>This decouples querying from identity: you can filter on <code>status</code>, <code>category</code>, or
 <code>region</code> without those fields affecting the Redis storage key.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">AutoKeyField</span><span class="p">,</span> <span class="n">IndexedField</span><span class="p">,</span> <span class="n">Field</span>
@@ -6081,8 +6110,10 @@ See <a href="../features/agent-memory/">Agent Memory</a> for the broader agent m
 <p><code>ExistenceFilter</code> is a Bloom filter for O(1) probabilistic membership checks. It answers
 "have I ever stored anything about X?" without touching any sorted set or hash. False
 positives are possible; false negatives are impossible.</p>
-<p>Implemented entirely with Redis strings (<code>SETBIT</code>/<code>GETBIT</code>) and Lua scripts. No Redis
-modules required -- works on both Redis and Valkey.</p>
+<p>On Redis it is implemented entirely with strings (<code>SETBIT</code>/<code>GETBIT</code>) and Lua
+scripts. No Redis modules required -- works on both Redis and Valkey. On Postgres
+the filter is exact: no false positives, and a deleted record is forgotten (see
+<a href="../features/postgres-backend/#membership">Membership</a>).</p>
 <p><code>ExistenceFilter</code> is a "side-effect field" -- it does not store a value on the model
 instance. It maintains a Bloom filter index via <code>on_save()</code> hooks.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span>
@@ -6171,8 +6202,10 @@ harmless for a pre-filter use case.</p>
 <p>See <a href="../features/existence-filter/">ExistenceFilter</a> for the
 full agent memory context.</p>
 <h2 id="bm25field">BM25Field<a class="headerlink" href="#bm25field" title="Permanent link">&para;</a></h2>
-<p><code>BM25Field</code> provides ranked keyword search using BM25 scoring, backed entirely by Redis
-sorted sets and Lua scripts. No Redis modules required -- works on both Redis and Valkey.</p>
+<p><code>BM25Field</code> provides ranked keyword search using BM25 scoring. On Redis it is backed
+entirely by sorted sets and Lua scripts, with no Redis modules required, so it works on
+both Redis and Valkey. On Postgres the index is a postings table with the same scoring
+formula, and <code>recompute_stats</code> is a no-op (see <a href="../features/postgres-backend/#bm25">BM25</a>).</p>
 <p>Like <code>ExistenceFilter</code>, <code>BM25Field</code> is a "side-effect field" -- it does not store a value
 on the model instance. It maintains an inverted index and corpus statistics via
 <code>on_save()</code>/<code>on_delete()</code> hooks, and computes BM25 scores at query time server-side.</p>
@@ -6263,8 +6296,10 @@ including RRF fusion and the hybrid retrieval recipe.</p>
 <h2 id="frequencysketch">FrequencySketch<a class="headerlink" href="#frequencysketch" title="Permanent link">&para;</a></h2>
 <p><code>FrequencySketch</code> is a Count-Min Sketch for approximate frequency counting. Tracks how
 many times a fingerprint has been saved, with possible overcounting but never undercounting.</p>
-<p>Implemented entirely with Redis hashes (<code>HINCRBY</code>/<code>HGET</code>) and Lua scripts. No Redis
-modules required -- works on both Redis and Valkey.</p>
+<p>On Redis it is implemented entirely with hashes (<code>HINCRBY</code>/<code>HGET</code>) and Lua scripts.
+No Redis modules required -- works on both Redis and Valkey. On Postgres the count is
+exact: the true number of saves, never decremented (see
+<a href="../features/postgres-backend/#membership">Membership</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span>
 <a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.existence_filter</span><span class="w"> </span><span class="kn">import</span> <span class="n">FrequencySketch</span>
 <a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a>
@@ -6531,7 +6566,8 @@ class.</p>
 <p><code>WriteFilterMixin</code> gates <code>save()</code> calls based on a scoring function you define. Records
 scoring below a minimum threshold are silently discarded (never persisted). Records
 scoring above a priority threshold are persisted <em>and</em> tagged in a Redis sorted set for
-preferential retrieval.</p>
+preferential retrieval. On Postgres the gate runs the same way, but the priority tier
+is not stored: <code>composite_score({"priority": ...})</code> raises <code>BackendCapabilityError</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span>
 <a id="__codelineno-58-2" name="__codelineno-58-2" href="#__codelineno-58-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.write_filter</span><span class="w"> </span><span class="kn">import</span> <span class="n">WriteFilterMixin</span>
 <a id="__codelineno-58-3" name="__codelineno-58-3" href="#__codelineno-58-3"></a>
@@ -6666,7 +6702,8 @@ never reaches <code>compute_filter_score()</code>.</p>
 <p><code>ContentField</code> routes large content values (documents, text, binary data) to filesystem
 storage, keeping Redis memory usage minimal. Redis stores only a compact reference string
 (<code>$CF:{hash}:{path}</code>), and the content is lazy-loaded from the filesystem when the
-attribute is accessed.</p>
+attribute is accessed. This section describes the Redis backend. On Postgres the content
+is stored inline in a <code>text</code> column, and no file or content store is used.</p>
 <p>This is ideal for storing long-form text, HTML, markdown, or any content too large to
 keep in Redis comfortably.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-64-1" name="__codelineno-64-1" href="#__codelineno-64-1"></a>pip<span class="w"> </span>install<span class="w"> </span>popoto
@@ -6846,7 +6883,10 @@ full query interface.</p>
 <p>See <a href="../features/content-and-embedding-fields/">Content and Embedding Fields</a> for the
 full feature reference including storage layout, cache management, and provider API.</p>
 <h3 id="multi-worker-deployments">Multi-Worker Deployments<a class="headerlink" href="#multi-worker-deployments" title="Permanent link">&para;</a></h3>
-<p><code>EmbeddingField</code> caches a pre-normalized embedding matrix in a <strong>process-local</strong>
+<p>This section applies to the Redis backend only. On Postgres the vector lives in a
+pgvector column and there is no in-process cache, so there is nothing to invalidate
+(see <a href="../features/postgres-backend/#embeddings">Embeddings</a>).</p>
+<p>On Redis, <code>EmbeddingField</code> caches a pre-normalized embedding matrix in a <strong>process-local</strong>
 dict for fast similarity search. In a multi-worker deployment (gunicorn with
 several workers, multiple containers, multiple pods) a write on one worker must
 invalidate the caches held by its peers — otherwise the peers keep serving
@@ -6917,7 +6957,8 @@ exhaust the pool and starve unrelated Redis operations. Call
 batch of model classes to stop every listener and return its connection to the
 pool; the next <code>semantic_search()</code> lazily respawns a fresh listener if needed.</p>
 <h2 id="geofield">GeoField<a class="headerlink" href="#geofield" title="Permanent link">&para;</a></h2>
-<p><code>GeoField</code> uses Redis geospatial indexes for location-based queries. This is perfect
+<p><code>GeoField</code> uses Redis geospatial indexes for location-based queries (on Postgres, plain
+columns that reproduce the same radius search; see <a href="../features/postgres-backend/#geo-m5">Geo</a>). This is perfect
 for finding nearby restaurants, tracking driver positions, or searching by delivery
 address.</p>
 <p>Values are <code>GeoField.Coordinates(latitude, longitude)</code> namedtuples, though plain
@@ -7003,6 +7044,9 @@ their own. See <a href="../configuration/#thread-safety">Thread Safety</a>.</p>
 <p><code>DataFrameField</code> stores <a href="https://pandas.pydata.org/docs/reference/frame.html">Pandas DataFrame</a>
 objects directly in Redis. This is useful for analytics or caching computed datasets.
 Because it depends on Pandas, it uses a separate model outside the canonical set.</p>
+<p><code>DataFrameField</code> is Redis-only. A Postgres model that declares one is refused with
+<code>BackendCapabilityError</code>; store the frame's JSON in a <code>DictField</code> or a <code>BytesField</code>
+instead (see <a href="#on-postgres">On Postgres</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-80-1" name="__codelineno-80-1" href="#__codelineno-80-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <a id="__codelineno-80-2" name="__codelineno-80-2" href="#__codelineno-80-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span>
 <a id="__codelineno-80-3" name="__codelineno-80-3" href="#__codelineno-80-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.dataframe_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataFrameField</span>
@@ -7123,6 +7167,8 @@ should not count as a user-originated read.</p>
 <h3 id="delete-cleanup">Delete cleanup<a class="headerlink" href="#delete-cleanup" title="Permanent link">&para;</a></h3>
 <p>When a tracked model instance is deleted, all three AccessTracker Redis keys (staged, access_log, meta) are automatically removed.</p>
 <h3 id="redis-key-patterns">Redis key patterns<a class="headerlink" href="#redis-key-patterns" title="Permanent link">&para;</a></h3>
+<p>On Postgres these are columns on the record's row instead, and the confirmed access
+log is not kept: <code>access_count</code> and <code>last_accessed</code> are.</p>
 <table>
 <thead>
 <tr>
@@ -7293,7 +7339,7 @@ pre-canonical rendering.</p>
 <li><code>stream:{stream_name}</code> — default stream key</li>
 <li><code>stream:{stream_name}:{partition_value}</code> — partitioned stream key</li>
 </ul>
-<h3 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h3>
+<h3 id="eventstreammixin-on-postgres">EventStreamMixin on Postgres<a class="headerlink" href="#eventstreammixin-on-postgres" title="Permanent link">&para;</a></h3>
 <p>A Postgres-bound model's stream is kept in the backend's events tables, not in Redis. The stream keys, ids (<code>&lt;ms&gt;-&lt;seq&gt;</code>) and entry fields stay the same. The entry is appended in the save's or delete's own transaction, so the record and its entry commit or roll back together. Because of that, an append that fails at the server fails the save. Read the stream with <code>Model.stream_range()</code> / <code>Model.stream_len()</code>, or with <code>popoto.streams.stream_client(Model)</code>, which has the same redis-py methods on both backends. See <a href="../features/postgres-backend/#event-streams-and-pubsub-m5">Postgres Backend: event streams and pub/sub</a>.</p>
 <h2 id="tagfield">TagField<a class="headerlink" href="#tagfield" title="Permanent link">&para;</a></h2>
 <p><code>TagField</code> adds <strong>optional, indexed, multi-value scoping</strong> to a model. It is the
@@ -7465,6 +7511,70 @@ before saving:</p>
 </code></pre></div>
 <p>The <code>db_key</code> is useful for debugging, logging, or performing custom Redis operations
 outside of Popoto's query API.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>A model with <code>Meta.backend = "postgres"</code> (see <a href="../meta/#backend">Model Meta Options</a>)
+stores each record as one row in a table. You declare fields and use them the same
+way. What changes is how each field is stored and a few behaviours. The column and
+index each field compiles to is listed in
+<a href="../features/postgres-backend/#supported-fields-m1-m11-m2a-m2b-m3-m4-m5">Supported fields</a>.</p>
+<p><strong>Supported fields.</strong> <code>Field</code>, <code>KeyField</code>, <code>UniqueKeyField</code>, <code>AutoKeyField</code>,
+<code>SortedKeyField</code>, <code>IntField</code>, <code>FloatField</code>, <code>DecimalField</code>, <code>BooleanField</code>,
+<code>StringField</code>, <code>BytesField</code>, <code>DatetimeField</code>, <code>DateField</code>, <code>TimeField</code>, <code>ListField</code>
+(capped or not), <code>DictField</code>, <code>SetField</code>, <code>TupleField</code>, <code>SortedField</code>, <code>IndexedField</code>,
+<code>UniqueField</code>, <code>TagField</code>, <code>Relationship</code>, <code>GeoField</code>, <code>DecayingSortedField</code>,
+<code>CyclicDecayField</code>, <code>ConfidenceField</code>, <code>ValidityField</code>, <code>CoOccurrenceField</code>,
+<code>TDValueField</code>, <code>BM25Field</code>, <code>EmbeddingField</code>, <code>ExistenceFilter</code>, <code>FrequencySketch</code>,
+and <code>ContentField</code>. Every popoto mixin is supported, including <code>PredictionLedgerMixin</code>,
+<code>AccessTrackerMixin</code>, <code>EventStreamMixin</code>, <code>WriteFilterMixin</code> (no priority tier on
+Postgres), and <code>NeverRecordMixin</code>.</p>
+<p><strong>Refused fields and types.</strong> A model that breaks one of these rules raises
+<code>BackendCapabilityError</code> (from <code>popoto.backends</code>), listing every problem at once:</p>
+<ul>
+<li><code>DataFrameField</code> is refused. Store the frame's JSON in a <code>DictField</code> or a
+  <code>BytesField</code> instead.</li>
+<li>A plain <code>Field(type=...)</code> must use <code>int</code>, <code>float</code>, <code>str</code>, <code>bool</code>, <code>Decimal</code>,
+  <code>datetime</code>, <code>date</code>, <code>time</code>, <code>bytes</code>, <code>list</code>, <code>dict</code>, <code>set</code>, or <code>tuple</code>.</li>
+<li>An <code>IndexedField</code> or <code>UniqueField</code> must use a scalar type: <code>int</code>, <code>float</code>, <code>str</code>,
+  <code>bool</code>, <code>Decimal</code>, <code>datetime</code>, <code>date</code>, or <code>time</code>. A collection type is refused.</li>
+<li>A <code>SortedField</code> must use <code>int</code>, <code>float</code>, <code>Decimal</code>, <code>datetime</code>, <code>date</code>, or <code>time</code>.</li>
+<li>A custom field subclass that overrides a storage hook is refused (see
+  <a href="../field-authoring/#on-postgres">Writing Custom Fields</a>).</li>
+</ul>
+<p>A model that sets <code>Meta.backend = "postgres"</code> is checked when the class is defined.
+A model that takes Postgres from <code>POPOTO_BACKEND</code> is checked on its first query or
+save. Without pandas installed, <code>DataFrameField()</code> raises <code>ImportError</code> when the
+field is constructed, before the backend check runs.</p>
+<p><strong>How the field families map:</strong></p>
+<ul>
+<li>Key fields: the record's key string (<code>ClassName:value</code>) is the row's <code>_pk</code>, so
+  <code>Model.pk</code> and <code>db_key.redis_key</code> are the same on both backends.</li>
+<li>Indexed, unique, sorted, and key fields: B-tree indexes on their columns.
+  Uniqueness is checked before the write and enforced by a <code>UNIQUE</code> index.</li>
+<li>Collections: <code>jsonb</code> columns that read back as the field's own type.</li>
+<li><code>Relationship</code>: a <code>text</code> column holding the related record's key. It stays lazy,
+  as on Redis.</li>
+<li><code>ContentField</code>: the content itself, in a <code>text</code> column. No file or content store
+  is used.</li>
+<li><code>EmbeddingField</code>: a pgvector column, which needs <code>CREATE EXTENSION vector</code> in the
+  database. There are no <code>.npy</code> files and no in-process cache, so
+  <code>POPOTO_EMBEDDING_INVALIDATION</code> and <code>invalidate_cache()</code> do not apply.</li>
+<li><code>BM25Field</code>, <code>ExistenceFilter</code>, <code>FrequencySketch</code>, <code>CoOccurrenceField</code>: side
+  tables written in the same transaction as the record. <code>ExistenceFilter</code> and
+  <code>FrequencySketch</code> are exact on Postgres.</li>
+<li><code>GeoField</code>: plain columns, no PostGIS. Radius filters behave as on Redis.</li>
+</ul>
+<p><strong>Behaviour differences that affect field use:</strong></p>
+<ul>
+<li>Changing a key field raises <code>BackendCapabilityError</code>, even with
+  <code>save(migrate_key=True)</code>. Create the new record and delete the old one.</li>
+<li><code>Meta.ttl</code> adds an expiry column; see <a href="../ttl/#on-postgres">TTL</a>.</li>
+<li><code>AccessTrackerMixin</code> keeps <code>access_count</code> and <code>last_accessed</code>, but not the
+  confirmed access log.</li>
+<li><code>WriteFilterMixin</code>'s priority tier is not stored.</li>
+<li>A text value containing <code>\x00</code> raises <code>ValueError</code>.</li>
+</ul>
+<p>The full list is in
+<a href="../features/postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>.</p>
 
 
 

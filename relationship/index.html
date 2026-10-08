@@ -2993,6 +2993,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3590,6 +3601,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3612,9 +3634,9 @@
 
 <h1 id="relationship-field">Relationship Field<a class="headerlink" href="#relationship-field" title="Permanent link">&para;</a></h1>
 <p>The <code>Relationship</code> field creates references between model instances, similar
-to foreign keys in SQL databases. Unlike SQL, Redis has no JOIN operation.
-Popoto stores a reference (the related instance's Redis key) and lazy-loads
-the full object on access. This keeps writes fast and avoids loading data you
+to foreign keys in SQL databases. Popoto stores a reference (the related
+instance's key) and lazy-loads the full object on access, on both the Redis
+and Postgres backends; it never joins. This keeps writes fast and avoids loading data you
 never use, but multi-model queries work differently than in Django or
 SQLAlchemy.</p>
 <h2 id="basic-usage">Basic Usage<a class="headerlink" href="#basic-usage" title="Permanent link">&para;</a></h2>
@@ -3721,6 +3743,15 @@ assigned only after the order is accepted.</p>
 </div>
 <h2 id="nested-field-access">Nested Field Access<a class="headerlink" href="#nested-field-access" title="Permanent link">&para;</a></h2>
 <p>Use double-underscore notation to query by fields on the related model.</p>
+<div class="admonition warning">
+<p class="admonition-title">Redis: currently broken</p>
+<p>On the Redis backend this lookup raises today (a <code>KeyError</code> or an
+<code>AttributeError</code>, depending on the related field) instead of returning
+matches. The bug is tracked in #771 and is row (xii) of
+<a href="../features/postgres-backend/#query-results">Query results</a>. On Postgres
+the lookup works as shown. On Redis, query the related model first and
+filter by instance: <code>Order.query.filter(restaurant=burger_palace)</code>.</p>
+</div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">restaurant__name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">)</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">orders</span><span class="p">:</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Order </span><span class="si">{</span><span class="n">order</span><span class="o">.</span><span class="n">order_id</span><span class="si">}</span><span class="s2">: $</span><span class="si">{</span><span class="n">order</span><span class="o">.</span><span class="n">total</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
@@ -3742,7 +3773,7 @@ assigned only after the order is accepted.</p>
 a second relationship.</p>
 </div>
 <h2 id="traversing-relationships">Traversing Relationships<a class="headerlink" href="#traversing-relationships" title="Permanent link">&para;</a></h2>
-<p>Because Redis has no JOINs, you traverse relationships with Python loops.</p>
+<p>Popoto has no JOINs on either backend, so you traverse relationships with Python loops.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">alice</span> <span class="o">=</span> <span class="n">Customer</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="s2">"alice"</span><span class="p">)</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">alice_orders</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">)</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">restaurants</span> <span class="o">=</span> <span class="p">[</span><span class="n">order</span><span class="o">.</span><span class="n">restaurant</span> <span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">alice_orders</span><span class="p">]</span>
@@ -3752,7 +3783,7 @@ a second relationship.</p>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">N+1 Query Problem</p>
-<p>Each <code>order.restaurant</code> access triggers a separate Redis call. With 100
+<p>Each <code>order.restaurant</code> access triggers a separate database call. With 100
 orders, that is 100 additional round trips on top of the initial query.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Anti-pattern: 1 query + N lazy loads</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
@@ -3763,6 +3794,8 @@ orders, that is 100 additional round trips on top of the initial query.</p>
 (e.g., storing <code>restaurant_name</code> directly on <code>Order</code>).</p>
 </div>
 <h2 id="how-relationships-work-internally">How Relationships Work Internally<a class="headerlink" href="#how-relationships-work-internally" title="Permanent link">&para;</a></h2>
+<p>This section describes the Redis backend. See <a href="#on-postgres">On Postgres</a> for
+how the same field is stored there.</p>
 <h3 id="storage-as-redis-key">Storage as Redis Key<a class="headerlink" href="#storage-as-redis-key" title="Permanent link">&para;</a></h3>
 <p>Popoto stores the related instance's Redis key as a string, not the full
 serialized object. A <code>MenuItem</code> with <code>restaurant=burger_palace</code> stores
@@ -3931,10 +3964,32 @@ referenced model.</p>
 </code></pre></div>
 </div>
 <h3 id="keep-relationship-depth-shallow">Keep Relationship Depth Shallow<a class="headerlink" href="#keep-relationship-depth-shallow" title="Permanent link">&para;</a></h3>
-<p>Each relationship traversal costs a Redis round trip. Design your models so
+<p>Each relationship traversal costs a database round trip. Design your models so
 the most common access patterns require at most one or two hops.</p>
 <p>See <a href="../query/">Making Queries</a> for filter operators and
 <a href="../meta/">Model Meta Options</a> for <code>order_by</code> and <code>ttl</code> configuration.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p><code>Relationship</code> works on a model with <code>Meta.backend = "postgres"</code>: assignment,
+lazy loading, <code>filter(restaurant=instance)</code>, null relationships, self-references
+and <code>Relationship.sample_related_keys()</code> behave as described above. A nested
+lookup runs the related model's own query, through that model's backend.</p>
+<p><strong>How it maps.</strong> The field is a <code>text</code> column holding the related record's key,
+with a B-tree index on it. There is no <code>$RelationshipF:</code> set and no foreign key:
+references may be circular, and Redis enforces none either. <code>filter()</code> and
+<code>all()</code> return the field as that key string, while <code>get()</code> resolves it, as on
+Redis. <code>sample_related_keys()</code> selects up to <code>count</code> keys with
+<code>ORDER BY random() LIMIT count</code>, keeping <code>SRANDMEMBER</code>'s count contract.</p>
+<p><strong>Differences from Redis:</strong></p>
+<ul>
+<li>Nested lookups such as <code>filter(restaurant__name=...)</code> work on Postgres; on
+  Redis they currently raise (see <a href="#nested-field-access">Nested Field Access</a>).</li>
+<li>Deleting a record still does not cascade. A dependent row keeps the stale key,
+  as on Redis.</li>
+<li><code>order_by</code> on a relationship field, and other query edge cases, are rows in
+  <a href="../features/postgres-backend/#query-results">Query results</a>.</li>
+</ul>
+<p>The column and index are listed under
+<a href="../features/postgres-backend/#supported-fields-m1-m11-m2a-m2b-m3-m4-m5">Supported fields</a>.</p>
 
 
 

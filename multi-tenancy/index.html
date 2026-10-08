@@ -2955,6 +2955,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3458,6 +3469,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3483,7 +3505,9 @@
 example, a memory system where project A's episodes live separately from project B's,
 using the same model class.</p>
 <p>Redis has no built-in schema or table concept — isolation comes from key structure.
-Popoto's <code>KeyField</code> already provides this naturally.</p>
+Popoto's <code>KeyField</code> already provides this naturally. The same pattern works on the
+Postgres backend, where the key field is a column; see <a href="#on-postgres">On Postgres</a>.
+The key and hash names on this page are the Redis backend's.</p>
 <h2 id="the-pattern-use-a-keyfield">The Pattern: Use a KeyField<a class="headerlink" href="#the-pattern-use-a-keyfield" title="Permanent link">&para;</a></h2>
 <p>Add a <code>KeyField</code> for your namespace, tenant, or project identifier. All Redis keys
 and indexes automatically partition by KeyField values, giving you complete isolation
@@ -3704,6 +3728,7 @@ provides an HSCAN-based alternative that avoids loading all entries into memory:
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># Returns: {member_key: {confidence, evidence_count, ...}} for matching entries</span>
 </code></pre></div>
 <h2 id="when-to-use-separate-redis-databases-instead">When to use separate Redis databases instead<a class="headerlink" href="#when-to-use-separate-redis-databases-instead" title="Permanent link">&para;</a></h2>
+<p>This section applies to Redis. For Postgres, see <a href="#on-postgres">On Postgres</a>.</p>
 <p>For stronger isolation (e.g., compliance requirements, independent TTL policies,
 or different Redis instances per tenant), use separate Redis connections rather
 than key prefixing:</p>
@@ -3756,6 +3781,34 @@ than key prefixing:</p>
 </tr>
 </tbody>
 </table>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>The KeyField pattern works unchanged on a model with <code>Meta.backend = "postgres"</code>.
+<code>Episode.query.filter(project_id="project-a")</code> returns only that project's rows.</p>
+<p><strong>How it maps.</strong> A model is one table and each field a column. The key fields form one
+<code>UNIQUE</code> index, and each key field after the first gets its own B-tree, so a filter on
+<code>project_id</code> is an index lookup. A <code>SortedField</code> with <code>partition_by</code> is a B-tree on
+<code>(partition columns, field)</code>, which keeps a partitioned range query inside one tenant.
+A <code>ConfidenceField</code>'s state is four columns of the record's own row, so it is always
+stored per record and per tenant: there is no companion hash to partition, and moving a
+record to another partition moves nothing else.</p>
+<p><strong>Differences from Redis:</strong></p>
+<ul>
+<li><code>ConfidenceField.migrate_to_partitioned()</code> and <code>ConfidenceField.get_confidence_filtered()</code>
+  raise <code>BackendCapabilityError</code>. Neither is needed: partitioning is the row's own columns,
+  and a filtered read is an ordinary <code>filter()</code>.</li>
+<li><code>get_data_hash_key()</code> and <code>get_data_hash_key_from_values()</code> build Redis key names. On a
+  Postgres model they name no stored data, so do not use them to audit isolation there;
+  query the rows instead.</li>
+<li>Instead of separate Redis databases, give a tenant its own Postgres database or schema.
+  Pass a backend instance to <code>popoto.backends.set_backend()</code>, for example
+  <code>set_backend(PostgresBackend(dsn=..., schema="tenant_a"))</code>, with <code>PostgresBackend</code> from
+  <code>popoto.backends.postgres</code>. It serves models on the process default and models that
+  name <code>Meta.backend = "postgres"</code>, ahead of <code>POPOTO_POSTGRES_URL</code> and
+  <code>POPOTO_POSTGRES_SCHEMA</code>. Like <code>set_REDIS_DB_settings()</code>, this is process-wide;
+  without an instance, those variables set the isolation.</li>
+</ul>
+<p>See <a href="../features/postgres-backend/#selecting-the-backend">Selecting the backend</a> and
+<a href="../features/postgres-backend/#ranking-and-memory-state-m2a">Ranking and memory state</a>.</p>
 
 
 

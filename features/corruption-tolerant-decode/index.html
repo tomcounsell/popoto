@@ -2822,6 +2822,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3314,6 +3325,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3452,6 +3474,18 @@ immediately without restarting the process — including via
 <code>monkeypatch.setenv</code> in a test. See
 <a href="../../configuration/#environment-variables">Configuration</a> for the full
 environment variable reference.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>This page describes reads from the Redis backend, which stores each field as msgpack
+bytes in a hash. A model with <code>Meta.backend = "postgres"</code> stores each field in a typed
+column (<code>bigint</code>, <code>text</code>, <code>jsonb</code>, <code>bytea</code> and so on), and its reads do not go through the
+msgpack decode path, so a Postgres read never quarantines a field and never raises
+<code>CorruptFieldError</code>.</p>
+<p>The <code>save()</code> guard is also called on the Postgres write path, before the row is written,
+but because a Postgres read creates no quarantine it has nothing to refuse there.
+<code>POPOTO_DECODE_QUARANTINE_DISABLE</code> has no effect on a Postgres model. The <code>redis-cli</code> inspection steps above apply to Redis only; on
+Postgres, read the row with SQL. See
+<a href="../postgres-backend/#supported-fields-m1-m11-m2a-m2b-m3-m4-m5">Postgres backend</a> for the
+column types.</p>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../../reference/"><code>CorruptFieldError</code></a> — the exception raised for a

@@ -3254,6 +3254,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -4574,6 +4585,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -4596,8 +4618,11 @@
 
 <h1 id="making-queries">Making Queries<a class="headerlink" href="#making-queries" title="Permanent link">&para;</a></h1>
 <p>Every Popoto model has a <code>query</code> attribute that provides a Django-like interface for retrieving
-instances from Redis. You can look up a single object by its key, fetch all instances, filter by
+stored instances. You can look up a single object by its key, fetch all instances, filter by
 field values, count results, and return lightweight dictionaries instead of full model objects.</p>
+<p>The query API is the same whether a model is stored in Redis (the default) or in Postgres
+(<code>Meta.backend = "postgres"</code>). Where this page names Redis commands, keys or complexities, it
+describes the Redis backend; see <a href="#on-postgres">On Postgres</a> for how queries behave there.</p>
 <p>Queries combine multiple filters with AND logic. If you pass several filter parameters, only
 instances matching all criteria are returned.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
@@ -4781,7 +4806,7 @@ you do not need to import the Redis client to start a transaction.</p>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">batch</span><span class="p">()</span>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Sushi Zen"</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Japanese"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
 <a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Taco Stand"</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">"Mexican"</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">pipe</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>   <span class="c1"># both saves, and all their index writes, in one MULTI/EXEC</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">pipe</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>   <span class="c1"># both saves, and all their index writes, in one transaction</span>
 </code></pre></div>
 <p>Every <code>save()</code>/<code>delete()</code> and every field hook accepts <code>pipeline=</code>, so a batch groups a
 whole unit of work — model hashes and index maintenance alike — into a single atomic
@@ -4789,9 +4814,12 @@ round-trip. <code>batch(transaction=False)</code> queues without a <code>MULTI</
 pipelines for throughput but gives up atomicity; some callers (the
 <a href="../features/provenance-journal/">provenance journal</a>) require a transactional pipeline and
 raise if given a non-transactional one.</p>
-<p>The returned object is a <code>redis.client.Pipeline</code> — the same type
-<code>popoto.get_redis().pipeline()</code> returns — so existing code that builds one off the client
-keeps working. <code>batch()</code> is the preferred spelling.</p>
+<p>On Redis the batch is one <code>MULTI</code>/<code>EXEC</code>. The returned object is a <code>redis.client.Pipeline</code> —
+the same type <code>popoto.get_redis().pipeline()</code> returns — so existing code that builds one off
+the client keeps working. <code>batch()</code> is the preferred spelling.</p>
+<p>The same code works for a Postgres model: the batch's writes run in one Postgres transaction,
+and <code>execute()</code> commits it. The differences (all-or-nothing on a failed statement, one backend
+per batch) are listed under <a href="#on-postgres">On Postgres</a>.</p>
 <h2 id="get-multiple-objects-by-key">Get Multiple Objects by Key<a class="headerlink" href="#get-multiple-objects-by-key" title="Permanent link">&para;</a></h2>
 <p>When you already have a list of Redis keys (for example, from a set intersection, a cache of
 "recently viewed" items, or a secondary index), use <code>query.get_many()</code> to hydrate them all in
@@ -5527,7 +5555,9 @@ including queries that carry <code>Q</code> objects — call <code>count()</code
 need the page size instead.</p>
 <h2 id="get-redis-keys">Get Redis Keys<a class="headerlink" href="#get-redis-keys" title="Permanent link">&para;</a></h2>
 <p>Use <code>query.keys()</code> to retrieve the raw Redis keys for all instances of a model. This is useful
-for debugging or performing custom Redis operations.</p>
+for debugging or performing custom Redis operations. On a Postgres model, <code>keys()</code> returns the
+records' keys, but <code>keys(catchall=True)</code> and <code>keys(clean=True)</code> raise <code>BackendCapabilityError</code>,
+because they scan or repair Redis keyspace that a Postgres model does not have.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="n">keys</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
 <a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a><span class="c1"># =&gt; [b"Restaurant:Burger Palace", b"Restaurant:Sushi Zen"]</span>
 </code></pre></div>
@@ -6071,7 +6101,9 @@ sorted field indexes, producing a unified ranking.</p>
 embeddings exist for the model.</p>
 <h2 id="performance-best-practices">Performance Best Practices<a class="headerlink" href="#performance-best-practices" title="Permanent link">&para;</a></h2>
 <p>Popoto is optimized for common query patterns, but understanding the underlying Redis operations
-helps you write efficient code. Here are the key patterns to follow.</p>
+helps you write efficient code. Here are the key patterns to follow. The commands and
+complexities below describe the Redis backend; a Postgres model answers the same calls with SQL
+against B-tree indexes (see <a href="#on-postgres">On Postgres</a>).</p>
 <h3 id="use-count-instead-of-lenall">Use <code>count()</code> Instead of <code>len(all())</code><a class="headerlink" href="#use-count-instead-of-lenall" title="Permanent link">&para;</a></h3>
 <p>The <code>count()</code> method uses Redis <code>SCARD</code> for O(1) cardinality checks when called without filters.
 This is approximately 186x faster than loading all objects just to count them.</p>
@@ -6133,6 +6165,7 @@ you only use a subset of fields.</p>
 to the model, or a hash partially written by a crashed process) resolve to the field's
 declared <code>default</code> -- or <code>None</code> if no default is set -- matching <code>Model.__init__</code> semantics.</p>
 <h3 id="query-performance-summary">Query Performance Summary<a class="headerlink" href="#query-performance-summary" title="Permanent link">&para;</a></h3>
+<p>On Redis:</p>
 <table>
 <thead>
 <tr>
@@ -6229,6 +6262,38 @@ declared <code>default</code> -- or <code>None</code> if no default is set -- ma
 </tr>
 </tbody>
 </table>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>Every query method on this page works on a model with <code>Meta.backend = "postgres"</code>:
+<code>get</code>, <code>get_many</code>, <code>filter</code>, <code>all</code>, <code>count</code>, <code>keys</code>, <code>values=</code>, <code>order_by</code>, <code>limit</code>, <code>Q</code>
+objects, the sorted, geo and validity lookups, <code>composite_score</code>, <code>keyword_search</code>,
+<code>semantic_search</code>, <code>fuse</code>, <code>load_fields</code> and <code>idle_seconds</code>. Results come back as the same
+model instances and dictionaries.</p>
+<p><strong>How it maps.</strong> A Postgres model is a table with one column per field. Filters become a
+<code>WHERE</code> clause over B-tree indexes on the key, indexed and sorted columns, so the Redis
+commands and complexities in <a href="#query-performance-summary">Query Performance Summary</a> do not
+apply. <code>popoto.batch()</code> opens one Postgres transaction for the batch's Postgres writes and
+<code>execute()</code> commits it (see <a href="../features/postgres-backend/#popotobatch-m5"><code>popoto.batch()</code></a>).</p>
+<p><strong>Differences from Redis:</strong></p>
+<ul>
+<li>A query without <code>order_by</code> returns rows in key order (bytewise on the stored key). Redis
+  returns them in set order. Pass <code>order_by</code> when order matters.</li>
+<li>Some queries that Redis answers wrongly return the correct result on Postgres: an
+  unindexed field inside a <code>Q</code> object is applied rather than dropped, two lookups on the same
+  side of a <code>SortedField</code> both apply, and a lookup through a <code>Relationship</code>
+  (<code>restaurant__name=...</code>) works. Other rows differ the other way, such as <code>order_by</code> on a
+  list or other collection field, which Postgres refuses. Each case is a row in
+  <a href="../features/postgres-backend/#query-results">Query results</a>.</li>
+<li><code>load_raw_hash</code> and <code>keys(catchall=True)</code> / <code>keys(clean=True)</code> raise
+  <code>BackendCapabilityError</code>. They inspect Redis hashes and keyspace.</li>
+<li><code>idle_seconds</code> counts whole seconds since the row's last write or, with
+  <code>AccessTrackerMixin</code>, its last confirmed read. On Redis it is <code>OBJECT IDLETIME</code>, which any
+  read resets.</li>
+<li>In a <code>popoto.batch()</code>, a statement that fails inside the transaction makes <code>execute()</code>
+  raise <code>BackendError</code> and write nothing. Redis's <code>MULTI</code>/<code>EXEC</code> applies the other queued
+  commands. <code>batch(transaction=False)</code> is still one transaction, and a batch cannot mix Redis
+  commands and Postgres writes (<code>BackendCapabilityError</code>).</li>
+</ul>
+<p>The full list is in <a href="../features/postgres-backend/#documented-divergences">Documented divergences</a>.</p>
 
 
 

@@ -2723,10 +2723,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#what-happens-when-a-key-expires" class="md-nav__link">
+  <a href="#what-happens-when-a-key-expires-redis" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What Happens When a Key Expires
+        What Happens When a Key Expires (Redis)
       
     </span>
   </a>
@@ -2793,6 +2793,17 @@
     <span class="md-ellipsis">
       
         Complete Example: AgentSession with 90-Day TTL
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
       
     </span>
   </a>
@@ -3305,10 +3316,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#what-happens-when-a-key-expires" class="md-nav__link">
+  <a href="#what-happens-when-a-key-expires-redis" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What Happens When a Key Expires
+        What Happens When a Key Expires (Redis)
       
     </span>
   </a>
@@ -3382,6 +3393,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3413,7 +3435,8 @@
 
 
 <h1 id="ttl-time-to-live">TTL (Time-to-Live)<a class="headerlink" href="#ttl-time-to-live" title="Permanent link">&para;</a></h1>
-<p>Popoto supports automatic data expiration through Redis TTL. You can set
+<p>Popoto supports automatic data expiration. On Redis it uses the key's TTL; on
+Postgres it uses an expiry column (see <a href="#on-postgres">On Postgres</a>). You can set
 expiration at the model level (all instances expire after a fixed duration),
 override it per-instance, or set an absolute expiration timestamp.</p>
 <p>TTL is ideal for temporary data like sessions, caches, tracking records,
@@ -3431,10 +3454,10 @@ or any data with a natural retention window.</p>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="n">ttl</span> <span class="o">=</span> <span class="mi">7776000</span>  <span class="c1"># 90 days (90 * 24 * 60 * 60)</span>
 </code></pre></div>
-<p>When you save an instance, Popoto calls Redis <code>EXPIRE</code> on the key with the
+<p>When you save an instance on Redis, Popoto calls <code>EXPIRE</code> on the key with the
 configured TTL. After that many seconds, Redis removes the key automatically:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"assistant"</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="s2">"planning task"</span><span class="p">)</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># Redis will delete this session after 90 days</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># The session expires after 90 days</span>
 </code></pre></div>
 <h3 id="ttl-resets-on-every-save">TTL Resets on Every Save<a class="headerlink" href="#ttl-resets-on-every-save" title="Permanent link">&para;</a></h3>
 <p>The TTL clock restarts each time you call <code>save()</code>. If you update a session
@@ -3448,7 +3471,7 @@ configured TTL. After that many seconds, Redis removes the key automatically:</p
 <p>Background processes that update records will extend the expiration window.
 If a periodic job calls <code>save()</code> on a session, that session may never expire.</p>
 </div>
-<h3 id="what-happens-when-a-key-expires">What Happens When a Key Expires<a class="headerlink" href="#what-happens-when-a-key-expires" title="Permanent link">&para;</a></h3>
+<h3 id="what-happens-when-a-key-expires-redis">What Happens When a Key Expires (Redis)<a class="headerlink" href="#what-happens-when-a-key-expires-redis" title="Permanent link">&para;</a></h3>
 <p>When Redis removes an expired key, subsequent <code>load()</code> or <code>query.get()</code> calls
 return <code>None</code>. Orphaned secondary index entries — an index still naming a key
 whose hash is gone — are skipped during queries, and since 1.9.0 they are also
@@ -3482,7 +3505,7 @@ to <code>None</code> disables expiration for that instance only.</p>
 </div>
 <h2 id="absolute-expiration">Absolute Expiration<a class="headerlink" href="#absolute-expiration" title="Permanent link">&para;</a></h2>
 <p>Instead of a relative duration, you can set an exact expiration time using
-<code>_expire_at</code>. This accepts a <code>datetime</code> object and calls Redis <code>EXPIREAT</code>:</p>
+<code>_expire_at</code>. This accepts a <code>datetime</code> object (on Redis, Popoto calls <code>EXPIREAT</code>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timedelta</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">session</span> <span class="o">=</span> <span class="n">AgentSession</span><span class="p">(</span><span class="n">agent_name</span><span class="o">=</span><span class="s2">"campaign-tracker"</span><span class="p">)</span>
@@ -3551,6 +3574,48 @@ to absolute expiration, clear the TTL first:</p>
 <a id="__codelineno-9-39" name="__codelineno-9-39" href="#__codelineno-9-39"></a><span class="nb">print</span><span class="p">(</span><span class="n">AgentSession</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">ttl</span><span class="p">)</span>
 <a id="__codelineno-9-40" name="__codelineno-9-40" href="#__codelineno-9-40"></a><span class="c1"># =&gt; 7776000</span>
 </code></pre></div>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p><code>Meta.ttl</code>, <code>_ttl</code> and <code>_expire_at</code> work on a Postgres model, with the same meaning:
+<code>_ttl</code> overrides <code>Meta.ttl</code>, <code>_ttl = None</code> makes a record permanent, and every save
+restarts the clock.</p>
+<p><strong>How it maps.</strong> A <code>Meta.ttl</code> model's table gets one more column, <code>_expires_at</code>
+(<code>NULL</code> means the record never expires). A save sets it from <code>_ttl</code> (added to the
+database server's clock) or <code>_expire_at</code>. Every read skips a row the instant it
+expires, whether or not the row has been deleted yet, so <code>load()</code>, <code>get()</code>,
+<code>filter()</code>, <code>count()</code> and <code>keys()</code> see live records only. There are no orphaned
+index entries to clean up: the indexes belong to the row.</p>
+<p><strong>Deletion.</strong> Expired rows are deleted by a reaper that runs after writes to the
+same table: up to 20 rows at a time, at most once a second per table and process.
+Reads never delete. Correctness does not depend on it, because reads already skip
+expired rows, but a table that is only read keeps its expired rows until the next
+write. There is no cron job or CLI to run. Details are in
+<a href="../features/postgres-backend/#record-expiry-m5">Record expiry</a>.</p>
+<p><strong>Differences from Redis:</strong></p>
+<ul>
+<li>Setting <code>_ttl</code> or <code>_expire_at</code> on a model without <code>Meta.ttl</code> raises
+  <code>BackendCapabilityError</code> before anything is written. On Redis it sets the key's
+  TTL. Declare <code>Meta.ttl</code> on any model whose records may expire.</li>
+<li>A <code>_ttl</code> that is not a whole number (<code>1.5</code>) raises <code>ModelException</code>.</li>
+<li>Removing <code>Meta.ttl</code> later from a model whose table has the column raises
+  <code>SchemaDriftError</code> on first use, until the column is dropped.</li>
+<li>
+<p>To read a record's remaining TTL (here <code>AgentSession</code> with <code>backend = "postgres"</code>
+  in its <code>Meta</code>), ask the backend. It answers as Redis's <code>TTL</code>
+  command does (<code>-2</code> no live record, <code>-1</code> no expiry, else whole seconds):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_backend</span><span class="p">,</span> <span class="n">record_id</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">get_backend</span><span class="p">(</span><span class="n">AgentSession</span><span class="p">)</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">backend</span><span class="o">.</span><span class="n">ttl_remaining</span><span class="p">(</span><span class="n">AgentSession</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span> <span class="p">[</span><span class="n">record_id</span><span class="p">(</span><span class="n">session</span><span class="p">)])</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="c1"># =&gt; [7776000]</span>
+</code></pre></div>
+</li>
+<li>
+<p>Per-record TTLs are not carried by <a href="../guides/export-import/">Export &amp; Import</a> on
+  either backend.</p>
+</li>
+</ul>
+<p>Each of these is a row in
+<a href="../features/postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../meta/">Model Meta Options</a> -- full reference for <code>Meta.ttl</code>, <code>order_by</code>, and <code>indexes</code></li>

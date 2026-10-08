@@ -3101,6 +3101,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3582,6 +3593,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3603,8 +3625,9 @@
 
 
 <h1 id="export-import">Export &amp; Import<a class="headerlink" href="#export-import" title="Permanent link">&para;</a></h1>
-<p><code>popoto.transfer</code> moves one model's records between Redis instances — migrating to a
-new machine, seeding staging from production, taking a logical backup of a single
+<p><code>popoto.transfer</code> moves one model's records between stores — between Redis instances,
+between Postgres databases, or from Redis to Postgres (see <a href="#on-postgres">On Postgres</a>).
+Typical uses are migrating to a new machine, seeding staging from production, taking a logical backup of a single
 model, or merging two datasets. It exists because the two naive approaches both lose
 data silently:</p>
 <ul>
@@ -3618,7 +3641,7 @@ data silently:</p>
 </ul>
 <p>Export and import fix all four by round-tripping through a documented protocol (see
 <a href="../../field-authoring/">Writing Custom Fields</a> for the field-author side) and by
-reconciling every record against Redis rather than trusting <code>save()</code>'s return value
+reconciling every record against the destination rather than trusting <code>save()</code>'s return value
 alone.</p>
 <h2 id="exporting">Exporting<a class="headerlink" href="#exporting" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">SortedField</span>
@@ -3893,7 +3916,8 @@ Because keys are always preserved, this converges rather than producing duplicat
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>  <span class="c1"># inspect what needs attention</span>
 </code></pre></div>
 <h2 id="fidelity-what-crosses-and-what-does-not">Fidelity: what crosses, and what does not<a class="headerlink" href="#fidelity-what-crosses-and-what-does-not" title="Permanent link">&para;</a></h2>
-<p>Popoto's secondary Redis structures fall into two groups, and the line between
+<p>Popoto's secondary structures (on Redis, separate keys; on Postgres, extra columns and
+tables) fall into two groups, and the line between
 them is not "hard to implement" but <em>what the bytes mean</em>:</p>
 <ul>
 <li>A structure that is a <strong>fact about the record</strong> — a prediction that was made,
@@ -4080,6 +4104,38 @@ both would claim stdout.</p>
 variable, so it catches the unset-<code>REDIS_URL</code> fallback (which also binds database 0)
 as well as an explicit <code>…/0</code> URL. It runs before the operator's <code>--model</code> module is
 imported and before any Redis command is issued.</p>
+<p>The check applies to a Postgres-bound model too, because it runs before the model is
+imported and so cannot know the model's backend. When transferring a Postgres model,
+set <code>REDIS_URL</code> to a non-zero database or pass <code>--allow-db0</code>.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>Export and import work on a model with <code>Meta.backend = "postgres"</code>, through the same
+Python API and the same <code>popoto-transfer</code> CLI. The JSON Lines format is the same on both
+backends: it carries field values and each field's state, never Redis structures or SQL.
+So an export from a Redis-bound model imports into the same model bound to Postgres, and
+the reverse.</p>
+<p><strong>How it maps.</strong> The import's existence check, a filtered export, and the carried state
+of <code>ConfidenceField</code>, <code>EmbeddingField</code> and <code>AccessTrackerMixin</code> read and write the row's
+columns instead of Redis keys. Rebuilt structures (BM25, <code>ExistenceFilter</code>, <code>GeoField</code>,
+the indexes) are rebuilt by the import's save, as on Redis. <code>preserve_keys=False</code> remaps
+keys the same way on both backends. On Postgres you can also pass <code>uow=</code> to run the
+whole import inside your transaction (see
+<a href="#resuming-an-interrupted-import">Resuming an interrupted import</a>).</p>
+<p><strong>Differences and limitations:</strong></p>
+<ul>
+<li>Per-record TTLs (<code>_ttl</code>, <code>_expire_at</code>) are not carried on either backend. An imported
+  record expires <code>Meta.ttl</code> after its import.</li>
+<li>A Redis export carries a <code>ContentField</code>'s file reference, not its text. Importing it
+  into Postgres reads the file through the content store, so <code>POPOTO_CONTENT_PATH</code> must
+  reach the same files. A Postgres export carries the text inline.</li>
+<li>Postgres keeps no confirmed access log. <code>access_count</code> and <code>last_accessed</code> cross; the
+  log does not.</li>
+<li>A model with a <code>DataFrameField</code> cannot be bound to Postgres.</li>
+<li>The database-0 refusal above still applies.</li>
+</ul>
+<p>Every row is in
+<a href="../../features/postgres-backend/#cross-backend-migration-notes-for-756">Cross-backend migration notes</a>.
+For a one-off copy of a whole Redis store, see
+<a href="../../features/redis-to-postgres-migration/">Redis to Postgres Migration</a>.</p>
 
 
 

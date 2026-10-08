@@ -3045,6 +3045,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3400,6 +3411,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3428,13 +3450,15 @@ for example a field that maintains its own companion hash in Redis alongside the
 model's primary hash, the way <code>ConfidenceField</code> and <code>CyclicDecayField</code> do.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Custom fields that override hooks are Redis-only for now; a planned Postgres backend (#759) will refuse them when a model is defined.</p>
+<p>Custom fields that override storage hooks are Redis-only. A model with
+<code>Meta.backend = "postgres"</code> refuses them when the class is defined. See
+<a href="#on-postgres">On Postgres</a>.</p>
 </div>
 <p>This page documents the contract a <code>Field</code> subclass should follow, with a focus on
 the round-trip protocol every field author must satisfy: <code>roundtrip_policy</code>,
 <code>roundtrip_note</code>, <code>export_state</code>, <code>import_state</code>, and <code>remap_references</code>. These five
 members exist so that <a href="../guides/export-import/"><code>popoto.transfer</code></a> — the export/import
-driver — can move records between Redis instances without losing state that only your
+driver — can move records between stores without losing state that only your
 field knows how to serialize. The first four cover state; the fifth covers <em>references</em>,
 and is only consulted when the import regenerates keys.</p>
 <h2 id="the-on_save-hook">The <code>on_save</code> hook<a class="headerlink" href="#the-on_save-hook" title="Permanent link">&para;</a></h2>
@@ -3709,6 +3733,42 @@ field needs <code>"carry"</code> (fully) or <code>"partial"</code> (partly), plu
 <code>export_state</code>/<code>import_state</code> overrides.</p>
 <p>See <a href="../guides/export-import/">Export &amp; Import</a> for the user-facing guide to running
 an export/import and reading the resulting report.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>The hooks and Lua scripts on this page run on the Redis backend only. A Postgres
+model stores each built-in field type with SQL written for that type, so popoto
+cannot run a custom field's own storage code there.</p>
+<p><strong>What is refused.</strong> A field class you define that overrides any of these five
+hooks, in its own class body or in any class of yours between it and popoto's
+class, cannot be used on a model with <code>Meta.backend = "postgres"</code>:</p>
+<ul>
+<li><code>on_save</code></li>
+<li><code>on_delete</code></li>
+<li><code>filter_query</code></li>
+<li><code>format_value_pre_save</code></li>
+<li><code>pre_save_validate</code></li>
+</ul>
+<p>The model class itself fails to define, with <code>BackendCapabilityError</code> (from
+<code>popoto.backends</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>B cannot use the 'postgres' backend: h (myapp.fields.Hooky) overrides on_save;
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>hook-overriding custom fields are Redis-only
+</code></pre></div>
+<p>A model that takes the process default backend (<code>POPOTO_BACKEND=postgres</code>) is
+checked at its first use instead.</p>
+<p><strong>What is accepted.</strong> A subclass that overrides none of the five hooks is stored as
+the nearest popoto class it inherits from. A <code>Field</code> subclass that only adds
+methods or validation in <code>__init__</code> becomes a column of its <code>type</code>, with the same
+type restrictions as <code>Field</code> (see <a href="../fields/#on-postgres">Fields: On Postgres</a>).</p>
+<p><strong>There is no registration API.</strong> You cannot teach the Postgres backend a new
+field kind. If your field needs its own storage, keep the models that use it on
+Redis, or express the state with built-in fields.</p>
+<p><strong>What still applies.</strong> The round-trip members (<code>roundtrip_policy</code>,
+<code>roundtrip_note</code>, <code>export_state</code>, <code>import_state</code>, <code>remap_references</code>) are used by
+<code>popoto.transfer</code> on both backends. On a Postgres import, <code>import_state</code> may
+receive a <code>uow=</code> keyword, so accept <code>**kwargs</code> (see
+<a href="#the-round-trip-obligation">The round-trip obligation</a>). <code>run_lua</code> and
+<code>field_class_key</code> describe Redis keys and scripts and have no Postgres
+counterpart.</p>
+<p>See <a href="../features/postgres-backend/#selecting-the-backend">Selecting the backend</a>.</p>
 
 
 

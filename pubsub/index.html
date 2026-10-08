@@ -3411,7 +3411,8 @@
 
 
 <h1 id="pubsub">PubSub<a class="headerlink" href="#pubsub" title="Permanent link">&para;</a></h1>
-<p>Popoto provides real-time messaging through Redis pub/sub channels. In a food delivery app, order status
+<p>Popoto provides real-time messaging through pub/sub channels: Redis pub/sub by default, or
+Postgres <code>NOTIFY</code>/<code>LISTEN</code> on the Postgres backend (see <a href="#on-postgres">On Postgres</a>). In a food delivery app, order status
 changes need to reach drivers, customers, and restaurant dashboards the moment they happen. The pub/sub
 pattern lets you broadcast these updates without tight coupling between services -- publishers send messages
 to named channels, and all active subscribers receive them simultaneously.</p>
@@ -3465,7 +3466,8 @@ order status changes across your system.</p>
 without a <code>channel_name</code> argument revert to the instance default.</p>
 </div>
 <h2 id="pipeline-support">Pipeline Support<a class="headerlink" href="#pipeline-support" title="Permanent link">&para;</a></h2>
-<p>Use a Redis pipeline to batch multiple order updates into a single round-trip to Redis. This is
+<p>Use a batch to group multiple order updates. On Redis this is a pipeline: one round-trip.
+On Postgres the messages are delivered when <code>execute()</code> commits the batch's transaction. This is
 useful when processing a batch of orders at once, such as marking all orders from a closing
 restaurant as delayed.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
@@ -3477,7 +3479,7 @@ restaurant as delayed.</p>
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">publisher</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s2">"order_id"</span><span class="p">:</span> <span class="s2">"order_2"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"delayed"</span><span class="p">},</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="n">publisher</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s2">"order_id"</span><span class="p">:</span> <span class="s2">"order_3"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"delayed"</span><span class="p">},</span> <span class="n">pipeline</span><span class="o">=</span><span class="n">pipeline</span><span class="p">)</span>
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>  <span class="c1"># All three messages sent in one round-trip</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>  <span class="c1"># All three messages sent together</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
@@ -3610,17 +3612,22 @@ production, INFO level shows subscription setup without the per-message noise.</
 <p>On the Postgres backend (<code>Meta.backend = "postgres"</code> or
 <code>POPOTO_BACKEND=postgres</code>), <code>Publisher</code> and <code>Subscriber</code> keep this API and
 these message shapes over Postgres <code>NOTIFY</code>/<code>LISTEN</code>, with no Redis
-connection. A subscriber holds a dedicated <code>LISTEN</code> session (never a pooled
-connection; set <code>POPOTO_POSTGRES_LISTEN_URL</code>, or the maintenance DSN
-<code>POPOTO_POSTGRES_MAINTENANCE_URL</code> it falls back to, to reach the server past
-a transaction-mode pooler) and is polled the same way; call
-<code>subscriber.pubsub.close()</code> to end it. Pass <code>backend="postgres"</code> to a
+connection. All subscribers in a process share one dedicated <code>LISTEN</code> session
+per DSN, outside the connection pool (set <code>POPOTO_POSTGRES_LISTEN_URL</code>, or the
+maintenance DSN <code>POPOTO_POSTGRES_MAINTENANCE_URL</code> it falls back to, to reach the
+server past a transaction-mode pooler). Each subscriber is polled the same way
+and receives its channels' messages in arrival order; call
+<code>subscriber.pubsub.close()</code> to end its subscription. The session closes when the
+last subscriber leaves. Pass <code>backend="postgres"</code> to a
 standalone <code>Publisher</code> or <code>Subscriber</code> to choose it explicitly.</p>
 <p>Three things differ:</p>
 <ul>
-<li><strong>Transactions.</strong> Publishing with the backend's unit of work as
-  <code>pipeline=</code> delivers the message when that transaction commits, and never
-  if it rolls back.</li>
+<li><strong>Transactions.</strong> Publishing with the backend's unit of work, or a
+  <code>popoto.batch()</code>, as <code>pipeline=</code> delivers the message when that transaction
+  commits (for a batch, at <code>execute()</code>), and never if it rolls back.</li>
+<li><strong>Reconnects.</strong> If the shared session drops, it reconnects and re-subscribes
+  every channel, but a message published while it was down is lost: <code>NOTIFY</code>
+  keeps nothing for a session that is not listening.</li>
 <li><strong>Size.</strong> A message must encode to under 8000 bytes as a <code>NOTIFY</code> payload
   (about 5.9 KB of msgpack data); a larger one raises
   <code>PubSubPayloadTooLarge</code>, a <code>PublisherException</code>, before anything is sent.

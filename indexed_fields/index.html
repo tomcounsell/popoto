@@ -2921,6 +2921,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3558,6 +3569,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3580,7 +3602,10 @@
 
 <h1 id="indexed-fields">Indexed Fields<a class="headerlink" href="#indexed-fields" title="Permanent link">&para;</a></h1>
 <p>Indexed fields provide secondary indexing for non-key fields, enabling efficient
-exact-match queries without making the field part of the model's Redis key (identity).</p>
+exact-match queries without making the field part of the model's key (identity).</p>
+<p>The index structures described on this page (Sets, Lua scripts, pointer keys) are the
+Redis backend's. A Postgres model gets the same queries and the same uniqueness errors
+from B-tree and <code>UNIQUE</code> indexes; see <a href="#on-postgres">On Postgres</a>.</p>
 <h2 id="the-problem">The Problem<a class="headerlink" href="#the-problem" title="Permanent link">&para;</a></h2>
 <p>In Popoto, <code>KeyField</code> conflates two concerns:</p>
 <ol>
@@ -3591,8 +3616,8 @@ exact-match queries without making the field part of the model's Redis key (iden
 <code>KeyField</code>, which changes the model's Redis key structure. If you later rename an
 email, the entire Redis key changes, potentially orphaning references.</p>
 <h2 id="the-solution">The Solution<a class="headerlink" href="#the-solution" title="Permanent link">&para;</a></h2>
-<p><code>IndexedField</code> and <code>UniqueField</code> decouple querying from identity. They maintain
-Redis Set indexes (identical to KeyField's indexing mechanism) but do not participate
+<p><code>IndexedField</code> and <code>UniqueField</code> decouple querying from identity. On Redis they maintain
+Set indexes (identical to KeyField's indexing mechanism) but do not participate
 in the Redis key.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">AutoKeyField</span><span class="p">,</span> <span class="n">IndexedField</span><span class="p">,</span> <span class="n">UniqueField</span><span class="p">,</span> <span class="n">Field</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
@@ -3718,7 +3743,7 @@ per-value uniqueness constraint on top of the secondary index.</p>
 <li>Setting <code>null=True</code> raises <code>ModelException</code></li>
 </ul>
 <h3 id="concurrency-guarantee">Concurrency Guarantee<a class="headerlink" href="#concurrency-guarantee" title="Permanent link">&para;</a></h3>
-<p><code>UniqueField</code> enforces uniqueness inside an atomic server-side Lua script
+<p>On Redis, <code>UniqueField</code> enforces uniqueness inside an atomic server-side Lua script
 (<code>INDEX_SWAP_LUA</code>). Under concurrent cross-process writes, the script runs as a
 single Redis command: it reads the current index pointer, performs the uniqueness
 check, and moves the record to the new Set — all without a race window.</p>
@@ -3728,7 +3753,7 @@ is made before queuing the EVAL. The authoritative guarantee is still enforced a
 surfaces conflicts earlier for the common case.</p>
 <h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
 <h3 id="index-key-pattern">Index Key Pattern<a class="headerlink" href="#index-key-pattern" title="Permanent link">&para;</a></h3>
-<p>Indexed fields maintain Redis Sets following this pattern:</p>
+<p>On Redis, indexed fields maintain Sets following this pattern:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>$IndexF:ModelName:field_name:value -&gt; Set of redis_keys
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>$UniquF:ModelName:field_name:value -&gt; Set of redis_keys (UniqueField)
 </code></pre></div>
@@ -3903,7 +3928,9 @@ value and calling <code>save()</code> raises <code>KeyMutationError</code>:</p>
 <a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="k">except</span> <span class="n">KeyMutationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
 <a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="c1"># =&gt; KeyField 'name' changed from 'old_name' to 'new_name'. Use save(migrate_key=True).</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="c1"># =&gt; Cannot change KeyField 'name' from 'old_name' to 'new_name' without</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="c1">#    migrate_key=True. KeyField values form the model's Redis identity and</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>    <span class="c1">#    cannot be changed accidentally.</span>
 </code></pre></div>
 <p>To intentionally migrate a key, pass <code>migrate_key=True</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">instance</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">"new_name"</span>
@@ -3917,6 +3944,33 @@ and creating the new key with all indexes pointing to it.</p>
 <p>Key migration changes the Redis key (identity) of the instance. Any external
 references to the old key will break. Use this intentionally, not accidentally.</p>
 </div>
+<p><code>KeyMutationError</code> is raised on both backends. <code>save(migrate_key=True)</code> is Redis-only: on a
+Postgres model it raises <code>BackendCapabilityError</code>. Create the new record and delete the old
+one instead.</p>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p><code>IndexedField</code>, <code>UniqueField</code>, <code>Field(indexed=True)</code>, <code>UniqueKeyField</code> and
+<code>Meta.indexes</code> all work on a model with <code>Meta.backend = "postgres"</code>, with the same lookups
+and the same <code>ModelException</code> on a duplicate unique value.</p>
+<p><strong>How it maps.</strong> Each field is a column. An indexed field gets a B-tree index on its column
+and a unique field a <code>UNIQUE</code> index; each <code>Meta.indexes</code> entry is a composite B-tree, <code>UNIQUE</code>
+when <code>is_unique</code>. There are no <code>$IndexF:</code> Sets, <code>$IdxPtr:</code> pointer keys or Lua scripts:
+a save updates the row and its indexes in one statement, and a delete removes the row. The
+lookups (<code>__in</code>, <code>__isnull</code>, <code>__startswith</code>, <code>__endswith</code>) are SQL over the column, not
+<code>SCAN</code>.</p>
+<p><strong>Uniqueness.</strong> <code>pre_save</code> checks the value with a read, as on Redis. The <code>UNIQUE</code> index is
+the authority for a concurrent writer that has not yet committed: its violation
+(SQLSTATE 23505) is raised as the same <code>ModelException</code>. See
+<a href="../features/postgres-backend/#supported-fields-m1-m11-m2a-m2b-m3-m4-m5">Supported fields</a>.</p>
+<p><strong>Limitations:</strong></p>
+<ul>
+<li>An <code>IndexedField</code> or <code>UniqueField</code> must have a scalar type (<code>int</code>, <code>float</code>, <code>str</code>,
+  <code>bool</code>, <code>datetime</code>, <code>Decimal</code>, <code>date</code>, <code>time</code>). An indexed <code>list</code> or <code>dict</code> field is
+  refused with <code>BackendCapabilityError</code> when the model class is defined.</li>
+<li><code>save(migrate_key=True)</code> raises <code>BackendCapabilityError</code> (see above).</li>
+<li>Some lookups return a different (correct) result than Redis, for example a pattern lookup
+  on a row holding <code>None</code>. Each case is a row in
+  <a href="../features/postgres-backend/#query-results">Query results</a>.</li>
+</ul>
 
 
 

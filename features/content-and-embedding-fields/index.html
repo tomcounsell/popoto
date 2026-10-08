@@ -3112,6 +3112,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3670,6 +3681,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3704,7 +3726,11 @@
 <p>ContentField and EmbeddingField extend Popoto's storage model beyond Redis hashes,
 routing large content and vector embeddings to the filesystem while keeping Redis
 lean and fast.</p>
+<p>The storage layout below (files, <code>.npy</code> vectors, the process cache) is the Redis
+backend's. On Postgres both fields live in the record's row; see
+<a href="#on-postgres">On Postgres</a>.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>On Redis:</p>
 <table>
 <thead>
 <tr>
@@ -3999,6 +4025,36 @@ the same process.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>Both fields work on a model with <code>Meta.backend = "postgres"</code>, and you read and write
+the same Python values. Nothing is written to the filesystem.</p>
+<p><strong>ContentField.</strong> The content is stored inline in a <code>text</code> column of the record's
+row. There is no <code>$CF:</code> reference and no file, so <code>POPOTO_CONTENT_PATH</code> and a custom
+<code>store=</code> are not used.</p>
+<p><strong>EmbeddingField.</strong> The vector is a pgvector <code>vector(d)</code> column with an HNSW index,
+written in the same statement as the record. Setup and behaviour:</p>
+<ul>
+<li>Install <code>popoto[postgres]</code>, which includes the <code>pgvector</code> Python package. The
+  database also needs the extension: run <code>CREATE EXTENSION vector</code> as a role allowed
+  to, in a schema on the connection's <code>search_path</code> (<code>public</code> is). popoto never
+  creates it. Without it, the model's first use raises <code>BackendCapabilityError</code>
+  naming the fix.</li>
+<li>The dimension <code>d</code> is read from the provider at the model's first use, so call
+  <code>popoto.configure(...)</code> before then. With no provider the column has no fixed
+  dimension and no HNSW index, and every search is exact.</li>
+<li>A save embeds the source text as on Redis. A provider failure raises <code>RuntimeError</code>
+  and nothing is written.</li>
+<li><code>semantic_search()</code> works as described above, with the same ranking.</li>
+<li>There are no <code>.npy</code> files and no cross-process cache, so <code>invalidate_cache()</code> is not
+  needed. <code>garbage_collect</code> and <code>sweep_stale_tempfiles</code> return <code>0</code>.</li>
+<li>After a save whose own embedding succeeded, the save also embeds up to four rows in
+  the same scope that have no vector yet, after the commit and for at most about one
+  second. Errors there are logged, not raised.</li>
+</ul>
+<p>Details, including the narrow vector table and the exact-versus-HNSW threshold, are
+in <a href="../postgres-backend/#embeddings">Embeddings</a>. How a Redis export's <code>ContentField</code>
+file references import into Postgres is covered in
+<a href="../postgres-backend/#cross-backend-migration-notes-for-756">Cross-backend migration notes</a>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../../fields/#contentfield">Fields &gt; ContentField</a> -- field reference</li>

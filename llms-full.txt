@@ -15089,8 +15089,8 @@ app.logger.info("Popoto logging configured")
 
 # Models and Fields
 
-Models are the foundation of Popoto. They define the structure of your Redis-stored
-data using Python classes with field declarations. If you are familiar with Django or
+Models are the foundation of Popoto. They define the structure of your stored data
+using Python classes with field declarations. If you are familiar with Django or
 SQLAlchemy, the pattern will feel natural: inherit from `Model`, declare fields as
 class attributes, and Popoto handles persistence, indexing, and querying.
 
@@ -15107,9 +15107,13 @@ class Restaurant(Model):
     active = Field(type=bool, default=True)
 ```
 
-Each field type controls how data is validated, stored, and indexed in Redis. This
-guide covers every field type and its configuration options, working through a food
-delivery system as a running example.
+Each field type controls how data is validated, stored, and indexed. A model is
+stored in Redis unless it selects the Postgres backend (`Meta.backend = "postgres"`,
+see [Model Meta Options](meta.md#backend)). The storage details on this page, such as
+key patterns, sets, and Redis commands, describe the Redis backend. Which fields a
+Postgres model may use is listed in [On Postgres](#on-postgres). This guide covers
+every field type and its configuration options, working through a food delivery
+system as a running example.
 
 If you need a field type Popoto does not provide, see
 [Writing Custom Fields](field-authoring.md) for the `Field` subclassing contract,
@@ -15144,18 +15148,21 @@ retrieve instances.
 
 ### Changing a KeyField Value
 
-When you change a `KeyField` value and call `save()`, the Redis key itself changes.
-Popoto handles the transition automatically: it deletes the old hash, removes the old
-key from the class set, migrates all field indexes (sorted sets, geo sets, unique
-constraints) from the old key to the new one, and adds the new key to the class set.
-Both full saves and partial saves (`save(update_fields=[...])`) handle this correctly.
+Changing a `KeyField` value changes the record's key, so Popoto makes you ask for
+it. A plain `save()` after the change raises `KeyMutationError` (see
+[Immutable Keys and Key Migration](indexed_fields.md#immutable-keys-and-key-migration)).
+Pass `migrate_key=True` to move the record. On Redis, Popoto then deletes the old
+hash, removes the old key from the class set, migrates all field indexes (sorted
+sets, geo sets, unique constraints) from the old key to the new one, and adds the
+new key to the class set. Both full saves and partial saves
+(`save(update_fields=[...])`) handle this correctly.
 
 ```python
 restaurant = Restaurant.create(name="Taco Shack", cuisine="Mexican", rating=4.0)
 
 # Change the KeyField value
 restaurant.name = "Taco Palace"
-restaurant.save()
+restaurant.save(migrate_key=True)
 
 # Old key is cleaned up, new key is active
 loaded = Restaurant.load(name="Taco Palace")
@@ -15795,9 +15802,9 @@ print(len(early_week))
 
 ## IndexedField
 
-`IndexedField` provides Set-based secondary indexing on non-key fields. Unlike
-`KeyField`, an `IndexedField` does not become part of the Redis key -- it only
-enables efficient exact-match queries via `filter()`.
+`IndexedField` provides Set-based secondary indexing on non-key fields (a B-tree on
+its column on Postgres). Unlike `KeyField`, an `IndexedField` does not become part of
+the record's key -- it only enables efficient exact-match queries via `filter()`.
 
 This decouples querying from identity: you can filter on `status`, `category`, or
 `region` without those fields affecting the Redis storage key.
@@ -16089,8 +16096,10 @@ See [Agent Memory](features/agent-memory.md) for the broader agent memory primit
 "have I ever stored anything about X?" without touching any sorted set or hash. False
 positives are possible; false negatives are impossible.
 
-Implemented entirely with Redis strings (`SETBIT`/`GETBIT`) and Lua scripts. No Redis
-modules required -- works on both Redis and Valkey.
+On Redis it is implemented entirely with strings (`SETBIT`/`GETBIT`) and Lua
+scripts. No Redis modules required -- works on both Redis and Valkey. On Postgres
+the filter is exact: no false positives, and a deleted record is forgotten (see
+[Membership](features/postgres-backend.md#membership)).
 
 `ExistenceFilter` is a "side-effect field" -- it does not store a value on the model
 instance. It maintains a Bloom filter index via `on_save()` hooks.
@@ -16146,8 +16155,10 @@ full agent memory context.
 
 ## BM25Field
 
-`BM25Field` provides ranked keyword search using BM25 scoring, backed entirely by Redis
-sorted sets and Lua scripts. No Redis modules required -- works on both Redis and Valkey.
+`BM25Field` provides ranked keyword search using BM25 scoring. On Redis it is backed
+entirely by sorted sets and Lua scripts, with no Redis modules required, so it works on
+both Redis and Valkey. On Postgres the index is a postings table with the same scoring
+formula, and `recompute_stats` is a no-op (see [BM25](features/postgres-backend.md#bm25)).
 
 Like `ExistenceFilter`, `BM25Field` is a "side-effect field" -- it does not store a value
 on the model instance. It maintains an inverted index and corpus statistics via
@@ -16204,8 +16215,10 @@ including RRF fusion and the hybrid retrieval recipe.
 `FrequencySketch` is a Count-Min Sketch for approximate frequency counting. Tracks how
 many times a fingerprint has been saved, with possible overcounting but never undercounting.
 
-Implemented entirely with Redis hashes (`HINCRBY`/`HGET`) and Lua scripts. No Redis
-modules required -- works on both Redis and Valkey.
+On Redis it is implemented entirely with hashes (`HINCRBY`/`HGET`) and Lua scripts.
+No Redis modules required -- works on both Redis and Valkey. On Postgres the count is
+exact: the true number of saves, never decremented (see
+[Membership](features/postgres-backend.md#membership)).
 
 ```python
 from popoto import Model, KeyField, Field
@@ -16441,7 +16454,8 @@ class Restaurant(Timestampable, Model):
 `WriteFilterMixin` gates `save()` calls based on a scoring function you define. Records
 scoring below a minimum threshold are silently discarded (never persisted). Records
 scoring above a priority threshold are persisted *and* tagged in a Redis sorted set for
-preferential retrieval.
+preferential retrieval. On Postgres the gate runs the same way, but the priority tier
+is not stored: `composite_score({"priority": ...})` raises `BackendCapabilityError`.
 
 ```python
 from popoto import Model, KeyField, Field
@@ -16576,7 +16590,8 @@ variable, or by setting `Defaults.NEVER_RECORD_ENABLED = False` at runtime — s
 `ContentField` routes large content values (documents, text, binary data) to filesystem
 storage, keeping Redis memory usage minimal. Redis stores only a compact reference string
 (`$CF:{hash}:{path}`), and the content is lazy-loaded from the filesystem when the
-attribute is accessed.
+attribute is accessed. This section describes the Redis backend. On Postgres the content
+is stored inline in a `text` column, and no file or content store is used.
 
 This is ideal for storing long-form text, HTML, markdown, or any content too large to
 keep in Redis comfortably.
@@ -16762,7 +16777,11 @@ full feature reference including storage layout, cache management, and provider 
 
 ### Multi-Worker Deployments
 
-`EmbeddingField` caches a pre-normalized embedding matrix in a **process-local**
+This section applies to the Redis backend only. On Postgres the vector lives in a
+pgvector column and there is no in-process cache, so there is nothing to invalidate
+(see [Embeddings](features/postgres-backend.md#embeddings)).
+
+On Redis, `EmbeddingField` caches a pre-normalized embedding matrix in a **process-local**
 dict for fast similarity search. In a multi-worker deployment (gunicorn with
 several workers, multiple containers, multiple pods) a write on one worker must
 invalidate the caches held by its peers — otherwise the peers keep serving
@@ -16825,7 +16844,8 @@ pool; the next `semantic_search()` lazily respawns a fresh listener if needed.
 
 ## GeoField
 
-`GeoField` uses Redis geospatial indexes for location-based queries. This is perfect
+`GeoField` uses Redis geospatial indexes for location-based queries (on Postgres, plain
+columns that reproduce the same radius search; see [Geo](features/postgres-backend.md#geo-m5)). This is perfect
 for finding nearby restaurants, tracking driver positions, or searching by delivery
 address.
 
@@ -16923,6 +16943,10 @@ for r in results:
 `DataFrameField` stores [Pandas DataFrame](https://pandas.pydata.org/docs/reference/frame.html)
 objects directly in Redis. This is useful for analytics or caching computed datasets.
 Because it depends on Pandas, it uses a separate model outside the canonical set.
+
+`DataFrameField` is Redis-only. A Postgres model that declares one is refused with
+`BackendCapabilityError`; store the frame's JSON in a `DictField` or a `BytesField`
+instead (see [On Postgres](#on-postgres)).
 
 ```python
 import pandas as pd
@@ -17048,6 +17072,9 @@ When a tracked model instance is deleted, all three AccessTracker Redis keys (st
 
 ### Redis key patterns
 
+On Postgres these are columns on the record's row instead, and the confirmed access
+log is not kept: `access_count` and `last_accessed` are.
+
 | Key | Type | Purpose |
 |-----|------|---------|
 | `$AT:{ClassName}:staged:{pk}` | List | Pending read timestamps |
@@ -17168,7 +17195,7 @@ When `WriteFilterMixin` discards a record (score below threshold), the `save()` 
 - `stream:{stream_name}` — default stream key
 - `stream:{stream_name}:{partition_value}` — partitioned stream key
 
-### On Postgres
+### EventStreamMixin on Postgres
 
 A Postgres-bound model's stream is kept in the backend's events tables, not in Redis. The stream keys, ids (`<ms>-<seq>`) and entry fields stay the same. The entry is appended in the save's or delete's own transaction, so the record and its entry commit or roll back together. Because of that, an append that fails at the server fails the save. Read the stream with `Model.stream_range()` / `Model.stream_len()`, or with `popoto.streams.stream_client(Model)`, which has the same redis-py methods on both backends. See [Postgres Backend: event streams and pub/sub](features/postgres-backend.md#event-streams-and-pubsub-m5).
 
@@ -17393,6 +17420,75 @@ print(reservation.db_key.redis_key)
 The `db_key` is useful for debugging, logging, or performing custom Redis operations
 outside of Popoto's query API.
 
+## On Postgres
+
+A model with `Meta.backend = "postgres"` (see [Model Meta Options](meta.md#backend))
+stores each record as one row in a table. You declare fields and use them the same
+way. What changes is how each field is stored and a few behaviours. The column and
+index each field compiles to is listed in
+[Supported fields](features/postgres-backend.md#supported-fields-m1-m11-m2a-m2b-m3-m4-m5).
+
+**Supported fields.** `Field`, `KeyField`, `UniqueKeyField`, `AutoKeyField`,
+`SortedKeyField`, `IntField`, `FloatField`, `DecimalField`, `BooleanField`,
+`StringField`, `BytesField`, `DatetimeField`, `DateField`, `TimeField`, `ListField`
+(capped or not), `DictField`, `SetField`, `TupleField`, `SortedField`, `IndexedField`,
+`UniqueField`, `TagField`, `Relationship`, `GeoField`, `DecayingSortedField`,
+`CyclicDecayField`, `ConfidenceField`, `ValidityField`, `CoOccurrenceField`,
+`TDValueField`, `BM25Field`, `EmbeddingField`, `ExistenceFilter`, `FrequencySketch`,
+and `ContentField`. Every popoto mixin is supported, including `PredictionLedgerMixin`,
+`AccessTrackerMixin`, `EventStreamMixin`, `WriteFilterMixin` (no priority tier on
+Postgres), and `NeverRecordMixin`.
+
+**Refused fields and types.** A model that breaks one of these rules raises
+`BackendCapabilityError` (from `popoto.backends`), listing every problem at once:
+
+- `DataFrameField` is refused. Store the frame's JSON in a `DictField` or a
+  `BytesField` instead.
+- A plain `Field(type=...)` must use `int`, `float`, `str`, `bool`, `Decimal`,
+  `datetime`, `date`, `time`, `bytes`, `list`, `dict`, `set`, or `tuple`.
+- An `IndexedField` or `UniqueField` must use a scalar type: `int`, `float`, `str`,
+  `bool`, `Decimal`, `datetime`, `date`, or `time`. A collection type is refused.
+- A `SortedField` must use `int`, `float`, `Decimal`, `datetime`, `date`, or `time`.
+- A custom field subclass that overrides a storage hook is refused (see
+  [Writing Custom Fields](field-authoring.md#on-postgres)).
+
+A model that sets `Meta.backend = "postgres"` is checked when the class is defined.
+A model that takes Postgres from `POPOTO_BACKEND` is checked on its first query or
+save. Without pandas installed, `DataFrameField()` raises `ImportError` when the
+field is constructed, before the backend check runs.
+
+**How the field families map:**
+
+- Key fields: the record's key string (`ClassName:value`) is the row's `_pk`, so
+  `Model.pk` and `db_key.redis_key` are the same on both backends.
+- Indexed, unique, sorted, and key fields: B-tree indexes on their columns.
+  Uniqueness is checked before the write and enforced by a `UNIQUE` index.
+- Collections: `jsonb` columns that read back as the field's own type.
+- `Relationship`: a `text` column holding the related record's key. It stays lazy,
+  as on Redis.
+- `ContentField`: the content itself, in a `text` column. No file or content store
+  is used.
+- `EmbeddingField`: a pgvector column, which needs `CREATE EXTENSION vector` in the
+  database. There are no `.npy` files and no in-process cache, so
+  `POPOTO_EMBEDDING_INVALIDATION` and `invalidate_cache()` do not apply.
+- `BM25Field`, `ExistenceFilter`, `FrequencySketch`, `CoOccurrenceField`: side
+  tables written in the same transaction as the record. `ExistenceFilter` and
+  `FrequencySketch` are exact on Postgres.
+- `GeoField`: plain columns, no PostGIS. Radius filters behave as on Redis.
+
+**Behaviour differences that affect field use:**
+
+- Changing a key field raises `BackendCapabilityError`, even with
+  `save(migrate_key=True)`. Create the new record and delete the old one.
+- `Meta.ttl` adds an expiry column; see [TTL](ttl.md#on-postgres).
+- `AccessTrackerMixin` keeps `access_count` and `last_accessed`, but not the
+  confirmed access log.
+- `WriteFilterMixin`'s priority tier is not stored.
+- A text value containing `\x00` raises `ValueError`.
+
+The full list is in
+[Records and other behaviour](features/postgres-backend.md#records-and-other-behaviour).
+
 ---
 
 ## Making Queries
@@ -17400,8 +17496,12 @@ outside of Popoto's query API.
 # Making Queries
 
 Every Popoto model has a `query` attribute that provides a Django-like interface for retrieving
-instances from Redis. You can look up a single object by its key, fetch all instances, filter by
+stored instances. You can look up a single object by its key, fetch all instances, filter by
 field values, count results, and return lightweight dictionaries instead of full model objects.
+
+The query API is the same whether a model is stored in Redis (the default) or in Postgres
+(`Meta.backend = "postgres"`). Where this page names Redis commands, keys or complexities, it
+describes the Redis backend; see [On Postgres](#on-postgres) for how queries behave there.
 
 Queries combine multiple filters with AND logic. If you pass several filter parameters, only
 instances matching all criteria are returned.
@@ -17606,7 +17706,7 @@ import popoto
 pipe = popoto.batch()
 Restaurant(name="Sushi Zen", cuisine="Japanese").save(pipeline=pipe)
 Restaurant(name="Taco Stand", cuisine="Mexican").save(pipeline=pipe)
-pipe.execute()   # both saves, and all their index writes, in one MULTI/EXEC
+pipe.execute()   # both saves, and all their index writes, in one transaction
 ```
 
 Every `save()`/`delete()` and every field hook accepts `pipeline=`, so a batch groups a
@@ -17616,9 +17716,13 @@ pipelines for throughput but gives up atomicity; some callers (the
 [provenance journal](features/provenance-journal.md)) require a transactional pipeline and
 raise if given a non-transactional one.
 
-The returned object is a `redis.client.Pipeline` — the same type
-`popoto.get_redis().pipeline()` returns — so existing code that builds one off the client
-keeps working. `batch()` is the preferred spelling.
+On Redis the batch is one `MULTI`/`EXEC`. The returned object is a `redis.client.Pipeline` —
+the same type `popoto.get_redis().pipeline()` returns — so existing code that builds one off
+the client keeps working. `batch()` is the preferred spelling.
+
+The same code works for a Postgres model: the batch's writes run in one Postgres transaction,
+and `execute()` commits it. The differences (all-or-nothing on a failed statement, one backend
+per batch) are listed under [On Postgres](#on-postgres).
 
 ## Get Multiple Objects by Key
 
@@ -18396,7 +18500,9 @@ need the page size instead.
 ## Get Redis Keys
 
 Use `query.keys()` to retrieve the raw Redis keys for all instances of a model. This is useful
-for debugging or performing custom Redis operations.
+for debugging or performing custom Redis operations. On a Postgres model, `keys()` returns the
+records' keys, but `keys(catchall=True)` and `keys(clean=True)` raise `BackendCapabilityError`,
+because they scan or repair Redis keyspace that a Postgres model does not have.
 
 ```python
 keys = Restaurant.query.keys()
@@ -18868,7 +18974,9 @@ embeddings exist for the model.
 ## Performance Best Practices
 
 Popoto is optimized for common query patterns, but understanding the underlying Redis operations
-helps you write efficient code. Here are the key patterns to follow.
+helps you write efficient code. Here are the key patterns to follow. The commands and
+complexities below describe the Redis backend; a Postgres model answers the same calls with SQL
+against B-tree indexes (see [On Postgres](#on-postgres)).
 
 ### Use `count()` Instead of `len(all())`
 
@@ -18958,6 +19066,8 @@ declared `default` -- or `None` if no default is set -- matching `Model.__init__
 
 ### Query Performance Summary
 
+On Redis:
+
 | Operation | Redis Command | Time Complexity |
 |-----------|--------------|-----------------|
 | `count()` (no filters) | SCARD | O(1) |
@@ -18978,6 +19088,42 @@ declared `default` -- or `None` if no default is set -- matching `Model.__init__
 | `fuse(...)` | Rank-merge + pipeline HGETALL | O(sum of list lengths + K log K) |
 | `values(...)` on KeyFields only | No Redis call | O(1) |
 
+## On Postgres
+
+Every query method on this page works on a model with `Meta.backend = "postgres"`:
+`get`, `get_many`, `filter`, `all`, `count`, `keys`, `values=`, `order_by`, `limit`, `Q`
+objects, the sorted, geo and validity lookups, `composite_score`, `keyword_search`,
+`semantic_search`, `fuse`, `load_fields` and `idle_seconds`. Results come back as the same
+model instances and dictionaries.
+
+**How it maps.** A Postgres model is a table with one column per field. Filters become a
+`WHERE` clause over B-tree indexes on the key, indexed and sorted columns, so the Redis
+commands and complexities in [Query Performance Summary](#query-performance-summary) do not
+apply. `popoto.batch()` opens one Postgres transaction for the batch's Postgres writes and
+`execute()` commits it (see [`popoto.batch()`](features/postgres-backend.md#popotobatch-m5)).
+
+**Differences from Redis:**
+
+- A query without `order_by` returns rows in key order (bytewise on the stored key). Redis
+  returns them in set order. Pass `order_by` when order matters.
+- Some queries that Redis answers wrongly return the correct result on Postgres: an
+  unindexed field inside a `Q` object is applied rather than dropped, two lookups on the same
+  side of a `SortedField` both apply, and a lookup through a `Relationship`
+  (`restaurant__name=...`) works. Other rows differ the other way, such as `order_by` on a
+  list or other collection field, which Postgres refuses. Each case is a row in
+  [Query results](features/postgres-backend.md#query-results).
+- `load_raw_hash` and `keys(catchall=True)` / `keys(clean=True)` raise
+  `BackendCapabilityError`. They inspect Redis hashes and keyspace.
+- `idle_seconds` counts whole seconds since the row's last write or, with
+  `AccessTrackerMixin`, its last confirmed read. On Redis it is `OBJECT IDLETIME`, which any
+  read resets.
+- In a `popoto.batch()`, a statement that fails inside the transaction makes `execute()`
+  raise `BackendError` and write nothing. Redis's `MULTI`/`EXEC` applies the other queued
+  commands. `batch(transaction=False)` is still one transaction, and a batch cannot mix Redis
+  commands and Postgres writes (`BackendCapabilityError`).
+
+The full list is in [Documented divergences](features/postgres-backend.md#documented-divergences).
+
 ---
 
 ## Async Operations
@@ -18985,8 +19131,8 @@ declared `default` -- or `None` if no default is set -- matching `Model.__init__
 # Async Operations
 
 Food delivery apps handle many simultaneous requests: customers browsing menus, drivers
-updating locations, orders streaming in. Blocking on each Redis call wastes time your
-users do not have. Popoto provides async counterparts for every Model and Query method so
+updating locations, orders streaming in. Blocking on each database call wastes time
+your users do not have. Popoto provides async counterparts for every Model and Query method so
 you can serve all of these requests concurrently without blocking the event loop.
 
 ## Async Model Methods
@@ -19362,7 +19508,9 @@ async def find_nearest_driver(order):
 
 ### Native Async with redis.asyncio
 
-All async methods use `redis.asyncio` for true non-blocking I/O. This approach
+On the Redis backend, async methods use `redis.asyncio` for true non-blocking I/O.
+(Postgres models use `psycopg`'s async connection instead; see
+[On Postgres](#on-postgres).) This approach
 provides three key properties:
 
 - **No event loop blocking** -- Redis calls use native async I/O so your event
@@ -19496,8 +19644,8 @@ async def cleanup_inactive():
     print(f"Deleted {count} inactive restaurants")
 ```
 
-All bulk methods use Redis pipelines internally to batch operations, dramatically reducing
-network round-trips. The `batch_size` parameter (default 1000) controls how many instances
+On Redis, all bulk methods use pipelines internally to batch operations, dramatically
+reducing network round-trips. On Postgres, each bulk call runs in one transaction. The `batch_size` parameter (default 1000) controls how many instances
 are processed per pipeline execution.
 
 See [Bulk Operations](recipes.md#bulk-operations) in the Recipes for complete
@@ -19531,6 +19679,48 @@ Run the async tests with:
 pytest tests/test_async.py tests/test_connection.py tests/test_bulk_operations.py tests/test_migrations.py -v
 ```
 
+## On Postgres
+
+Every `async_*` method on this page works on a Postgres model, with the same
+signature. Reads and writes run on `psycopg`'s async connection on the running event
+loop, not in a worker thread. The SQL, locking, and errors are the sync backend's,
+because the async path runs the same code in a greenlet. `greenlet` comes with the
+`postgres` extra; without it, the methods fall back to a worker thread and log one
+warning.
+
+**Transactions.** Use the model's async backend for a transaction that spans
+several writes:
+
+```python
+from popoto.backends.postgres.aio import get_async_backend
+
+backend = get_async_backend(Order)        # Postgres-bound models only
+async with backend.transaction() as uow:  # one READ COMMITTED transaction
+    await Order(customer=alice, restaurant=sakura, total=10.0).async_save(pipeline=uow)
+    await Order(customer=bob, restaurant=sakura, total=12.0).async_save(pipeline=uow)
+# both committed, or (on an exception) neither
+```
+
+A `popoto.batch()` that async writes joined must be committed with
+`await pipe.async_execute()`. Mixing sync and async writes on one batch or unit of
+work raises `BridgeMisuseError`.
+
+**Model hooks run on the event-loop thread.** Your overrides of `save()`,
+`pre_save()` and `delete()`, and field hooks, run inside the async call with the loop
+running. A hook that calls `asyncio.run()` raises `RuntimeError`, and a hook that
+blocks (`time.sleep`, a sync HTTP client) blocks the whole loop. Keep hooks to
+in-memory work, and do blocking work before or after the `await`.
+
+**What still uses a thread.** `async_check_indexes`, `async_clean_indexes` and
+`async_rebuild_indexes` run the sync method off the event loop: in a worker
+thread on Redis, on the async backend on Postgres. An embedding provider's call
+runs in a worker thread on every backend.
+
+Details, including pools per event loop and cancellation, are in
+[Async](features/postgres-backend.md#async-m5). The row for `async_*` methods in
+[Records and other behaviour](features/postgres-backend.md#records-and-other-behaviour)
+lists the remaining differences.
+
 ## See Also
 
 - [Models and Fields](fields.md) -- define your data models
@@ -19545,7 +19735,8 @@ pytest tests/test_async.py tests/test_connection.py tests/test_bulk_operations.p
 # Model Meta Options
 
 Every Popoto model can include a `Meta` inner class to configure model-level
-behavior like default ordering, automatic expiration, and composite indexes.
+behavior like the storage backend, default ordering, automatic expiration, and
+composite indexes.
 The `Meta` class is processed at class definition time, and its options
 become available via `ModelClass._meta`.
 
@@ -19555,12 +19746,58 @@ You should define a `Meta` class when you want to:
 
 - **Set default ordering** for query results without specifying `order_by`
   every time
-- **Automatically expire data** using Redis TTL (great for temporary orders,
+- **Store a model in Postgres** instead of Redis
+- **Automatically expire data** with a TTL (great for temporary orders,
   sessions, or cached data)
 - **Enforce uniqueness** across multiple fields (composite unique constraints)
 
 Without a `Meta` class, your models work fine -- you just configure behavior
 at query time instead.
+
+## backend
+
+`backend` chooses where the model's records are stored: `"redis"` or
+`"postgres"`.
+
+```python
+class Note(Model):
+    owner = KeyField()
+    slug = KeyField()
+    body = Field(type=str)
+
+    class Meta:
+        backend = "postgres"
+```
+
+Without `backend`, the model uses the process default. That default is
+`POPOTO_BACKEND` when it is set, else `"redis"`; it can also be changed at runtime
+with `popoto.backends.set_backend()`. An explicit `Meta.backend` always wins over the
+process default. A Postgres instance passed to `set_backend()` also serves models that
+declare `Meta.backend = "postgres"`, ahead of `POPOTO_POSTGRES_URL`; a model that declares
+`Meta.backend = "redis"` always gets the stock Redis backend.
+
+What to know:
+
+- **Any other value is an error at class definition.** `backend = "mysql"` raises
+  `ModelException: Meta.backend must be one of redis, postgres, got 'mysql'`.
+- **The fields are checked when the class is defined.** With
+  `backend = "postgres"`, a field Postgres cannot store raises
+  `BackendCapabilityError` (from `popoto.backends`) at class definition. A model
+  that gets Postgres from the process default is checked on its first query or
+  save instead. See [Models and Fields](fields.md#on-postgres) for what is
+  supported.
+- **Defining the class never connects.** The connection, the version check, and the
+  table creation all happen on the model's first query or save. The DSN comes from
+  `POPOTO_POSTGRES_URL`, and the `postgres` extra must be installed
+  (`pip install 'popoto[postgres]'`). If either is missing, that first use raises
+  `BackendUnavailableError`.
+- **It is not inherited.** `backend` is read from the class's own `Meta`, so a
+  subclass of an abstract model that sets `backend = "postgres"` does not get it.
+  Set `backend` on each concrete model.
+
+The read value is `Model._meta.backend`, which is `None` when the model takes the
+process default. The rest of the setup (environment variables, schema, roles,
+outages) is in [Selecting the backend](features/postgres-backend.md#selecting-the-backend).
 
 ## order_by
 
@@ -19621,11 +19858,11 @@ expensive_first = Order.query.all(order_by="-total")
     absolute expiration, and a complete session example, see the
     [TTL documentation](ttl.md).
 
-The `ttl` (time-to-live) option tells Redis to automatically delete model
-instances after a specified number of seconds. When you save a model with a
-TTL, Popoto calls Redis's `EXPIRE` command on the key. After that many
-seconds, Redis removes it automatically -- ideal for completed orders,
-delivery tracking records, or temporary promotions.
+The `ttl` (time-to-live) option deletes model instances automatically after a
+specified number of seconds -- ideal for completed orders, delivery tracking
+records, or temporary promotions. On Redis, saving a model with a TTL calls
+`EXPIRE` on the key, and Redis removes the key after that many seconds. On
+Postgres, the row gets an expiry time instead (see [On Postgres](#on-postgres)).
 
 Adding `ttl` to the Order model from the previous section:
 
@@ -19639,7 +19876,7 @@ Every order instance now expires 30 days after its most recent save:
 
 ```python
 order = Order.create(customer=alice, restaurant=sakura, total=29.50)
-# => Redis will automatically delete this order after 30 days
+# => The order is deleted automatically after 30 days
 ```
 
 The TTL resets every time you call `save()`. Updating an order 15 days in
@@ -19651,7 +19888,7 @@ order.save()
 # => TTL resets to 30 days from now
 ```
 
-When a key expires, Redis removes it silently. Any subsequent `load()` or
+When a record expires, it is gone silently. Any subsequent `load()` or
 `query.get()` call returns `None`. Popoto handles orphaned secondary index
 entries gracefully during queries.
 
@@ -19689,8 +19926,8 @@ vip_order.save()
 ## Absolute Expiration
 
 Instead of a relative TTL, you can set an absolute expiration with
-`_expire_at`. This accepts a `datetime` and tells Redis to delete the key
-at that exact moment.
+`_expire_at`. This accepts a `datetime`, and the record expires at that exact
+moment (`EXPIREAT` on Redis).
 
 ```python
 from datetime import datetime, timedelta
@@ -19906,6 +20143,25 @@ class BadIndex(Model):
     errors during development rather than at runtime in production. Define
     your Meta options early and run your test suite to verify them.
 
+## On Postgres
+
+Every option on this page works on a Postgres model. How each one maps:
+
+- **`order_by`**: an `ORDER BY` on the column. With no `order_by` at all, results
+  come back in key order (`_pk`, compared bytewise) rather than Redis's arbitrary set
+  order.
+- **`ttl`, `_ttl`, `_expire_at`**: an `_expires_at` column, filtered out of every
+  read the instant it passes and deleted in small batches after later writes. See
+  [TTL](ttl.md#on-postgres) for the differences, such as `_ttl` on a model without
+  `Meta.ttl` being refused.
+- **`indexes`**: one composite B-tree per entry, `UNIQUE` when the entry is unique.
+  The `ModelException` text on a violation is the same as on Redis.
+- **`backend`**: see [backend](#backend) above.
+
+Removing `Meta.ttl` from a model whose table already has the expiry column raises
+`SchemaDriftError` on first use; see
+[Records and other behaviour](features/postgres-backend.md#records-and-other-behaviour).
+
 See [Models and Fields](fields.md) for field type reference, or
 [Making Queries](query.md) for query filtering and ordering options.
 
@@ -19915,7 +20171,8 @@ See [Models and Fields](fields.md) for field type reference, or
 
 # TTL (Time-to-Live)
 
-Popoto supports automatic data expiration through Redis TTL. You can set
+Popoto supports automatic data expiration. On Redis it uses the key's TTL; on
+Postgres it uses an expiry column (see [On Postgres](#on-postgres)). You can set
 expiration at the model level (all instances expire after a fixed duration),
 override it per-instance, or set an absolute expiration timestamp.
 
@@ -19939,12 +20196,12 @@ class AgentSession(Model):
         ttl = 7776000  # 90 days (90 * 24 * 60 * 60)
 ```
 
-When you save an instance, Popoto calls Redis `EXPIRE` on the key with the
+When you save an instance on Redis, Popoto calls `EXPIRE` on the key with the
 configured TTL. After that many seconds, Redis removes the key automatically:
 
 ```python
 session = AgentSession.create(agent_name="assistant", context="planning task")
-# Redis will delete this session after 90 days
+# The session expires after 90 days
 ```
 
 ### TTL Resets on Every Save
@@ -19962,7 +20219,7 @@ session.save()
     Background processes that update records will extend the expiration window.
     If a periodic job calls `save()` on a session, that session may never expire.
 
-### What Happens When a Key Expires
+### What Happens When a Key Expires (Redis)
 
 When Redis removes an expired key, subsequent `load()` or `query.get()` calls
 return `None`. Orphaned secondary index entries — an index still naming a key
@@ -20007,7 +20264,7 @@ important_session.save()
 ## Absolute Expiration
 
 Instead of a relative duration, you can set an exact expiration time using
-`_expire_at`. This accepts a `datetime` object and calls Redis `EXPIREAT`:
+`_expire_at`. This accepts a `datetime` object (on Redis, Popoto calls `EXPIREAT`):
 
 ```python
 from datetime import datetime, timedelta
@@ -20092,6 +20349,52 @@ print(AgentSession._meta.ttl)
 # => 7776000
 ```
 
+## On Postgres
+
+`Meta.ttl`, `_ttl` and `_expire_at` work on a Postgres model, with the same meaning:
+`_ttl` overrides `Meta.ttl`, `_ttl = None` makes a record permanent, and every save
+restarts the clock.
+
+**How it maps.** A `Meta.ttl` model's table gets one more column, `_expires_at`
+(`NULL` means the record never expires). A save sets it from `_ttl` (added to the
+database server's clock) or `_expire_at`. Every read skips a row the instant it
+expires, whether or not the row has been deleted yet, so `load()`, `get()`,
+`filter()`, `count()` and `keys()` see live records only. There are no orphaned
+index entries to clean up: the indexes belong to the row.
+
+**Deletion.** Expired rows are deleted by a reaper that runs after writes to the
+same table: up to 20 rows at a time, at most once a second per table and process.
+Reads never delete. Correctness does not depend on it, because reads already skip
+expired rows, but a table that is only read keeps its expired rows until the next
+write. There is no cron job or CLI to run. Details are in
+[Record expiry](features/postgres-backend.md#record-expiry-m5).
+
+**Differences from Redis:**
+
+- Setting `_ttl` or `_expire_at` on a model without `Meta.ttl` raises
+  `BackendCapabilityError` before anything is written. On Redis it sets the key's
+  TTL. Declare `Meta.ttl` on any model whose records may expire.
+- A `_ttl` that is not a whole number (`1.5`) raises `ModelException`.
+- Removing `Meta.ttl` later from a model whose table has the column raises
+  `SchemaDriftError` on first use, until the column is dropped.
+- To read a record's remaining TTL (here `AgentSession` with `backend = "postgres"`
+  in its `Meta`), ask the backend. It answers as Redis's `TTL`
+  command does (`-2` no live record, `-1` no expiry, else whole seconds):
+
+    ```python
+    from popoto.backends import get_backend, record_id
+
+    backend = get_backend(AgentSession)
+    backend.ttl_remaining(AgentSession._meta.spec, [record_id(session)])
+    # => [7776000]
+    ```
+
+- Per-record TTLs are not carried by [Export & Import](guides/export-import.md) on
+  either backend.
+
+Each of these is a row in
+[Records and other behaviour](features/postgres-backend.md#records-and-other-behaviour).
+
 ## See Also
 
 - [Model Meta Options](meta.md) -- full reference for `Meta.ttl`, `order_by`, and `indexes`
@@ -20104,7 +20407,11 @@ print(AgentSession._meta.ttl)
 # Indexed Fields
 
 Indexed fields provide secondary indexing for non-key fields, enabling efficient
-exact-match queries without making the field part of the model's Redis key (identity).
+exact-match queries without making the field part of the model's key (identity).
+
+The index structures described on this page (Sets, Lua scripts, pointer keys) are the
+Redis backend's. A Postgres model gets the same queries and the same uniqueness errors
+from B-tree and `UNIQUE` indexes; see [On Postgres](#on-postgres).
 
 ## The Problem
 
@@ -20119,8 +20426,8 @@ email, the entire Redis key changes, potentially orphaning references.
 
 ## The Solution
 
-`IndexedField` and `UniqueField` decouple querying from identity. They maintain
-Redis Set indexes (identical to KeyField's indexing mechanism) but do not participate
+`IndexedField` and `UniqueField` decouple querying from identity. On Redis they maintain
+Set indexes (identical to KeyField's indexing mechanism) but do not participate
 in the Redis key.
 
 ```python
@@ -20246,7 +20553,7 @@ except Exception as e:
 
 ### Concurrency Guarantee
 
-`UniqueField` enforces uniqueness inside an atomic server-side Lua script
+On Redis, `UniqueField` enforces uniqueness inside an atomic server-side Lua script
 (`INDEX_SWAP_LUA`). Under concurrent cross-process writes, the script runs as a
 single Redis command: it reads the current index pointer, performs the uniqueness
 check, and moves the record to the new Set — all without a race window.
@@ -20260,7 +20567,7 @@ surfaces conflicts earlier for the common case.
 
 ### Index Key Pattern
 
-Indexed fields maintain Redis Sets following this pattern:
+On Redis, indexed fields maintain Sets following this pattern:
 
 ```
 $IndexF:ModelName:field_name:value -> Set of redis_keys
@@ -20385,7 +20692,9 @@ try:
     instance.save()
 except KeyMutationError as e:
     print(e)
-    # => KeyField 'name' changed from 'old_name' to 'new_name'. Use save(migrate_key=True).
+    # => Cannot change KeyField 'name' from 'old_name' to 'new_name' without
+    #    migrate_key=True. KeyField values form the model's Redis identity and
+    #    cannot be changed accidentally.
 ```
 
 To intentionally migrate a key, pass `migrate_key=True`:
@@ -20402,6 +20711,38 @@ and creating the new key with all indexes pointing to it.
 !!! warning
     Key migration changes the Redis key (identity) of the instance. Any external
     references to the old key will break. Use this intentionally, not accidentally.
+
+`KeyMutationError` is raised on both backends. `save(migrate_key=True)` is Redis-only: on a
+Postgres model it raises `BackendCapabilityError`. Create the new record and delete the old
+one instead.
+
+## On Postgres
+
+`IndexedField`, `UniqueField`, `Field(indexed=True)`, `UniqueKeyField` and
+`Meta.indexes` all work on a model with `Meta.backend = "postgres"`, with the same lookups
+and the same `ModelException` on a duplicate unique value.
+
+**How it maps.** Each field is a column. An indexed field gets a B-tree index on its column
+and a unique field a `UNIQUE` index; each `Meta.indexes` entry is a composite B-tree, `UNIQUE`
+when `is_unique`. There are no `$IndexF:` Sets, `$IdxPtr:` pointer keys or Lua scripts:
+a save updates the row and its indexes in one statement, and a delete removes the row. The
+lookups (`__in`, `__isnull`, `__startswith`, `__endswith`) are SQL over the column, not
+`SCAN`.
+
+**Uniqueness.** `pre_save` checks the value with a read, as on Redis. The `UNIQUE` index is
+the authority for a concurrent writer that has not yet committed: its violation
+(SQLSTATE 23505) is raised as the same `ModelException`. See
+[Supported fields](features/postgres-backend.md#supported-fields-m1-m11-m2a-m2b-m3-m4-m5).
+
+**Limitations:**
+
+- An `IndexedField` or `UniqueField` must have a scalar type (`int`, `float`, `str`,
+  `bool`, `datetime`, `Decimal`, `date`, `time`). An indexed `list` or `dict` field is
+  refused with `BackendCapabilityError` when the model class is defined.
+- `save(migrate_key=True)` raises `BackendCapabilityError` (see above).
+- Some lookups return a different (correct) result than Redis, for example a pattern lookup
+  on a row holding `None`. Each case is a row in
+  [Query results](features/postgres-backend.md#query-results).
 
 ---
 
@@ -20543,6 +20884,21 @@ immediately without restarting the process — including via
 [Configuration](../configuration.md#environment-variables) for the full
 environment variable reference.
 
+## On Postgres
+
+This page describes reads from the Redis backend, which stores each field as msgpack
+bytes in a hash. A model with `Meta.backend = "postgres"` stores each field in a typed
+column (`bigint`, `text`, `jsonb`, `bytea` and so on), and its reads do not go through the
+msgpack decode path, so a Postgres read never quarantines a field and never raises
+`CorruptFieldError`.
+
+The `save()` guard is also called on the Postgres write path, before the row is written,
+but because a Postgres read creates no quarantine it has nothing to refuse there.
+`POPOTO_DECODE_QUARANTINE_DISABLE` has no effect on a Postgres model. The `redis-cli` inspection steps above apply to Redis only; on
+Postgres, read the row with SQL. See
+[Postgres backend](postgres-backend.md#supported-fields-m1-m11-m2a-m2b-m3-m4-m5) for the
+column types.
+
 ## See also
 
 - [`CorruptFieldError`](../reference/index.md) — the exception raised for a
@@ -20559,9 +20915,9 @@ environment variable reference.
 # Relationship Field
 
 The `Relationship` field creates references between model instances, similar
-to foreign keys in SQL databases. Unlike SQL, Redis has no JOIN operation.
-Popoto stores a reference (the related instance's Redis key) and lazy-loads
-the full object on access. This keeps writes fast and avoids loading data you
+to foreign keys in SQL databases. Popoto stores a reference (the related
+instance's key) and lazy-loads the full object on access, on both the Redis
+and Postgres backends; it never joins. This keeps writes fast and avoids loading data you
 never use, but multi-model queries work differently than in Django or
 SQLAlchemy.
 
@@ -20689,6 +21045,14 @@ print(len(alice_orders))
 
 Use double-underscore notation to query by fields on the related model.
 
+!!! warning "Redis: currently broken"
+    On the Redis backend this lookup raises today (a `KeyError` or an
+    `AttributeError`, depending on the related field) instead of returning
+    matches. The bug is tracked in #771 and is row (xii) of
+    [Query results](features/postgres-backend.md#query-results). On Postgres
+    the lookup works as shown. On Redis, query the related model first and
+    filter by instance: `Order.query.filter(restaurant=burger_palace)`.
+
 ```python
 orders = Order.query.filter(restaurant__name="Burger Palace")
 for order in orders:
@@ -20713,7 +21077,7 @@ See [Making Queries](query.md) for the full list of filter operators.
 
 ## Traversing Relationships
 
-Because Redis has no JOINs, you traverse relationships with Python loops.
+Popoto has no JOINs on either backend, so you traverse relationships with Python loops.
 
 ```python
 alice = Customer.query.get(username="alice")
@@ -20725,7 +21089,7 @@ for r in restaurants:
 ```
 
 !!! warning "N+1 Query Problem"
-    Each `order.restaurant` access triggers a separate Redis call. With 100
+    Each `order.restaurant` access triggers a separate database call. With 100
     orders, that is 100 additional round trips on top of the initial query.
 
     ```python
@@ -20739,6 +21103,9 @@ for r in restaurants:
     (e.g., storing `restaurant_name` directly on `Order`).
 
 ## How Relationships Work Internally
+
+This section describes the Redis backend. See [On Postgres](#on-postgres) for
+how the same field is stored there.
 
 ### Storage as Redis Key
 
@@ -20930,11 +21297,37 @@ Deleting a model does **not** cascade to related instances. If you delete a
 
 ### Keep Relationship Depth Shallow
 
-Each relationship traversal costs a Redis round trip. Design your models so
+Each relationship traversal costs a database round trip. Design your models so
 the most common access patterns require at most one or two hops.
 
 See [Making Queries](query.md) for filter operators and
 [Model Meta Options](meta.md) for `order_by` and `ttl` configuration.
+
+## On Postgres
+
+`Relationship` works on a model with `Meta.backend = "postgres"`: assignment,
+lazy loading, `filter(restaurant=instance)`, null relationships, self-references
+and `Relationship.sample_related_keys()` behave as described above. A nested
+lookup runs the related model's own query, through that model's backend.
+
+**How it maps.** The field is a `text` column holding the related record's key,
+with a B-tree index on it. There is no `$RelationshipF:` set and no foreign key:
+references may be circular, and Redis enforces none either. `filter()` and
+`all()` return the field as that key string, while `get()` resolves it, as on
+Redis. `sample_related_keys()` selects up to `count` keys with
+`ORDER BY random() LIMIT count`, keeping `SRANDMEMBER`'s count contract.
+
+**Differences from Redis:**
+
+- Nested lookups such as `filter(restaurant__name=...)` work on Postgres; on
+  Redis they currently raise (see [Nested Field Access](#nested-field-access)).
+- Deleting a record still does not cascade. A dependent row keeps the stale key,
+  as on Redis.
+- `order_by` on a relationship field, and other query edge cases, are rows in
+  [Query results](features/postgres-backend.md#query-results).
+
+The column and index are listed under
+[Supported fields](features/postgres-backend.md#supported-fields-m1-m11-m2a-m2b-m3-m4-m5).
 
 ---
 
@@ -20947,7 +21340,9 @@ example, a memory system where project A's episodes live separately from project
 using the same model class.
 
 Redis has no built-in schema or table concept — isolation comes from key structure.
-Popoto's `KeyField` already provides this naturally.
+Popoto's `KeyField` already provides this naturally. The same pattern works on the
+Postgres backend, where the key field is a column; see [On Postgres](#on-postgres).
+The key and hash names on this page are the Redis backend's.
 
 ## The Pattern: Use a KeyField
 
@@ -21211,6 +21606,8 @@ results = ConfidenceField.get_confidence_filtered(Memory, "certainty", pattern="
 
 ## When to use separate Redis databases instead
 
+This section applies to Redis. For Postgres, see [On Postgres](#on-postgres).
+
 For stronger isolation (e.g., compliance requirements, independent TTL policies,
 or different Redis instances per tenant), use separate Redis connections rather
 than key prefixing:
@@ -21234,13 +21631,46 @@ This is heavier but provides complete data separation at the connection level.
 | ContextVar helper | Same as KeyField, less boilerplate | Minimal application code | Web apps with per-request tenancy |
 | Separate Redis databases | Full connection isolation | Configuration management | Compliance, independent scaling |
 
+## On Postgres
+
+The KeyField pattern works unchanged on a model with `Meta.backend = "postgres"`.
+`Episode.query.filter(project_id="project-a")` returns only that project's rows.
+
+**How it maps.** A model is one table and each field a column. The key fields form one
+`UNIQUE` index, and each key field after the first gets its own B-tree, so a filter on
+`project_id` is an index lookup. A `SortedField` with `partition_by` is a B-tree on
+`(partition columns, field)`, which keeps a partitioned range query inside one tenant.
+A `ConfidenceField`'s state is four columns of the record's own row, so it is always
+stored per record and per tenant: there is no companion hash to partition, and moving a
+record to another partition moves nothing else.
+
+**Differences from Redis:**
+
+- `ConfidenceField.migrate_to_partitioned()` and `ConfidenceField.get_confidence_filtered()`
+  raise `BackendCapabilityError`. Neither is needed: partitioning is the row's own columns,
+  and a filtered read is an ordinary `filter()`.
+- `get_data_hash_key()` and `get_data_hash_key_from_values()` build Redis key names. On a
+  Postgres model they name no stored data, so do not use them to audit isolation there;
+  query the rows instead.
+- Instead of separate Redis databases, give a tenant its own Postgres database or schema.
+  Pass a backend instance to `popoto.backends.set_backend()`, for example
+  `set_backend(PostgresBackend(dsn=..., schema="tenant_a"))`, with `PostgresBackend` from
+  `popoto.backends.postgres`. It serves models on the process default and models that
+  name `Meta.backend = "postgres"`, ahead of `POPOTO_POSTGRES_URL` and
+  `POPOTO_POSTGRES_SCHEMA`. Like `set_REDIS_DB_settings()`, this is process-wide;
+  without an instance, those variables set the isolation.
+
+See [Selecting the backend](features/postgres-backend.md#selecting-the-backend) and
+[Ranking and memory state](features/postgres-backend.md#ranking-and-memory-state-m2a).
+
 ---
 
 ## PubSub
 
 # PubSub
 
-Popoto provides real-time messaging through Redis pub/sub channels. In a food delivery app, order status
+Popoto provides real-time messaging through pub/sub channels: Redis pub/sub by default, or
+Postgres `NOTIFY`/`LISTEN` on the Postgres backend (see [On Postgres](#on-postgres)). In a food delivery app, order status
 changes need to reach drivers, customers, and restaurant dashboards the moment they happen. The pub/sub
 pattern lets you broadcast these updates without tight coupling between services -- publishers send messages
 to named channels, and all active subscribers receive them simultaneously.
@@ -21307,7 +21737,8 @@ publisher.publish(
 
 ## Pipeline Support
 
-Use a Redis pipeline to batch multiple order updates into a single round-trip to Redis. This is
+Use a batch to group multiple order updates. On Redis this is a pipeline: one round-trip.
+On Postgres the messages are delivered when `execute()` commits the batch's transaction. This is
 useful when processing a batch of orders at once, such as marking all orders from a closing
 restaurant as delayed.
 
@@ -21321,7 +21752,7 @@ publisher.publish(data={"order_id": "order_1", "status": "delayed"}, pipeline=pi
 publisher.publish(data={"order_id": "order_2", "status": "delayed"}, pipeline=pipeline)
 publisher.publish(data={"order_id": "order_3", "status": "delayed"}, pipeline=pipeline)
 
-pipeline.execute()  # All three messages sent in one round-trip
+pipeline.execute()  # All three messages sent together
 ```
 
 !!! tip
@@ -21479,18 +21910,23 @@ production, INFO level shows subscription setup without the per-message noise.
 On the Postgres backend (`Meta.backend = "postgres"` or
 `POPOTO_BACKEND=postgres`), `Publisher` and `Subscriber` keep this API and
 these message shapes over Postgres `NOTIFY`/`LISTEN`, with no Redis
-connection. A subscriber holds a dedicated `LISTEN` session (never a pooled
-connection; set `POPOTO_POSTGRES_LISTEN_URL`, or the maintenance DSN
-`POPOTO_POSTGRES_MAINTENANCE_URL` it falls back to, to reach the server past
-a transaction-mode pooler) and is polled the same way; call
-`subscriber.pubsub.close()` to end it. Pass `backend="postgres"` to a
+connection. All subscribers in a process share one dedicated `LISTEN` session
+per DSN, outside the connection pool (set `POPOTO_POSTGRES_LISTEN_URL`, or the
+maintenance DSN `POPOTO_POSTGRES_MAINTENANCE_URL` it falls back to, to reach the
+server past a transaction-mode pooler). Each subscriber is polled the same way
+and receives its channels' messages in arrival order; call
+`subscriber.pubsub.close()` to end its subscription. The session closes when the
+last subscriber leaves. Pass `backend="postgres"` to a
 standalone `Publisher` or `Subscriber` to choose it explicitly.
 
 Three things differ:
 
-- **Transactions.** Publishing with the backend's unit of work as
-  `pipeline=` delivers the message when that transaction commits, and never
-  if it rolls back.
+- **Transactions.** Publishing with the backend's unit of work, or a
+  `popoto.batch()`, as `pipeline=` delivers the message when that transaction
+  commits (for a batch, at `execute()`), and never if it rolls back.
+- **Reconnects.** If the shared session drops, it reconnects and re-subscribes
+  every channel, but a message published while it was down is lost: `NOTIFY`
+  keeps nothing for a session that is not listening.
 - **Size.** A message must encode to under 8000 bytes as a `NOTIFY` payload
   (about 5.9 KB of msgpack data); a larger one raises
   `PubSubPayloadTooLarge`, a `PublisherException`, before anything is sent.
@@ -21513,7 +21949,13 @@ ContentField and EmbeddingField extend Popoto's storage model beyond Redis hashe
 routing large content and vector embeddings to the filesystem while keeping Redis
 lean and fast.
 
+The storage layout below (files, `.npy` vectors, the process cache) is the Redis
+backend's. On Postgres both fields live in the record's row; see
+[On Postgres](#on-postgres).
+
 ## Overview
+
+On Redis:
 
 | Field | Stores in Redis | Stores on Filesystem | Purpose |
 |-------|----------------|---------------------|---------|
@@ -21800,6 +22242,40 @@ invalidate_cache()
 | `OPENAI_API_KEY` | *(none)* | API key for OpenAIProvider (alternative to passing `api_key=`) |
 | *(none)* | — | OllamaProvider requires no API key |
 
+## On Postgres
+
+Both fields work on a model with `Meta.backend = "postgres"`, and you read and write
+the same Python values. Nothing is written to the filesystem.
+
+**ContentField.** The content is stored inline in a `text` column of the record's
+row. There is no `$CF:` reference and no file, so `POPOTO_CONTENT_PATH` and a custom
+`store=` are not used.
+
+**EmbeddingField.** The vector is a pgvector `vector(d)` column with an HNSW index,
+written in the same statement as the record. Setup and behaviour:
+
+- Install `popoto[postgres]`, which includes the `pgvector` Python package. The
+  database also needs the extension: run `CREATE EXTENSION vector` as a role allowed
+  to, in a schema on the connection's `search_path` (`public` is). popoto never
+  creates it. Without it, the model's first use raises `BackendCapabilityError`
+  naming the fix.
+- The dimension `d` is read from the provider at the model's first use, so call
+  `popoto.configure(...)` before then. With no provider the column has no fixed
+  dimension and no HNSW index, and every search is exact.
+- A save embeds the source text as on Redis. A provider failure raises `RuntimeError`
+  and nothing is written.
+- `semantic_search()` works as described above, with the same ranking.
+- There are no `.npy` files and no cross-process cache, so `invalidate_cache()` is not
+  needed. `garbage_collect` and `sweep_stale_tempfiles` return `0`.
+- After a save whose own embedding succeeded, the save also embeds up to four rows in
+  the same scope that have no vector yet, after the commit and for at most about one
+  second. Errors there are logged, not raised.
+
+Details, including the narrow vector table and the exact-versus-HNSW threshold, are
+in [Embeddings](postgres-backend.md#embeddings). How a Redis export's `ContentField`
+file references import into Postgres is covered in
+[Cross-backend migration notes](postgres-backend.md#cross-backend-migration-notes-for-756).
+
 ## See Also
 
 - [Fields > ContentField](../fields.md#contentfield) -- field reference
@@ -21814,8 +22290,9 @@ invalidate_cache()
 
 # Export & Import
 
-`popoto.transfer` moves one model's records between Redis instances — migrating to a
-new machine, seeding staging from production, taking a logical backup of a single
+`popoto.transfer` moves one model's records between stores — between Redis instances,
+between Postgres databases, or from Redis to Postgres (see [On Postgres](#on-postgres)).
+Typical uses are migrating to a new machine, seeding staging from production, taking a logical backup of a single
 model, or merging two datasets. It exists because the two naive approaches both lose
 data silently:
 
@@ -21829,7 +22306,7 @@ data silently:
 
 Export and import fix all four by round-tripping through a documented protocol (see
 [Writing Custom Fields](../field-authoring.md) for the field-author side) and by
-reconciling every record against Redis rather than trusting `save()`'s return value
+reconciling every record against the destination rather than trusting `save()`'s return value
 alone.
 
 ## Exporting
@@ -22107,7 +22584,8 @@ if report.errored or report.partial:
 
 ## Fidelity: what crosses, and what does not
 
-Popoto's secondary Redis structures fall into two groups, and the line between
+Popoto's secondary structures (on Redis, separate keys; on Postgres, extra columns and
+tables) fall into two groups, and the line between
 them is not "hard to implement" but *what the bytes mean*:
 
 - A structure that is a **fact about the record** — a prediction that was made,
@@ -22266,6 +22744,43 @@ variable, so it catches the unset-`REDIS_URL` fallback (which also binds databas
 as well as an explicit `…/0` URL. It runs before the operator's `--model` module is
 imported and before any Redis command is issued.
 
+The check applies to a Postgres-bound model too, because it runs before the model is
+imported and so cannot know the model's backend. When transferring a Postgres model,
+set `REDIS_URL` to a non-zero database or pass `--allow-db0`.
+
+## On Postgres
+
+Export and import work on a model with `Meta.backend = "postgres"`, through the same
+Python API and the same `popoto-transfer` CLI. The JSON Lines format is the same on both
+backends: it carries field values and each field's state, never Redis structures or SQL.
+So an export from a Redis-bound model imports into the same model bound to Postgres, and
+the reverse.
+
+**How it maps.** The import's existence check, a filtered export, and the carried state
+of `ConfidenceField`, `EmbeddingField` and `AccessTrackerMixin` read and write the row's
+columns instead of Redis keys. Rebuilt structures (BM25, `ExistenceFilter`, `GeoField`,
+the indexes) are rebuilt by the import's save, as on Redis. `preserve_keys=False` remaps
+keys the same way on both backends. On Postgres you can also pass `uow=` to run the
+whole import inside your transaction (see
+[Resuming an interrupted import](#resuming-an-interrupted-import)).
+
+**Differences and limitations:**
+
+- Per-record TTLs (`_ttl`, `_expire_at`) are not carried on either backend. An imported
+  record expires `Meta.ttl` after its import.
+- A Redis export carries a `ContentField`'s file reference, not its text. Importing it
+  into Postgres reads the file through the content store, so `POPOTO_CONTENT_PATH` must
+  reach the same files. A Postgres export carries the text inline.
+- Postgres keeps no confirmed access log. `access_count` and `last_accessed` cross; the
+  log does not.
+- A model with a `DataFrameField` cannot be bound to Postgres.
+- The database-0 refusal above still applies.
+
+Every row is in
+[Cross-backend migration notes](../features/postgres-backend.md#cross-backend-migration-notes-for-756).
+For a one-off copy of a whole Redis store, see
+[Redis to Postgres Migration](../features/redis-to-postgres-migration.md).
+
 ---
 
 ## Writing Custom Fields
@@ -22279,13 +22794,15 @@ for example a field that maintains its own companion hash in Redis alongside the
 model's primary hash, the way `ConfidenceField` and `CyclicDecayField` do.
 
 !!! note
-    Custom fields that override hooks are Redis-only for now; a planned Postgres backend (#759) will refuse them when a model is defined.
+    Custom fields that override storage hooks are Redis-only. A model with
+    `Meta.backend = "postgres"` refuses them when the class is defined. See
+    [On Postgres](#on-postgres).
 
 This page documents the contract a `Field` subclass should follow, with a focus on
 the round-trip protocol every field author must satisfy: `roundtrip_policy`,
 `roundtrip_note`, `export_state`, `import_state`, and `remap_references`. These five
 members exist so that [`popoto.transfer`](guides/export-import.md) — the export/import
-driver — can move records between Redis instances without losing state that only your
+driver — can move records between stores without losing state that only your
 field knows how to serialize. The first four cover state; the fifth covers *references*,
 and is only consulted when the import regenerates keys.
 
@@ -22611,6 +23128,52 @@ field needs `"carry"` (fully) or `"partial"` (partly), plus the corresponding
 See [Export & Import](guides/export-import.md) for the user-facing guide to running
 an export/import and reading the resulting report.
 
+## On Postgres
+
+The hooks and Lua scripts on this page run on the Redis backend only. A Postgres
+model stores each built-in field type with SQL written for that type, so popoto
+cannot run a custom field's own storage code there.
+
+**What is refused.** A field class you define that overrides any of these five
+hooks, in its own class body or in any class of yours between it and popoto's
+class, cannot be used on a model with `Meta.backend = "postgres"`:
+
+- `on_save`
+- `on_delete`
+- `filter_query`
+- `format_value_pre_save`
+- `pre_save_validate`
+
+The model class itself fails to define, with `BackendCapabilityError` (from
+`popoto.backends`):
+
+```text
+B cannot use the 'postgres' backend: h (myapp.fields.Hooky) overrides on_save;
+hook-overriding custom fields are Redis-only
+```
+
+A model that takes the process default backend (`POPOTO_BACKEND=postgres`) is
+checked at its first use instead.
+
+**What is accepted.** A subclass that overrides none of the five hooks is stored as
+the nearest popoto class it inherits from. A `Field` subclass that only adds
+methods or validation in `__init__` becomes a column of its `type`, with the same
+type restrictions as `Field` (see [Fields: On Postgres](fields.md#on-postgres)).
+
+**There is no registration API.** You cannot teach the Postgres backend a new
+field kind. If your field needs its own storage, keep the models that use it on
+Redis, or express the state with built-in fields.
+
+**What still applies.** The round-trip members (`roundtrip_policy`,
+`roundtrip_note`, `export_state`, `import_state`, `remap_references`) are used by
+`popoto.transfer` on both backends. On a Postgres import, `import_state` may
+receive a `uow=` keyword, so accept `**kwargs` (see
+[The round-trip obligation](#the-round-trip-obligation)). `run_lua` and
+`field_class_key` describe Redis keys and scripts and have no Postgres
+counterpart.
+
+See [Selecting the backend](features/postgres-backend.md#selecting-the-backend).
+
 ---
 
 ## Testing
@@ -22734,9 +23297,10 @@ comes only from `POPOTO_POSTGRES_URL` or an explicit `PostgresBackend(dsn=...)`
 
 `[PG-only]` tests (capabilities with no Redis counterpart, such as the outage
 contract and the schema record) live in `tests/postgres/` and run with plain
-`pytest tests/postgres`; the ones that need a server take the `pg` fixture,
-which binds the session schema's backend and skips when `POSTGRES_URL` is
-unset.
+`pytest tests/postgres`; the ones that need a server take this repository's
+`pg` fixture (defined in `tests/postgres/conftest.py`, not shipped by the
+plugin), which binds the session schema's backend and skips when
+`POSTGRES_URL` is unset.
 
 **Projects that do not opt in see no change.** A session opts in by setting
 `popoto_test_db` / `POPOTO_TEST_DB` or `popoto_conformance_backends` /
@@ -22811,9 +23375,11 @@ references a test table loses that constraint, while its table and rows remain.
 Objects that do not depend on a test table are untouched. The descriptor's
 `dsn` is `POSTGRES_URL` with
 `options=-c search_path=<schema>` appended, so a connection opened from it
-resolves unqualified names inside the schema. The plugin still needs Redis
-bound (`popoto_test_db` / `REDIS_URL`), because its autouse flush runs before
-every test, including Postgres-leg tests.
+resolves unqualified names inside the schema. In a session that sets
+`popoto_test_db` / `POPOTO_TEST_DB`, Redis must still be reachable, because the
+plugin's autouse flush runs before every test, including Postgres-leg tests. A
+session that opts in only through `popoto_conformance_backends` does not flush
+Redis.
 
 **Assertions that only hold on Redis.** Mark them
 `@pytest.mark.redis_only(reason="...")`, which skips every non-Redis leg. The
@@ -22827,6 +23393,28 @@ the `backend_is_redis` fixture returns `True` on the Redis leg. The
 
 In this repository the harness's own tests live in
 `tests/conformance/test_harness.py`.
+
+## On Postgres
+
+Testing Postgres models goes through the conformance harness above. In short:
+
+- Set `popoto_conformance_backends = "redis,postgres"` and point `POSTGRES_URL`
+  (the harness's variable, with a database name) at a server. Mark tests
+  `conformance` to run them on both legs, and `redis_only(reason=...)` for
+  assertions that hold only on Redis.
+- Each session gets a throwaway `popoto_test_<hex>` schema. Tables are dropped
+  before each Postgres-leg test and the schema at session end.
+- In a session that sets `popoto_test_db`, the plugin pins the process default
+  backend to Redis before collection, so an unmarked test and a module-level
+  `save()` run on Redis even when `POPOTO_BACKEND=postgres`. Only the `backend`
+  fixture moves a test onto Postgres.
+- A model that declares `Meta.backend = "postgres"` runs on the harness's schema
+  only inside the `backend` fixture's Postgres leg. Anywhere else it resolves as
+  in production code: a Postgres instance passed to `set_backend()`, else the
+  library's own `POPOTO_POSTGRES_URL`. Leave
+  `POPOTO_POSTGRES_URL` unset in test environments so such a test fails with
+  `BackendUnavailableError` instead of writing to a real database.
+- `use_test_db()` and `flush_test_db()` below act on Redis only.
 
 ## Manual Test Helpers
 

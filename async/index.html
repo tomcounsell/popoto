@@ -2830,6 +2830,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3680,6 +3691,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3712,8 +3734,8 @@
 
 <h1 id="async-operations">Async Operations<a class="headerlink" href="#async-operations" title="Permanent link">&para;</a></h1>
 <p>Food delivery apps handle many simultaneous requests: customers browsing menus, drivers
-updating locations, orders streaming in. Blocking on each Redis call wastes time your
-users do not have. Popoto provides async counterparts for every Model and Query method so
+updating locations, orders streaming in. Blocking on each database call wastes time
+your users do not have. Popoto provides async counterparts for every Model and Query method so
 you can serve all of these requests concurrently without blocking the event loop.</p>
 <h2 id="async-model-methods">Async Model Methods<a class="headerlink" href="#async-model-methods" title="Permanent link">&para;</a></h2>
 <p>Every synchronous model operation has an <code>async_</code> prefixed equivalent. These methods
@@ -4033,7 +4055,9 @@ below polls for recent orders, assigns a driver, and updates the status.</p>
 </div>
 <h2 id="implementation-details">Implementation Details<a class="headerlink" href="#implementation-details" title="Permanent link">&para;</a></h2>
 <h3 id="native-async-with-redisasyncio">Native Async with redis.asyncio<a class="headerlink" href="#native-async-with-redisasyncio" title="Permanent link">&para;</a></h3>
-<p>All async methods use <code>redis.asyncio</code> for true non-blocking I/O. This approach
+<p>On the Redis backend, async methods use <code>redis.asyncio</code> for true non-blocking I/O.
+(Postgres models use <code>psycopg</code>'s async connection instead; see
+<a href="#on-postgres">On Postgres</a>.) This approach
 provides three key properties:</p>
 <ul>
 <li><strong>No event loop blocking</strong> -- Redis calls use native async I/O so your event
@@ -4172,8 +4196,8 @@ importing large datasets, batch updates, and cleanup tasks without blocking the 
 <a id="__codelineno-16-28" name="__codelineno-16-28" href="#__codelineno-16-28"></a>    <span class="p">)</span>
 <a id="__codelineno-16-29" name="__codelineno-16-29" href="#__codelineno-16-29"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Deleted </span><span class="si">{</span><span class="n">count</span><span class="si">}</span><span class="s2"> inactive restaurants"</span><span class="p">)</span>
 </code></pre></div>
-<p>All bulk methods use Redis pipelines internally to batch operations, dramatically reducing
-network round-trips. The <code>batch_size</code> parameter (default 1000) controls how many instances
+<p>On Redis, all bulk methods use pipelines internally to batch operations, dramatically
+reducing network round-trips. On Postgres, each bulk call runs in one transaction. The <code>batch_size</code> parameter (default 1000) controls how many instances
 are processed per pipeline execution.</p>
 <p>See <a href="../recipes/#bulk-operations">Bulk Operations</a> in the Recipes for complete
 documentation.</p>
@@ -4249,6 +4273,39 @@ and edge cases. Each scenario listed below has at least one dedicated test.</p>
 <p>Run the async tests with:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>pytest<span class="w"> </span>tests/test_async.py<span class="w"> </span>tests/test_connection.py<span class="w"> </span>tests/test_bulk_operations.py<span class="w"> </span>tests/test_migrations.py<span class="w"> </span>-v
 </code></pre></div>
+<h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
+<p>Every <code>async_*</code> method on this page works on a Postgres model, with the same
+signature. Reads and writes run on <code>psycopg</code>'s async connection on the running event
+loop, not in a worker thread. The SQL, locking, and errors are the sync backend's,
+because the async path runs the same code in a greenlet. <code>greenlet</code> comes with the
+<code>postgres</code> extra; without it, the methods fall back to a worker thread and log one
+warning.</p>
+<p><strong>Transactions.</strong> Use the model's async backend for a transaction that spans
+several writes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends.postgres.aio</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_async_backend</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="n">backend</span> <span class="o">=</span> <span class="n">get_async_backend</span><span class="p">(</span><span class="n">Order</span><span class="p">)</span>        <span class="c1"># Postgres-bound models only</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="k">async</span> <span class="k">with</span> <span class="n">backend</span><span class="o">.</span><span class="n">transaction</span><span class="p">()</span> <span class="k">as</span> <span class="n">uow</span><span class="p">:</span>  <span class="c1"># one READ COMMITTED transaction</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>    <span class="k">await</span> <span class="n">Order</span><span class="p">(</span><span class="n">customer</span><span class="o">=</span><span class="n">alice</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">10.0</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>    <span class="k">await</span> <span class="n">Order</span><span class="p">(</span><span class="n">customer</span><span class="o">=</span><span class="n">bob</span><span class="p">,</span> <span class="n">restaurant</span><span class="o">=</span><span class="n">sakura</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mf">12.0</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">uow</span><span class="p">)</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="c1"># both committed, or (on an exception) neither</span>
+</code></pre></div>
+<p>A <code>popoto.batch()</code> that async writes joined must be committed with
+<code>await pipe.async_execute()</code>. Mixing sync and async writes on one batch or unit of
+work raises <code>BridgeMisuseError</code>.</p>
+<p><strong>Model hooks run on the event-loop thread.</strong> Your overrides of <code>save()</code>,
+<code>pre_save()</code> and <code>delete()</code>, and field hooks, run inside the async call with the loop
+running. A hook that calls <code>asyncio.run()</code> raises <code>RuntimeError</code>, and a hook that
+blocks (<code>time.sleep</code>, a sync HTTP client) blocks the whole loop. Keep hooks to
+in-memory work, and do blocking work before or after the <code>await</code>.</p>
+<p><strong>What still uses a thread.</strong> <code>async_check_indexes</code>, <code>async_clean_indexes</code> and
+<code>async_rebuild_indexes</code> run the sync method off the event loop: in a worker
+thread on Redis, on the async backend on Postgres. An embedding provider's call
+runs in a worker thread on every backend.</p>
+<p>Details, including pools per event loop and cancellation, are in
+<a href="../features/postgres-backend/#async-m5">Async</a>. The row for <code>async_*</code> methods in
+<a href="../features/postgres-backend/#records-and-other-behaviour">Records and other behaviour</a>
+lists the remaining differences.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../fields/">Models and Fields</a> -- define your data models</li>
