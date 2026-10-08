@@ -391,6 +391,23 @@ def run(stdin_text: str, service: Any = None) -> Optional[str]:
         return None
 
 
+def _backend_label() -> str:
+    """The process's backend name for a failure message; never raises.
+
+    Read from the backend selection (``set_backend()``, else
+    ``POPOTO_BACKEND``, else ``"redis"``) without constructing a backend, so
+    it answers when constructing one is exactly what failed. An unknown
+    ``POPOTO_BACKEND`` is reported as written, which is the hint the operator
+    needs.
+    """
+    try:
+        from ..backends import default_backend_name
+
+        return default_backend_name()
+    except Exception:
+        return os.environ.get("POPOTO_BACKEND", "").strip() or "unknown"
+
+
 def _log_hook_error(operation: str, exc: BaseException) -> None:
     """Append one failure line to the configured log file.
 
@@ -403,7 +420,9 @@ def _log_hook_error(operation: str, exc: BaseException) -> None:
 
     from .config import MemoryConfig
 
-    logger.warning("popoto memory %s failed: %s", operation, exc)
+    logger.warning(
+        "popoto memory %s failed (backend: %s): %s", operation, _backend_label(), exc
+    )
     try:
         path = MemoryConfig.from_env(os.environ).log_path
         path.parent.mkdir(parents=True, exist_ok=True)

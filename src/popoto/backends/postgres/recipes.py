@@ -40,6 +40,15 @@ adapter        Postgres
                upsert that replaces ``TERMINAL_WRITE_LUA``) and
                ``turn_summary`` (the aggregate that replaces the per-turn
                summary hash).
+``_harness``   the harness integration's session state (#814):
+               ``MemoryService``'s read-to-write handoff, its per-session
+               injection suppression and its last-success timestamps, on
+               ``popoto_harness_pending``, ``popoto_harness_injected`` and
+               ``popoto_harness_event``. Its counters are ``_counter`` rows
+               (``scan`` and ``set_if_absent`` read and seed them by key
+               prefix), so the ``DefaultMemory`` eviction counter and the
+               integration's own counters live in one table, as they share
+               one key prefix on Redis.
 =============  =============================================================
 
 The engine tables are created on first use under ``pg_advisory_xact_lock``,
@@ -73,6 +82,7 @@ from .schema import engine_table_ddl, quote_ident
 
 __all__ = [
     "COUNTER_FIELD",
+    "HARNESS_FIELD",
     "IDLE_FIELD",
     "LEASE_FIELD",
     "M3_FIELD",
@@ -93,6 +103,13 @@ LEASE_FIELD = "_lease"
 M3_FIELD = "_m3"
 NEVER_RECORD_FIELD = "_never_record"
 EMBED_CACHE_FIELD = "_embed_cache"
+HARNESS_FIELD = "_harness"
+
+HARNESS_REAP_BATCH = 20
+"""Expired harness rows (abandoned sessions) a write deletes in passing. Every
+read filters expired rows, so this bounds only how long a dead session's rows
+occupy the table, never what a reader sees; the same batch size, for the same
+reason, as ``Defaults.PG_REAPER_BATCH`` for ``Meta.ttl`` tables."""
 
 SORTED_KINDS = frozenset(
     {"SortedField", "SortedKeyField", "DecayingSortedField", "CyclicDecayField"}
@@ -132,6 +149,25 @@ ENGINE_TABLES: dict[str, str] = {
     "popoto_never_record_log": (
         "model text NOT NULL, seq bigint GENERATED ALWAYS AS IDENTITY, "
         "entry text NOT NULL, PRIMARY KEY (model, seq)"
+    ),
+    # The harness integration (#814). ``turn`` is NULL for an entry staged
+    # without a turn id (the positional FIFO). ``expires_at`` is refreshed on
+    # every live row of the session at each write, as ``EXPIRE`` refreshes the
+    # whole Redis list or set, so a session's rows expire together.
+    "popoto_harness_pending": (
+        "agent text NOT NULL, session text NOT NULL, "
+        "seq bigint GENERATED ALWAYS AS IDENTITY, turn text, "
+        "keys text[] NOT NULL, expires_at double precision NOT NULL, "
+        "PRIMARY KEY (agent, session, seq)"
+    ),
+    "popoto_harness_injected": (
+        "agent text NOT NULL, session text NOT NULL, member text NOT NULL, "
+        "expires_at double precision NOT NULL, "
+        "PRIMARY KEY (agent, session, member)"
+    ),
+    "popoto_harness_event": (
+        "agent text NOT NULL, name text NOT NULL, stamp text NOT NULL, "
+        "PRIMARY KEY (agent, name)"
     ),
 }
 
@@ -191,6 +227,8 @@ class RecipeOpsMixin:
             handlers = {
                 "increment": self._counter_increment,
                 "read": self._counter_read,
+                "scan": self._counter_scan,
+                "set_if_absent": self._counter_set_if_absent,
             }
         elif field == TOMB_FIELD:
             handlers = {
@@ -241,6 +279,16 @@ class RecipeOpsMixin:
                 "terminal_write": self._m3_terminal_write,
                 "turn_summary": self._m3_turn_summary,
             }
+        elif field == HARNESS_FIELD:
+            handlers = {
+                "pending_push": self._harness_pending_push,
+                "pending_claim": self._harness_pending_claim,
+                "pending_pop": self._harness_pending_pop,
+                "injected_read": self._harness_injected_read,
+                "injected_mark": self._harness_injected_mark,
+                "touch": self._harness_touch,
+                "events": self._harness_events,
+            }
         else:
             fs = spec.fields.get(field)
             if fs is not None and fs.kind in SORTED_KINDS:
@@ -258,6 +306,7 @@ class RecipeOpsMixin:
             TOMBPRIOR_FIELD,
             NEVER_RECORD_FIELD,
             EMBED_CACHE_FIELD,
+            HARNESS_FIELD,
         ):
             # Model-level stores: the field name carries no information.
             return handler(spec, *args, uow=uow, **kwargs)
@@ -406,6 +455,39 @@ class RecipeOpsMixin:
         table = self._engine("popoto_counter")
         rows, _ = self._run(f"SELECT value FROM {table} WHERE key = %s", [key], uow=uow)
         return int(rows[0][0]) if rows else 0
+
+    def _counter_scan(
+        self, spec: ModelSpec, prefix: str, *, uow: Optional[UnitOfWork] = None
+    ) -> dict[str, int]:
+        """Every counter whose key starts with ``prefix``: what
+        ``SCAN MATCH <prefix>*`` plus a ``GET`` per key reads on Redis, as one
+        snapshot rather than a key-by-key walk."""
+        table = self._engine("popoto_counter")
+        rows, _ = self._run(
+            f"SELECT key, value FROM {table} WHERE starts_with(key, %s)",
+            [prefix],
+            uow=uow,
+        )
+        return {str(key): int(value) for key, value in rows}
+
+    def _counter_set_if_absent(
+        self,
+        spec: ModelSpec,
+        key: str,
+        value: int,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> bool:
+        """``SETNX key value``: ``True`` when this call created the counter."""
+        table = self._engine("popoto_counter")
+        rows, _ = self._run(
+            f"INSERT INTO {table} (key, value) VALUES (%s, %s) "
+            "ON CONFLICT (key) DO NOTHING RETURNING 1",
+            [key, int(value)],
+            uow=uow,
+            write=True,
+        )
+        return bool(rows)
 
     # -- TombstoneStore ---------------------------------------------------------------
 
@@ -946,3 +1028,242 @@ class RecipeOpsMixin:
             uow=uow,
         )
         return [(str(r[0]), r[1], int(r[2])) for r in rows]
+
+    # -- the harness integration's session state (#814) ------------------------------
+
+    @staticmethod
+    def _harness_session_lock(kind: str) -> str:
+        """The advisory lock that serialises one session's writes to one
+        harness table (parameters: schema, agent, session). Spelled as a
+        concatenation so ``record_lock_keys``, which reads statement heads,
+        never mistakes it for a record-key lock."""
+        return (
+            "SELECT pg_advisory_xact_lock(hashtextextended("
+            f"'popoto:harness:{kind}:' || %s || ':' || %s || ':' || %s, 0)); "
+        )
+
+    @staticmethod
+    def _harness_reap(table: str) -> str:
+        """Delete a bounded batch of expired rows (any session), in passing."""
+        return (
+            f"DELETE FROM {table} WHERE ctid = ANY(ARRAY(SELECT ctid FROM {table} "
+            f"WHERE expires_at <= {_NOW} LIMIT {HARNESS_REAP_BATCH} "
+            "FOR UPDATE SKIP LOCKED)); "
+        )
+
+    def _harness_pending_push(
+        self,
+        spec: ModelSpec,
+        agent: str,
+        session: str,
+        keys: Sequence[str],
+        turn: Optional[str],
+        cap: int,
+        ttl: float,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> None:
+        """``RPUSH`` + ``LTRIM -cap -1`` + ``EXPIRE`` in one message, under
+        the session's advisory lock. With a ``turn``, the entry is staged only
+        when no live entry carries that turn yet -- the ``LRANGE`` check
+        Redis makes before its pipeline, exact here because it runs under the
+        lock. Every live entry's expiry is refreshed, as ``EXPIRE`` refreshes
+        the list, and everything past the newest ``cap`` is dropped."""
+        table = self._engine("popoto_harness_pending")
+        live = f"agent = %s AND session = %s AND expires_at > {_NOW}"
+        self._run(
+            self._harness_session_lock("pending")
+            + self._harness_reap(table)
+            + f"INSERT INTO {table} (agent, session, turn, keys, expires_at) "
+            f"SELECT %s, %s, %s::text, %s::text[], {_NOW} + %s "
+            f"WHERE %s::text IS NULL OR NOT EXISTS (SELECT 1 FROM {table} "
+            f"WHERE {live} AND turn = %s::text); "
+            f"UPDATE {table} SET expires_at = {_NOW} + %s WHERE {live}; "
+            f"DELETE FROM {table} WHERE agent = %s AND session = %s AND seq "
+            f"NOT IN (SELECT seq FROM {table} WHERE {live} "
+            "ORDER BY seq DESC LIMIT %s)",
+            [
+                self.schema,
+                agent,
+                session,
+                # INSERT
+                agent,
+                session,
+                turn,
+                list(keys),
+                float(ttl),
+                turn,
+                agent,
+                session,
+                turn,
+                # UPDATE
+                float(ttl),
+                agent,
+                session,
+                # DELETE (the cap)
+                agent,
+                session,
+                agent,
+                session,
+                int(cap),
+            ],
+            uow=uow,
+            write=True,
+        )
+
+    def _harness_pending_claim(
+        self,
+        spec: ModelSpec,
+        agent: str,
+        session: str,
+        turn: str,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> tuple[Optional[list[str]], bool, bool]:
+        """Claim the oldest live entry staged for ``turn``: ``(keys, hit,
+        saw_tagged)``. ``keys`` is ``None`` unless *this* call deleted the
+        entry, so of two callers racing on one turn exactly one gets it -- the
+        ``LRANGE`` + ``LREM`` claim in one statement. ``hit`` says an entry
+        for the turn existed; ``saw_tagged`` that some live entry of the
+        session carries a turn at all, which decides between a miss and the
+        positional fallback."""
+        table = self._engine("popoto_harness_pending")
+        rows, _ = self._run(
+            f"WITH live AS (SELECT seq, turn FROM {table} WHERE agent = %s "
+            f"AND session = %s AND expires_at > {_NOW}), "
+            "hit AS (SELECT seq FROM live WHERE turn = %s ORDER BY seq LIMIT 1), "
+            f"del AS (DELETE FROM {table} WHERE agent = %s AND session = %s "
+            "AND seq IN (SELECT seq FROM hit) RETURNING keys) "
+            "SELECT (SELECT keys FROM del), EXISTS (SELECT 1 FROM hit), "
+            "EXISTS (SELECT 1 FROM live WHERE turn IS NOT NULL)",
+            [agent, session, turn, agent, session],
+            uow=uow,
+            write=True,
+        )
+        keys, hit, saw_tagged = rows[0]
+        return (
+            None if keys is None else [str(k) for k in keys],
+            bool(hit),
+            bool(saw_tagged),
+        )
+
+    def _harness_pending_pop(
+        self,
+        spec: ModelSpec,
+        agent: str,
+        session: str,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> Optional[list[str]]:
+        """``LPOP``: delete the oldest live entry and return its keys, or
+        ``None``. ``SKIP LOCKED``, so two concurrent pops take two entries."""
+        table = self._engine("popoto_harness_pending")
+        rows, _ = self._run(
+            f"DELETE FROM {table} WHERE agent = %s AND session = %s AND seq = ("
+            f"SELECT seq FROM {table} WHERE agent = %s AND session = %s "
+            f"AND expires_at > {_NOW} ORDER BY seq LIMIT 1 FOR UPDATE SKIP LOCKED) "
+            "RETURNING keys",
+            [agent, session, agent, session],
+            uow=uow,
+            write=True,
+        )
+        return [str(k) for k in rows[0][0]] if rows else None
+
+    def _harness_injected_read(
+        self,
+        spec: ModelSpec,
+        agent: str,
+        session: str,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> list[str]:
+        """``SMEMBERS``: the session's live injected record keys."""
+        table = self._engine("popoto_harness_injected")
+        rows, _ = self._run(
+            f"SELECT member FROM {table} WHERE agent = %s AND session = %s "
+            f"AND expires_at > {_NOW}",
+            [agent, session],
+            uow=uow,
+        )
+        return [str(row[0]) for row in rows]
+
+    def _harness_injected_mark(
+        self,
+        spec: ModelSpec,
+        agent: str,
+        session: str,
+        members: Sequence[str],
+        ttl: float,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> None:
+        """``SADD`` + ``EXPIRE`` in one message, under the session's lock. A
+        set whose expiry has passed is gone before the add, as an expired
+        Redis key is, so a member injected over an hour ago does not come back
+        alive with the next turn's."""
+        table = self._engine("popoto_harness_injected")
+        of_session = "agent = %s AND session = %s"
+        self._run(
+            self._harness_session_lock("injected")
+            + self._harness_reap(table)
+            + f"DELETE FROM {table} WHERE {of_session} AND expires_at <= {_NOW}; "
+            f"UPDATE {table} SET expires_at = {_NOW} + %s WHERE {of_session}; "
+            f"INSERT INTO {table} (agent, session, member, expires_at) "
+            f"SELECT DISTINCT %s, %s, m, {_NOW} + %s FROM unnest(%s::text[]) AS m "
+            "ON CONFLICT (agent, session, member) DO UPDATE "
+            "SET expires_at = EXCLUDED.expires_at",
+            [
+                self.schema,
+                agent,
+                session,
+                # DELETE (the expired set)
+                agent,
+                session,
+                # UPDATE
+                float(ttl),
+                agent,
+                session,
+                # INSERT
+                agent,
+                session,
+                float(ttl),
+                list(members),
+            ],
+            uow=uow,
+            write=True,
+        )
+
+    def _harness_touch(
+        self,
+        spec: ModelSpec,
+        agent: str,
+        name: str,
+        stamp: str,
+        counter_key: str,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> None:
+        """The success probe: ``SET last:<name> <stamp>`` and ``INCR
+        <counter_key>``, the Redis ``MULTI`` pair, as one statement."""
+        events = self._engine("popoto_harness_event")
+        counters = self._engine("popoto_counter")
+        self._run(
+            f"WITH e AS (INSERT INTO {events} (agent, name, stamp) "
+            "VALUES (%s, %s, %s) ON CONFLICT (agent, name) DO UPDATE "
+            "SET stamp = EXCLUDED.stamp) "
+            f"INSERT INTO {counters} AS c (key, value) VALUES (%s, 1) "
+            "ON CONFLICT (key) DO UPDATE SET value = c.value + 1",
+            [agent, name, stamp, counter_key],
+            uow=uow,
+            write=True,
+        )
+
+    def _harness_events(
+        self, spec: ModelSpec, agent: str, *, uow: Optional[UnitOfWork] = None
+    ) -> dict[str, str]:
+        """Every last-success timestamp recorded for ``agent``."""
+        table = self._engine("popoto_harness_event")
+        rows, _ = self._run(
+            f"SELECT name, stamp FROM {table} WHERE agent = %s", [agent], uow=uow
+        )
+        return {str(name): str(stamp) for name, stamp in rows}

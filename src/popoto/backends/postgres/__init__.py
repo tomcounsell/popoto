@@ -1787,6 +1787,70 @@ class PostgresBackend(
         close_pools()
         self.forget_tables()
 
+    @property
+    def dsn_summary(self) -> str:
+        """``host=… port=… dbname=… user=…`` for this backend's DSN: safe to
+        print, never the password or any other connection option."""
+        return _describe_dsn(self.dsn)
+
+    def describe(self) -> dict[str, Any]:
+        """What a diagnostic needs to know about this backend's server, in
+        one read-only round trip (#814, ``popoto-memory doctor``).
+
+        Returns ``server_version`` (the server's own string),
+        ``server_version_num``, ``supported`` (the version floor and the UTF8
+        encoding popoto requires), ``database``, ``user``, the configured
+        ``schema`` and whether it ``schema_exists`` with how many
+        ``schema_tables``, and ``pgvector`` (``None`` when the extension is not
+        installed, else its ``version``, ``schema`` and whether that schema is
+        ``on_search_path``). Never runs DDL and never creates the schema: a
+        doctor that created what it was asked to check would always report
+        it present.
+
+        Raises :class:`~popoto.backends.BackendUnavailableError` when the
+        server cannot be reached, and records it on :attr:`health` like any
+        other read.
+        """
+        rows, _ = self._run(
+            "SELECT current_setting('server_version'), "
+            "current_setting('server_version_num')::int, "
+            "current_setting('server_encoding'), current_database(), current_user, "
+            "EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = %s), "
+            "(SELECT count(*) FROM pg_tables WHERE schemaname = %s), "
+            "(SELECT e.extversion FROM pg_extension e WHERE e.extname = 'vector'), "
+            "(SELECT n.nspname FROM pg_extension e JOIN pg_namespace n "
+            "ON n.oid = e.extnamespace WHERE e.extname = 'vector'), "
+            "(SELECT n.nspname = ANY(current_schemas(false)) FROM pg_extension e "
+            "JOIN pg_namespace n ON n.oid = e.extnamespace "
+            "WHERE e.extname = 'vector')",
+            [self.schema, self.schema],
+        )
+        row = rows[0]
+        version_num = int(row[1])
+        encoding = str(row[2])
+        pgvector: Optional[dict[str, Any]] = None
+        if row[7] is not None:
+            pgvector = {
+                "version": str(row[7]),
+                "schema": row[8],
+                "on_search_path": bool(row[9]),
+            }
+        return {
+            "dsn": self.dsn_summary,
+            "server_version": str(row[0]),
+            "server_version_num": version_num,
+            "server_encoding": encoding,
+            "supported": version_num >= MIN_SERVER_VERSION_NUM
+            and encoding.upper() in ("UTF8", "UTF-8"),
+            "min_server_version_num": MIN_SERVER_VERSION_NUM,
+            "database": row[3],
+            "user": row[4],
+            "schema": self.schema,
+            "schema_exists": bool(row[5]),
+            "schema_tables": int(row[6] or 0),
+            "pgvector": pgvector,
+        }
+
     # -- B. records ------------------------------------------------------------
 
     def _row_values(
