@@ -168,9 +168,9 @@ protocol was introduced with zero behaviour change on Redis ([#768](https://gith
 ### Known limitations
 
 - **The migration tool does not carry the tombstone archive** ([#829](https://github.com/tomcounsell/popoto/issues/829)). A Redis store holding `$TOMB:` keys (deleted records kept for `restore()`) stops the run at the inventory, and `--accept-unclassified` does not waive it: clear the archive, or wait for #829, before migrating a store that has one.
-- **`DecisionLog.turn_summary` can over-count on Redis** ([#822](https://github.com/tomcounsell/popoto/issues/822)). A `pending` write over a row that is already terminal leaves that row's counts in the summary hash; the rows are right and `DecisionLog.rebuild_turn_summary(agent_id, turn_id)` repairs it. Postgres derives the summary from the rows and does not drift. Documented as a divergence.
+- **`DecisionLog.turn_summary` can drift on Redis** ([#822](https://github.com/tomcounsell/popoto/issues/822), fix open as [#831](https://github.com/tomcounsell/popoto/issues/831)). A `pending` write over a row that is already terminal leaves the Redis summary over-counting until `DecisionLog.rebuild_turn_summary(agent_id, turn_id)` runs; the rows are right. Postgres derives the summary from the rows and does not drift. Documented as a divergence.
 - **`DataFrameField`** and custom fields that override a storage hook are refused on Postgres at declaration; keep those models on Redis.
-- **Harness session state is not migrated.** `migrate_redis_to_postgres` copies memory records, not the integration's per-turn bookkeeping, and counters start at zero on the new backend.
+- **Harness session state is not migrated.** `migrate_redis_to_postgres` copies memory records, not the integration's per-turn bookkeeping (pending captures, injected-key sets, counters); counters start at zero on the new backend.
 - See [Documented divergences](https://popoto.io/features/postgres-backend/#documented-divergences) for behaviour that differs between the backends by design.
 
 ## [1.9.0] - 2026-09-05

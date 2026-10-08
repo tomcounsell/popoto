@@ -45,6 +45,15 @@ The target is the library's own setting: `POPOTO_POSTGRES_URL` and
 `POPOTO_POSTGRES_SCHEMA`. The source is the RDB file. The tool has no Redis
 URL, host or port option.
 
+Other options, from `--help`: `--model module.path:Model` (repeatable) names
+a model without a mapping; `--source-db` is the database index inside the
+snapshot (default `0`); `--batch-size` (default `200`, see *Resume and
+idempotency*); `--verify-sample` is how many partitions and queries the
+ranking checks sample (default `25`); `--operator` is the name in the
+report's sign-off (default: the OS user); `--accept-unclassified`,
+`--allow-empty`, `--merge`, `--resume`, `--dry-run`, `--report-key` and
+`--redis-server` are covered below.
+
 If `POPOTO_POSTGRES_URL` points at PgBouncer in transaction mode, also set
 `POPOTO_POSTGRES_MAINTENANCE_URL` to a direct (or session-mode) DSN to the
 same database. When calling `run_migration()`, pass
@@ -257,7 +266,8 @@ recorded as the owner and later ones as duplicates.
 
 A model crosses field for field. The target is the same popoto class bound
 to Postgres, so its table is the one the backend compiles, with the column
-names and types M2a and M2b shipped. A mapping (`ModelMapping`) adds only
+names and types listed under
+[Supported fields](postgres-backend.md#supported-fields-m1-m11-m2a-m2b-m3-m4-m5). A mapping (`ModelMapping`) adds only
 the evidence Redis never stored:
 
 ```python
@@ -332,6 +342,49 @@ is handled as follows:
   event per record to the Postgres stream, so start consumers after the
   migration. A resume does not append a second one for a row it adopts
   (see *Resume and idempotency*), and verification checks the count.
+
+### The decision log and memory telemetry
+
+The tool copies only the models you name, and both of these are ordinary
+popoto models, so each crosses only when you list it:
+
+```bash
+python -m popoto.migrate_redis_to_postgres ... \
+    --model popoto.extraction.decision_log:DecisionRecord \
+    --model popoto.recipes.provenance_journal:JournalEntry \
+    --model popoto.recipes.memory_telemetry:AssemblyEvent
+```
+
+Without them, their keys are counted under `out_of_scope`, and a process that
+moves to Postgres starts with an empty decision log and no telemetry, as the
+[decision log section](postgres-backend.md#recipes-mixins-and-the-queue-m4)
+of the backend page describes.
+
+- **`DecisionRecord`** (the decision log, #811) lands in
+  `<schema>.decision_record`, `pending` rows included. The per-turn summary
+  hashes (`popoto:m3:summary:*`) and the assembly claims
+  (`popoto:m3:claim:*`) are not models, so they are counted under
+  `out_of_scope` and left in Redis; neither stops the run. Nothing is lost:
+  on Postgres `turn_summary` is computed from the rows on every read, and a
+  claim is a short-lived lease. You do not need to run
+  `DecisionLog.rebuild_turn_summary` before migrating, because the summary
+  hashes are not copied; on Postgres that method returns `turn_summary`
+  unchanged. A terminal `accept` row's `entry_id` names a journal entry, so
+  copy the journal's entry model in the same run, as the command above
+  does with `popoto.recipes.provenance_journal:JournalEntry` (or your own
+  entry model if you pass one to `ProvenanceJournal`), if those references
+  need to resolve on Postgres.
+- **`AssemblyEvent`** (memory telemetry, outcomes included) lands in
+  `<schema>.assembly_event`. It declares `Meta.ttl` (seven days by default),
+  so each event's expiry restarts at the import and is counted under
+  `meta_ttl_restarted`.
+
+Both were checked end to end against a snapshot written through
+`DecisionLog` and `AssemblyEvent.create` (Redis 8.10, PostgreSQL 18.6): the
+dry run and the load were `clean` with no `--accept-unclassified`, and
+`turn_summary` on Postgres matched the Redis result. On a Redis store whose
+summary has drifted (a `pending` write over a terminal row, #822; the Redis fix
+is open as #831), the two differ and Postgres, which counts the rows, is right.
 
 ## What the report counts
 
@@ -427,7 +480,7 @@ data and more detail). This run had no `--report-key`:
 
 ```text
 popoto Redis -> Postgres migration (#756): CLEAN
-run b0d49d3e461c4fbdbdad54543dc4f96e  source valor-laptop  snapshot sha256 07301e66eb8e8038
+run 1d34c4731c754a5993aa5d380bba086e  source laptop-a  snapshot sha256 28241a49aa6c17f0
 target popoto  mode load
 
 Records:
@@ -445,8 +498,8 @@ Lossy and estimated (every non-zero count):
   embedding_file_missing_reembed: 1
   event_stream_entries_not_carried: 3
   frequency_sketch_keys_reset: 1
-  orphan_hashes_recovered: 1
   meta_ttl_restarted: 1
+  orphan_hashes_recovered: 1
   per_record_ttl_not_carried: 1
   staged_reads_carried: 2
   updated_at_estimated: 15
@@ -457,20 +510,23 @@ Verification:
   MigMemory records: ok {"compared": 11, "expected": 11, "mismatched": 0}
   MigMemory check_indexes: ok {"total": 0}
   MigMemory tool_columns: ok {"compared": 11, "mismatched": 0}
+  MigMemory carried_state: ok {"compared": 11, "mismatched": 0}
   MigMemory staged_reads: ok {"mismatched": 0}
   MigMemory decay_order:relevance: ok {"partitions": 2, "mismatched": 0}
   MigMemory bm25:bm25: ok {"queries": 11, "mode": "strict", "mismatched": 0, "mean_top_k_overlap": null}
   MigLongTail records: ok {"compared": 2, "expected": 2, "mismatched": 0}
   MigLongTail check_indexes: ok {"total": 0}
   MigLongTail tool_columns: ok {"compared": 2, "mismatched": 0}
+  MigLongTail carried_state: ok {"compared": 2, "mismatched": 0}
   MigLongTail event_stream: ok {"written": 2, "save_events": 2, "keys_with_more_than_one": 0, "keys_without_one": 0, "stream_trimmed": false}
   MigLongTail decay_order:rhythm: ok {"partitions": 1, "mismatched": 0}
   MigTtl records: ok {"compared": 2, "expected": 2, "mismatched": 0}
   MigTtl check_indexes: ok {"total": 0}
   MigTtl tool_columns: ok {"compared": 2, "mismatched": 0}
+  MigTtl carried_state: ok {"compared": 2, "mismatched": 0}
 
-Signed off by maintainer at 2026-10-06T00:18:39+00:00.
-Checksum sha256 f81df632d6180c15... (catches accidental change only: anyone can recompute it).
+Signed off by pytest at 2026-10-08T05:18:32.383411+00:00.
+Checksum sha256 e292ed6ffeede8776829102afdf5fdbf505ef5d37ee3322f159c05d9a00510dd (catches accidental change only: anyone can recompute it).
 No HMAC: the run had no --report-key.
 ```
 
@@ -628,7 +684,7 @@ row per run, with its status, progress and final report) and
 |---|---|
 | `0` | `clean`, or a finished `--dry-run`. |
 | `1` | The load finished but verification found a mismatch. Read `report.txt`. |
-| `2` | Refused before reading. The causes are: a bad RDB; a missing `redis-server`; a model Postgres cannot store (`DataFrameField`); a target schema that already holds rows (pass `--merge` or `--resume`, or `--resume --merge` when a resumed run's table also holds rows it did not write); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing `--report-key`; or an empty snapshot (`--allow-empty`). |
+| `2` | Refused; nothing is written to Postgres. The causes are: no `POPOTO_POSTGRES_URL` (outside `--dry-run`); a `--source-id` that is not 1-100 characters of `[A-Za-z0-9_.@-]`; no `--model` or `--mapping`, or a model named twice; a `--content-dir` that is not a directory; a bad RDB; a missing `redis-server`; a model Postgres cannot store (`DataFrameField`); a target schema that already holds rows (pass `--merge` or `--resume`, or `--resume --merge` when a resumed run's table also holds rows it did not write); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing `--report-key`; a `--resume` whose run directory has no `run.json`; a maintenance DSN that reaches a different database from the main one; a throwaway server or watchdog that fails to start; or an empty snapshot (`--allow-empty`). |
 | `3` | The inventory stopped the run. Nothing was written. |
 | `130` | Interrupted by `SIGTERM`, `SIGHUP` or `SIGINT`. The throwaway server is stopped and its copies are removed. Continue with `--resume` and the same `--run-dir`. |
 
@@ -640,7 +696,7 @@ reads anything.
 The #757 plan was written before the schema existed. The build follows its
 safety model and adapts to what shipped:
 
-- **Target.** Each model gets its own typed table (v2), not a hand-written
+- **Target.** Each model gets its own typed table, not a hand-written
   `popoto.memory` table. Records land through `import_records`, not through
   binary `COPY` into staging. The engine owns the DDL and builds every
   derived table, so no separate `reindex` step is needed.
