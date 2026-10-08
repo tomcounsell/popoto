@@ -1,8 +1,10 @@
 # Add Memory to Hermes
 
 Hermes is the only harness here whose hooks are Python. The plugin runs
-inside the gateway process, so the read path is a single Redis round trip
-with no interpreter startup at all -- the fastest of the four.
+inside the gateway process, so the read path is a single round trip to the
+memory store (Redis, or Postgres with `POPOTO_BACKEND=postgres`; see
+[On Postgres](../features/harness-integration.md#on-postgres)) with no
+interpreter startup at all -- the fastest of the four.
 
 !!! note "Two hook systems, not one"
     Hermes 0.19.0 ships two independent mechanisms: gateway **hooks**
@@ -104,7 +106,8 @@ plugin error, so no single place shows all of it:
 2. `~/.hermes/logs/agent.log` -- the only place a **callback exception**
    surfaces.
 3. `popoto-memory doctor` / `~/.popoto/memory.log` -- popoto's own
-   failures (a misconfigured `POPOTO_MEMORY_URL`, an unreachable Redis).
+   failures (a misconfigured `POPOTO_MEMORY_URL` or `POPOTO_POSTGRES_URL`,
+   an unreachable server).
 
 You can also test the adapter directly, bypassing Hermes entirely:
 
@@ -140,3 +143,7 @@ Identical to every other harness, and all environment-driven. See
 [Harness Integration](../features/harness-integration.md) for the table. The
 gateway must have these in its environment, not just your interactive shell,
 since the plugin runs in the gateway process.
+
+The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in the gateway's environment; see
+[On Postgres](../features/harness-integration.md#on-postgres).

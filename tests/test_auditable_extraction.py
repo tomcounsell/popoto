@@ -1592,6 +1592,51 @@ class TestAssemblyAgainstTheRealJournal:
             == entry_id
         )
 
+    def test_a_pending_write_over_a_terminal_row_is_a_documented_divergence(self):
+        """#822: an unclaimed terminal write (any non-accept verdict takes no
+        claim) that lands between ``assemble``'s row read and its
+        ``write_pending``. ``write_pending`` is a plain save, so on Redis it
+        overwrites the terminal row without taking back that row's summary
+        counts, and the ``accept`` that follows treats ``pending`` as new: the
+        hash keeps ``state:reject`` for a candidate whose row is ``accept``.
+        Postgres derives the summary from the rows and does not drift. On both
+        legs ``rebuild_turn_summary`` returns the rollup of the rows. Redis
+        wire unchanged; documented in auditable-extraction.md and the
+        postgres-backend divergence table."""
+        candidate = self._candidate(7, turn="t-race")
+        log = DecisionLog()
+        other_runner = DecisionLog()
+        real_get = log.get
+
+        def get_then_lose_the_race(*args):
+            row = real_get(*args)  # None: the candidate is fresh
+            other_runner.write_terminal(
+                "agent-race", candidate, Verdict.REJECT, ReasonCode.NOT_A_FACT
+            )
+            return row
+
+        log.get = get_then_lose_the_race  # type: ignore[method-assign]
+        entry_id = log.assemble("agent-race", candidate, ProvenanceJournal)
+        del log.get
+
+        assert entry_id
+        row = log.get("agent-race", "t-race", candidate.candidate_id)
+        assert row.state == Verdict.ACCEPT.value and row.entry_id == entry_id
+        rollup = {"state:accept": 1, "reason:accepted": 1}
+        summary = log.turn_summary("agent-race", "t-race")
+        if log._backend is None:
+            # Redis: the reject's counts were never taken back.
+            assert summary == {
+                "state:reject": 1,
+                "reason:not_a_fact": 1,
+                "state:accept": 1,
+                "reason:accepted": 1,
+            }
+        else:
+            assert summary == rollup
+        assert log.rebuild_turn_summary("agent-race", "t-race") == rollup
+        assert log.turn_summary("agent-race", "t-race") == rollup
+
     def test_candidate_id_tag_is_not_blocked_by_the_journals_own_firewall(self):
         """The journal scans every subject tag; a bad id shape fails M3's writes."""
         for candidate in generate_candidates(

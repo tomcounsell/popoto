@@ -10,12 +10,14 @@ Four subcommands:
     Serve the discretionary memory tools over stdio MCP. Requires
     ``pip install popoto[mcp]``.
 ``doctor``
-    Print resolved configuration, Redis reachability, effective retrieval
-    mode, record count, failure counters, and a measured hook round trip.
-    This is the user-visible error surface; a hook has no console.
+    Print resolved configuration, backend reachability (Redis, or on
+    ``POPOTO_BACKEND=postgres`` the Postgres server version, schema, pgvector
+    and health), effective retrieval mode, record count, failure counters,
+    and a measured hook round trip. This is the user-visible error surface; a
+    hook has no console.
 ``demo``
     Seed a few memories, retrieve them, capture a turn, and report an
-    outcome, against local Redis with no harness and no API keys.
+    outcome, against the configured backend with no harness and no API keys.
 
 Startup latency is the reason this module imports almost nothing at module
 scope. The read hook is synchronous and on the critical path of every turn,
@@ -24,6 +26,7 @@ the subcommand that needs them.
 """
 
 import argparse
+import os
 import sys
 from typing import Any, List, Optional
 
@@ -46,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="popoto-memory",
         description=(
             "Subconscious memory for agent harnesses, backed by your own "
-            "Redis or Valkey. No API keys."
+            "Redis, Valkey or Postgres. No API keys."
         ),
         epilog=USAGE_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -80,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor",
         help="print resolved config and live state",
         description=(
-            "Prints resolved configuration, Redis reachability, effective "
+            "Prints resolved configuration, backend reachability, effective "
             "retrieval mode, record count, failure counters, and a measured "
             "hook round trip."
         ),
@@ -96,7 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     demo = sub.add_parser(
         "demo",
-        help="exercise the full loop against local Redis, no harness",
+        help="exercise the full loop against the configured backend, no harness",
         description=(
             "Seeds memories, assembles context for a query, captures a turn, "
             "and reports an outcome. Zero API keys."
@@ -110,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument(
         "--keep",
         action="store_true",
-        help="leave the seeded records in Redis when finished",
+        help="leave the seeded records in place when finished",
     )
     return parser
 
@@ -152,6 +155,7 @@ def _cmd_hook(args: Any) -> int:
 
     # No bind_connection here: MemoryService.__init__ owns that, so every
     # entry point resolves POPOTO_MEMORY_URL the same way.
+    _bound_postgres_waits()
     try:
         from . import hooks
 
@@ -180,6 +184,36 @@ def _cmd_hook(args: Any) -> int:
     return 0
 
 
+def _bound_postgres_waits() -> None:
+    """Cap every Postgres wait at the hook's own budget (#814).
+
+    The Redis connection the integration binds gets a 1-second connect *and*
+    socket timeout (``HOOK_SOCKET_TIMEOUT_SECONDS``) because the read hook
+    sits on the user's prompt path. The Postgres backend's defaults are a 5 s
+    connect timeout (``Defaults.PG_CONNECT_TIMEOUT_SECONDS``) and a 30 s
+    statement timeout (``Defaults.PG_STATEMENT_TIMEOUT_MS``), so an outage
+    would stall every prompt five times longer than a Redis one, and a held
+    lock (a migration, ``maintain``, a stuck writer on the session's advisory
+    lock) thirty times longer. Both are lowered here and only here: the hook
+    subcommand is a process of its own, so this reaches no host application;
+    an in-process caller (the Hermes plugin, the MCP server) keeps the
+    library defaults. Never raised -- a smaller value set by the operator
+    wins -- and a statement timeout of 0 (none) counts as larger than any.
+    """
+    try:
+        from ..fields.constants import Defaults
+        from .config import HOOK_SOCKET_TIMEOUT_SECONDS
+
+        if Defaults.PG_CONNECT_TIMEOUT_SECONDS > HOOK_SOCKET_TIMEOUT_SECONDS:
+            Defaults.PG_CONNECT_TIMEOUT_SECONDS = HOOK_SOCKET_TIMEOUT_SECONDS
+        statement_ms = int(HOOK_SOCKET_TIMEOUT_SECONDS * 1000)
+        current = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
+        if current <= 0 or current > statement_ms:
+            Defaults.PG_STATEMENT_TIMEOUT_MS = statement_ms
+    except Exception:
+        pass
+
+
 def _cmd_mcp() -> int:
     """Run the stdio MCP server."""
     try:
@@ -204,7 +238,8 @@ def _cmd_mcp() -> int:
 
 
 def _cmd_doctor(args: Any) -> int:
-    """Print the diagnostic report. Returns 1 when Redis is unreachable."""
+    """Print the diagnostic report. Returns 1 when the backend is unreachable
+    (on Postgres: also when the server is below what popoto supports)."""
     from .config import MemoryConfig
     from .service import MemoryService, NON_FAILURE_COUNTERS
 
@@ -219,8 +254,22 @@ def _cmd_doctor(args: Any) -> int:
         if args.json:
             import json
 
+            backend = os.environ.get("POPOTO_BACKEND", "").strip() or "redis"
             sys.stdout.write(
-                json.dumps({"redis_reachable": False, "error": str(exc)}, indent=2)
+                json.dumps(
+                    {
+                        "redis_url": None,
+                        # null, not false, where Redis is not the backend: the
+                        # same "not applicable" status() reports there.
+                        "redis_reachable": False if backend == "redis" else None,
+                        "reachable": False,
+                        "backend": backend,
+                        "server": None,
+                        "postgres": None,
+                        "error": str(exc),
+                    },
+                    indent=2,
+                )
                 + "\n"
             )
         else:
@@ -228,39 +277,29 @@ def _cmd_doctor(args: Any) -> int:
         return 1
     info = service.status()
 
-    if not args.no_latency and info.get("redis_reachable"):
+    if (
+        not args.no_latency
+        and info.get("reachable")
+        and not service.schema_pending(info)
+    ):
         info["hook_read_ms"] = _measure_hook_read(service)
 
     if args.json:
         import json
 
         sys.stdout.write(json.dumps(info, indent=2, default=str) + "\n")
-        return 0 if info.get("redis_reachable") else 1
+        return 0 if info.get("reachable") else 1
 
     lines = ["popoto-memory doctor", ""]
     if info["enabled"]:
         lines.append("  status         enabled")
     else:
         lines.append("  status         DISABLED (POPOTO_MEMORY_ENABLED=0)")
-    lines.append(f"  redis url      {info['redis_url']}")
-    lines.append(f"  url source     {info.get('url_source', 'default')}")
-    if info["redis_reachable"]:
-        lines.append(
-            f"  redis          reachable, {info['server']}, "
-            f"ping {info.get('ping_ms')} ms"
-        )
-    else:
-        lines.append("  redis          UNREACHABLE")
-        for err in info["errors"]:
-            lines.append(f"                 {err}")
-        lines.append("")
-        lines.append(
-            # Not database 0: MemoryService refuses it, so suggesting it
-            # here would trade one failure for another.
-            "  Start a server, or point POPOTO_MEMORY_URL at one:\n"
-            "    redis-server        (or: valkey-server)\n"
-            "    export POPOTO_MEMORY_URL=redis://localhost:6379/1"
-        )
+    if info.get("backend", "redis") == "redis":
+        if not _doctor_redis_lines(info, lines):
+            sys.stdout.write("\n".join(lines) + "\n")
+            return 1
+    elif not _doctor_postgres_lines(info, lines):
         sys.stdout.write("\n".join(lines) + "\n")
         return 1
 
@@ -332,6 +371,99 @@ def _cmd_doctor(args: Any) -> int:
 
     sys.stdout.write("\n".join(lines) + "\n")
     return 0
+
+
+def _doctor_redis_lines(info: Any, lines: List[str]) -> bool:
+    """The Redis connection block of ``doctor``; ``False`` when unreachable.
+
+    Byte-identical to the report before the Postgres backend existed.
+    """
+    lines.append(f"  redis url      {info['redis_url']}")
+    lines.append(f"  url source     {info.get('url_source', 'default')}")
+    if info["redis_reachable"]:
+        lines.append(
+            f"  redis          reachable, {info['server']}, "
+            f"ping {info.get('ping_ms')} ms"
+        )
+        return True
+    lines.append("  redis          UNREACHABLE")
+    for err in info["errors"]:
+        lines.append(f"                 {err}")
+    lines.append("")
+    lines.append(
+        # Not database 0: MemoryService refuses it, so suggesting it
+        # here would trade one failure for another.
+        "  Start a server, or point POPOTO_MEMORY_URL at one:\n"
+        "    redis-server        (or: valkey-server)\n"
+        "    export POPOTO_MEMORY_URL=redis://localhost:6379/1"
+    )
+    return False
+
+
+def _doctor_postgres_lines(info: Any, lines: List[str]) -> bool:
+    """The Postgres connection block of ``doctor`` (#814); ``False`` when the
+    server is unreachable or below what popoto supports.
+
+    Reports the backend, the DSN (host, port, database and user only -- never
+    the password), the schema, the server version, pgvector and the
+    backend's health record. Nothing about Redis: a Postgres-bound process
+    reads no Redis variable and dials no Redis server.
+    """
+    pg = info.get("postgres") or {}
+    lines.append(f"  backend        {info.get('backend')}")
+    lines.append(f"  postgres dsn   {pg.get('dsn') or '(not configured)'}")
+    lines.append(f"  url source     {info.get('url_source')}")
+    if not info.get("reachable"):
+        if pg.get("server_version"):
+            lines.append(
+                f"  postgres       UNSUPPORTED, postgresql {pg['server_version']}"
+            )
+        else:
+            lines.append("  postgres       UNREACHABLE")
+        for err in info["errors"]:
+            lines.append(f"                 {err}")
+        health = pg.get("health")
+        if health:
+            lines.append(
+                f"  health         consecutive_failures="
+                f"{health.get('consecutive_failures')}, "
+                f"dropped_writes={health.get('dropped_writes')}"
+            )
+        lines.append("")
+        lines.append(
+            "  Point the backend at a PostgreSQL 18+ server:\n"
+            "    export POPOTO_BACKEND=postgres\n"
+            "    export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents"
+        )
+        return False
+    lines.append(
+        f"  postgres       reachable, {info['server']}, ping {info.get('ping_ms')} ms"
+    )
+    tables = pg.get("schema_tables")
+    if pg.get("schema_exists"):
+        lines.append(f"  schema         {pg.get('schema')} ({tables} tables)")
+    else:
+        lines.append(
+            f"  schema         {pg.get('schema')} (not created yet; the first "
+            "write creates it)"
+        )
+    vector = pg.get("pgvector")
+    if vector:
+        where = vector.get("schema")
+        if not vector.get("on_search_path"):
+            where = f"{where}, NOT on search_path"
+        lines.append(f"  pgvector       {vector.get('version')} ({where})")
+    else:
+        lines.append(
+            "  pgvector       not installed (DefaultMemory does not need it; "
+            "EmbeddingField models do)"
+        )
+    health = pg.get("health") or {}
+    state = "ok" if health.get("ok", True) else "DEGRADED"
+    lines.append(
+        f"  health         {state}, dropped_writes={health.get('dropped_writes', 0)}"
+    )
+    return True
 
 
 def _measure_hook_read(service: Any) -> float:

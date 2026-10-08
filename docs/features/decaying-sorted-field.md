@@ -4,13 +4,13 @@ A `SortedField` subclass where records lose retrieval weight over time following
 
 ## Overview
 
-The sorted set score is always a timestamp. A Lua script computes decay-ranked results at query time:
+The stored value is always a timestamp: the decay clock. Decay-ranked results are computed at query time, on the server:
 
 ```text
 decayed_score = base_score * elapsed_days ^ (-decay_rate)
 ```
 
-With the default `decay_rate=0.1`, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days. All computation happens server-side in Lua — no round trips for ranking.
+With the default `decay_rate=0.1`, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days. All computation happens server-side (a Lua script on Redis, one `SELECT` on Postgres) — no round trips for ranking.
 
 ## Parameters
 
@@ -158,11 +158,11 @@ field.members(memory, "relevance", 0, 9)                # -> 10 stalest keys, on
 field.members(memory, "relevance", 0, 9, reverse=True)   # -> 10 freshest keys, one ZREVRANGE
 ```
 
-`members()` returns Redis keys as `str`, ordered by score (`reverse=True` walks from the highest score down). `start`/`stop` follow `ZRANGE` bounds: inclusive, negative values count from the end, and `stop < start` returns `[]`.
+`members()` returns record keys (`redis_key`, the same string on both backends) as `str`, ordered by score (`reverse=True` walks from the highest score down). `start`/`stop` follow `ZRANGE` bounds: inclusive, negative values count from the end, and `stop < start` returns `[]`.
 
 ### Ranking a partition ZSET directly
 
-`rank_decayed()` runs the decay script against one already-resolved partition ZSET key and returns the flat `[member, score, member, score, ...]` reply. It is the seam a caller uses when it holds records rather than filter kwargs, and therefore cannot go through `Query.top_by_decay()`.
+On Redis, `rank_decayed()` runs the decay script against one already-resolved partition ZSET key and returns the flat `[member, score, member, score, ...]` reply. It is the seam a caller uses when it holds records rather than filter kwargs, and therefore cannot go through `Query.top_by_decay()`.
 
 It is also what `Query.top_by_decay()` and `composite_score()` use internally: since [#662](https://github.com/tomcounsell/popoto/issues/662) every decay `EVAL` in the library goes through this method, so each of the two `KEYS` layouts exists in exactly one place — this implementation and the `CyclicDecayField` override. Nothing in `models/query.py` or `recipes/` names a `KEYS` index any more.
 
@@ -347,6 +347,8 @@ for ranges and provenance.
 
 ## Architecture
 
+The Redis implementation:
+
 - **Redis key pattern**: `ClassName:_field_name` (sorted set with timestamp scores)
 - **Lua script**: Computes `base_score * elapsed_days^(-decay_rate)` server-side, reads base scores from model hash via cmsgpack
 - **Confidence join**: the `ConfidenceField` `:data` hash is passed as `KEYS[2]`, with strength `s` as
@@ -355,6 +357,32 @@ for ranges and provenance.
   member, issued only when modulation is active. (`CyclicDecayField` forks this script and binds the
   confidence hash at `KEYS[4]` instead — see its docs.)
 - **Inheritance**: Extends `SortedFieldMixin` + `Field`
+
+## On Postgres
+
+On a Postgres-bound model the clock is the field's own `double precision`
+column (epoch seconds), indexed with its partition columns, and
+`top_by_decay` runs the script's formula as one `SELECT`, operation for
+operation in `double precision`, so scores match the Redis ones (see
+[Ranking and memory state](postgres-backend.md#ranking-and-memory-state-m2a)).
+Confidence modulation, the validity gate and the partitioned-confidence
+`QueryException` behave as above; `count()` and `members()` read the
+partition's rows in `ZRANGE` order. Differences, each a row in
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour):
+
+- `rank_decayed(zset_key, …)` raises `BackendCapabilityError`: there is no
+  sorted set to name. Use `top_by_decay`, or `Query.top_by_relevance()`
+  (Postgres only, see [Fusion and `recall()`](postgres-backend.md#fusion-and-recall)).
+- A reload after `touch()` sees the touched time; on Redis `touch` moves only
+  the sorted-set score and the hash keeps the save-time value.
+- A NaN score ranks last with every real score in order; on Redis its place
+  is arbitrary.
+- `save(update_fields=[…])` that names the field but not an unsaved change to
+  its partition column keeps the record in its stored partition.
+
+`Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO` (the script's pre-trim budget) is
+read only on the Redis path; the `KEYS` layout and the cmsgpack base-score
+read described above are Redis detail.
 
 ## See Also
 

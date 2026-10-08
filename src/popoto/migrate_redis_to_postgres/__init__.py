@@ -775,6 +775,10 @@ REBUILDABLE = "rebuildable"
 NOT_CARRIED = "not_carried"
 EXPECTED_EMPTY = "expected_empty"
 UNCLASSIFIED = "unclassified"
+#: State the tool knows about but has no carry path for. Always stops the run,
+#: and ``--accept-unclassified`` does NOT waive it (the stop text deliberately
+#: avoids the word): the data is real and would be silently lost.
+UNSUPPORTED = "unsupported"
 
 #: Key-family prefix -> (disposition, what happens to it).
 FAMILY_DISPOSITIONS: dict[str, tuple[str, str]] = {
@@ -807,10 +811,14 @@ FAMILY_DISPOSITIONS: dict[str, tuple[str, str]] = {
     "$Class": (REBUILDABLE, "the class set; becomes the table"),
     "$KeyF": (REBUILDABLE, "key-field index; a B-tree"),
     "$UniqueKeyF": (REBUILDABLE, "unique key index; a UNIQUE index"),
-    "$AutoKeyF": (REBUILDABLE, "auto key index; a B-tree"),
-    "$IndexedF": (REBUILDABLE, "indexed field; a B-tree"),
-    "$UniqueF": (REBUILDABLE, "unique field; a UNIQUE index"),
-    "$SortedF": (REBUILDABLE, "sorted index; a B-tree"),
+    "$IndexF": (REBUILDABLE, "indexed field value Sets; a B-tree"),
+    "$IdxPtr": (
+        REBUILDABLE,
+        "indexed field pointers (which $IndexF Set holds the record); "
+        "derived from the field value",
+    ),
+    "$UniquF": (REBUILDABLE, "unique field index; a UNIQUE index"),
+    "$SortF": (REBUILDABLE, "sorted field index; a B-tree"),
     "$SortedKeyF": (REBUILDABLE, "sorted key index; a B-tree"),
     "$DecayingSortF": (REBUILDABLE, "decay index; rebuilt from the record's clock"),
     "$TagF": (REBUILDABLE, "tag index; a GIN index"),
@@ -824,7 +832,22 @@ FAMILY_DISPOSITIONS: dict[str, tuple[str, str]] = {
     "$WF": (NOT_CARRIED, "write-filter priority tier; not stored on Postgres"),
     "stream": (NOT_CARRIED, "event stream; records cross, the stream does not"),
     "$TOMBPRIOR": (EXPECTED_EMPTY, "tombstone priors; no carry path"),
-    "$IdxPtr": (EXPECTED_EMPTY, "legacy index pointers"),
+    "$TOMB": (
+        UNSUPPORTED,
+        "tombstone archive of deleted records (payloads kept for restore()); "
+        "no carry path yet",
+    ),
+    "$RP": (
+        NOT_CARRIED,
+        "pending recall proposals; a 1-hour-TTL observation queue, "
+        "unresolved ones count as deferred",
+    ),
+    "$NR": (
+        NOT_CARRIED,
+        "never-record audit telemetry (refusal counts and drop log); "
+        "not state of any record",
+    ),
+    "$CSQ": (NOT_CARRIED, "transient query temp keys with a TTL"),
 }
 
 _SUBKIND_PREFIXES = ("$AT", "$CyclicDecayF")
@@ -980,6 +1003,14 @@ def run_inventory(
             "decay_index": decay,
             "embeddings": embeddings,
         }
+    for name, info in per_model.items():
+        for family, v in info["families"].items():
+            if v["disposition"] == UNSUPPORTED:
+                stops.append(
+                    f"{name}: {v['keys']} {family} key(s) hold state this tool "
+                    f"cannot carry ({v['note']}); clear it first "
+                    "(the model's tombstone purge_all()) or migrate without it"
+                )
     if expected_empty_found:
         stops.append(
             "expected-empty key families are not empty: "
@@ -3594,6 +3625,12 @@ def _count_inventory_lossy(
         "write_filter_priority_keys_not_stored",
         int(families.get("$WF", {}).get("keys", 0)),
     )
+    for prefix, label in (
+        ("$RP", "recall_proposal_keys_not_carried"),
+        ("$NR", "never_record_telemetry_keys_not_carried"),
+        ("$CSQ", "transient_query_keys_skipped"),
+    ):
+        add(label, int(families.get(prefix, {}).get("keys", 0)))
     for field_name, emb in facts["embeddings"].items():
         add("embedding_files_without_record", int(emb["files_without_record"]))
     for field_name, decay in facts["decay_index"].items():

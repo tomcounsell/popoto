@@ -82,8 +82,9 @@ SupersessionProtocol.chain(new)  # -> [old, new], oldest first
 
 ## Keyspace
 
-`ValidityField` owns six Redis keys per model/field, all under the
-`$ValidityF:{Model}:{field}` prefix. No bytes are written into the model's own
+On Redis, `ValidityField` owns six keys per model/field, all under the
+`$ValidityF:{Model}:{field}` prefix (Postgres keeps the same state on the
+record's row; see [On Postgres](#on-postgres)). No bytes are written into the model's own
 hash — chain links live in derived state so an append-only journal can adopt
 the field unchanged.
 
@@ -343,7 +344,7 @@ a pointer left naming a hard-deleted record reads as "no incumbent", the same wa
 `chain()` reads a dangling link. Only an incumbent the caller named explicitly
 raises. That is what keeps a partial `import_state` transfer supersedable.
 
-**Pipeline-mode caveat.** The `ResponseError` -> typed-exception remap lives on
+**Pipeline-mode caveat (Redis).** The `ResponseError` -> typed-exception remap lives on
 `execute_supersede`'s non-pipeline branch. On a caller-supplied pipeline,
 redis-py raises during `pipe.execute()` result parsing — long after
 `execute_supersede` returned — so you get a raw
@@ -433,8 +434,8 @@ effective = ValidityField.get_valid_from(
 obj.validity = effective
 obj.save()
 
-# Or make the declared value authoritative -- plain ZADD, no NX, so it
-# overwrites the score ZADD NX refused to update:
+# Or make the declared value authoritative (Redis) -- plain ZADD, no NX, so
+# it overwrites the score ZADD NX refused to update:
 vf_key, _ = ValidityField.get_interval_keys(Fact, "validity")
 popoto.get_redis().zadd(vf_key, {obj.db_key.redis_key: float(obj.validity)})
 obj.save()
@@ -658,6 +659,44 @@ including `DefaultMemory`, does.
   exception — refusing outright would break adopters who legitimately want
   bounded history.
 
+## On Postgres
+
+On a Postgres-bound model the interval and the chain live on the record's own
+row (`<f>__valid_from`, `<f>__invalid_at`, `<f>__ingested_at` as
+`double precision` epoch seconds, `'Infinity'` = open; `<f>__supersedes` /
+`<f>__superseded_by`), and the open-claim pointer is a companion table whose
+`member` references the record `ON DELETE CASCADE`. `supersede` is
+`SUPERSEDE_LUA` phase for phase in one transaction, behind a per-(model,
+field) advisory lock, and raises the same typed errors with the same text.
+The exclusion rule, the `as_of` filters, the kill switch and the cyclic-decay
+gap all behave as on Redis, and every gate is one `WHERE` term on the row. See
+[Validity and supersession (M3)](postgres-backend.md#validity-and-supersession-m3).
+
+What differs (each a row of
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour)):
+
+- `save_and_supersede` / `save_and_invalidate` whose close fails roll the
+  whole unit back, so the successor is not saved either; on Redis
+  `MULTI`/`EXEC` keeps it.
+- A pointer cannot name a record that does not exist: `import_state` for an
+  unstored record raises `ValidityMemberAbsentError`, and
+  `execute_supersede(mode="open")` on a member with no record writes nothing.
+- With the backend's `transaction()` as `pipeline`, the closed key is
+  returned and a typed error raised at the call, so the pipeline-mode caveat
+  above does not apply; a Redis pipeline is refused with `ValueError`.
+- A NaN `valid_from` on save is refused before anything is written, with
+  `ModelException`; a NaN `as_of` in a range read raises `QueryException`
+  where Redis raises `ResponseError`, with the same text.
+- On a `Meta.ttl` model the interval and pointer expire with the row: a chain
+  walk stops at an expired record as at a hard delete, rather than reaching
+  entries that outlive it. The TTL warning still fires.
+
+Redis-only machinery does not apply: the pre-trim and its
+`Defaults.VALIDITY_GATE_PRETRIM_MAX_RATIO` (read only by the Redis
+`DECAY_SCORE_LUA` path), the "What gating costs" figures, and the raw `ZADD`
+reconciliation above. To adopt the effective start on Postgres, use the
+`get_valid_from` form.
+
 ## See Also
 
 - [Provenance Journal](provenance-journal.md) — this feature's first real
@@ -683,4 +722,4 @@ including `DefaultMemory`, does.
   supersession loser's interval; it reaches this mechanism only through
   `ProvenanceJournal.supersede()`, never by calling
   `save_and_supersede()` itself, so the journal annotation and the close stay
-  in one `MULTI`/`EXEC`
+  in one `MULTI`/`EXEC` (one transaction on Postgres)

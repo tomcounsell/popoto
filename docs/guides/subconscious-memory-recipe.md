@@ -96,6 +96,20 @@ class ProjectMemory(DefaultMemory):
     pass  # keys become ProjectMemory:* instead of DefaultMemory:*
 ```
 
+### Running on Postgres
+
+Postgres is the recommended store for agent memory, and the loop runs on it unchanged. Install the extra and select the backend for the process:
+
+```bash
+pip install 'popoto[postgres]'
+export POPOTO_BACKEND=postgres
+export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents   # PostgreSQL 18+
+```
+
+`DefaultMemory` then lives in a table in the `popoto` schema (override with `POPOTO_POSTGRES_SCHEMA`), created on first use, and the loop issues no Redis commands, including its eviction counter and, with `auditable_extraction`, its decision log. To move only your own model, set `class Meta: backend = "postgres"` on it instead of the process variable. Configuration options are in [Configuration](../configuration.md#postgres-backend); behaviour that differs from Redis is listed under [documented divergences](../features/postgres-backend.md#documented-divergences). An existing Redis store moves across once, from an RDB snapshot: [Redis to Postgres Migration](../features/redis-to-postgres-migration.md).
+
+The [harness integration](../features/harness-integration.md) runs on Postgres the same way: see its [On Postgres](../features/harness-integration.md#on-postgres) section.
+
 ### Injected context format
 
 The injected block carries the memory text and nothing else:
@@ -283,14 +297,14 @@ Modulation is on by default whenever the model carries exactly one `ConfidenceFi
 
 `SubconsciousMemory` itself does not run lifecycle ticks -- compose it with a `MemoryLifecycle` instance as shown in [Composing with SubconsciousMemory](../recipes.md#composing-with-subconsciousmemory).
 
-### Redis outages raise
+### Backend outages raise
 
-Since 1.9.0, `inject_context`, `extract_memories` and `report_outcomes` re-raise `redis.exceptions.ConnectionError`/`TimeoutError` rather than logging them and returning an empty result. A dead server used to be indistinguishable from "this turn had no relevant memories", which is the failure mode that makes a memory layer look like it is working while it is not.
+Since 1.9.0, `inject_context`, `extract_memories` and `report_outcomes` re-raise `redis.exceptions.ConnectionError`/`TimeoutError` rather than logging them and returning an empty result. A dead server used to be indistinguishable from "this turn had no relevant memories", which is the failure mode that makes a memory layer look like it is working while it is not. Since #816 the same holds on Postgres: a model bound to Postgres raises `popoto.backends.BackendUnavailableError` when its database is unreachable, and all three methods re-raise it too (before, it was logged and degraded to an empty context, a dropped write or dropped outcomes).
 
 Wrap the call at your application's turn boundary if a turn must survive an outage:
 
 ```python
-from popoto.redis_db import OUTAGE_ERRORS   # redis ConnectionError/TimeoutError, not the builtins
+from popoto.backends import OUTAGE_ERRORS   # redis ConnectionError/TimeoutError + BackendUnavailableError
 
 try:
     assembly = sm.inject_context(query)
@@ -298,7 +312,26 @@ except OUTAGE_ERRORS:
     assembly = None    # serve the turn without memory, and alert
 ```
 
-Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index.
+`popoto.backends.OUTAGE_ERRORS` is the tuple the recipe tests against. `popoto.redis_db.OUTAGE_ERRORS` is the Redis pair only and misses a Postgres outage; prefer the backend-neutral one even on Redis, so the handler keeps working if the model moves.
+
+Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index. So does contention: `popoto.backends.BackendRetryableError` (a deadlock, a serialization failure, an exhausted pool) is not an outage and is not in the tuple.
+
+#### Monitoring the backend
+
+Outages raise on both backends, so the handler above is all a loop needs. On
+Postgres you can also alert on a store that is failing between turns by
+reading the backend's health record (the Redis backend keeps none):
+
+```python
+from popoto.backends import get_backend
+from popoto.recipes import DefaultMemory
+
+health = get_backend(DefaultMemory).health.as_dict()
+if not health["ok"]:
+    ...  # alert: memory is not being read or written
+```
+
+See [Topology and the outage contract](../features/postgres-backend.md#topology-and-the-outage-contract).
 
 ## Tuning
 

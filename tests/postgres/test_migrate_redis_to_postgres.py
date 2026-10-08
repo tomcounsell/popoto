@@ -2792,3 +2792,146 @@ def test_two_roles_the_run_grants_only_when_asked(
         (on,),
     ).fetchone()
     assert default_acls == 0
+
+
+# -- the auditable-extraction trail (#822) ---------------------------------------
+
+AUDIT_PATTERNS = ("*DecisionRecord*", "*JournalEntry*", "popoto:m3:*", "stream:journal")
+
+
+def _wipe_audit_trail():
+    client = _scratch_client()
+    for pattern in AUDIT_PATTERNS:
+        for key in list(client.scan_iter(match=pattern, count=1000)):
+            client.delete(key)
+
+
+def _audit_candidate(i, turn_id="t1"):
+    from popoto.extraction.candidates import Candidate
+
+    return Candidate(
+        text=f"Fact number {i} holds.",
+        turn_id=turn_id,
+        candidate_id=f"{turn_id}:sentence:{i}",
+        start=0,
+        end=8,
+        generator_rule="sentence",
+    )
+
+
+def _seed_audit_trail(tmp_path):
+    """A decision log plus the journal it assembled into, written on Redis the
+    way the auditable path writes them, copied into a fixture server and
+    SAVEd. Every row shape: two assembled accepts, a surviving ``pending``,
+    and one of each non-accept terminal state."""
+    from popoto.extraction.decision_log import DecisionLog
+    from popoto.extraction.verdict import ReasonCode, Verdict
+    from popoto.recipes.provenance_journal import ProvenanceJournal
+
+    previous = set_backend("redis")
+    try:
+        _wipe_audit_trail()
+        log = DecisionLog()
+        entry_ids = {}
+        for i in range(2):
+            entry_ids[i] = log.assemble(
+                "ag", _audit_candidate(i), ProvenanceJournal, speaker="u"
+            )
+        log.write_pending("ag", _audit_candidate(2))
+        for i, verdict in enumerate(
+            (Verdict.REJECT, Verdict.WITHHOLD, Verdict.FIREWALL_DROP), start=3
+        ):
+            log.write_terminal(
+                "ag", _audit_candidate(i), verdict, ReasonCode.NOT_A_FACT
+            )
+        summary = log.turn_summary("ag", "t1")
+        client = _scratch_client()
+        directory = tmp_path / "audit-fixture-server"
+        directory.mkdir()
+        server = _FixtureServer(directory)
+        try:
+            keys = set()
+            for pattern in AUDIT_PATTERNS:
+                keys.update(client.scan_iter(match=pattern, count=1000))
+            # The journal writes current $IdxPtr pointers for its indexed
+            # fields: the family the inventory used to refuse (#822).
+            assert any(k.startswith(b"$IdxPtr:JournalEntry:") for k in keys)
+            for key in keys:
+                _copy_key(client, server.client, key)
+            rdb = server.save_and_stop()
+        except BaseException:
+            server.process.kill()
+            raise
+    finally:
+        _wipe_audit_trail()
+        set_backend(previous)
+    snapshot = tmp_path / "audit.rdb"
+    shutil.copyfile(rdb, snapshot)
+    return snapshot, entry_ids, summary
+
+
+def test_a_decision_log_and_its_journal_migrate_clean_and_stay_usable(
+    tmp_path, monkeypatch, pg, admin
+):
+    """#822: a store holding ``DecisionRecord`` rows and the ``JournalEntry``
+    rows they point at migrates CLEAN. The journal's ``$IdxPtr`` keys are
+    counted as rebuildable index state (each names the ``$IndexF`` Set its
+    record sits in, derived from the field value) rather than stopping the
+    run, and afterwards the decision log and the journal work on Postgres:
+    the rows, the summary and the ``entry_id`` links all crossed."""
+    from popoto.backends import reset_bindings
+    from popoto.extraction.decision_log import DecisionLog, DecisionRecord
+    from popoto.extraction.verdict import Verdict
+    from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+
+    rdb, entry_ids, redis_summary = _seed_audit_trail(tmp_path)
+    content = tmp_path / "audit-content"
+    content.mkdir()
+    report = run_migration(
+        _config(
+            tmp_path,
+            pg,
+            rdb,
+            content,
+            mappings=(
+                mig.ModelMapping(model=DecisionRecord),
+                mig.ModelMapping(model=JournalEntry),
+            ),
+        )
+    )
+    assert report.verdict == "clean", report.summary()
+    data = report.data
+    assert data["models"]["DecisionRecord"]["decisions"] == {"inserted": 6}
+    assert data["models"]["JournalEntry"]["decisions"] == {"inserted": 2}
+    inventory = json.loads((tmp_path / "run" / "inventory.json").read_text())
+    families = inventory["models"]["JournalEntry"]["families"]
+    for family in ("$IdxPtr", "$IndexF"):
+        assert families[family]["disposition"] == "rebuildable", family
+        assert families[family]["keys"] > 0, family
+    # The summary hash and the claim keys stay behind: Postgres derives the
+    # summary from the rows, and a claim is an ephemeral lease.
+    assert "popoto" in inventory["out_of_scope"]
+
+    pg.forget_tables()
+    reset_bindings([DecisionRecord, JournalEntry])
+    log = DecisionLog()
+    assert log._backend is not None  # the Postgres path: no Redis command
+    rows = {row.candidate_id: row for row in log.list_for_agent("ag")}
+    assert len(rows) == 6
+    assert log.turn_summary("ag", "t1") == redis_summary
+    assert [r.candidate_id for r in log.list_pending("ag")] == ["t1:sentence:2"]
+    for i, entry_id in entry_ids.items():
+        row = rows[f"t1:sentence:{i}"]
+        assert row.state == Verdict.ACCEPT.value and row.entry_id == entry_id
+        (entry,) = JournalEntry.query.filter(
+            turn_id="t1", subjects__all=[f"cand:t1:sentence:{i}"]
+        )
+        assert entry.entry_id == entry_id
+        # An already-assembled candidate is recognised, not re-appended.
+        assert log.assemble("ag", _audit_candidate(i), ProvenanceJournal) == entry_id
+    # The surviving pending row resumes on Postgres, and a fresh one assembles.
+    resumed = log.assemble("ag", _audit_candidate(2), ProvenanceJournal, speaker="u")
+    fresh = log.assemble("ag", _audit_candidate(9), ProvenanceJournal, speaker="u")
+    assert resumed and fresh and resumed != fresh
+    assert len(list(JournalEntry.query.filter(turn_id="t1"))) == 4
+    assert log.turn_summary("ag", "t1")["state:accept"] == 4

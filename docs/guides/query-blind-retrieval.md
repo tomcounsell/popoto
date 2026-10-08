@@ -101,6 +101,19 @@ budget across both. A model carrying `BM25Field` **and** `CyclicDecayField`
 gets query-relevant results and proactively surfaced ones in a single ranked
 list, with `AssemblyResult.proactive` naming which came from where.
 
+## On Postgres
+
+Mode selection is the same on a Postgres-bound model, and so are the rankings:
+composite pull is one `SELECT` (`rank_composite`), and lexical and hybrid pull
+run `BM25Field.search` with corpus-wide statistics, returning the same keys in
+the same order as Redis. Backfilling is easier there: `BM25Field` postings
+live in a companion table, and `Memory.rebuild_indexes()` writes the missing
+postings for live records from their stored text (`check_indexes()` reports
+them as `missing` first), so the re-save loop above is optional. See
+[ContextAssembler](../features/postgres-backend.md#contextassembler-m2c),
+[BM25](../features/postgres-backend.md#bm25) and
+[Index maintenance and transfer](../features/postgres-backend.md#index-maintenance-and-transfer-m5).
+
 ## See also
 
 - [ContextAssembler retrieval modes](../features/context-assembler.md#pull-path-modes-retrieval_mode)

@@ -161,10 +161,14 @@ openclaw config set \
 Removing the plugin leaves the MCP tools in place; the model can still call
 `memory_search` and `memory_save`. To remove those too, delete the
 `mcp.servers.popoto-memory` entry from `openclaw.json`. Nothing stored in Redis
-is touched by either — uninstalling stops new memories being written, it does not
+(or Postgres) is touched by either — uninstalling stops new memories being written, it does not
 delete the ones you have.
 
 ## Configuration
 
 Identical to every other harness, all environment-driven. See
 [Harness Integration](../features/harness-integration.md).
+
+The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in the environment OpenClaw runs the plugin and MCP server in; see
+[On Postgres](../features/harness-integration.md#on-postgres).

@@ -163,10 +163,22 @@ Type[Scenario] x 50          SweepPoint results       SweepPoint results
 ## Design Decisions
 
 - **Deterministic seeds**: `ScenarioFactory.default_seeds()` uses `random.Random(42)` for reproducible seed generation. Each scenario uses `random.Random(seed_id)` internally.
-- **No parallelism**: Sequential execution avoids Redis key conflicts and is fast enough (target: under 60 seconds for a full ratchet run).
+- **No parallelism**: Sequential execution avoids key conflicts in the shared Redis benchmark database and is fast enough (target: under 60 seconds for a full ratchet run).
 - **Immutable harness**: The factory generates standard `Scenario` subclasses. No changes to `SweepRunner`, `ResultsAggregator`, `Scenario` base, metrics, or `apply_overrides`.
 - **No auto-writes**: The ratchet proposes changes for human review. It never modifies `constants.py`.
 - **Tier 4 excluded**: Recipe-layer scenarios use fixture-driven multi-turn simulation, which is too complex for parametric generation. Tier 4 continues to use hand-crafted scenarios exclusively.
+
+## On Postgres
+
+The sweep harness is Redis-only. Generated scenarios write through the global
+Redis client directly (`ScenarioFactory` backdates relevance with a `ZADD` on
+the record's `:relevance` key, and `Scenario` cleanup scans and deletes Redis
+keys), so there is no Postgres leg and every sweep and ratchet number describes
+the Redis path. The `PG_*` Defaults are deliberately excluded from the sweep
+registry (`tests/benchmarks/test_defaults_sync.py` lists them as deployment
+knobs that bound latency or maintenance cost, not scores). See
+[Ranking and memory state](postgres-backend.md#ranking-and-memory-state-m2a)
+for how the ranking constants apply on Postgres.
 
 ## Related
 

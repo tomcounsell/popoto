@@ -9,7 +9,8 @@ Usage::
 
     python examples/harness_memory/verify.py
 
-Requires a local Redis or Valkey. Nothing else: no API key, no harness, no
+Requires a local Redis or Valkey, or Postgres with ``POPOTO_BACKEND=postgres``
+and ``POPOTO_POSTGRES_URL``. Nothing else: no API key, no harness, no
 network.
 """
 
@@ -67,13 +68,18 @@ def main() -> int:
     )
     service = MemoryService(config)
 
-    print(f"harness memory verification  (redis {config.url}, agent {agent_id})\n")
+    on_redis = service.backend_name == "redis"
+    where = f"redis {config.url}" if on_redis else service.backend_name
+    print(f"harness memory verification  ({where}, agent {agent_id})\n")
 
     try:
-        service.redis.ping()
+        service.ping()
     except Exception as exc:
-        print(f"Redis is not reachable at {config.url}: {exc}")
-        print("Start one with `redis-server` or `valkey-server`, then retry.")
+        if on_redis:
+            print(f"Redis is not reachable at {config.url}: {exc}")
+            print("Start one with `redis-server` or `valkey-server`, then retry.")
+        else:
+            print(f"The {service.backend_name} backend is not reachable: {exc}")
         return 1
 
     read = dict(READ_PAYLOAD, session_id=session_id, cwd=".")
@@ -122,7 +128,7 @@ def main() -> int:
 
         print("\n5. doctor sees a healthy setup")
         status = service.status()
-        check("redis reachable", status["redis_reachable"] is True)
+        check(f"{service.backend_name} reachable", status["reachable"] is True)
         check(
             "retrieval is query-sensitive",
             status["retrieval_mode"] == "lexical",
@@ -140,13 +146,12 @@ def main() -> int:
                 removed += 1
             except Exception:
                 pass
-        for pattern in (
-            f"$popoto_memory:pending:{agent_id}:*",
-            f"$popoto_memory:counter:{agent_id}:*",
-            f"$popoto_memory:last:{agent_id}:*",
-        ):
-            for key in service.redis.scan_iter(match=pattern, count=200):
-                service.redis.delete(key)
+        # The integration's own state for this run's agent id: Redis keys,
+        # or Postgres rows (counters and stamps there never expire).
+        try:
+            service.purge_integration_state()
+        except Exception:
+            pass
         print(f"\n   cleaned up {removed} record(s)")
 
     if FAILURES:

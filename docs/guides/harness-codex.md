@@ -86,6 +86,10 @@ export POPOTO_MEMORY_AGENT_ID=my-project
 For a boundary enforced by Redis rather than by a query filter, point each
 project at its own `POPOTO_MEMORY_URL` database (any database but 0, which
 is refused — see [Harness Integration](../features/harness-integration.md#database-0-is-refused)).
+The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in the Codex hook
+environment, and use a `POPOTO_POSTGRES_SCHEMA` per project as the equivalent
+boundary; see [On Postgres](../features/harness-integration.md#on-postgres).
 
 ## Corpus growth and eviction
 

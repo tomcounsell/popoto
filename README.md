@@ -6,13 +6,13 @@
 ### Documentation: [**popoto.io**](https://popoto.io/)
 
 
-# Popoto: Agent Memory on Redis, Valkey and PostgreSQL
+# Popoto: Agent Memory on Postgres, Redis, and Valkey
 
 Memory for LLM agents, as primitives you program rather than a service you call. Records decay over time, confidence moves with evidence, associations form between things mentioned together, and a context assembler packs the result into a token budget before each turn.
 
-It runs in your process against a Redis or Valkey server, or a PostgreSQL database, that you already operate. Your memory data stays in your database, and the core install is three packages with no API key.
+It runs in your process against a database you already operate. Underneath is one Django-like model API with two storage backends: Redis/Valkey (the default) and Postgres (opt-in since 1.10). You choose the backend per model or per process, and the model code does not change. Your memory data stays in your database, and the default install is three packages with no API key.
 
-Underneath, Popoto is a full Redis/Valkey ORM with Django-like model syntax. The memory system is built on it, and the [ORM half is documented below](#redis--valkey-orm).
+**Which backend?** For agent memory, Postgres is the recommended substrate: every agent-memory feature runs on it, and new capabilities land there first. Redis and Valkey remain fully supported, for agent memory and for everything else the ORM does, and nothing changes for existing Redis deployments. The [ORM half is documented below](#one-model-api-redis-valkey-and-postgres).
 
 ## Install
 
@@ -22,15 +22,15 @@ pip install popoto
 
 That pulls `popoto`, `redis`, and `msgpack`: 3 packages, 9.0 MB of site-packages measured 2026-09-04 in a clean Python 3.12 venv resolving redis-py 8.1.0. Point it at Redis or Valkey on `localhost:6379` and you are running.
 
-### On PostgreSQL
+For Postgres, install the extra and name the database (PostgreSQL 18 or newer):
 
-```
-pip install 'popoto[postgres]'
+```bash
+pip install 'popoto[postgres]'      # adds psycopg, pgvector, greenlet
 export POPOTO_BACKEND=postgres
-export POPOTO_POSTGRES_URL=postgresql://app@db.internal:5432/agents
+export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents
 ```
 
-The same models and the same memory loop then run on PostgreSQL 18 or newer (a UTF8 database, plus `CREATE EXTENSION vector` for embeddings), with no Redis at all. Each model is a typed table with native indexes. Or set `Meta.backend = "postgres"` on one model and keep the rest on Redis. [Use Postgres](https://popoto.io/guides/postgres-quickstart/) is the setup guide, and [Redis to Postgres Migration](https://popoto.io/features/redis-to-postgres-migration/) copies existing memory across.
+Popoto never reads `DATABASE_URL`. Tables are created on first use. See [Postgres Backend](https://popoto.io/features/postgres-backend/) for the full reference, including the [documented divergences](https://popoto.io/features/postgres-backend/#documented-divergences) from Redis behaviour and the fields that stay Redis-only (`DataFrameField`).
 
 ## Memory around an LLM turn
 
@@ -83,13 +83,15 @@ memory.report_outcomes(assembly)
 
 `BM25Field` is what makes retrieval respond to the query text. Leave it off and `SubconsciousMemory` ranks by importance and confidence alone, which is query-blind by design and right for some workloads. The [SubconsciousMemory recipe](https://popoto.io/guides/subconscious-memory-recipe/) covers when each mode applies.
 
+The example runs unchanged on either backend: with `POPOTO_BACKEND=postgres` set, `Memory` is a Postgres table instead of Redis hashes. Moving an existing Redis memory store across is a one-off copy from an RDB snapshot: [Redis to Postgres Migration](https://popoto.io/features/redis-to-postgres-migration/).
+
 Next steps: the [Agent Memory Quickstart](https://popoto.io/guides/agent-memory-quickstart/) builds the primitives up level by level, and the [Agent Memory overview](https://popoto.io/features/agent-memory/) is the full reference.
 
-Running inside Claude Code, Codex, Hermes, or OpenClaw? [Harness Integration](https://popoto.io/features/harness-integration/) wires the same loop into hooks and MCP with no glue code: `pip install 'popoto[mcp]'`, paste a config block, and memory injects before every turn and captures after it.
+Running inside Claude Code, Codex, Hermes, or OpenClaw? [Harness Integration](https://popoto.io/features/harness-integration/) wires the same loop into hooks and MCP with no glue code: `pip install 'popoto[mcp]'`, paste a config block, and memory injects before every turn and captures after it. It runs on Redis, Valkey or Postgres.
 
 ## What is measured
 
-Every number below comes from a harness in this repository, with its result JSON committed alongside. Method, per-category tables, and the runs that came out badly are in [Benchmarks](https://popoto.io/benchmarks/).
+Every number below comes from a harness in this repository, with its result JSON committed alongside, and was measured on the Redis backend; Postgres performance measurements are in the [Postgres Backend](https://popoto.io/features/postgres-backend/#performance-m1-m2a-and-m3-exit-criteria) reference. Method, per-category tables, and the runs that came out badly are in [Benchmarks](https://popoto.io/benchmarks/).
 
 **Retrieval quality.** On LongMemEval-S (all 500 questions, no sampling, hybrid BM25 + vector with weighted RRF): Recall@1 0.892, Recall@5 0.986, MRR 0.931. Read the granularity before comparing this to anything: Popoto indexes one record per conversation turn, and a retrieved turn counts as a hit for its parent session, so these are session-level recall figures produced by turn-level ranking. Systems that rank whole sessions are answering a differently shaped question and the numbers are not interchangeable.
 
@@ -101,9 +103,9 @@ Every number below comes from a harness in this repository, with its result JSON
 
 **Valkey is a first-class target.** Popoto uses core Redis data types and commands only, with no Redis-module dependency, and the suite carries explicit Valkey-safety tests asserting that indexes stay on plain types. Since August 2026 the test suite — everything except the `slow`-marked tests, chiefly the stress suite — also runs against a real Valkey server on every pull request and every push to `main`, as a separately named `pytest (Valkey)` check in [`tests.yml`](https://github.com/tomcounsell/popoto/blob/main/.github/workflows/tests.yml), pinned to `valkey/valkey:8-alpine` alongside the Redis job's `redis:7-alpine`. The job asserts via `INFO server` that the container really is Valkey before pytest starts, and there has been no Valkey-only failure across 60 completed runs. The same code runs against either server.
 
-## Redis / Valkey ORM
+## One model API: Redis, Valkey, and Postgres
 
-Popoto started as an ORM and still is one. Every memory primitive above is a field on an ordinary model, so the same query syntax, indexes, TTLs, and pub/sub apply.
+Popoto started as a Redis ORM and still is one. Since 1.10 the same models also run on Postgres, where each model is a typed table with native indexes. Every memory primitive above is a field on an ordinary model, so the same query syntax, indexes, TTLs, and pub/sub apply on either backend.
 
 ```python
 from popoto import Model, KeyField, Field, SortedField
@@ -112,6 +114,9 @@ class Restaurant(Model):
     name = KeyField()
     cuisine = Field()
     rating = SortedField(type=float)
+
+    # class Meta:
+    #     backend = "postgres"   # this model only; or POPOTO_BACKEND for the process
 
 Restaurant.create(name="Burger Palace", cuisine="American", rating=4.5)
 
@@ -131,6 +136,7 @@ print(f"{restaurant.name} serves {restaurant.cuisine} food.")
  - compatible with Pandas, Xarray for N-dimensional matrix search
  - PubSub for message queues, streaming data processing
  - **Full Redis and Valkey support** - works with both out of the box
+ - **[Postgres backend](https://popoto.io/features/postgres-backend/)** - the same models as typed Postgres tables, opt-in per model or per process (`pip install 'popoto[postgres]'`)
  - **[Agent Memory](https://popoto.io/features/agent-memory/)** - programmable memory primitives for AI agents (decay, confidence, associations, context assembly)
  - **[Content & Embeddings](https://popoto.io/features/content-and-embedding-fields/)** - large content storage, vector embeddings, and semantic search
  - **[Harness Integration](https://popoto.io/features/harness-integration/)** - subconscious memory for Claude Code, Codex, Hermes, and OpenClaw via hooks and MCP
@@ -219,7 +225,7 @@ uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"
 pytest
 ```
 
-By default Popoto connects to `localhost:6379`; set `REDIS_URL` to point at a different server. The pytest plugin isolates tests on Redis DB 15, which this repo opts into with `popoto_test_db = "15"` in `pyproject.toml` (override with `POPOTO_TEST_DB=<n>`). In *your* project the plugin does nothing until you set one of those — see [Testing](https://popoto.io/testing/).
+By default Popoto connects to `localhost:6379`; set `REDIS_URL` to point at a different server. To run against Postgres instead, set `POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` as shown under [Install](#install); the Postgres test suite and its own `POSTGRES_URL` variable are covered in [Testing](https://popoto.io/testing/). The pytest plugin isolates tests on Redis DB 15, which this repo opts into with `popoto_test_db = "15"` in `pyproject.toml` (override with `POPOTO_TEST_DB=<n>`). In *your* project the plugin does nothing until you set one of those — see [Testing](https://popoto.io/testing/).
 
 
 # Documentation
