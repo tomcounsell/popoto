@@ -1,10 +1,10 @@
 site_name: Popoto Documentation
 site_url: https://popoto.io/
 site_description: >-
-    Agent memory on Redis and Valkey, as primitives you program rather than a
+    Agent memory on Redis, Valkey or PostgreSQL, as primitives you program rather than a
     service you call. Records decay, confidence moves with evidence,
     associations form, and a context assembler packs the result into a token
-    budget before each turn. Built on a full Redis/Valkey ORM.
+    budget before each turn. Built on a full ORM for Redis, Valkey and Postgres.
 repo_url: https://github.com/tomcounsell/popoto/
 edit_uri: edit/main/docs
 site_author: Tom Counsell
