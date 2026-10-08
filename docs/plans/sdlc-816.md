@@ -365,7 +365,9 @@ Postgres down -> `SubconsciousMemory.inject_context` -> `BackendUnavailableError
   cannot be "remove the `except Exception`".
 - [ ] `integrations/service.py::_record_failure`: a test feeds a
   `BackendUnavailableError` and asserts `_redis_down is True`, and that a later
-  `context()` call short-circuits to `""` without calling the assembler; a
+  `MemoryService.assemble()` call (`service.py:236`; the service has no
+  `context()` method) short-circuits at `:269`/`:273` to `""` without calling
+  the assembler; a
   `ValueError` leaves `_redis_down` False.
 - [ ] `transfer/cli.py` handlers: export and import each get a test where the
   transfer function raises `BackendUnavailableError` -> one stderr line naming
@@ -380,6 +382,8 @@ Postgres down -> `SubconsciousMemory.inject_context` -> `BackendUnavailableError
   attribute (`getattr(..., None)`): never matches; falls through as today.
 - [ ] `_default` a string (`set_backend("postgres")`): unchanged path, no
   instance match.
+- [ ] `_default` an instance named `"redis"`: `_instance("redis")` ignores it
+  and returns the cached stock `RedisBackend` (concern 1 pin).
 - [ ] `set_backend(None)` after `set_backend(instance)`: the next
   `_instance("postgres")` builds from env (raises `BackendUnavailableError`
   with `POPOTO_POSTGRES_URL` unset), proving the instance was not cached.
@@ -403,7 +407,16 @@ New tests (additive):
 - `tests/test_subconscious_memory.py`: three outage-propagation tests + three non-outage-degrades siblings (stub the assembler / save / `ObservationProtocol.on_context_used` to raise).
 - `tests/test_integrations_service.py`: breaker trips on `BackendUnavailableError`.
 - `tests/test_transfer_cli.py`: export/import with `BackendUnavailableError` and with `redis.exceptions.TimeoutError`.
-- `tests/test_backend_selection.py`: instance with `name="postgres"` serves a `Meta.backend="postgres"` model with `POPOTO_POSTGRES_URL` unset (use a `RedisBackend` subclass/stand-in named `"postgres"` or a stub whose `bind` returns capabilities, so no server is needed); a `Meta.backend="redis"` model under a Postgres-named instance still gets `RedisBackend`; instance beats a previously cached env/`_instances` entry; `set_backend(None)` stops serving it; `resolve_stream_backend(backend="postgres")` and the publisher's `_instance(pipeline.backend)` path return the same instance (spike-1).
+- `tests/test_backend_selection.py` — **object identity only** (critique concern 2), following `test_meta_backend_wins_over_the_default`'s pattern. The stand-in is `inst = RedisBackend(); inst.name = "postgres"`, used purely as an identity token: **no `save()`, query, or any model operation runs on it**, because model and field code branch on `backend.name` and a Redis backend wearing the Postgres name would take Postgres code paths. With `POPOTO_POSTGRES_URL` unset and `set_backend(inst)`, assert:
+  - `get_backend(SelPinnedPostgres) is inst` (a `Meta.backend="postgres"` model);
+  - `backends._instance("postgres") is inst`;
+  - `streams.resolve_stream_backend(backend="postgres") is inst` (spike-1);
+  - `publisher._native_backend(obj, UnitOfWork(..., backend="postgres")) is inst` (spike-1);
+  - a `Meta.backend="redis"` model still gets a `RedisBackend` that `is not inst`;
+  - instance beats a previously cached entry: `_swap_instance("postgres", other)` first, then `set_backend(inst)` -> `_instance("postgres") is inst`; restore in `finally`;
+  - `set_backend(None)` stops serving it: `_instance("postgres")` raises `BackendUnavailableError` naming `POPOTO_POSTGRES_URL`;
+  - **Redis pin (concern 1)**: `custom = RedisBackend()` (name `"redis"`), `set_backend(custom)`: `get_backend(SelExplicitRedis) is not custom`, `_instance("redis") is not custom`, while an un-pinned model `is custom` — the pre-#816 behavior.
+  If `get_backend` on the pinned model trips `_ensure_bound` (`RedisBackend.bind` on a Postgres-pinned spec), assert on `_resolve(SelPinnedPostgres) is inst` instead; still identity only.
 
 ## Rabbit Holes
 
@@ -424,14 +437,16 @@ New tests (additive):
 
 ## Risks
 
-### Risk 1: A Redis-named custom instance now serves `Meta.backend="redis"` models
-**Impact:** `set_backend(MyRedisBackend())` (name `"redis"`) previously left
-explicitly-Redis models on the stock `RedisBackend()`; now they use the custom
-instance. Anyone relying on that split would see different behavior.
-**Mitigation:** this is the issue's stated rule applied symmetrically and is
-what the docstrings promise. No in-repo test or caller relies on the split
-(spike-4; `Recording` in `test_backend_planning.py` is named `"redis"` but
-serves only un-pinned models). Call it out in the CHANGELOG entry.
+### Risk 1: The name-match rule leaking into Redis resolution
+**Impact:** a symmetric rule would move `Meta.backend="redis"` models onto a
+Redis-named `set_backend` instance, changing Redis behavior the issue says must
+stay backward compatible.
+**Mitigation (resolved by critique concern 1):** the match is limited to
+non-Redis names (`name != "redis"` in `_instance`). Redis resolution is
+unchanged, pinned by the Redis-pin test in `test_backend_selection.py`. The
+asymmetry is documented in `set_backend`'s and `_instance`'s docstrings and the
+module docstring. No CHANGELOG `### Changed` entry is needed, since no Redis
+behavior changes.
 
 ### Risk 2: Widening the tuple changes which errors the recipes swallow
 **Impact:** code paths that used to log-and-degrade on a Postgres outage now
@@ -503,9 +518,14 @@ agent runs) is fixed in place by Defect 1; no new tool surface is added.
 - [ ] `docs/features/postgres-backend.md:65-67` and `:577-579`: state the
   instance rule (a `set_backend` instance serves `Meta.backend="postgres"`
   models too) and point outage catching at `popoto.backends.OUTAGE_ERRORS`.
+- [ ] `docs/testing.md:145` (the conformance fixture's "binds ... as the
+  instance `Meta.backend = "postgres"` resolves to" paragraph, i.e. the
+  `_swap_instance` explanation): say that a Postgres-named `set_backend`
+  instance now serves pinned models on its own, and the `_swap_instance` call
+  is kept as a harmless redundancy until after 1.10.0 (No-Go).
 - [ ] `CHANGELOG.md` `[Unreleased]` / `### Fixed`: one entry for #816 covering
-  both defects, the Redis-timeout-in-transfer side fix, and Risk 1's behavior
-  note.
+  both defects and the Redis-timeout-in-transfer side fix, stating that the
+  instance rule applies to non-Redis names and Redis resolution is unchanged.
 
 ### External Documentation Site
 - [ ] `mkdocs build --strict` passes.
@@ -513,6 +533,11 @@ agent runs) is fixed in place by Defect 1; no new tool surface is added.
 ### Inline Documentation
 - [ ] Docstrings: `backends.types.OUTAGE_ERRORS`, `set_backend`, `_instance`;
   comments at `redis_db.py:813-818` and `context_assembler.py:88-96`.
+- [ ] `backends/__init__.py:28-29` module docstring, "Selection (plan §4)":
+  the bullet "`Meta.backend = ...` on a model wins" must add that a
+  `set_backend` instance whose `name` matches a non-Redis `Meta.backend`
+  serves that model, and `Meta.backend="redis"` always resolves to the stock
+  Redis backend.
 
 ## Success Criteria
 
