@@ -2935,3 +2935,65 @@ def test_a_decision_log_and_its_journal_migrate_clean_and_stay_usable(
     assert resumed and fresh and resumed != fresh
     assert len(list(JournalEntry.query.filter(turn_id="t1"))) == 4
     assert log.turn_summary("ag", "t1")["state:accept"] == 4
+
+
+# -- a model without a KeyField (#826) ----------------------------------------------
+
+
+def _auto_keyed_model():
+    """A fresh ``MigAutoKeyed`` class: no KeyField, so keyed by the implicit
+    ``_auto_key``. Each call is a new class object that has never built an
+    instance -- what a migration process importing the operator's models
+    sees."""
+
+    class MigAutoKeyed(popoto.Model):
+        title = popoto.StringField(default="")
+        score = popoto.IntField(default=0)
+
+    return MigAutoKeyed
+
+
+def test_a_model_without_a_key_field_migrates_clean(tmp_path, monkeypatch, pg, admin):
+    """#826: the tool used to see no key field on such a model until it
+    happened to construct one (``_auto_key`` was registered by the first
+    ``__init__``). The class it is handed here has never been constructed;
+    the run is CLEAN and every record keeps its key."""
+    previous = set_backend("redis")
+    try:
+        _wipe_models()
+        seeding = _auto_keyed_model()
+        ids = {seeding.create(title=f"t{i}", score=i)._auto_key: i for i in range(5)}
+        client = _scratch_client()
+        directory = tmp_path / "auto-fixture-server"
+        directory.mkdir()
+        server = _FixtureServer(directory)
+        try:
+            for pattern in MODEL_PATTERNS:
+                for key in client.scan_iter(match=pattern, count=1000):
+                    _copy_key(client, server.client, key)
+            rdb = server.save_and_stop()
+        except BaseException:
+            server.process.kill()
+            raise
+    finally:
+        _wipe_models()
+        set_backend(previous)
+    content = tmp_path / "auto-content"
+    content.mkdir()
+
+    model = _auto_keyed_model()
+    assert model._meta.key_field_names == {"_auto_key"}
+    report = run_migration(
+        _config(
+            tmp_path,
+            pg,
+            rdb,
+            content,
+            mappings=(mig.ModelMapping(model=model),),
+        )
+    )
+    assert report.verdict == "clean", report.summary()
+    rows = _rows(admin, pg.schema, "mig_auto_keyed", "_auto_key", "score")
+    assert {pk: tuple(v) for pk, v in rows.items()} == {
+        f"MigAutoKeyed:{k}": (k, i) for k, i in ids.items()
+    }

@@ -417,17 +417,21 @@ def test_a_field_added_after_the_unit_used_its_table_is_refused_at_once(pg):
     assert sorted(o.name for o in After.query.all()) == ["a", "b", "warm"]
 
 
-def test_an_auto_key_table_bound_before_its_first_instance_is_refused_at_once(pg):
-    """Review shape (b): an auto-key model's table was created by a query
-    before any instance existed, so it has no ``_auto_key`` column. The unit
-    reads it (``reads_on``: an ``AccessShareLock``), then the first instance
-    changes the spec, which needs ``ADD COLUMN "_auto_key"``."""
-    from popoto.backends.types import SchemaDriftError
+def test_an_auto_key_table_bound_before_its_first_instance_needs_no_ddl(pg):
+    """Review shape (b), closed by #826: an auto-key model's table bound by a
+    query before any instance existed. It used to lack ``_auto_key`` (the
+    first instance added the field), so a unit that read it and then saved
+    needed ``ADD COLUMN "_auto_key"`` under its own lock and was refused. The
+    field is registered at class creation now: the query binds the full
+    table, and the unit reads and saves with no schema change."""
 
     class DdlAutoKeyed(popoto.Model):
         title = popoto.Field(null=True)
 
-    assert DdlAutoKeyed.query.count() == 0  # binds the key-less spec
+    assert DdlAutoKeyed._meta.key_field_names == {"_auto_key"}
+    assert DdlAutoKeyed.query.count() == 0  # binds the table
+    bound = pg._table(DdlAutoKeyed._meta.spec)
+    assert "_auto_key" in bound.column_map()
 
     def unit():
         with pg.transaction() as uow:
@@ -435,16 +439,10 @@ def test_an_auto_key_table_bound_before_its_first_instance_is_refused_at_once(pg
                 assert DdlAutoKeyed.query.count() == 0
             DdlAutoKeyed(title="t").save(pipeline=uow)
 
-    _, exc, elapsed = _bounded(unit, 30)
-    assert isinstance(exc, SchemaDriftError), exc
-    assert "AccessShareLock" in str(exc)
-    assert elapsed < Defaults.PG_DDL_LOCK_TIMEOUT_MS / 1000.0
-    _other_thread_first_use(pg)
-
-    DdlAutoKeyed(title="t").save()  # outside the unit the column is added
-    with pg.transaction() as uow:
-        DdlAutoKeyed(title="u").save(pipeline=uow)
-    assert DdlAutoKeyed.query.count() == 2
+    _, exc, _elapsed = _bounded(unit, 30)
+    assert exc is None, exc
+    assert pg._table(DdlAutoKeyed._meta.spec) is bound  # no rebind, no DDL
+    assert DdlAutoKeyed.query.count() == 1
 
 
 def test_ddl_waiting_on_another_sessions_lock_times_out(pg, admin, monkeypatch):
