@@ -1983,8 +1983,10 @@ The example above runs the main DSN as `app` and the maintenance DSN as
 creates belong to `owner`, and `app` cannot use them until it is granted
 access. **Popoto grants nothing by default.** On the first save, `app` fails
 loudly with `popoto.backends.postgres.MainRolePermissionError` (a
-`PermissionError`). The message carries the server's own `permission denied`
-text and links to this section. It is not an outage, so `health` is
+`PermissionError`). It wraps a table, schema or sequence privilege refused on
+popoto's own schema; any other `permission denied` (a function such as
+`pg_read_file`, say) reaches you as the driver's own error. The message
+carries the server's own `permission denied` text and links to this section. It is not an outage, so `health` is
 untouched. The roles need only this:
 
 ```sql
@@ -2049,8 +2051,11 @@ same transaction and only on the objects that transaction created:
 
 "Created by that transaction" is checked in the catalog: the object's
 `pg_class` (or `pg_namespace`) row was written by this transaction and was not
-there when it began. A table only altered (`ADD COLUMN`) is not created, and
-an object another session made, at any moment, never qualifies. So popoto
+there once the transaction held the DDL's advisory locks. A table only altered
+(`ADD COLUMN`) is not created, and an object another session made, at any
+moment, never qualifies: that includes a table an older process (flag off)
+created while this one waited for the lock, which this one then only
+migrates. So popoto
 never grants on a table you create by hand, on another role's table, or on a
 schema it did not create. It runs no `ALTER DEFAULT PRIVILEGES` and no
 `ON ALL TABLES`. Once the tables exist, a process's first use creates nothing
