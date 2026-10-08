@@ -247,9 +247,8 @@ def hybrid_search(query: str, limit: int = 10) -> list:
     graph_results = []
     if keyword_results:
         seed_key = keyword_results[0][0]
-        propagated = CoOccurrenceField.propagate(
-            Memory, "associations", seed_key, hops=2, limit=50
-        )
+        associations = Memory._meta.fields["associations"]
+        propagated = associations.propagate(Memory, [seed_key], depth=2)
         graph_results = list(propagated.items())
 
     # 4. Fuse with RRF
