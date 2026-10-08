@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 owner: Solo dev
 created: 2026-10-08
 tracking: https://github.com/tomcounsell/popoto/issues/816
 last_comment_id:
+revision_applied: true
+revision_applied_at: 2026-10-08T05:55:43Z
 ---
 
 # Postgres Outage Classification and Instance Binding (#816)
@@ -550,12 +552,17 @@ agent runs) is fixed in place by Defect 1; no new tool surface is added.
   `redis.exceptions.TimeoutError`) through a handler that names the outage
   tuple: one stderr line, exit 1, with tests.
 - [ ] `set_backend(<instance named "postgres">)` serves a
-  `Meta.backend="postgres"` model with `POPOTO_POSTGRES_URL` unset, with a test.
+  `Meta.backend="postgres"` model with `POPOTO_POSTGRES_URL` unset, proven by
+  object identity only (no model operation on the stand-in), with a test.
 - [ ] A `Meta.backend="postgres"` model under a Redis-instance default resolves
   to Postgres-by-name, and a `Meta.backend="redis"` model under a
   Postgres-instance default resolves to Redis, with tests.
-- [ ] `_instance("postgres")` from streams and pubsub returns the same
-  instance as the model path (spike-1), with a test.
+- [ ] `Meta.backend="redis"` resolution is unchanged under a Redis-named
+  instance default (stock `RedisBackend`, not the instance), with a pinning
+  test.
+- [ ] `_instance("postgres")`, `resolve_stream_backend(backend="postgres")` and
+  `publisher._native_backend(obj, UnitOfWork(..., backend="postgres"))` each
+  return the same instance as the model path (spike-1), with identity tests.
 - [ ] `redis_db.OUTAGE_ERRORS` value is unchanged; no module under
   `src/popoto` other than `backends/types.py` imports it (drift guard test).
 - [ ] `set_backend` signature unchanged.
@@ -605,9 +612,9 @@ agent runs) is fixed in place by Defect 1; no new tool surface is added.
 - **Assigned To**: outage-binding-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- In `_instance(name)`, under `_lock`, return `_default` when it is a non-string instance with `getattr(_default, "name", None) == name`; do not write it into `_instances`.
-- Update `set_backend` / `_instance` docstrings and the `pytest_plugin.py:1098` comment (call stays).
-- Write the resolution tests listed under Test Impact (instance serves pinned model with env unset; cross-name pins still resolve by name in both directions; instance beats a cached entry; `set_backend(None)` falls back; streams/pubsub agree).
+- In `_instance(name)`, under `_lock`, return `_default` when it is a non-string instance, `name != "redis"`, and `getattr(_default, "name", None) == name`; do not write it into `_instances`.
+- Update `set_backend` / `_instance` docstrings, the `backends/__init__.py:28-29` module docstring, and the `pytest_plugin.py:1098` comment (call stays).
+- Write the resolution tests listed under Test Impact, **identity assertions only** (no `save()`/query on the `RedisBackend` renamed `"postgres"`): instance serves pinned model with env unset; cross-name pins still resolve by name in both directions; Redis pin unchanged under a Redis-named instance; instance beats a cached entry; `set_backend(None)` falls back; streams/pubsub agree.
 
 ### 3. Validate code
 - **Task ID**: validate-code
@@ -615,7 +622,8 @@ agent runs) is fixed in place by Defect 1; no new tool surface is added.
 - **Assigned To**: outage-binding-validator
 - **Agent Type**: validator
 - **Parallel**: false
-- Run the Verification table; run the full suite with `POPOTO_TEST_DB=<free n>` and report environment (redis-py version, extras, DB).
+- First confirm the suite tests this checkout (worktree trap #1): `python -c "import popoto; print(popoto.__file__)"` must resolve under the build worktree's `src/popoto/`; if it points at another tree, fix the editable install before trusting any number.
+- Run the Verification table; run the full suite with `POPOTO_TEST_DB=<free n>` and report environment (redis-py version, extras, DB, `popoto.__file__`).
 - Re-run the scratch repro from the Freshness Check against the branch: all four `isinstance`/`is` checks flip as expected and `_resolve(M)` returns the instance.
 
 ### 4. Documentation
@@ -639,6 +647,7 @@ agent runs) is fixed in place by Defect 1; no new tool surface is added.
 
 | Check | Command | Expected |
 |-------|---------|----------|
+| Package under test is this checkout | `python -c "import popoto; print(popoto.__file__)"` | output contains the build worktree's `src/popoto/__init__.py` |
 | Tests pass | `pytest -q -p no:cacheprovider` | exit code 0 |
 | Targeted tests pass | `pytest -q tests/test_outage_errors.py tests/test_backend_selection.py tests/test_subconscious_memory.py tests/test_integrations_service.py tests/test_transfer_cli.py` | exit code 0 |
 | Lint clean | `ruff check src/` | exit code 0 |
@@ -652,8 +661,15 @@ agent runs) is fixed in place by Defect 1; no new tool surface is added.
 
 ## Critique Results
 
+Verdict: **READY TO BUILD (with concerns)** — 0 blockers, 2 concerns, 3 nits. All five addressed in this revision.
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| CONCERN | Critique (1) | Applying the name-match rule to `"redis"` conflicts with the issue's constraint that Redis behavior and the `set_backend` signature stay backward compatible. | Technical Approach (Defect 2), Desired outcome, Data Flow, Risk 1, Open Question 2, Test Impact | Guard in `_instance` (`backends/__init__.py:832`): `if current is not None and not isinstance(current, str) and name != "redis" and getattr(current, "name", None) == name: return current`. No reason for symmetry found (Redis conformance leg sets no instance). Pinned by a test: under `set_backend(RedisBackend())`, `Meta.backend="redis"` models and `_instance("redis")` are `is not` the instance. CHANGELOG stays under `### Fixed`; no `### Changed` entry. |
+| CONCERN | Critique (2) | Proving resolution with a `RedisBackend` renamed `"postgres"` running `save()`/query is unsound: model code branches on `backend.name`. | Test Impact (`test_backend_selection.py`), Success Criteria, Task 2 | Identity only, after `test_meta_backend_wins_over_the_default`: `get_backend(M) is inst`, `backends._instance("postgres") is inst`, `resolve_stream_backend(backend="postgres") is inst`, `publisher._native_backend(obj, UnitOfWork(..., backend="postgres")) is inst`. No model operation on the stand-in; fall back to `_resolve(M) is inst` if binding trips. |
+| NIT | Critique (1) | Documentation list missed the module docstring and the testing guide's `_swap_instance` explanation. | Documentation (Inline + Feature) | Added `backends/__init__.py:28-29` ("`Meta.backend` ... wins") and `docs/testing.md:145`. |
+| NIT | Critique (2) | Short-circuit test named a nonexistent `MemoryService.context()`. | Failure Path Test Strategy | Use `MemoryService.assemble()` (`service.py:236`), which checks `_redis_down` at `:269`/`:273`. |
+| NIT | Critique (3) | Task 3 validator should confirm the package under test is the build checkout (worktree trap #1). | Task 3, Verification table | Validator first checks `popoto.__file__` resolves under the build worktree's `src/popoto/` and reports it with the environment. |
 
 ---
 
@@ -672,6 +688,7 @@ above, recorded here so critique can challenge them:
    `_instances` cache / `_swap_instance` > env build; the instance is never
    cached in `_instances`, so `set_backend(None)` or a replacement needs no
    eviction; `_bound` needs no change (keyed by `id(backend)`, cleared by
-   `set_backend`). The rule is name-symmetric, so a custom instance named
-   `"redis"` now also serves `Meta.backend="redis"` models (Risk 1). If the
-   maintainer wants the rule Postgres-only, it is a one-condition change.
+   `set_backend`). **Closed by critique concern 1:** the rule is limited to
+   non-Redis names (`name != "redis"`), so `Meta.backend="redis"` resolution
+   is unchanged and a Redis-named custom instance serves only un-pinned
+   models, as before. A test pins this.
