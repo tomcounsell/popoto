@@ -110,9 +110,7 @@ def test_the_inventory_names_no_field_prefix_nothing_writes():
     the real prefix's absence."""
     real = set(_field_prefixes())
     dead = {
-        p
-        for p in FAMILY_DISPOSITIONS
-        if p not in real and p not in NON_FIELD_FAMILIES
+        p for p in FAMILY_DISPOSITIONS if p not in real and p not in NON_FIELD_FAMILIES
     }
     assert not dead, f"inventory entries no Field class writes: {dead}"
 
@@ -198,9 +196,7 @@ def _unbound():
 
 
 @needs_redis_server
-def test_unique_and_sorted_fields_and_every_written_family_migrate_clean(
-    tmp_path, pg
-):
+def test_unique_and_sorted_fields_and_every_written_family_migrate_clean(tmp_path, pg):
     rdb = _snapshot(tmp_path)
     report = run_migration(_config(tmp_path, pg, rdb, "run"))
     assert report.verdict == "clean", report.summary()
