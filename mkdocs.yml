@@ -1,10 +1,10 @@
 site_name: Popoto Documentation
 site_url: https://popoto.io/
 site_description: >-
-    Agent memory on Redis and Valkey, as primitives you program rather than a
+    Agent memory on Redis, Valkey or PostgreSQL, as primitives you program rather than a
     service you call. Records decay, confidence moves with evidence,
     associations form, and a context assembler packs the result into a token
-    budget before each turn. Built on a full Redis/Valkey ORM.
+    budget before each turn. Built on a full ORM for Redis, Valkey and Postgres.
 repo_url: https://github.com/tomcounsell/popoto/
 edit_uri: edit/main/docs
 site_author: Tom Counsell
@@ -82,7 +82,7 @@ nav:
           # `mkdocs build --strict`.
           - Results: benchmarks/results/
           - Method and How-To: 'benchmarks.md'
-    - Redis ORM:
+    - ORM:
           - Getting Started:
                 - Configuration: 'configuration.md'
                 - Models and Fields: 'fields.md'
@@ -100,8 +100,11 @@ nav:
                 - Export & Import: 'guides/export-import.md'
           - Writing Custom Fields: 'field-authoring.md'
           - Testing: 'testing.md'
-    - Postgres Backend (v2): 'features/postgres-backend.md'
-    - Redis to Postgres Migration: 'features/redis-to-postgres-migration.md'
+    - Backends:
+          # Redis/Valkey is the default backend and is covered by the ORM tab
+          # (Configuration, TTL, PubSub, ...). Postgres is opt-in since 1.10.
+          - Postgres Backend: 'features/postgres-backend.md'
+          - Redis to Postgres Migration: 'features/redis-to-postgres-migration.md'
     - API Reference: reference/index.md
     - Contributing: 'style-guide.md'
 

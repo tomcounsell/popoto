@@ -168,3 +168,7 @@ delete the ones you have.
 
 Identical to every other harness, all environment-driven. See
 [Harness Integration](../features/harness-integration.md).
+
+The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in the environment OpenClaw runs the plugin and MCP server in; see
+[On Postgres](../features/harness-integration.md#on-postgres).
