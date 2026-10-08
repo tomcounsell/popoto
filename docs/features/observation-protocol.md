@@ -91,7 +91,7 @@ When a proactive system pushes memories into agent context:
 ObservationProtocol.on_surfaced(memories, reason="proactive")
 ```
 
-This creates `RecallProposal` entries in a Redis sorted set for tracking. Proposals expire after 1 hour (configurable via `RecallProposal.DEFAULT_TTL`).
+This creates `RecallProposal` entries for tracking (a sorted set on Redis, a row of the `popoto_recall_proposal` engine table on Postgres). Proposals expire after 1 hour (configurable via `RecallProposal.DEFAULT_TTL`).
 
 ## Tuning Constants
 
@@ -178,7 +178,7 @@ reported on scores byte-identically to pre-modulation Popoto.
 
 Internal ORM infrastructure for tracking proactively surfaced memories.
 
-- **Key pattern**: `$RP:{ClassName}:pending:{partition}` (sorted set scored by surfaced_at)
+- **Key pattern** (Redis): `$RP:{ClassName}:pending:{partition}` (sorted set scored by surfaced_at). On Postgres: one engine table per schema, `popoto_recall_proposal (model, part, member, surfaced_at)`, created on first use.
 - **Lifecycle**: pending -> acted | used | dismissed | deferred | contradicted | expired
 - **TTL**: 3600s (1 hour). Unresolved proposals are treated as deferred.
 
@@ -191,6 +191,22 @@ pending = RecallProposal.get_pending(Memory, partition="default")
 # Expire stale proposals
 expired = RecallProposal.expire_stale(Memory, ttl=3600)
 ```
+
+## On Postgres
+
+On a Postgres-bound model `on_context_used` applies the whole effects matrix
+in **one transaction per backend**: the batch's rows are locked `FOR UPDATE`
+in `_pk` order, then each instance's effects run in that order and its
+proposal is resolved. Unsaved instances are skipped as on Redis. A deadlock or
+serialization failure retries the whole batch up to
+`Defaults.PG_TRANSACTION_RETRIES` times and then raises
+`BackendRetryableError`; with a `transaction()` or `popoto.batch()` passed as
+`pipeline` the batch runs inside it and the error is raised at once for you to
+retry. Because the batch is one transaction, it is all-or-nothing, where a
+Redis pipeline applies whatever commands succeeded. See
+[Ranking and memory state](postgres-backend.md#ranking-and-memory-state-m2a)
+and, for the cycle and ledger effects,
+[Long-tail fields](postgres-backend.md#long-tail-fields-m5).
 
 ## See Also
 

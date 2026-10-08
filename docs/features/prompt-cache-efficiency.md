@@ -81,7 +81,7 @@ mid-session. When they are only read once, writing to them is invisible to
 the prefix, so capture costs nothing.
 
 Popoto's write path holds this by construction: the `Stop` hook writes to
-Redis and touches no file the harness is reading. Nothing in
+the store (Redis, for `MemoryService`) and touches no file the harness is reading. Nothing in
 `MemoryService.capture()` mutates prompt-visible state.
 
 The rule has a price, and you should pay it knowingly: a memory written at
@@ -258,6 +258,19 @@ The honest way to price the memory layer is not to measure the injected
 block. Run the same scripted session twice, once with memory enabled and
 once without, and compare total cache creation plus uncached input. That
 difference is what memory actually costs.
+
+## On Postgres
+
+The four rules are about prompt position, not storage, so they hold unchanged
+for a Postgres-bound model: `ContextAssembler.assemble(exclude_keys=...)` and
+`SubconsciousMemory.inject_context(exclude_keys=...)` filter candidates before
+selection on both backends (the suppression tests in
+`tests/test_context_assembler.py` run on both legs). The automatic per-session suppression is the part that does not
+carry over: it lives in `MemoryService`, the Redis-only harness integration,
+which keeps the injected keys in a Redis set. A Postgres application gets the
+same effect by passing the previous turns' keys itself. See
+[ContextAssembler](postgres-backend.md#contextassembler-m2c) and
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
 
 ## Related
 

@@ -941,3 +941,152 @@ def test_grant_created_skips_what_existed_before_the_transaction(admin):
             assert grant_created(admin, schema, "pg_monitor", before) == []
     finally:
         admin.execute(f"DROP SCHEMA IF EXISTS {_q(schema)} CASCADE")
+
+
+# -- #808: the snapshot is taken under the locks; the wrapping is precise -----------
+
+_ROLLING_CHILD = """
+import sys
+import popoto
+from popoto.backends import _swap_instance, set_backend
+from popoto.backends.postgres import PostgresBackend
+
+main, maint, schema, grant, v2 = sys.argv[1:6]
+
+
+class F808Doc(popoto.Model):
+    name = popoto.UniqueKeyField()
+    if v2 == "1":
+        note = popoto.Field(type=str, default="")
+
+
+backend = PostgresBackend(
+    dsn=main, schema=schema, maintenance_dsn=maint, grant_main_role=grant == "1"
+)
+set_backend(backend)
+_swap_instance("postgres", backend)
+try:
+    F808Doc(name="x").save()  # first use: the DDL; the save may be refused
+except Exception as exc:
+    print(type(exc).__name__)
+"""
+
+
+def _waiting_advisory(admin):
+    (count,) = admin.execute(
+        "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted"
+    ).fetchone()
+    return count
+
+
+def test_a_table_an_old_process_made_first_is_not_granted_by_a_new_one(two_roles):
+    """Rolling deploy (#808): an old process (``grant_main_role`` off) and a
+    new one (on, and its model has one more column) cold-start together and
+    queue on the schema's advisory lock, the old one first. The old one
+    creates the table; the new one then only ADDs a column to it. The table
+    existed before the new process got the lock, so it was not created by
+    it: the app role is granted nothing. (A snapshot taken before the lock
+    saw an empty schema and granted the table.)"""
+    import subprocess
+    import sys
+
+    import psycopg
+
+    from popoto.backends.postgres.schema import schema_lock_key
+
+    roles = two_roles
+    table = table_name_for("F808Doc")
+    env = dict(os.environ)
+    redis_db = popoto.get_redis().connection_pool.connection_kwargs.get("db", 15)
+    env["REDIS_URL"] = f"redis://localhost:6379/{redis_db}"
+
+    def child(grant, v2):
+        argv = [sys.executable, "-c", _ROLLING_CHILD]
+        argv += [roles.main, roles.maint, roles.schema, grant, v2]
+        return subprocess.Popen(
+            argv,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+    def wait_waiting(n):
+        deadline = time.monotonic() + 30
+        while _waiting_advisory(roles.admin) < n:
+            assert time.monotonic() < deadline, "a process never reached the lock"
+            time.sleep(0.05)
+
+    holder = psycopg.connect(roles.admin_dsn, autocommit=True)
+    try:
+        holder.execute(
+            "SELECT pg_advisory_lock(hashtext(%s))", (schema_lock_key(roles.schema),)
+        )
+        old = child("0", "0")
+        wait_waiting(1)
+        new = child("1", "1")
+        wait_waiting(2)
+    finally:
+        holder.close()  # releases the lock: the old process is first in line
+    outputs = [p.communicate(timeout=120) for p in (old, new)]
+    assert old.returncode == 0 and new.returncode == 0, outputs
+    columns = {
+        r[0]
+        for r in roles.admin.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = %s AND table_name = %s",
+            (roles.schema, table),
+        ).fetchall()
+    }
+    assert "note" in columns, columns  # the new process did migrate the table
+    assert roles.privileges(table) == (False, False, False, False, roles.owner)
+    assert not roles.any_privilege(table)
+    assert not roles.any_privilege(POPOTO_SCHEMA_TABLE)
+
+
+def test_main_role_permission_error_wraps_only_popoto_privileges():
+    """Table, schema and sequence privileges on popoto's schema are wrapped
+    (with the grants help); any other ``InsufficientPrivilege`` -- a
+    function, or an object elsewhere -- is handed back unchanged."""
+    psycopg = pytest.importorskip("psycopg")
+
+    backend = PostgresBackend(dsn="postgresql://h/db", schema="popoto")
+    sql = 'SELECT * FROM "popoto"."t"'
+
+    def denied(text):
+        return psycopg.errors.InsufficientPrivilege(text)
+
+    for text in (
+        'permission denied for table "t"',
+        "permission denied for table t",
+        "permission denied for sequence t_id_seq",
+    ):
+        err = denied(text)
+        wrapped = backend._main_role_permission_error(err, sql)
+        assert isinstance(wrapped, MainRolePermissionError), text
+        assert text in str(wrapped) and GRANT_DOCS_URL in str(wrapped)
+    schema_err = denied("permission denied for schema popoto")
+    assert isinstance(
+        backend._main_role_permission_error(schema_err, ""), MainRolePermissionError
+    )
+    for err, stmt in (
+        (denied("permission denied for function pg_read_file"), "SELECT 1"),
+        (denied("permission denied for schema other"), sql),
+        (denied("permission denied for table x"), 'SELECT * FROM "other"."x"'),
+        (denied("must be superuser to do this"), sql),
+    ):
+        assert backend._main_role_permission_error(err, stmt) is err, str(err)
+
+
+def test_a_function_privilege_error_reaches_the_caller_raw(two_roles):
+    """On the live main DSN: ``pg_read_file`` is refused with the driver's
+    own error, not a ``MainRolePermissionError``, and the backend stays
+    healthy."""
+    import psycopg
+
+    roles = two_roles
+    backend = roles.bind()
+    with pytest.raises(psycopg.errors.InsufficientPrivilege) as refused:
+        backend._run("SELECT pg_read_file('/etc/hosts')", [], write=False)
+    assert not isinstance(refused.value, MainRolePermissionError)
+    assert backend.health.ok

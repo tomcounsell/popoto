@@ -1,6 +1,6 @@
 """The ``popoto-memory demo`` loop: assemble, inject, capture, report.
 
-Runs the entire subconscious cycle against a local Redis or Valkey with no
+Runs the entire subconscious cycle against local Redis, Valkey or Postgres with no
 harness installed and no API keys, so a developer can see what the hook does
 before wiring it into anything. Every step prints what it did, including
 which extraction provider wrote the record -- the write path is the part
@@ -35,11 +35,11 @@ def run_demo(
     Args:
         agent_id: Partition to seed and query. Isolated from real memories
             by default so the demo cannot pollute a project's corpus.
-        keep: Leave the seeded records in Redis when finished.
+        keep: Leave the seeded records in place when finished.
         out: Stream to write the transcript to. Defaults to ``sys.stdout``.
 
     Returns:
-        ``0`` on success, ``1`` when Redis is unreachable or the loop did
+        ``0`` on success, ``1`` when the backend is unreachable or the loop did
         not complete.
     """
     import sys
@@ -66,15 +66,23 @@ def run_demo(
         out.write(f"popoto-memory demo\n\n{exc}\n")
         return 1
 
+    on_redis = service.backend_name == "redis"
     out.write("popoto-memory demo\n")
-    out.write(f"  redis   {config.url}\n")
+    if on_redis:
+        out.write(f"  redis   {config.url}\n")
+    else:
+        out.write(f"  backend {service.backend_name}\n")
     out.write(f"  agent   {agent_id}\n\n")
 
     try:
-        service.redis.ping()
+        service.ping()
     except Exception as exc:
-        out.write(f"Redis is not reachable: {exc}\n")
-        out.write("Start one with `redis-server` or `valkey-server`, then retry.\n")
+        if on_redis:
+            out.write(f"Redis is not reachable: {exc}\n")
+            out.write("Start one with `redis-server` or `valkey-server`, then retry.\n")
+        else:
+            out.write(f"The {service.backend_name} backend is not reachable: {exc}\n")
+            out.write("Check POPOTO_POSTGRES_URL, then retry.\n")
         return 1
 
     model = service.model
@@ -142,7 +150,7 @@ def _written(model: Any, keys: List[str]) -> List[Any]:
 
 def _cleanup(records: List[Any], keep: bool, out: TextIO) -> None:
     if keep:
-        out.write("\n   (--keep: seeded records left in Redis)\n")
+        out.write("\n   (--keep: seeded records left in place)\n")
         return
     removed = 0
     for record in records:

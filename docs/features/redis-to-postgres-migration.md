@@ -454,13 +454,29 @@ snapshot. Each key family of a migrated model has a disposition, recorded in
   evidence, access counters and staged reads, edges, validity, cycles and
   pressure, and the prediction ledger.
 - **rebuildable**: rebuilt by the save. This covers class sets, key,
-  indexed-field (`$IndexF`) and sorted indexes, BM25, existence filters and
-  geo. It also covers the `$IdxPtr:` pointer keys every `IndexedField` writes
-  today: each one only names the `$IndexF` Set its record currently sits in,
-  which is derived from the field value, so it is counted and skipped (#822).
+  indexed-field (`$IndexF`), unique-field (`$UniquF`) and sorted-field
+  (`$SortF`) indexes, BM25, existence filters and geo. The prefixes are the
+  ones the field classes really write (`"UniqueField".strip("Field")` is
+  `Uniqu`, not `Unique`), and a test derives each one from the field classes
+  so a rename fails the suite instead of a client's migration. It also covers
+  the `$IdxPtr:` pointer keys every `IndexedField` and `UniqueField` writes:
+  each one only names the `$IndexF` Set its record currently sits in, which
+  is derived from the field value, so it is counted and skipped (#822).
   `JournalEntry` writes five per entry.
 - **not carried**: dropped by design and counted. This covers the access
-  log, the frequency sketch, write-filter priority and the event stream.
+  log, the frequency sketch, write-filter priority, the event stream, and
+  three families that are transient or telemetry rather than record state:
+  `$RP:` pending recall proposals (a one-hour observation queue; unresolved
+  ones count as deferred), `$NR:` never-record refusal counts and drop log
+  (`roundtrip_policy = "rebuild"`), and `$CSQ:` query temp keys (they carry a
+  TTL and exist only while a query runs). Each is counted in the report's
+  lossy section.
+- **unsupported**: `$TOMB:<Model>:data` and `:index`, the tombstone archive
+  of deleted records. It holds deleted-record payloads for `restore()` and
+  the tool has no carry path for it, so it **stops the run** (exit code 3)
+  before anything is written, and `--accept-unclassified` does not waive it.
+  Clear it first (the model's tombstone `purge_all()`), or accept losing the
+  restore window and migrate without it.
 - **expected empty**: `$TOMBPRIOR` and the NUL-byte index-pointer fields of
   the pre-#476 in-hash scheme. Any key here **stops the run** (exit code 3)
   before anything is written. The pre-#540 pointer side keys
