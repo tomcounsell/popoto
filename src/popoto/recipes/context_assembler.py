@@ -86,15 +86,14 @@ from ..backends.types import OUTAGE_ERRORS
 
 logger = logging.getLogger("POPOTO.ContextAssembler")
 
-# ``OUTAGE_ERRORS`` (imported above): exceptions that mean "the store is
-# unreachable", which every stage here re-raises rather than reading as "no
-# memories". It is the shared :data:`popoto.backends.OUTAGE_ERRORS` -- the
-# same object, kept importable from this module: Redis's two plus the
-# backend-neutral :class:`~popoto.backends.BackendUnavailableError` a
-# Postgres-bound model raises (#759 M2c, #758 D8). Without the third, a Postgres outage in the BM25
-# arm was swallowed as a failed signal and assembly degraded to the
-# query-blind composite path. #816 moved the widening to
-# :mod:`popoto.backends.types` so every outage consumer agrees.
+# ``OUTAGE_ERRORS`` (imported above): exceptions that mean "the store is unreachable",
+# which every stage here re-raises rather than reading as "no memories". It is the
+# shared :data:`popoto.backends.OUTAGE_ERRORS` -- the same object, kept importable from
+# this module: Redis's two plus the backend-neutral
+# :class:`~popoto.backends.BackendUnavailableError` a Postgres-bound model raises (#759
+# M2c, #758 D8). Without the third, a Postgres outage in the BM25 arm was swallowed as a
+# failed signal and assembly degraded to the query-blind composite path. #816 moved the
+# widening to :mod:`popoto.backends.types` so every outage consumer agrees.
 
 
 # ---------------------------------------------------------------------------

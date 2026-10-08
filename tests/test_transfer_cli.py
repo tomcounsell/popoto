@@ -484,6 +484,10 @@ def _outage_cases():
     from popoto.backends import BackendUnavailableError
 
     return [
+        # These passed before #816 too: the old handler's ``OSError`` entry
+        # caught ``BackendUnavailableError``, which subclasses the builtin
+        # ``ConnectionError``. The ``redis-timeout`` cases are the regression
+        # tests.
         pytest.param(
             BackendUnavailableError("postgres: connection refused"),
             id="backend-unavailable",
