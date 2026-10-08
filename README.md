@@ -6,11 +6,11 @@
 ### Documentation: [**popoto.io**](https://popoto.io/)
 
 
-# Popoto: Agent Memory on Redis and Valkey
+# Popoto: Agent Memory on Redis, Valkey and PostgreSQL
 
 Memory for LLM agents, as primitives you program rather than a service you call. Records decay over time, confidence moves with evidence, associations form between things mentioned together, and a context assembler packs the result into a token budget before each turn.
 
-It runs in your process against a Redis or Valkey server you already operate. Your memory data stays in your database, and the whole install is three packages with no API key.
+It runs in your process against a Redis or Valkey server, or a PostgreSQL database, that you already operate. Your memory data stays in your database, and the core install is three packages with no API key.
 
 Underneath, Popoto is a full Redis/Valkey ORM with Django-like model syntax. The memory system is built on it, and the [ORM half is documented below](#redis--valkey-orm).
 
@@ -21,6 +21,16 @@ pip install popoto
 ```
 
 That pulls `popoto`, `redis`, and `msgpack`: 3 packages, 9.0 MB of site-packages measured 2026-09-04 in a clean Python 3.12 venv resolving redis-py 8.1.0. Point it at Redis or Valkey on `localhost:6379` and you are running.
+
+### On PostgreSQL
+
+```
+pip install 'popoto[postgres]'
+export POPOTO_BACKEND=postgres
+export POPOTO_POSTGRES_URL=postgresql://app@db.internal:5432/agents
+```
+
+The same models and the same memory loop then run on PostgreSQL 18 or newer (a UTF8 database, plus `CREATE EXTENSION vector` for embeddings), with no Redis at all. Each model is a typed table with native indexes. Or set `Meta.backend = "postgres"` on one model and keep the rest on Redis. [Use Postgres](https://popoto.io/guides/postgres-quickstart/) is the setup guide, and [Redis to Postgres Migration](https://popoto.io/features/redis-to-postgres-migration/) copies existing memory across.
 
 ## Memory around an LLM turn
 

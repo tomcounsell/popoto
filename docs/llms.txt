@@ -1,11 +1,11 @@
 # Popoto
 
-> Agent memory on Redis and Valkey, as primitives you program rather than a
-> service you call. Records decay over time, confidence moves with evidence,
-> associations form between co-mentioned things, and a context assembler packs
-> the result into a token budget before each LLM turn. It runs in your process
-> against a Redis or Valkey server you already operate: three packages, no API
-> key, no hosted service. Underneath it is a full Redis/Valkey ORM with
+> Agent memory on Redis, Valkey or PostgreSQL, as primitives you program rather
+> than a service you call. Records decay over time, confidence moves with
+> evidence, associations form between co-mentioned things, and a context
+> assembler packs the result into a token budget before each LLM turn. It runs
+> in your process against a Redis or Valkey server, or a PostgreSQL 18+
+> database, that you already operate: no API key, no hosted service. Underneath it is a full Redis/Valkey ORM with
 > Django-like model syntax, so every memory primitive is a field on an ordinary
 > model.
 
@@ -13,6 +13,7 @@
 
 - [Home](https://popoto.io/): the memory loop in six lines, and what is measured
 - [Agent Memory Quickstart](https://popoto.io/guides/agent-memory-quickstart/): six progressive levels, from one decaying field to full assembly
+- [Use Postgres](https://popoto.io/guides/postgres-quickstart/): `pip install 'popoto[postgres]'`, the environment variables, and the memory loop on PostgreSQL 18+
 - [SubconsciousMemory Recipe](https://popoto.io/guides/subconscious-memory-recipe/): inject before the LLM call, extract after, report outcomes
 - [Query-Blind Retrieval](https://popoto.io/guides/query-blind-retrieval/): when composite ranking is right and when it silently costs you the answer
 - [LLM Memory Extraction](https://popoto.io/features/llm-memory-extraction/): pluggable extraction providers, and the measurement showing extraction lost to raw ingestion

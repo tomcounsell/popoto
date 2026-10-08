@@ -155,9 +155,6 @@ the tests need not request `backend` themselves:
 pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
 ```
 
-M0's `conformance(harness=True)` flag and its "Postgres backend arrives in
-M1" skip are gone: every leg has a backend to run against.
-
 **The Postgres leg skips when it cannot run.** If `psycopg` is not installed or
 `POSTGRES_URL` is unset, each `[postgres]` parameter reports `SKIPPED` with a
 reason naming what is missing (`pytest -rs` shows it). `psycopg` is imported

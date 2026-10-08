@@ -2,6 +2,8 @@
 
 Popoto connects to Redis or Valkey automatically when imported. By default it connects to `localhost:6379`, which works for local development. For production, set the `REDIS_URL` environment variable.
 
+Popoto can also store models on **PostgreSQL 18+** instead (`pip install 'popoto[postgres]'`). Set `POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL`, or set `Meta.backend = "postgres"` on one model. See [PostgreSQL](#postgresql) below.
+
 ## Redis/Valkey Connection
 
 Popoto works with both Redis and [Valkey](https://valkey.io) (the open-source Redis fork). The same configuration works for either - just point `REDIS_URL` at your server.
@@ -177,6 +179,26 @@ MONITOR
 ```
 
 See the [CLAUDE.md](https://github.com/tomcounsell/popoto) debugging section for more Redis CLI patterns.
+
+## PostgreSQL
+
+The Postgres backend is configured by its own environment variables. Popoto
+never reads a generic `DATABASE_URL` or `POSTGRES_URL`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `POPOTO_BACKEND` | `redis` | `postgres` makes Postgres the process default for every model without its own `Meta.backend`. |
+| `POPOTO_POSTGRES_URL` | (none) | The DSN, e.g. `postgresql://app@db.internal:5432/agents`. Required for Postgres. |
+| `POPOTO_POSTGRES_SCHEMA` | `popoto` | The Postgres schema the tables live in. |
+| `POPOTO_SCHEMA_AUTO` | `1` | Create missing tables and apply additive changes on a model's first use. `0` runs no DDL. |
+| `POPOTO_POSTGRES_MAINTENANCE_URL` | (the main DSN) | A direct or session-mode DSN to the same database for DDL, `REINDEX` and `LISTEN`. Set it when the main DSN is PgBouncer in transaction mode. |
+| `POPOTO_POSTGRES_GRANT_MAIN_ROLE` | off | `1` grants the main DSN's role access to the tables popoto's maintenance-DSN DDL creates. |
+| `POPOTO_POSTGRES_LISTEN_URL` | (the maintenance DSN) | The DSN for the shared `LISTEN` session used by pub/sub and blocking stream reads. |
+
+The server must be PostgreSQL 18 or newer with a UTF8 database, and a model
+with an `EmbeddingField` needs `CREATE EXTENSION vector` in that database.
+[Use Postgres](guides/postgres-quickstart.md) walks through the setup, and
+the [Postgres backend](features/postgres-backend.md) page is the reference.
 
 ## Content and Embedding Configuration
 

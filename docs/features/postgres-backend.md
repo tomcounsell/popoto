@@ -5,13 +5,26 @@ Popoto v2 keeps one model API with two native storage backends behind it
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.
 
-This page covers the first Postgres milestones: **plain models** (M1),
-**plain-field breadth** (M1.1), the **ranking and memory-state half of
-Valor's slice** (M2a), **search** (M2b), **`ContextAssembler`** (M2c), the
-**validity axis** (M3), the **co-occurrence graph and the remaining
-recipes** (M4), and M5: **record expiry** (`Meta.ttl`), **`popoto.batch()`**
-and the **long-tail memory fields** (`CyclicDecayField`, `TDValueField` and
-`PredictionLedgerMixin`).
+It shipped in popoto **1.10.0**. New to it? Start with [Use
+Postgres](../guides/postgres-quickstart.md), which goes from an empty database
+to a working memory loop. This page is the reference.
+
+**Server requirements.** PostgreSQL **18 or newer** (popoto checks
+`server_version_num` on first use and refuses an older server with
+`BackendCapabilityError`), a database whose `server_encoding` is **UTF8**
+(refused the same way otherwise), and, for any model with an
+`EmbeddingField`, the **pgvector** extension, created once per database with
+`CREATE EXTENSION vector` by a role allowed to (see
+[Embeddings](#embeddings)).
+
+The section headings name the milestone of the
+[#759 plan](https://github.com/tomcounsell/popoto/issues/759) that built each
+part: **plain models** (M1), **plain-field breadth** (M1.1), **ranking and
+memory state** (M2a), **search** (M2b), **`ContextAssembler`** (M2c), the
+**validity axis** (M3), the **co-occurrence graph and the recipes** (M4), and
+M5: **record expiry** (`Meta.ttl`), **`popoto.batch()`**, native async, event
+streams, geo, index maintenance and the **long-tail memory fields**
+(`CyclicDecayField`, `TDValueField` and `PredictionLedgerMixin`).
 That means records, queries, `Q` objects, ordering, counting and atomic
 increments for the field types listed below, including indexed, unique, tag,
 relationship and collection fields, plus decay ranking, confidence
@@ -21,14 +34,15 @@ filters, fusion and `recall()`, the assembler over all of them,
 `ValidityField` with `SupersessionProtocol`, `CoOccurrenceField` with its
 graph expansion, the remaining recipes and mixins on top, records that
 expire, batches that commit as one transaction, and cyclic decay, TD values
-and the prediction ledger. Models that use other fields stay on Redis until
-their milestone. Popoto refuses them when you declare them, so they never
-fail halfway through.
+and the prediction ledger. A model that uses a field Postgres does not
+store (`DataFrameField`, a custom field that overrides a storage hook) stays
+on Redis. Popoto refuses it when you declare it, so it never fails halfway
+through.
 
 ## Selecting the backend
 
 ```bash
-pip install 'popoto[postgres]'      # psycopg[binary,pool] + pgvector
+pip install 'popoto[postgres]'   # psycopg[binary,pool], psycopg-pool, pgvector, numpy, greenlet
 ```
 
 A backend is chosen per model, or once for the whole process:
@@ -203,9 +217,8 @@ column is indexed: each index would make every `update_confidence` or
 A partitioned `ConfidenceField` (M3) needs nothing more: its state is the
 record's own columns, so its partition is the row's partition columns, and a
 partition change that keeps the key keeps the state.
-`PredictionLedgerMixin` keeps its ledger in Redis until M5 and is refused on a
-Postgres model too, rather than issuing Redis commands for a record Redis does
-not hold. `EventStreamMixin` writes its stream to the backend's events tables
+`PredictionLedgerMixin` keeps its ledger in two engine tables (M5, see
+[Long-tail fields](#long-tail-fields-m5)). `EventStreamMixin` writes its stream to the backend's events tables
 (M5, [Event streams and pub/sub](#event-streams-and-pubsub-m5)), in the
 save's own transaction.
 
@@ -2092,8 +2105,9 @@ DDL and so grants nothing, whatever the flag says. Run the grants above.
 
 The reverse case is an existing deployment whose tables were created by
 `app`, before the maintenance DSN was set. There `REINDEX` and additive
-`ALTER TABLE` need the maintenance role to own the tables. On PostgreSQL 17
-and later, the `MAINTAIN` privilege is enough for `REINDEX`. Move the
+`ALTER TABLE` need the maintenance role to own the tables. The `MAINTAIN`
+privilege (PostgreSQL 17 and later, so every server popoto supports) is enough
+for `REINDEX`, but not for `ALTER TABLE`. Move the
 ownership once, as a superuser (or a role with the privileges of both):
 
 ```sql

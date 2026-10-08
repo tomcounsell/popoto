@@ -4,7 +4,11 @@ Add programmable memory to your AI agent. Level 0 is the whole loop in six
 lines. Levels 1 through 6 build the same thing up one field at a time, so you
 understand what each piece buys before you keep or drop it.
 
-> **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`.
+> **Prerequisites:** `pip install popoto` and Redis/Valkey running on
+> `localhost:6379`, **or** `pip install 'popoto[postgres]'` and a PostgreSQL 18+
+> database: see [Use Postgres](postgres-quickstart.md). The levels below use
+> the same model API on either backend; the Postgres page links the
+> documented differences.
 >
 > **Full reference:** [Agent Memory](../features/agent-memory.md) maps all 17
 > primitives and the layers composed on them.

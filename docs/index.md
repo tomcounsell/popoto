@@ -1,12 +1,12 @@
-# Popoto: Agent Memory on Redis and Valkey
+# Popoto: Agent Memory on Redis, Valkey and PostgreSQL
 
 Memory for LLM agents, as primitives you program rather than a service you call.
 Records decay over time, confidence moves with evidence, associations form
 between things mentioned together, and a context assembler packs the result into
 a token budget before each turn.
 
-It runs in your process against a Redis or Valkey server you already operate.
-Your memory data stays in your database.
+It runs in your process against a Redis or Valkey server, or a PostgreSQL
+database, that you already operate. Your memory data stays in your database.
 
 ```bash
 pip install popoto
@@ -14,6 +14,11 @@ pip install popoto
 
 Three packages, 9.0 MB of site-packages in a clean Python 3.12 venv (redis-py 8.1.0, measured 2026-09-04), no API key.
 Point it at Redis or Valkey on `localhost:6379` and you are running.
+
+On PostgreSQL 18+, install `pip install 'popoto[postgres]'` and set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL`. The loop below then runs
+on Postgres with no Redis at all. [Use Postgres](guides/postgres-quickstart.md)
+covers the requirements and configuration.
 
 ## Memory around an LLM turn
 

@@ -32,5 +32,32 @@ jobs:
       - name: Check sdist contents
         run: python scripts/check_sdist_contents.py dist/*.tar.gz
 
+      # Install the built wheel into two fresh venvs, bare and with the
+      # postgres extra, and import what each promises. No database is needed:
+      # REDIS_URL points at a closed port and nothing connects. This is what
+      # would have caught 1.10.0's release-audit blocker -- a clean
+      # `pip install popoto[postgres]` lacked numpy, so the first
+      # EmbeddingField raised ImportError. Must stay between the build and the
+      # publish step, like the sdist check above.
+      - name: Smoke-test the wheel
+        env:
+          REDIS_URL: redis://127.0.0.1:1/15
+        run: |
+          set -euo pipefail
+          wheels=(dist/*.whl)
+          if [ "${#wheels[@]}" -ne 1 ]; then
+            echo "expected exactly one wheel in dist/, found: ${wheels[*]}" >&2
+            exit 1
+          fi
+          wheel="${wheels[0]}"
+          python -m venv "$RUNNER_TEMP/smoke-core"
+          "$RUNNER_TEMP/smoke-core/bin/pip" install --quiet "$wheel"
+          "$RUNNER_TEMP/smoke-core/bin/python" -c "import sys, popoto; assert 'psycopg' not in sys.modules; print('core ok', popoto.__version__)"
+          python -m venv "$RUNNER_TEMP/smoke-pg"
+          "$RUNNER_TEMP/smoke-pg/bin/pip" install --quiet "${wheel}[postgres]"
+          "$RUNNER_TEMP/smoke-pg/bin/python" -c "import popoto; from popoto.fields.embedding_field import EmbeddingField; import numpy, psycopg, pgvector, greenlet; from psycopg_pool import ConnectionPool; assert hasattr(ConnectionPool, 'check_connection'); print('postgres ok', popoto.__version__, psycopg.pq.__impl__)"
+          "$RUNNER_TEMP/smoke-pg/bin/popoto-migrate-redis-to-postgres" --help > /dev/null
+          echo "console script ok"
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

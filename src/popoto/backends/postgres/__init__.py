@@ -310,6 +310,53 @@ def _schema_auto() -> bool:
 _pools: dict[tuple[str, int], Any] = {}
 _pools_lock = threading.Lock()
 
+# The last failed connection attempt per DSN, as "<type>: <message>" with any
+# password redacted, and cleared by the next attempt that succeeds. The sync
+# pool connects in its own worker threads, so a server that refuses every
+# connection (a database that does not exist, a wrong password) surfaces to
+# the caller only as ``PoolTimeout: couldn't get a connection after 5.00
+# sec``. :func:`_checkout` attaches this to that timeout and
+# :meth:`PostgresBackend._fail` puts it in the ``BackendUnavailableError``, so
+# the error names the cause (``FATAL: database "x" does not exist``).
+_last_connect_error: dict[str, str] = {}
+
+
+def _redact(message: str, dsn: str) -> str:
+    """``message`` with the DSN's password (if any) replaced by ``***``.
+    libpq does not echo passwords in its errors; this makes sure of it."""
+    password: Optional[str] = None
+    try:
+        from psycopg.conninfo import conninfo_to_dict
+
+        value = conninfo_to_dict(dsn).get("password")
+        password = str(value) if value else None
+    except Exception:
+        password = None
+    if password:
+        message = message.replace(password, "***")
+    return message
+
+
+def _recording_connection_class(psycopg: Any, dsn: str) -> Any:
+    """A ``psycopg.Connection`` subclass that records each failed connect for
+    ``dsn`` in ``_last_connect_error`` (and clears it on success). Passed to
+    the pool as ``connection_class``, which is the pool's public hook for the
+    class whose ``connect()`` it calls."""
+
+    class _RecordingConnection(psycopg.Connection):
+        @classmethod
+        def connect(cls, *args: Any, **kwargs: Any) -> Any:
+            try:
+                conn = super().connect(*args, **kwargs)
+            except Exception as exc:
+                text = " ".join(str(exc).split())
+                _last_connect_error[dsn] = _redact(f"{type(exc).__name__}: {text}", dsn)
+                raise
+            _last_connect_error.pop(dsn, None)
+            return conn
+
+    return _RecordingConnection
+
 
 def _import_psycopg() -> Any:
     try:
@@ -424,6 +471,7 @@ def _pool_for(dsn: str) -> Any:
                 # pool holding dead sockets, and without this every one of
                 # them would fail one call on a healthy server.
                 check=ConnectionPool.check_connection,
+                connection_class=_recording_connection_class(psycopg, dsn),
                 open=True,
                 kwargs={
                     "autocommit": True,
@@ -488,6 +536,10 @@ def _checkout(pool: Any, timeout: Optional[float] = None) -> Iterator[Any]:
                     out = _checked_out.get(key, 0)
                 if out >= int(getattr(pool, "max_size", out + 1)):
                     exc.popoto_busy = True  # type: ignore[attr-defined]
+                else:
+                    cause = _last_connect_error.get(getattr(pool, "conninfo", ""))
+                    if cause:
+                        exc.popoto_connect_error = cause  # type: ignore[attr-defined]
             raise
         with _checked_out_lock:
             _checked_out[key] = _checked_out.get(key, 0) + 1
@@ -808,6 +860,9 @@ class PostgresBackend(
         h.ok = False
         h.consecutive_failures += 1
         h.last_error = f"{type(exc).__name__}: {exc}"
+        cause = getattr(exc, "popoto_connect_error", None)
+        if cause:
+            h.last_error += f" (last connection attempt: {cause})"
         if write or getattr(self._intent, "write", False):
             h.dropped_writes += 1
         now = time.monotonic()

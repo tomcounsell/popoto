@@ -7,7 +7,7 @@ for example a field that maintains its own companion hash in Redis alongside the
 model's primary hash, the way `ConfidenceField` and `CyclicDecayField` do.
 
 !!! note
-    Custom fields that override hooks are Redis-only for now; a planned Postgres backend (#759) will refuse them when a model is defined.
+    Custom fields that override storage hooks are Redis-only. The [Postgres backend](features/postgres-backend.md) refuses them with `BackendCapabilityError` when the model is declared with `Meta.backend = "postgres"`, or on first use when the model takes the process default.
 
 This page documents the contract a `Field` subclass should follow, with a focus on
 the round-trip protocol every field author must satisfy: `roundtrip_policy`,

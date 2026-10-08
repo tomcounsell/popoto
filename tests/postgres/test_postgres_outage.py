@@ -126,6 +126,52 @@ def test_dropped_writes_are_counted_from_the_first_use(unreachable_from_start):
     assert health["ok"] is False and health["last_error"]
 
 
+def test_redact_removes_the_dsn_password_from_a_message():
+    _needs_psycopg()
+    from popoto.backends.postgres import _redact
+
+    dsn = "postgresql://app:s3cr3t-hunter2@db.internal:5432/agents"
+    assert _redact("auth failed for s3cr3t-hunter2", dsn) == "auth failed for ***"
+    assert _redact("nothing to hide", "postgresql://db/agents") == "nothing to hide"
+    assert _redact("kept", "not a dsn ===") == "kept"
+
+
+def test_a_missing_database_names_the_cause_and_never_the_password(
+    pg, pg_schema, monkeypatch
+):
+    """The 1.10.0 audit: a DSN naming a database that does not exist used to
+    raise only ``PoolTimeout: couldn't get a connection after 5.00 sec``,
+    because the sync pool connects in its own threads. The error now carries
+    the last connection attempt's own message (``FATAL: database "x" does
+    not exist``), with the DSN's password redacted."""
+    import uuid
+
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    from popoto.backends.postgres import PostgresBackend, close_pools
+
+    url = os.environ["POSTGRES_URL"]
+    password = conninfo_to_dict(url).get("password") or "popoto-not-a-real-secret"
+    missing = f"popoto_no_such_db_{uuid.uuid4().hex[:10]}"
+    dsn = make_conninfo(url, dbname=missing, password=password)
+    monkeypatch.setattr(Defaults, "PG_CONNECT_TIMEOUT_SECONDS", 1.0)
+    backend = PostgresBackend(dsn=dsn, schema="popoto_outage_probe")
+    previous = set_backend(backend)
+    previous_instance = _swap_instance("postgres", backend)
+    try:
+        with pytest.raises(BackendUnavailableError) as raised:
+            OutageNote.query.count()
+    finally:
+        _swap_instance("postgres", previous_instance)
+        set_backend(previous)
+        close_pools()
+    message = str(raised.value)
+    assert "last connection attempt" in message, message
+    assert f'database "{missing}" does not exist' in message, message
+    assert password not in message, message
+    assert password not in backend.health.last_error
+
+
 def test_error_is_logged_once_per_window(unreachable, caplog, monkeypatch):
     monkeypatch.setattr(Defaults, "PG_OUTAGE_LOG_WINDOW_SECONDS", 3600)
     with caplog.at_level(logging.ERROR, logger="POPOTO.postgres"):

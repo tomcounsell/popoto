@@ -3,7 +3,8 @@
 Every Popoto model can include a `Meta` inner class to configure model-level
 behavior like default ordering, automatic expiration, and composite indexes.
 The `Meta` class is processed at class definition time, and its options
-become available via `ModelClass._meta`.
+become available via `ModelClass._meta`. `Meta.backend` also chooses where the
+model is stored: Redis/Valkey (the default) or PostgreSQL.
 
 ## When to Use Meta Options
 
@@ -14,6 +15,7 @@ You should define a `Meta` class when you want to:
 - **Automatically expire data** using Redis TTL (great for temporary orders,
   sessions, or cached data)
 - **Enforce uniqueness** across multiple fields (composite unique constraints)
+- **Store the model on PostgreSQL** instead of Redis (`backend = "postgres"`)
 
 Without a `Meta` class, your models work fine -- you just configure behavior
 at query time instead.
@@ -260,6 +262,45 @@ order3 = Order.create(
 # => Saved successfully -- the slot was freed by deleting order1
 ```
 
+## backend
+
+`Meta.backend` picks the storage backend for one model: `"redis"` or
+`"postgres"`. Leave it out and the model takes the process default, which is
+`POPOTO_BACKEND` (or `popoto.backends.set_backend(...)`), else `"redis"`.
+
+```python
+from popoto import Model, KeyField, IntField
+
+class Note(Model):
+    owner = KeyField()
+    slug = KeyField()
+    hits = IntField(default=0)
+
+    class Meta:
+        backend = "postgres"
+```
+
+A Postgres-bound model needs `pip install 'popoto[postgres]'` and
+`POPOTO_POSTGRES_URL`. Declaring it never opens a connection. Popoto checks
+the fields against the backend's capability table at class creation and
+raises `BackendCapabilityError` for a field Postgres cannot store. The
+connection and the table's DDL wait for the model's first query or save.
+
+The environment variables that configure Postgres:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `POPOTO_BACKEND` | `redis` | The process default for models without `Meta.backend`. |
+| `POPOTO_POSTGRES_URL` | (none) | The Postgres DSN. Required for Postgres. |
+| `POPOTO_POSTGRES_SCHEMA` | `popoto` | The Postgres schema the tables live in. |
+| `POPOTO_SCHEMA_AUTO` | `1` | Create missing tables and apply additive changes on first use. `0` runs no DDL. |
+| `POPOTO_POSTGRES_MAINTENANCE_URL` | (the main DSN) | A direct DSN for DDL, `REINDEX` and `LISTEN`, when the main one is PgBouncer in transaction mode. |
+| `POPOTO_POSTGRES_GRANT_MAIN_ROLE` | off | `1` grants the main role access to tables the maintenance role creates. |
+
+See [Use Postgres](guides/postgres-quickstart.md) for a walkthrough and the
+[Postgres backend](features/postgres-backend.md) reference for every
+supported field. `Meta.ttl` and `Meta.indexes` work on both backends.
+
 ## Complete Example
 
 Here is the Order model combining all three Meta options:
@@ -355,6 +396,17 @@ class BadIndex(Model):
         )
 # => ModelException: Unknown field 'missing_field' in Meta.indexes
 #    for BadIndex
+```
+
+### Invalid backend
+
+```python
+class BadBackend(Model):
+    name = KeyField()
+
+    class Meta:
+        backend = "mysql"
+# => ModelException: Meta.backend must be one of redis, postgres, got 'mysql'
 ```
 
 !!! tip
