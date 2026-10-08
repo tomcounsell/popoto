@@ -7,7 +7,7 @@ and feeds it to an LLM for grounded responses.
 > **Prerequisites:**
 >
 > - `pip install popoto[voyage]` (or `popoto[openai]` for OpenAI embeddings)
-> - Redis running on `localhost:6379`
+> - Redis running on `localhost:6379` (or a Postgres database with pgvector; see [On Postgres](#on-postgres))
 > - An API key for your embedding provider
 > - An API key for your LLM (this recipe uses OpenAI, but any LLM works)
 
@@ -236,11 +236,33 @@ async def async_ask(session_id: str, question: str) -> str:
 
 ## Key Points
 
-- **ContentField** stores large text on the filesystem, keeping Redis lean
+- **ContentField** stores large text on the filesystem on Redis, keeping the hashes lean (on Postgres it is a `text` column)
 - **EmbeddingField** auto-generates vectors on save -- no manual embedding calls
 - **semantic_search()** handles embedding the query, computing similarity, and hydrating results
 - Combined with `indexes`, semantic search blends meaning-based retrieval with decay, confidence, and other memory signals
 - Conversation history with `DecayingSortedField` ensures recent context surfaces first
+
+## On Postgres
+
+The recipe runs on Postgres-bound models without code changes, once the
+database has the pgvector extension (`CREATE EXTENSION vector`; popoto never
+creates it) and the embedding provider is configured before the models' first
+use, since the vector column's dimension is read from it then. Differences
+from the Redis path:
+
+- `ContentField` holds the text in a `text` column, so `content_path` is not
+  used for those models.
+- `EmbeddingField` stores the vector in a pgvector column instead of `.npy`
+  files; a save still embeds the source text and a provider failure still
+  writes nothing. `garbage_collect()` returns `0`.
+- `semantic_search()` works as on Redis: it loads every vector of the model
+  (`load_embeddings`, here a read of the column) and scores them in numpy, so
+  it does not use the HNSW index; that index serves the `ContextAssembler`
+  hybrid path and `recall()`. `indexes=` blending gives the same order as
+  Redis.
+
+See [Embeddings](../features/postgres-backend.md#embeddings) and
+[Fusion and recall()](../features/postgres-backend.md#fusion-and-recall).
 
 ## See Also
 

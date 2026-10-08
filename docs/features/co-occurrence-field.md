@@ -1,16 +1,16 @@
 # CoOccurrenceField
 
-A `Field` subclass that maintains weighted association edges between model instances using Redis sorted sets, with BFS graph propagation for multi-hop associative retrieval.
+A `Field` subclass that maintains weighted association edges between model instances (a sorted set per record on Redis, an edge table on Postgres), with BFS graph propagation for multi-hop associative retrieval.
 
 ## Overview
 
-`CoOccurrenceField` provides an ORM-level primitive for weighted, decaying edges between model instances. Each instance gets its own Redis sorted set storing edges to other instances with weights. Weights strengthen via `strengthen()` and decay via `weaken_all()`.
+`CoOccurrenceField` provides an ORM-level primitive for weighted, decaying edges between model instances. On Redis each instance gets its own sorted set storing edges to other instances with weights; on Postgres each field has one edge table with a row per directed edge. Weights strengthen via `strengthen()` and decay via `weaken_all()`.
 
 The field supports:
 - **Symmetric mode** (default): edges are bidirectional
 - **Asymmetric mode**: edges are unidirectional
 - **Edge pruning**: automatic removal of lowest-weight edges when `max_edges` is exceeded
-- **BFS propagation**: server-side Lua script traverses edges across hops with exponential decay
+- **BFS propagation**: a server-side traversal (a Lua script on Redis, SQL on Postgres) walks edges across hops with exponential decay
 
 ## Parameters
 
@@ -23,7 +23,7 @@ The field supports:
 
 ## Redis Key Pattern
 
-Each PK gets its own sorted set:
+On Redis, each PK gets its own sorted set:
 
 ```
 $CoOcF:{ClassName}:{field_name}:{pk}  ->  ZSET { target_pk: weight, ... }
@@ -201,6 +201,37 @@ Two things to know before importing:
 Symmetric mirroring is *not* re-run on import. Each record carries its own edge
 set, so a full export of the model restores both directions naturally; a filtered
 export that includes one endpoint but not the other yields a one-directional edge.
+
+## On Postgres
+
+On a Postgres-bound model each field is one edge table,
+`<table>__<f>__edge (src, dst, weight)`, with no foreign key (as on Redis,
+any two key strings can be linked). `link`, `strengthen`, `unlink` and
+`weaken_all` are single statements with the scripts' arithmetic and
+replies, taken behind the record-key locks of the sets they write, so a
+`link`'s count-then-prune is atomic and no committed set exceeds
+`max_edges`. `propagate` is one recursive SQL statement while `ceil(depth) <= 2` and one
+statement per layer beyond that, with the Lua's visited rule; answers are
+identical to Redis's. See
+[Co-occurrence graph](postgres-backend.md#co-occurrence-graph-m4) for the
+statements, the deep-walk timings and the seeded probe.
+
+`pipeline=` takes the backend's `transaction()` or a `popoto.batch()`, and
+the write joins it; a Redis pipeline cannot carry the write, so it runs at
+once. Differences, each a row in
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour):
+
+- A NaN weight in `link`, `strengthen` or `weaken_all` raises `ValueError`
+  (Redis: `ResponseError`) with the same text, and the whole write rolls
+  back, including a symmetric write's first direction.
+- `import_state` refuses a NaN weight before writing, leaving the edge set
+  unchanged; on Redis the set is deleted first and left empty.
+- `get_linked(…, limit=None)` and a NaN `min_weight` raise `ValueError` with
+  redis-py's and the server's text.
+- Equal weights in `propagate()`'s result are ordered by key, bytewise.
+
+The `ZREVRANGE` neighbour-selection bias above applies on Postgres too: the
+neighbour query orders by the stored, unclamped weight.
 
 ## Synergy with Other Fields
 

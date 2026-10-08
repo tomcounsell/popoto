@@ -51,8 +51,8 @@ negative prior — the prior itself needs only the `ExistenceFilter` and its
 
 A model with no `ExistenceFilter`, or one whose filter has no `fingerprint_fn`,
 has no content identity — there is nothing a buried record could match against.
-Those models skip the consult entirely and issue **zero** extra Redis commands
-on `save()`. Write behavior is byte-identical to a Popoto without this feature,
+Those models skip the consult entirely and issue **zero** extra commands on
+`save()`, on either backend. Write behavior is byte-identical to a Popoto without this feature,
 structurally rather than because a flag happens to be off.
 
 ## What it does to a score
@@ -128,8 +128,9 @@ disagree.
 
 ## Storage
 
-Three keys per model, all deliberately **outside** the model's own keyspace, so
-no query, index scan, or key-set walk can surface them:
+On Redis, three keys per model, all deliberately **outside** the model's own
+keyspace, so no query, index scan, or key-set walk can surface them (for
+Postgres, see [On Postgres](#on-postgres)):
 
 | Key | Type | Holds |
 |---|---|---|
@@ -152,8 +153,8 @@ pre-feature behavior and loses nothing else:
 TombstonePriorStore(Memory).purge_all()
 ```
 
-To inspect the keys by hand, use Popoto's own accessor rather than building a
-client, so you are looking at the database Popoto is actually bound to:
+To inspect the Redis keys by hand, use Popoto's own accessor rather than
+building a client, so you are looking at the database Popoto is actually bound to:
 
 ```python
 import popoto
@@ -163,7 +164,7 @@ popoto.get_redis().hgetall("$TOMBPRIOR:Memory:stats")
 
 ## Failure behavior
 
-Every Redis call on this path is best-effort. If the bookkeeping is unreachable
+Every storage call on this path is best-effort, on either backend. If the bookkeeping is unreachable
 or a stored count is unreadable, the write is admitted **unchanged** and a
 warning is logged — a memory system whose `save()` dies because a telemetry hash
 is down is worse than one that occasionally misses a drawdown. Symmetrically, a
@@ -189,6 +190,21 @@ kwargs — they are experimental tuning knobs, not per-model configuration:
 | `TOMBSTONE_PRIOR_LIMIT` | 1000 | Distinct fingerprints retained per model |
 | `TOMBSTONE_PRIOR_DECAY` | 0.5 | Multiplier compounded per prior burial |
 | `TOMBSTONE_PRIOR_FLOOR` | 0.05 | Strongest suppression possible |
+
+## On Postgres
+
+`TombstonePriorStore` keeps the prior in two engine tables instead of the
+`$TOMBPRIOR:` keys: `popoto_tombstone_prior` holds one row per model and
+digest, with the burial count and the last burial time together (the Redis
+`burials` hash and `index` zset in one row), and `popoto_tombstone_stats`
+holds one row per model with `penalized` and `drawdown_total`. See
+[Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+The scoring, the digest-only storage, the `TOMBSTONE_PRIOR_LIMIT` retention
+(oldest burial first), the best-effort failure behavior and the kill switch
+are the same. The two stats counters move together in one upsert, and
+`purge_all()` deletes the model's rows from both tables and returns how many
+fingerprints it removed. Inspect the state with SQL against those tables
+rather than `get_redis()`, which reaches only Redis.
 
 ## See also
 
