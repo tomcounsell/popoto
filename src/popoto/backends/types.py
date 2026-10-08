@@ -278,9 +278,9 @@ class FieldSpec:
 class ModelSpec:
     """A model's storage-relevant shape, built from ``Model._meta``.
 
-    Built lazily by ``ModelOptions.spec`` and rebuilt when a field is added
-    (the ``_auto_key`` field is added at first instantiation, after class
-    creation). ``backend`` is the explicit ``Meta.backend`` or ``None`` (the
+    Built lazily by ``ModelOptions.spec`` and rebuilt when a field is added.
+    (The implicit ``_auto_key`` is registered at class creation, #826, so it
+    is in the first spec built.) ``backend`` is the explicit ``Meta.backend`` or ``None`` (the
     process default applies).
     """
 

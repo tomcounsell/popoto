@@ -1707,8 +1707,9 @@ class PostgresBackend(
 
     def _table(self, spec: ModelSpec, *, write: bool = False) -> TableSpec:
         """The model's table, created or checked on first use and again
-        whenever its spec object changes (``_auto_key`` is added to a model
-        at its first instantiation, after a query may already have bound it).
+        whenever its spec object changes (a field added to the model after a
+        query bound it; the implicit ``_auto_key`` is no longer such a field,
+        as it is registered at class creation, #826).
 
         ``write`` names the operation that needs the table: when the server
         is unreachable at this first check, a write counts as dropped."""
@@ -1783,12 +1784,13 @@ class PostgresBackend(
         the unit's (:meth:`_ddl_connection`); an ``ALTER TABLE`` there waits
         for every lock on the table, including the one this unit took when
         it read or wrote it -- and this unit cannot commit while this task or
-        thread waits. Two shapes reach it: a model redefined with an added
-        field after the unit already used its table, and an auto-key model
-        whose table was bound before its first instance existed (the first
-        instance adds ``_auto_key``) after the unit read it. Without this the
-        wait lasts until ``PG_DDL_LOCK_TIMEOUT_MS``, with the first-use lock
-        held; with it, the caller gets :class:`SchemaDriftError` at once.
+        thread waits. The shape that reaches it is a model redefined with an
+        added field after the unit already used its table. (Before #826 an
+        auto-key model whose table a query bound before its first instance
+        reached it too, when that instance added ``_auto_key``; the field is
+        now registered at class creation, so the first bind already has it.)
+        Without this the wait lasts until ``PG_DDL_LOCK_TIMEOUT_MS``, with
+        the first-use lock held; with it, the caller gets :class:`SchemaDriftError` at once.
 
         ``pg_locks`` is a cluster-wide view, so it is read on ``conn`` (the
         DDL connection itself) for the units' backend pids: no statement runs
@@ -1829,9 +1831,8 @@ class PostgresBackend(
             f"thread already holds a lock on it ({modes}). The change must "
             "commit on its own connection, which would wait for this unit "
             "forever. Let the schema change happen outside the unit: use the "
-            "model once -- a save, or a query after its first instance exists "
-            "-- before opening the transaction, or commit the unit first "
-            "(#776)."
+            "model once -- a save or a query -- before opening the "
+            "transaction, or commit the unit first (#776)."
         )
 
     def _table_if_current(
