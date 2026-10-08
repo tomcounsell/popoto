@@ -494,23 +494,31 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
     - the guarded upsert;
     - the claim on `popoto_lease`;
     - ORM readers;
-    - the derived `turn_summary` and its documented divergence;
+    - `turn_summary` as a `GROUP BY` over the detail rows, under the same contract as Redis;
     - the process-default rule and the narrowed mixed-shape refusal;
     - the zero-Redis test name.
   - If the MemoryTelemetry `Meta.ttl` sentence in the same paragraph is stale since #783, fix it in the same edit. Otherwise leave it.
-- [ ] `docs/features/auditable-extraction.md`: add a "Backends" section stating that the decision log runs on Redis and on Postgres. Name the store-selection rule (process default, same as the journal) and the `turn_summary` divergence.
+- [ ] `docs/features/auditable-extraction.md`:
+  - Add a "Backends" section stating that the decision log runs on Redis and on Postgres, and naming the store-selection rule (process default, same as the journal).
+  - Rewrite the summary paragraph (lines 187-190) to state the contract exactly: counts of the turn's rows by current terminal state and by reason, one of each per candidate, with a candidate that moves between terminal states counted under its new state only. Say how each backend meets it (a hash maintained atomically in the terminal-write script on Redis, an aggregate query on Postgres), and document `rebuild_turn_summary` as the repair for hashes written before the fix.
+  - In "The terminal-write conflict guard" section, mention that the same script maintains the summary.
 - [ ] `docs/guides/subconscious-memory-recipe.md`: the auditable section (around line 251) does not mention the Redis-only limit, so add one sentence noting Postgres support.
 - [ ] `CHANGELOG.md` `[Unreleased]` → `### Added`: add an entry that covers:
   - the auditable extraction decision log on Postgres (#811);
   - the narrowed refusal;
-  - the `turn_summary` divergence;
-  - the data-location change for a Redis-`Meta.backend` memory model under a Postgres process default (Risk 4).
+  - the data-location change for a Redis-`Meta.backend` memory model under a Postgres process default (Risk 4, approved by the maintainer as a CHANGELOG-only callout).
+- [ ] `CHANGELOG.md` `[Unreleased]` → `### Fixed`: a separate entry for the Redis `turn_summary` fix (#811). It should state:
+  - the old behaviour: a candidate whose terminal state or reason changed after its first terminal write stayed counted under the first one, so the summary could disagree with the detail rows (for example `state:reject: 1` for a row that is now `accept`);
+  - the new behaviour: the summary always equals the rollup of current terminal states, on Redis and on Postgres;
+  - who is affected: only rows written through `write_terminal` more than once with a different outcome. `_last_extraction_privacy_dropped` could previously be set from a stale `firewall_drop` count;
+  - the repair: call `DecisionLog().rebuild_turn_summary(agent_id, turn_id)` for turns written before the upgrade, after every process runs the new version.
 
 ### External Documentation Site
 - [ ] Run `mkdocs build --strict` (or `scripts/ci-local.sh docs`) to confirm the docs still build.
 
 ### Inline Documentation
-- [ ] Update the `DecisionLog` class docstring and the `list_for_agent` / `list_pending` / `turn_summary` docstrings to describe both backends.
+- [ ] Update the `DecisionLog` class docstring and the `list_for_agent` / `list_pending` / `turn_summary` docstrings to describe both backends. The `turn_summary` docstring states the contract (current terminal states, one count per candidate, zero keys absent).
+- [ ] Rewrite the comment above the summary block in `TERMINAL_WRITE_LUA` (today "counts each candidate once: bump only when the row is new or still non-terminal 'pending'") to describe decrement-old / increment-new. Add a docstring for `rebuild_turn_summary` and a header comment for `TURN_SUMMARY_REBUILD_LUA`, including the undeclared-key note.
 - [ ] Add docstrings for `_m3_terminal_write` and `_lease_lock` / `_lease_release` that name the Redis structure each one replaces, in the same style as the existing `_qq_lock` docstring.
 
 ## Success Criteria
@@ -538,7 +546,10 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
   - Release is token-checked.
   - The claim expires after `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS`.
 - [ ] `get`, `list_for_agent`, `list_pending`, `turn_summary` and `compute_metrics` agree across the legs on the shared suite.
-- [ ] A Postgres-only test pins the `turn_summary` divergence.
+- [ ] `turn_summary` has one contract on both backends: after any sequence of writes it equals the rollup of the rows' current terminal states. The terminal-to-terminal, reason-change, same-verdict-retry, multi-candidate, empty-reason and refused-write conformance tests pass on **both** legs.
+- [ ] On Redis, no summary field is ever negative, and `rebuild_turn_summary` restores a seeded drifted hash to the rollup. On Postgres, `rebuild_turn_summary == turn_summary`.
+- [ ] No backend divergence is documented anywhere: `grep -rn "divergen" docs/features/ CHANGELOG.md src/popoto/extraction/decision_log.py` finds nothing about `turn_summary`.
+- [ ] The CHANGELOG has a **Fixed** entry for the Redis `turn_summary` change, naming `rebuild_turn_summary`.
 - [ ] Fail-open parity tests exist for each of these:
   - verdict-provider failure;
   - `ResolutionLog.write` failure;
@@ -548,7 +559,8 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 
   Outage propagation is tested on Postgres.
 - [ ] `tests/test_auditable_extraction.py` runs on both legs. Every `redis_only` test names its reason and its Postgres twin. The Redis leg is green and unchanged in behavior.
-- [ ] The Redis implementation is byte-identical: `TERMINAL_WRITE_LUA`, `CLAIM_RELEASE_LUA` and the key helpers are unchanged.
+- [ ] Apart from the summary block in `TERMINAL_WRITE_LUA` and the new `TURN_SUMMARY_REBUILD_LUA`, the Redis implementation is byte-identical: `CLAIM_RELEASE_LUA`, the refusal branch, the `SADD`s, the row `HSET`, the key helpers, and the `write_terminal` call's KEYS/ARGV layout are unchanged.
+- [ ] The Postgres leg ran rather than skipped: every Postgres pytest command reports zero skips for Postgres reasons under `-rs`, with `POSTGRES_URL=postgresql://localhost:5432/postgres` against Postgres 18.
 - [ ] The question-queue tests stay green on both legs after the lease generalisation.
 - [ ] `ruff check src/`, `black --check src/ tests/` and `scripts/mypy_ratchet.py` pass. No new `POPOTO_REDIS_DB` snapshot imports are added, and the one at `tests/test_auditable_extraction.py:41` is removed.
 - [ ] Tests pass (`/do-test`).
@@ -567,14 +579,14 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 
 - **Builder (decision-log dispatch)**
   - Name: decision-log-builder
-  - Role: Add the `DecisionLog` backend dispatch and the `_pg_*` helpers, and narrow the refusal in `SubconsciousMemory`.
+  - Role: Add the `DecisionLog` backend dispatch and the `_pg_*` helpers, fix the Redis summary block in `TERMINAL_WRITE_LUA`, add `rebuild_turn_summary` (both backends), and narrow the refusal in `SubconsciousMemory`.
   - Agent Type: builder
   - Domain: Redis/Popoto data
   - Resume: true
 
 - **Test engineer (parity)**
   - Name: parity-test-engineer
-  - Role: Convert `tests/test_auditable_extraction.py` to conformance, and write the Postgres twins plus the zero-Redis, concurrency, divergence and outage tests.
+  - Role: Convert `tests/test_auditable_extraction.py` to conformance, write the `turn_summary` contract tests that run on both legs, and write the Postgres twins plus the zero-Redis, concurrency and outage tests.
   - Agent Type: test-engineer
   - Resume: true
 
@@ -601,7 +613,7 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 - **Agent Type**: builder
 - **Parallel**: true
 - Optionally rename `_qq_lock` / `_qq_release` to `_lease_lock` / `_lease_release`, registering them under `LEASE_FIELD = "_lease"` and keeping them under `QQ_FIELD`. Reusing the `_qq` `lock` / `release` ops directly is equally acceptable.
-- Add `M3_FIELD = "_m3"` with `terminal_write`. It builds the spike-2 statement from `DecisionRecord`'s `TableSpec` through `to_column_value`, wraps it in `_record_locked`, mirrors `save()`'s `_updated_at` / `_migrated_from` handling, and returns `bool`.
+- Add `M3_FIELD = "_m3"` with two ops, `terminal_write` and `turn_summary`. `turn_summary` runs the `GROUP BY` aggregate from Key Elements and returns the `(state, reason_code, count)` rows. `terminal_write` builds the spike-2 statement from `DecisionRecord`'s `TableSpec` through `to_column_value`, wraps it in `_record_locked`, mirrors `save()`'s `_updated_at` / `_migrated_from` handling, and returns `bool`.
 - Leave the model-level-store tuple at the tail of `_recipe_field_call` (`recipes.py:228-234`) unchanged. `_m3` and `_lease` are not model-level stores, so like `_qq` they receive `(spec, field, ...)`.
 
 ### 2. DecisionLog dispatch and refusal narrowing
@@ -614,7 +626,10 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 - **Parallel**: false
 - Change `DecisionLog.__init__` to resolve `self._backend` and assign `self._redis` only on the Redis path.
 - Give `write_terminal`, `acquire_claim`, `release_claim`, `get`, `list_for_agent` and `turn_summary` an early `_pg_*` branch. Leave the Redis bodies textually unchanged.
-- Implement `_pg_turn_summary` as a count over the detail rows (terminal states only). Count `reason:<reason_code or "">` unconditionally, to match the Lua.
+- Fix the summary block in `TERMINAL_WRITE_LUA` exactly as in Technical Approach (decrement-old / increment-new, `HDEL` at `<= 0`, prior `''` treated as new). Leave the rest of the script and the `run_lua` call unchanged.
+- Add `TURN_SUMMARY_REBUILD_LUA` and `DecisionLog.rebuild_turn_summary(agent_id, turn_id) -> Dict[str, int]`, with a Postgres branch returning `turn_summary(...)`.
+- Implement `_pg_turn_summary` over the `_m3` / `turn_summary` op. Fold the rows into `state:<s>` and `reason:<reason_code or "">`, the reason counted unconditionally, with no zero keys.
+- Before touching the tests, re-run the Problem section's three-write repro on Redis DB 15 (`REDIS_URL=redis://localhost:6379/15` set before import). It must print `{'state:accept': 1, 'reason:accepted': 1}` after the fix.
 - Narrow the `SubconsciousMemory.__init__` refusal to the split-trail case and update its message. Use the exact guard shape in Technical Approach ("Refusal guard"): the check stays inside the existing `non_redis_backend(model_class)` branch, and it also refuses a custom `entry_model` whose store differs from `DecisionRecord`'s.
 - Update the docstrings.
 
@@ -626,13 +641,14 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 - **Agent Type**: test-engineer
 - **Parallel**: false
 - Add the conformance markers to the five storage classes, and to the ten `tests/test_reference_resolution.py` classes listed in Test Impact.
+- Add the six `turn_summary` contract tests to `TestDecisionLogCore` (both legs), and the Redis-only `test_rebuild_turn_summary_repairs_a_drifted_hash` with its Postgres twin.
 - Remove the `POPOTO_REDIS_DB` snapshot import and make `_rows_for` backend-agnostic.
 - Mark the three Redis-structure tests `redis_only`, each with a reason that names its twin.
 - Create `tests/postgres/test_postgres_decision_log.py` with:
   - the three twins;
   - the zero-Redis full-flow test;
   - the two-thread guard and claim tests;
-  - the `turn_summary` divergence pin;
+  - the `_m3` / `turn_summary` aggregate test (`NULL` reason folds to `reason:`);
   - the outage-propagation test;
   - the `ResolutionLog`-failure fail-open test.
 - Replace the refusal test with a positive test. Add two mixed-shape refusal tests, one for each shape:
@@ -646,8 +662,8 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 - **Assigned To**: decision-log-validator
 - **Agent Type**: validator
 - **Parallel**: false
-- Run the Verification table with `POSTGRES_URL` set.
-- Diff-review `decision_log.py`: the Lua constants and key helpers must be unchanged, and the Redis method bodies must be unchanged below the new branch.
+- Run the Verification table in the worktree venv (`.[dev,embeddings,benchmark,mcp,postgres]`), with Redis on DB 15 and `POSTGRES_URL=postgresql://localhost:5432/postgres` (Postgres 18). Confirm that no Postgres test skipped.
+- Diff-review `decision_log.py`: `CLAIM_RELEASE_LUA` and the key helpers are unchanged; in `TERMINAL_WRITE_LUA` only the summary block changed; the Python Redis method bodies are unchanged below the new branch.
 - State the environment (redis-py, mypy, Postgres versions) alongside every count.
 
 ### 5. Documentation
@@ -670,16 +686,19 @@ No agent integration is required. `SubconsciousMemory` is already the host-facin
 
 | Check | Command | Expected |
 |-------|---------|----------|
-| Auditable suite, both legs | `POPOTO_CONFORMANCE_BACKENDS=redis,postgres POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/test_auditable_extraction.py tests/test_reference_resolution.py -q` | exit code 0 |
+| Auditable suite, both legs | `POPOTO_CONFORMANCE_BACKENDS=redis,postgres POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/test_auditable_extraction.py tests/test_reference_resolution.py -q -rs` | exit code 0, no Postgres skips |
+| `turn_summary` contract runs on the Postgres leg | `POPOTO_CONFORMANCE_BACKENDS=redis,postgres POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/test_auditable_extraction.py -q -k "summary and postgres" --co` | output > 0 collected |
 | Reference-resolution suite actually collects a Postgres leg | `POPOTO_CONFORMANCE_BACKENDS=redis,postgres POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/test_reference_resolution.py -q -k postgres --co` | output > 0 collected |
-| Postgres decision-log + recipes | `POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/postgres/test_postgres_decision_log.py tests/postgres/test_postgres_recipes.py -q` | exit code 0 |
+| Postgres decision-log + recipes | `POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/postgres/test_postgres_decision_log.py tests/postgres/test_postgres_recipes.py -q -rs` | exit code 0, 0 skipped |
 | Full suite (Redis leg) | `pytest -q` | exit code 0 |
 | Lint clean | `ruff check src/` | exit code 0 |
 | Format clean | `black --check src/ tests/` | exit code 0 |
 | Type ratchet | `scripts/mypy_ratchet.py` | exit code 0 |
 | No stale snapshot import in the auditable tests | `grep -c "from popoto.redis_db import POPOTO_REDIS_DB" tests/test_auditable_extraction.py` | match count == 0 |
 | Refusal test inverted | `grep -c "def test_the_auditable_extraction_path_is_refused_on_postgres" tests/postgres/test_postgres_recipes.py` | match count == 0 |
-| Redis Lua untouched | `git diff origin/main -- src/popoto/extraction/decision_log.py \| grep -c '^[-+].*redis\.call'` | match count == 0 |
+| No `redis.call` removed outside the summary block | `git diff origin/main -- src/popoto/extraction/decision_log.py \| grep '^-' \| grep 'redis\.call' \| grep -vc HINCRBY` | match count == 0 |
+| No backend divergence documented | `grep -rn "divergen" docs/features/auditable-extraction.md docs/features/postgres-backend.md CHANGELOG.md src/popoto/extraction/decision_log.py` | match count == 0 for `turn_summary` |
+| CHANGELOG Fixed entry | `grep -c "rebuild_turn_summary" CHANGELOG.md` | output > 0 |
 | Doc sentence removed | `grep -c "decision log in Redis" docs/features/postgres-backend.md` | match count == 0 |
 | Zero-Redis test exists | `grep -c "_RedisRecorder" tests/postgres/test_postgres_decision_log.py` | output > 0 |
 | CHANGELOG entry | `grep -c "#811" CHANGELOG.md` | output > 0 |
