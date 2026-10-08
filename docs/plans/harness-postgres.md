@@ -205,34 +205,455 @@ were dropped afterwards.
   `PG_CONNECT_TIMEOUT_SECONDS` (Open Question 1).
 
 ## Data Flow
-TBD
+
+One harness turn, as the Claude Code plugin drives it:
+
+1. **`UserPromptSubmit`**: the plugin runs `popoto-memory hook` and pipes in
+   the event JSON. `hooks.handle_payload` builds `MemoryService(MemoryConfig.from_env())`.
+   - `MemoryConfig.from_env` resolves `url` / `agent_id` / limits.
+     `bind_connection` runs here. **Today** it rebinds the Redis pool and
+     applies the DB-0 guard. **After** it is a no-op when the memory model's
+     backend is not Redis.
+   - `service.assemble(prompt, session_id, turn_id)`:
+     1. `_injected_keys(session)` reads the injected set. Its members become
+        `exclude_keys`. **Side state.**
+     2. `memory.assembler.assemble(...)` runs on the model's backend.
+        Already Postgres-native (spike-1).
+     3. `_mark_injected(session, keys)` adds to the set and refreshes its
+        1 h TTL. **Side state.**
+     4. `_push_pending(session, turn, keys)` appends `{"t": turn, "k": keys}`,
+        trims to 32 and refreshes the TTL. **Side state.**
+     5. `_touch("assemble")` increments the `assemble_ok` counter and stamps
+        the time. **Side state.**
+   - The hook prints the `additionalContext` JSON and exits 0. On any
+     exception it logs and exits 0 (fail-open).
+2. **`Stop`**: the hook runs `service.feedback(session, outcome, turn_id)`.
+   - `_pop_pending(session, turn)` claims the matching entry. **Side state.**
+   - `ObservationProtocol.on_context_used(records, outcomes)` runs on the
+     model's backend and is already Postgres-native.
+   - `_touch("feedback")` runs. **Side state.**
+   - Optionally `capture` / `extract_memories`, which run on the model's
+     backend.
+3. **Operator surfaces**:
+   - `doctor` reads `service.status()`: reachability, record count, counters,
+     last success, errors, and the log tail.
+   - The MCP `status` tool and `demo` read the same `status()`.
+
+The fix sits at a single layer: every "Side state" step goes through one
+`HarnessState` object whose backend is chosen from the memory model's
+backend. Nothing in steps 1.2 / 2.2 changes.
 
 ## Architectural Impact
-TBD
+
+- **New interface:** `popoto.integrations.state`, containing
+  `HarnessState` (a protocol) plus `RedisHarnessState` and
+  `BackendHarnessState`. `MemoryService` gains a `state` attribute and stops
+  calling `self.redis.*` for side state.
+  - The `redis` property stays. Tests and the Hermes plugin read it. On a
+    Postgres-bound service it must not be used on any path, and it is
+    reached only lazily.
+- **New backend adapters:** a `_harness` pseudo-field on
+  `PostgresBackend.field_call` (in `backends/postgres/recipes.py`, next to
+  `_counter` / `_lease` / `_m3`). It is backed by three engine tables created
+  on first use: `popoto_harness_list`, `popoto_harness_set` and
+  `popoto_harness_stamp`.
+  - Counters reuse `popoto_counter` and gain two ops: prefix read and
+    set-if-absent.
+  - All SQL lives in `backends/postgres/`, so `integrations/` holds no SQL and
+    no psycopg import. That keeps its mypy count at the pinned zero.
+- **New public method:** `PostgresBackend.diagnose() -> dict`. It never
+  raises, and doctor uses it for the Postgres health block.
+- **`status()` contract:**
+  - Three backend-neutral keys are added: `backend`, `reachable`, `server`.
+  - On Postgres a `postgres` block is added.
+  - The `redis_*` keys keep their meaning on the Redis leg, so existing
+    `doctor --json` consumers do not break.
+- **Coupling:** `integrations/` now depends on `backends.routing.non_redis_backend`
+  and on `PostgresBackend.field_call`. Both are already used by `counters.py`
+  and `extraction/decision_log.py`, so no new direction of dependency is
+  added.
+- **Reversibility:** high. The Redis implementation is the current code moved
+  verbatim, and the Postgres tables are new and transient (1 h TTL).
 
 ## Appetite
-TBD
+
+**Size:** Medium
+
+**Team:** Solo dev, PM review
+
+**Interactions:**
+- PM check-ins: 1 (the Open Questions below)
+- Review rounds: 1-2
+
+The design is a port of a known pattern (#811 did the same thing for the
+decision log), so the work is in faithfulness rather than invention. The
+pieces are:
+- five side-state structures with exact Redis semantics;
+- a doctor health block;
+- a test sweep across eight integration test files, both legs.
 
 ## Prerequisites
-TBD
+
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| Redis on localhost:6379, test DB 15 | `redis-cli -n 15 ping` | Redis leg of the suite |
+| Postgres >= 18 with pgvector reachable via `POSTGRES_URL` | `psql "$POSTGRES_URL" -c "select extversion from pg_available_extensions where name='vector'"` | Postgres leg (`backend` fixture, `tests/postgres/`) |
+| Extras `.[dev,embeddings,benchmark,mcp,postgres]` installed | `python -c "import mcp, psycopg, numpy"` | MCP and Postgres tests are skipped, not failed, without them |
+| #816's `OUTAGE_ERRORS` widening merged, or rebased onto | `python -c "from popoto.redis_db import OUTAGE_ERRORS; from popoto.backends import BackendUnavailableError as B; assert any(issubclass(B, e) for e in OUTAGE_ERRORS)"` | Service circuit breaker trips on a Postgres outage (see Solution step 6) |
+
+The last row is soft. If #816 has not merged when the build starts, the build
+widens the tuple locally in `service.py`, the same way
+`context_assembler.py:97` does. It then drops the local widening when it
+rebases onto #816.
+
+**Test environment** (the build and review must state theirs):
+- Run the Redis leg with `pytest` (plugin on DB 15).
+- Run the Postgres leg with
+  `POPOTO_CONFORMANCE_BACKENDS=redis,postgres POSTGRES_URL=postgresql://localhost:5432/postgres pytest -m conformance tests/test_integration*.py tests/test_hermes_plugin_contract.py`, then `pytest tests/postgres/test_postgres_harness.py tests/postgres/test_postgres_recipes.py` (CI's `postgres` job runs exactly these two commands).
+- Run ad-hoc scripts with `REDIS_URL=redis://localhost:6379/15` set before
+  `import popoto`.
 
 ## Solution
-TBD
+
+### Key Elements
+
+- **`HarnessState`** is one object that owns every piece of side state the
+  service keeps. It has one Redis implementation (today's code) and one
+  backend implementation (Postgres adapters).
+- **Backend selection follows the memory model.** The rule is
+  `non_redis_backend(self.model)`: None means Redis, anything else is the
+  backend's own store.
+  - There is no separate setting, so the harness can never split its state
+    from its records.
+- **`bind_connection`** never touches Redis when the memory model is not on
+  Redis.
+- **Doctor, MCP and demo** report the bound backend's health. On Postgres that
+  means server version, pgvector and schema.
+
+### Technical Approach
+
+1. **`integrations/state.py`** (new) defines the `HarnessState` protocol, with
+   these methods:
+   - `incr(op)`, `counters()`
+   - `stamp(op)`, `stamps()`
+   - `set_once(name)`
+   - `pending_push(session, entry_raw)`, `pending_list(session)`,
+     `pending_remove(session, raw)`, `pending_pop(session)`
+   - `injected_add(session, keys)`, `injected_members(session)`
+   - `ping() -> (ok, server, ping_ms)`
+
+   Keys are built once from the existing prefixes (`COUNTER_KEY_PREFIX`,
+   `LAST_EVENT_PREFIX`, the pending and injected prefixes) so both stores use
+   **identical key strings**.
+
+   `RedisHarnessState` is the current method bodies moved without change:
+   the same pipelines, `SCAN` match patterns, `MAX_PENDING_TURNS` trim and
+   `PENDING_TTL_SECONDS` expire. The Redis wire must stay byte-identical, and
+   a recorded-command test pins it (Test Impact).
+
+2. **`BackendHarnessState`** calls
+   `backend.field_call(DefaultMemory-model spec, "_harness", op, ...)`.
+   It imports nothing from psycopg.
+
+3. **Postgres adapters** (`backends/postgres/recipes.py`, `_harness`
+   pseudo-field, `HARNESS_FIELD = "_harness"`). Engine tables:
+
+   - `popoto_harness_list (key text, seq bigint GENERATED ALWAYS AS IDENTITY, payload text NOT NULL, expires_at double precision NOT NULL, PRIMARY KEY (key, seq))`
+   - `popoto_harness_set (key text, member text, expires_at double precision NOT NULL, PRIMARY KEY (key, member))`
+   - `popoto_harness_stamp (key text PRIMARY KEY, value text NOT NULL)`
+
+   Ops:
+   - **`list_push(key, payload, cap, ttl)`** runs as one statement batch in
+     one transaction. It:
+     1. deletes the key's rows if they have expired, so an expired list
+        restarts empty, as `EXPIRE` would;
+     2. inserts the payload;
+     3. deletes every row except the newest `cap` (`LTRIM -cap -1`);
+     4. sets `expires_at = now + ttl` for all of the key's rows (`EXPIRE`
+        refresh).
+   - **`list_range(key)`** returns the payloads in seq order where they have
+     not expired (`LRANGE 0 -1`).
+   - **`list_remove_first(key, payload)`** deletes the lowest-seq row with
+     that exact payload, using `DELETE ... WHERE ctid = (SELECT ... LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING 1`.
+     It returns the count (`LREM key 1 payload`).
+   - **`list_pop(key)`** deletes the lowest-seq live row with
+     `RETURNING payload` (`LPOP`).
+   - **`set_add(key, members, ttl)`** inserts with `ON CONFLICT DO NOTHING`,
+     then refreshes `expires_at` for the whole key (`SADD` + `EXPIRE`).
+   - **`set_members(key)`** returns the live members (`SMEMBERS`).
+   - **`stamp_set(key, value)`** is an upsert and **`stamp_scan(prefix)`** a
+     prefix read.
+   - **Counters:** `_counter_increment` already exists. This step adds
+     `counter_scan(prefix)` and `counter_set_once(key)`.
+     - `counter_scan` uses `WHERE key LIKE %s ESCAPE '\'` with the prefix's
+       `%`/`_`/`\` escaped. Agent ids are free text.
+     - `counter_set_once` is `INSERT ... ON CONFLICT DO NOTHING RETURNING 1`,
+       which is the `SETNX` equivalent.
+
+   Expired rows read as absent everywhere: every read filters on
+   `expires_at > _NOW`. Writes to a key sweep that key's expired rows, and
+   `list_push` / `set_add` also delete up to a fixed batch of expired rows
+   for other keys. Without that bounded sweep, abandoned sessions would grow
+   the table without limit.
+   - The batch size is a pinned constant in `Defaults`, not configuration.
+   - The tables are small: each live session holds at most 32 list rows and
+     one set's worth of members.
+
+   Because the counter keys equal `EVICTION_COUNTER_PREFIX`
+   (`default_memory.py:102`), doctor on Postgres now **does** see the
+   `evicted` counter that `DefaultMemory` already writes to `popoto_counter`.
+   The "does not see that counter" sentence in `postgres-backend.md` is
+   updated.
+
+4. **`MemoryService`** changes:
+   - `self.state = make_harness_state(self.model, self.config)` builds the
+     state once, in `__init__`.
+   - Every `self.redis.<cmd>` call on a side-state path becomes a
+     `self.state.<op>` call.
+   - `_decode_pending_entry` and the claim-by-turn logic stay in the service
+     and are shared by both stores, so the turn semantics from #574 cannot
+     diverge between them.
+
+5. **`config.bind_connection`** returns early, with
+   `url_source="backend:<name>"`, when the memory model's backend is not
+   Redis. It then skips the pool rebind, `effective_db`, `suggest_free_db`
+   and the DB-0 guard.
+   - The DB-0 guard protects a *Redis* store. A Postgres-bound harness writes
+     no Redis keys, so refusing it is a false positive.
+   - If `POPOTO_MEMORY_URL` is set on a Postgres process, `status()` adds a
+     warning that it is ignored. Doctor prints the warning but does not fail.
+
+6. **Outage handling:** `_record_failure` sets the `_redis_down` short-circuit
+   for `OUTAGE_ERRORS`. On Postgres the matching error is
+   `BackendUnavailableError`.
+   - With #816 merged, the shared tuple covers it.
+   - Without #816, the service checks a local
+     `OUTAGE_ERRORS + (BackendUnavailableError,)`.
+   - The attribute is renamed to `_store_down`, keeping a `_redis_down` alias
+     for tests and plugins.
+
+7. **`status()`**:
+   - Always returns `backend` (`"redis"` or `"postgres"`), `reachable`,
+     `server` and `ping_ms`.
+   - On Redis it keeps `redis_url`, `redis_reachable` and the rest unchanged.
+   - On Postgres it adds `postgres_dsn` (redacted) and
+     `postgres: backend.diagnose()`.
+   - `record_count` uses the model's `query.count()` on both legs.
+
+8. **`PostgresBackend.diagnose()`** never raises. Each sub-check is captured
+   independently into `{"ok": False, "error": ...}`. Using catalog reads
+   only, it returns:
+   - `server`: version string, `server_version_num`, encoding, and
+     `meets_floor` (>= `MIN_SERVER_VERSION_NUM`).
+   - `pgvector`: `installed_version` and `schema` from `pg_extension`,
+     `available_version` from `pg_available_extensions`, and
+     `on_search_path`.
+   - `schema`: name, `exists`, `format_version` from `popoto_schema` against
+     `SCHEMA_FORMAT_VERSION`, whether the memory model's table exists, and
+     `POPOTO_SCHEMA_AUTO`.
+   - `health`: `Health.as_dict()`.
+
+9. **`doctor`** prints a backend line and a health block. Exit 1 when:
+   - the store is unreachable;
+   - Postgres is below the floor;
+   - pgvector is required but not installed (required means the memory model
+     has an embedding field or the retrieval mode needs vectors);
+   - or the schema format version is newer than the library's.
+
+   Exit 0 otherwise, with warnings for:
+   - pgvector available but not created;
+   - an ignored `POPOTO_MEMORY_URL`;
+   - `POPOTO_SCHEMA_AUTO` off with the table missing.
+
+   `_measure_hook_read` is unchanged; it times `assemble` on whichever
+   backend.
+10. **Wording and the redaction helper:**
+    - The MCP `_status` reads `reachable`, and the server instructions say
+      "backed by Redis, Valkey or Postgres".
+    - `demo` prints `backend`, calls `state.ping()` and says "left in the
+      store".
+    - `redact_url` also redacts conninfo `password=...` and URL-form
+      Postgres DSNs.
+
+### Flow
+
+`hook UserPromptSubmit` → assemble (injected read → retrieve → injected add →
+pending push → touch) → `additionalContext` → `hook Stop` → pending claim →
+observe → touch → `doctor` shows counters, last success, and Postgres health.
 
 ## Failure Path Test Strategy
-TBD
+
+### Exception Handling Coverage
+- The service's existing `except Exception` blocks around side state
+  (`_touch`, `_record_failure`, `_mark_injected`, `_push_pending`) stay
+  fail-open. Each one already logs and increments a failure counter.
+  - **Test:** on the Postgres leg, make the backend raise
+    `BackendUnavailableError` on `field_call` and assert:
+    - `assemble` still returns context;
+    - `errors` gains the failure;
+    - `_store_down` trips.
+- `diagnose()`: each sub-check fails independently. A role with no access to
+  `pg_available_extensions`, or a missing `popoto_schema` table, yields
+  `{"ok": False, "error": ...}` for that check alone, and doctor still prints
+  the rest.
+
+### Empty/Invalid Input Handling
+- An empty `keys` list on `injected_add` / `pending_push` is a no-op. This
+  matches Redis: `SADD` with no members is never sent.
+- An agent id containing `%`, `_` or `\` must not leak another agent's
+  counters into `counter_scan`.
+  - **Test:** agents `a_b` and `axb`.
+- A pending entry that fails to decode is skipped as today. Both stores feed
+  the same `_decode_pending_entry`.
+
+### Error State Rendering
+- When Postgres is unreachable, doctor prints `postgres UNREACHABLE <dsn redacted>`
+  and the error class, and exits 1. Its `--json` output carries
+  `reachable: false`.
+- **Test:** the DSN password never appears in human or JSON output, in either
+  URL or conninfo form.
 
 ## Test Impact
-TBD
+
+These eight test files exercise `integrations/` and must be classified.
+
+- [ ] `tests/test_integrations_service.py` (57 tests): UPDATE.
+  - Mark backend-neutral tests `conformance`.
+  - The tests that read Redis keys directly via `POPOTO_REDIS_DB` (around
+    lines 28 and 524-585) stay Redis-only and are marked
+    `redis_only(reason=...)` (the plugin enforces a reason and skips them on the
+    Postgres leg).
+  - `_UnreachableService` overrides `.redis`; rewrite it to override
+    `state.ping`.
+  - Assertions on `info["redis_reachable"]` move to `info["reachable"]` on the
+    conformance tests.
+- [ ] `tests/test_integrations_hooks.py` (43): UPDATE. Mark `conformance` the
+  tests that drive `handle_payload` end to end; key-inspecting tests stay
+  Redis-only.
+- [ ] `tests/test_integrations_mcp.py` (25): UPDATE. `conformance`, and change
+  the status assertion to `reachable`.
+- [ ] `tests/test_integrations_cli.py` (4): UPDATE. Doctor output assertions
+  become backend-aware; add Postgres doctor cases in the new file below.
+- [ ] `tests/test_integrations_db0_isolation.py` (14): UPDATE. These stay
+  Redis-only, plus one new case: a Postgres-bound service with no Redis URL
+  constructs, and its DB-0 guard is skipped.
+- [ ] `tests/test_integrations_latency.py` (4): UPDATE. Add a Postgres
+  parametrization of the hook p95 test under the same 400 ms budget.
+- [ ] `tests/test_integration_v144.py` (5): UPDATE if it asserts Redis
+  wording; otherwise no change.
+- [ ] `tests/test_hermes_plugin_contract.py` (8): UPDATE. `conformance` where
+  it constructs `MemoryService()` in-process.
+- [ ] **NEW** `tests/postgres/test_postgres_harness.py`:
+  - **Zero-Redis full turn:** under `_RedisRecorder`, run `handle_payload`
+    for `UserPromptSubmit` then `Stop`, plus the MCP tools, `doctor --json`,
+    `demo` and `status`. Assert `calls == []`.
+  - **Semantics, side by side with the Redis store:** pending cap 32, TTL
+    expiry, LREM-first-match, the turn claim, legacy bare-list entries,
+    injected suppression across turns, set-once, and prefix escaping.
+  - **Concurrency:** two `Stop` claimers, exactly one wins.
+  - **`diagnose()` shape**, including below-floor and pgvector-missing
+    simulations.
+- [ ] **NEW** Redis wire pin: record the commands one `assemble` + `feedback`
+  turn sends on Redis before and after the refactor, and assert they are
+  identical. This is the "no regression" proof.
+- [ ] `tests/postgres/test_postgres_recipes.py`: UPDATE. Add `_harness` and
+  `counter_scan` / `counter_set_once` adapter unit tests.
+
+No `xfail` markers relate to this bug (`grep -rn 'xfail' tests/test_integration*`
+returns none).
 
 ## Rabbit Holes
-TBD
+
+- **Migrating `$popoto_memory:*` keys from Redis to Postgres.** They are
+  transient: pending and injected expire after 1 h, and counters are
+  diagnostics. Counters simply restart at zero after a move.
+- **A generic `KeyValueStore` abstraction for all Redis side structures** in
+  popoto. That is #759 umbrella territory. This plan builds only what the
+  harness needs.
+- **Async MCP server rewrite onto `aio.py`.** The MCP server calls the sync
+  service today, and that stays.
+- **LISTEN/NOTIFY or pg_cron for TTL expiry.** Lazy expiry plus a bounded
+  sweep is enough for tables this small.
+- **Changing the hook's connect timeout through configuration.** If one is
+  needed it is a pinned magic constant (Open Question 1), never a knob.
 
 ## Risks
-TBD
+
+### Risk 1: hook latency on a remote Postgres
+**Impact:** Each hook invocation is a fresh process, so it pays the connect
+cost and the server and table checks every turn. Locally that is 55-106 ms
+(spike-4). On a managed Postgres, TLS and RTT could push p95 past 400 ms, and
+a down server costs `PG_CONNECT_TIMEOUT_SECONDS = 5.0` against Redis's 1.0 s.
+**Mitigation:**
+- The side state reuses the model's connection and adds no new connects.
+- Measure p95 in the Postgres latency parametrization.
+- Open Question 1 decides whether the hook process pins a shorter connect
+  timeout.
+
+### Risk 2: #816 lands concurrently on the same lines
+**Impact:** Merge conflict in `service.py` around `_redis_down` /
+`OUTAGE_ERRORS`, or two different outage tuples.
+**Mitigation:**
+- The local widening is a single expression, deleted on rebase.
+- Build rebases on main immediately before opening the PR.
+- The PR description names #816.
+
+### Risk 3: the Redis refactor changes the wire
+**Impact:** A subtle change to pipeline grouping or order breaks the "no
+regression" promise.
+**Mitigation:**
+- Move code verbatim.
+- The recorded-command pin test compares the command sequence before and
+  after.
+
+### Risk 4: `doctor --json` consumers
+**Impact:** Plugins or scripts reading `redis_reachable` break.
+**Mitigation:**
+- The `redis_*` keys are kept on the Redis leg.
+- New keys are additive.
+- On Postgres, `redis_reachable` is absent rather than `false`, because
+  absent is honest and `false` would read as an outage. Open Question 2
+  confirms this.
 
 ## Race Conditions
-TBD
+
+### Race 1: two `Stop` hooks claim the same pending turn
+**Location:** `_pop_pending` → `list_remove_first` / `list_pop`.
+**Trigger:** Overlapping Stop events for the same session, for example a
+retry from the harness.
+**Data prerequisite:** The entry must be pushed (UserPromptSubmit committed)
+before Stop reads it.
+**State prerequisite:** At most one claimer may record outcomes for an entry.
+**Mitigation:**
+- The claim is a single `DELETE ... RETURNING` on one row, chosen with
+  `FOR UPDATE SKIP LOCKED`.
+- The service records outcomes only if the delete returned a row (rowcount 1).
+- This mirrors Redis, where `LREM` returning 1 is the claim.
+- Tested with two threads.
+
+### Race 2: push and trim interleave
+**Location:** `list_push`.
+**Trigger:** Two prompts in one session within milliseconds.
+**Mitigation:**
+- The push runs insert, trim and TTL refresh in one transaction.
+- The trim keeps the newest `cap` rows by `seq` (identity, monotonic per
+  insert).
+- Two concurrent trims can only delete more rows, never fewer, so the cap
+  holds. An over-trim by one under contention matches Redis pipelines, which
+  are not transactional either.
+
+### Race 3: an expired list is read while being re-pushed
+**Location:** `list_push` sweep versus `list_range`.
+**Mitigation:**
+- Reads filter `expires_at > now`, so they never see expired rows whatever
+  the sweep has done.
+- The push's refresh of `expires_at` happens in the same transaction as its
+  insert.
+
+### Race 4: first-use DDL from concurrent hook processes
+**Location:** `_engine("popoto_harness_*")`.
+**Mitigation:** Already solved. `engine_table_ddl` takes the schema and then
+the table advisory lock (#776).
 
 ## No-Gos (Out of Scope)
 TBD
