@@ -377,3 +377,100 @@ def test_the_hook_fails_open_within_its_budget_on_a_silent_postgres(
     assert elapsed >= 0.9, f"{elapsed:.2f}s: the silent server never held the hook"
     assert elapsed < 4.5, f"{elapsed:.1f}s on the prompt path"
     assert h.redis_attempts() == ""
+
+
+def test_a_positional_pop_waits_for_a_held_session_rather_than_missing(
+    pg, admin, tmp_path
+):
+    """While another transaction holds the session's entries -- a concurrent
+    push's expiry refresh row-locks every live one -- the pop waits and returns
+    the entry. A ``SKIP LOCKED`` pop returned nothing here, leaving the turn's
+    entry for the next turn to claim (the #574 misattribution)."""
+    service = make_service(tmp_path)
+    service._push_pending("s1", [_Rec("k:a")])
+    result = []
+    popper = threading.Thread(
+        target=lambda: result.append(make_service(tmp_path)._pop_pending("s1"))
+    )
+    with admin.transaction():
+        admin.execute(
+            f'SELECT seq FROM "{pg.schema}".popoto_harness_pending '
+            "WHERE agent = %s AND session = %s FOR UPDATE",
+            [AGENT, "s1"],
+        )
+        popper.start()
+        popper.join(0.5)
+        waited = popper.is_alive()
+    popper.join(5)
+    assert waited, "the pop did not wait for the held entry"
+    assert result == [["k:a"]]
+
+
+def test_the_hook_fails_open_within_its_budget_on_a_locked_table(
+    pg, pg_schema, admin, tmp_path
+):
+    """A reachable server that never answers a statement (here, a table held
+    under ``ACCESS EXCLUSIVE``) is bounded by the hook's statement-timeout cap,
+    not by the library default of no timeout at all."""
+    h = _pg_harness(tmp_path, pg_schema)
+    first = harness_e2e.drive_turns(h)
+    assert all(run.returncode == 0 for run in first["runs"])
+    with admin.transaction():
+        admin.execute(
+            f'LOCK TABLE "{pg_schema.name}".popoto_harness_injected '
+            "IN ACCESS EXCLUSIVE MODE"
+        )
+        started = time.monotonic()
+        run = h.hook(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "e2e-session",
+                "prompt_id": "p2",
+                "prompt": "how do deploys roll back?",
+            }
+        )
+        elapsed = time.monotonic() - started
+    assert run.returncode == 0, run.stderr
+    assert elapsed >= 0.9, f"{elapsed:.2f}s: the lock never held the hook"
+    assert elapsed < 4.5, f"{elapsed:.1f}s on the prompt path"
+    assert "(backend: postgres)" in run.stderr
+    assert h.redis_attempts() == ""
+
+
+def test_doctor_creates_nothing_in_a_schema_that_does_not_exist(
+    pg, pg_schema, admin, tmp_path
+):
+    """``doctor`` pointed at an unused schema reports it absent and leaves it
+    absent: a model read would otherwise create the schema and its tables,
+    and the next doctor run would report them present."""
+    fresh = f"{pg_schema.name}_fresh"
+    admin.execute(f'DROP SCHEMA IF EXISTS "{fresh}" CASCADE')
+    h = harness_e2e.Harness(
+        tmp_path,
+        {
+            "POPOTO_BACKEND": "postgres",
+            "POPOTO_POSTGRES_URL": pg_schema.url,
+            "POPOTO_POSTGRES_SCHEMA": fresh,
+            "REDIS_URL": "redis://127.0.0.1:1/15",
+        },
+        agent="e2e-pg",
+    )
+
+    def present():
+        (exists,) = admin.execute(
+            "SELECT to_regnamespace(%s) IS NOT NULL", [fresh]
+        ).fetchone()
+        return exists
+
+    try:
+        doctor = h.run(["doctor", "--json"])
+        info = json.loads(doctor.stdout)
+        assert info["reachable"] is True
+        assert info["postgres"]["schema_exists"] is False
+        assert info["record_count"] == 0
+        assert present() is False
+        h.run(["doctor"])  # the text report, with its latency probe
+        assert present() is False
+        assert h.redis_attempts() == ""
+    finally:
+        admin.execute(f'DROP SCHEMA IF EXISTS "{fresh}" CASCADE')

@@ -43,7 +43,7 @@ def test_the_hook_and_doctor_run_on_redis_unchanged(tmp_path):
     assert info["url_source"] == "REDIS_URL"
     assert info["record_count"] == 2
     assert info["counters"] == {"capture_ok": 2, "assemble_ok": 1}
-    assert "postgres" not in info
+    assert info["postgres"] is None  # same key set as on Postgres
 
     text = h.run(["doctor"])
     assert text.returncode == 0, text.stdout

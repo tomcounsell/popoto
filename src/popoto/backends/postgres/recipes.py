@@ -288,6 +288,7 @@ class RecipeOpsMixin:
                 "injected_mark": self._harness_injected_mark,
                 "touch": self._harness_touch,
                 "events": self._harness_events,
+                "purge": self._harness_purge,
             }
         else:
             fs = spec.fields.get(field)
@@ -1126,17 +1127,20 @@ class RecipeOpsMixin:
         ``LRANGE`` + ``LREM`` claim in one statement. ``hit`` says an entry
         for the turn existed; ``saw_tagged`` that some live entry of the
         session carries a turn at all, which decides between a miss and the
-        positional fallback."""
+        positional fallback. Under the session's lock, as the push is, so a
+        push's expiry refresh (which row-locks every live entry) is never
+        seen half-done."""
         table = self._engine("popoto_harness_pending")
         rows, _ = self._run(
-            f"WITH live AS (SELECT seq, turn FROM {table} WHERE agent = %s "
+            self._harness_session_lock("pending")
+            + f"WITH live AS (SELECT seq, turn FROM {table} WHERE agent = %s "
             f"AND session = %s AND expires_at > {_NOW}), "
             "hit AS (SELECT seq FROM live WHERE turn = %s ORDER BY seq LIMIT 1), "
             f"del AS (DELETE FROM {table} WHERE agent = %s AND session = %s "
             "AND seq IN (SELECT seq FROM hit) RETURNING keys) "
             "SELECT (SELECT keys FROM del), EXISTS (SELECT 1 FROM hit), "
             "EXISTS (SELECT 1 FROM live WHERE turn IS NOT NULL)",
-            [agent, session, turn, agent, session],
+            [self.schema, agent, session, agent, session, turn, agent, session],
             uow=uow,
             write=True,
         )
@@ -1156,14 +1160,24 @@ class RecipeOpsMixin:
         uow: Optional[UnitOfWork] = None,
     ) -> Optional[list[str]]:
         """``LPOP``: delete the oldest live entry and return its keys, or
-        ``None``. ``SKIP LOCKED``, so two concurrent pops take two entries."""
+        ``None``.
+
+        Under the session's advisory lock, which serialises it with the push
+        and with other pops, as Redis serialises ``LPOP`` with the push
+        pipeline. It must not ``SKIP LOCKED`` instead: the push's expiry
+        refresh row-locks every live entry, so a skipping pop that ran
+        alongside it found nothing, left turn N's entry behind, and the next
+        pop paired it with turn N+1's outcome (the #574 misattribution). Two
+        concurrent pops still take two entries: the second runs after the
+        first commits and, in a fresh statement snapshot, sees the next one."""
         table = self._engine("popoto_harness_pending")
         rows, _ = self._run(
-            f"DELETE FROM {table} WHERE agent = %s AND session = %s AND seq = ("
+            self._harness_session_lock("pending")
+            + f"DELETE FROM {table} WHERE agent = %s AND session = %s AND seq = ("
             f"SELECT seq FROM {table} WHERE agent = %s AND session = %s "
-            f"AND expires_at > {_NOW} ORDER BY seq LIMIT 1 FOR UPDATE SKIP LOCKED) "
+            f"AND expires_at > {_NOW} ORDER BY seq LIMIT 1 FOR UPDATE) "
             "RETURNING keys",
-            [agent, session, agent, session],
+            [self.schema, agent, session, agent, session, agent, session],
             uow=uow,
             write=True,
         )
@@ -1267,3 +1281,33 @@ class RecipeOpsMixin:
             f"SELECT name, stamp FROM {table} WHERE agent = %s", [agent], uow=uow
         )
         return {str(name): str(stamp) for name, stamp in rows}
+
+    def _harness_purge(
+        self,
+        spec: ModelSpec,
+        agent: str,
+        counter_prefix: str,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> int:
+        """Delete everything the integration keeps for ``agent``: its pending
+        handoff, injected sets, last-success stamps, and the counters whose
+        key starts with ``counter_prefix`` -- the Postgres twin of the
+        ``SCAN MATCH`` + ``DEL`` sweep over the agent's Redis keys. One
+        message, so one implicit transaction. Returns the rows removed."""
+        pending = self._engine("popoto_harness_pending")
+        injected = self._engine("popoto_harness_injected")
+        events = self._engine("popoto_harness_event")
+        counters = self._engine("popoto_counter")
+        rows, _ = self._run(
+            f"WITH p AS (DELETE FROM {pending} WHERE agent = %s RETURNING 1), "
+            f"i AS (DELETE FROM {injected} WHERE agent = %s RETURNING 1), "
+            f"e AS (DELETE FROM {events} WHERE agent = %s RETURNING 1), "
+            f"c AS (DELETE FROM {counters} WHERE starts_with(key, %s) RETURNING 1) "
+            "SELECT (SELECT count(*) FROM p) + (SELECT count(*) FROM i) "
+            "+ (SELECT count(*) FROM e) + (SELECT count(*) FROM c)",
+            [agent, agent, agent, counter_prefix],
+            uow=uow,
+            write=True,
+        )
+        return int(rows[0][0]) if rows else 0

@@ -637,6 +637,16 @@ class MemoryService:
         except Exception as exc:
             info["errors"].append(f"retrieval mode unresolved: {exc}")
 
+        if self.schema_pending(info):
+            # Every read below would create the schema and its tables (a
+            # Postgres table is made on first use), so a doctor pointed at the
+            # wrong database would quietly create popoto's objects there and
+            # then report them present. Nothing has been written, so nothing
+            # is lost by not reading: the counts are zero.
+            info["record_count"] = 0
+            info["log_tail"] = self.log_tail()
+            return info
+
         try:
             info["record_count"] = self.model.query.filter(
                 agent_id=self.config.agent_id
@@ -656,6 +666,16 @@ class MemoryService:
 
         info["log_tail"] = self.log_tail()
         return info
+
+    @staticmethod
+    def schema_pending(info: Dict[str, Any]) -> bool:
+        """Whether a :meth:`status` result describes a Postgres schema that
+        does not exist yet. A caller that would read through the model (the
+        doctor's latency probe) must skip the read then: on Postgres the
+        first read creates the schema and its tables, and ``doctor`` creates
+        nothing it was asked to check."""
+        pg = info.get("postgres")
+        return isinstance(pg, dict) and pg.get("schema_exists") is False
 
     def _status_base(self, backend_name: str) -> Dict[str, Any]:
         """The configuration half of :meth:`status`, before any probe.
@@ -791,6 +811,35 @@ class MemoryService:
         health = getattr(store, "health", None)
         as_dict = getattr(health, "as_dict", None)
         return as_dict() if as_dict is not None else None
+
+    def purge_integration_state(self) -> int:
+        """Delete the integration's own state for this agent id.
+
+        The pending handoffs, injected sets, counters and last-success
+        stamps -- never memory records, which the caller deletes through the
+        model. For a scratch agent id (``examples/harness_memory/verify.py``)
+        that should leave nothing behind: on Redis the keys under the agent's
+        prefixes, on Postgres the agent's rows in the harness tables and
+        ``popoto_counter``, which would otherwise never expire. Returns how
+        many keys or rows were removed.
+        """
+        agent = self.config.agent_id
+        counter_prefix = f"{COUNTER_KEY_PREFIX}:{agent}:"
+        store = self._store()
+        if store is not None:
+            return int(
+                self._state(store, HARNESS_FIELD, "purge", agent, counter_prefix)
+            )
+        removed = 0
+        for prefix in (
+            PENDING_KEY_PREFIX,
+            INJECTED_KEY_PREFIX,
+            COUNTER_KEY_PREFIX,
+            LAST_EVENT_KEY_PREFIX,
+        ):
+            for key in self.redis.scan_iter(match=f"{prefix}:{agent}:*", count=200):
+                removed += int(self.redis.delete(key))
+        return removed
 
     def log_tail(self, lines: int = 5) -> List[str]:
         """Return the last ``lines`` entries of the failure log.

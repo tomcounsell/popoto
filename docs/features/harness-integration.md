@@ -338,8 +338,22 @@ A hook on an unreachable Postgres behaves as one on an unreachable Redis
 (see [Failure behavior](#failure-behavior)): exit 0, no output, one log line,
 and a stderr warning that names the backend, such as
 `popoto memory injected_read failed (backend: postgres): ...`. The hook
-caps its connect wait at the same 1 second it gives Redis, so an outage
-costs the prompt about a second, once per hook process.
+caps both of its Postgres waits at the same 1 second it gives Redis: the
+connect timeout, so an outage costs the prompt about a second once per hook
+process, and the statement timeout, so a held lock (a migration, `maintain`,
+a stuck writer) costs about a second per statement instead of the library's
+30. Only the hook subcommand lowers them; the MCP server and an in-process
+caller such as the Hermes plugin keep the library defaults.
+
+`doctor` creates nothing. Pointed at a schema that does not exist yet, it
+reports the schema as `not created yet` with a record count of 0 and skips its
+latency probe, because on Postgres the first read creates the schema and its
+tables.
+
+To remove a scratch agent's bookkeeping (handoffs, suppression sets,
+counters, last-success stamps) on either backend, call
+`MemoryService.purge_integration_state()`. It never deletes memory records;
+delete those through the model.
 
 ### The one deliberate divergence from the benchmarked configuration
 

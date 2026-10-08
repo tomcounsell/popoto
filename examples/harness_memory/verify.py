@@ -146,16 +146,12 @@ def main() -> int:
                 removed += 1
             except Exception:
                 pass
-        # On Postgres the session rows expire with the session on their own,
-        # and the counters are per agent id, which is unique to this run.
-        patterns = (
-            f"$popoto_memory:pending:{agent_id}:*",
-            f"$popoto_memory:counter:{agent_id}:*",
-            f"$popoto_memory:last:{agent_id}:*",
-        )
-        for pattern in patterns if on_redis else ():
-            for key in service.redis.scan_iter(match=pattern, count=200):
-                service.redis.delete(key)
+        # The integration's own state for this run's agent id: Redis keys,
+        # or Postgres rows (counters and stamps there never expire).
+        try:
+            service.purge_integration_state()
+        except Exception:
+            pass
         print(f"\n   cleaned up {removed} record(s)")
 
     if FAILURES:

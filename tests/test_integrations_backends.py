@@ -13,6 +13,7 @@ pinning the raw key layout; nothing here reads a key or a table directly.
 """
 
 import json
+import threading
 
 import pytest
 
@@ -148,6 +149,71 @@ def test_the_pending_handoff_is_capped(tmp_path):
             break
         popped.extend(keys)
     assert popped == [f"k:{i}" for i in range(8, MAX_PENDING_TURNS + 8)]
+
+
+def test_positional_pops_never_miss_under_concurrent_pushes(tmp_path):
+    """K staged turns, then K positional pops racing K new pushes: every pop
+    gets an entry and no entry is handed out twice.
+
+    ``LPOP`` is one atomic command on Redis. On Postgres the pop is a
+    statement over rows, and a ``SKIP LOCKED`` pop once returned nothing
+    while a concurrent push or pop held the head row -- the turn's outcome
+    then went unreported and its entry stayed queued for the *next* turn to
+    claim, the #574 misattribution by another route.
+    """
+    k = 8
+    assert 2 * k <= MAX_PENDING_TURNS  # the cap must not trim staged entries
+    service = make_service(tmp_path)
+    for i in range(k):
+        service._push_pending("s1", _recs(f"old:{i}"))
+    popped: list = []
+    barrier = threading.Barrier(2 * k)
+
+    def pop():
+        mine = make_service(tmp_path)
+        barrier.wait()
+        popped.append(mine._pop_pending("s1"))
+
+    def push(i):
+        mine = make_service(tmp_path)
+        barrier.wait()
+        mine._push_pending("s1", _recs(f"new:{i}"))
+
+    threads = [threading.Thread(target=pop) for _ in range(k)]
+    threads += [threading.Thread(target=push, args=(i,)) for i in range(k)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert all(popped), popped
+    flat = [key for keys in popped for key in keys]
+    assert len(flat) == len(set(flat)) == k
+    left = []
+    while True:
+        keys = service._pop_pending("s1")
+        if not keys:
+            break
+        left.extend(keys)
+    assert sorted(flat + left) == sorted(
+        [f"old:{i}" for i in range(k)] + [f"new:{i}" for i in range(k)]
+    )
+
+
+def test_purging_the_integration_state_clears_counters_and_handoffs(tmp_path):
+    service = make_service(tmp_path)
+    service.capture("Deploys are blue-green with automatic rollback", "s1")
+    assert service.assemble("deploys roll back", session_id="s1", turn_id="t1")
+    before = service.status()
+    assert before["counters"] and before["last_success"]
+    assert service.purge_integration_state() > 0
+    after = service.status()
+    assert after["counters"] == {}
+    assert after["last_success"] == {}
+    assert service._pop_pending("s1", turn_id="t1") == []
+    assert service._injected_keys("s1") is None
+    # Records are the caller's to delete; the purge leaves them alone.
+    assert after["record_count"] == 1
+    assert service.purge_integration_state() == 0
 
 
 def test_the_feedback_loop_reports_against_real_records(tmp_path):

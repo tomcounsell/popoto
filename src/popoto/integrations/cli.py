@@ -155,7 +155,7 @@ def _cmd_hook(args: Any) -> int:
 
     # No bind_connection here: MemoryService.__init__ owns that, so every
     # entry point resolves POPOTO_MEMORY_URL the same way.
-    _bound_postgres_connect_timeout()
+    _bound_postgres_waits()
     try:
         from . import hooks
 
@@ -184,18 +184,21 @@ def _cmd_hook(args: Any) -> int:
     return 0
 
 
-def _bound_postgres_connect_timeout() -> None:
-    """Cap the Postgres connect wait at the hook's own budget (#814).
+def _bound_postgres_waits() -> None:
+    """Cap every Postgres wait at the hook's own budget (#814).
 
-    The Redis connection the integration binds gets a 1-second connect and
+    The Redis connection the integration binds gets a 1-second connect *and*
     socket timeout (``HOOK_SOCKET_TIMEOUT_SECONDS``) because the read hook
-    sits on the user's prompt path. The Postgres backend's connect timeout,
-    ``Defaults.PG_CONNECT_TIMEOUT_SECONDS``, is 5 s, so a Postgres outage
-    would stall every prompt five times longer than a Redis one. Lowered
-    here and only here: the hook subcommand is a process of its own, so this
-    reaches no host application; an in-process caller (the Hermes plugin,
-    the MCP server) keeps the library default. Raising it is never done --
-    a smaller value set by the operator wins.
+    sits on the user's prompt path. The Postgres backend's defaults are a 5 s
+    connect timeout (``Defaults.PG_CONNECT_TIMEOUT_SECONDS``) and a 30 s
+    statement timeout (``Defaults.PG_STATEMENT_TIMEOUT_MS``), so an outage
+    would stall every prompt five times longer than a Redis one, and a held
+    lock (a migration, ``maintain``, a stuck writer on the session's advisory
+    lock) thirty times longer. Both are lowered here and only here: the hook
+    subcommand is a process of its own, so this reaches no host application;
+    an in-process caller (the Hermes plugin, the MCP server) keeps the
+    library defaults. Never raised -- a smaller value set by the operator
+    wins -- and a statement timeout of 0 (none) counts as larger than any.
     """
     try:
         from ..fields.constants import Defaults
@@ -203,6 +206,10 @@ def _bound_postgres_connect_timeout() -> None:
 
         if Defaults.PG_CONNECT_TIMEOUT_SECONDS > HOOK_SOCKET_TIMEOUT_SECONDS:
             Defaults.PG_CONNECT_TIMEOUT_SECONDS = HOOK_SOCKET_TIMEOUT_SECONDS
+        statement_ms = int(HOOK_SOCKET_TIMEOUT_SECONDS * 1000)
+        current = int(Defaults.PG_STATEMENT_TIMEOUT_MS)
+        if current <= 0 or current > statement_ms:
+            Defaults.PG_STATEMENT_TIMEOUT_MS = statement_ms
     except Exception:
         pass
 
@@ -247,14 +254,16 @@ def _cmd_doctor(args: Any) -> int:
         if args.json:
             import json
 
+            backend = os.environ.get("POPOTO_BACKEND", "").strip() or "redis"
             sys.stdout.write(
                 json.dumps(
                     {
                         "redis_url": None,
-                        "redis_reachable": False,
+                        # null, not false, where Redis is not the backend: the
+                        # same "not applicable" status() reports there.
+                        "redis_reachable": False if backend == "redis" else None,
                         "reachable": False,
-                        "backend": os.environ.get("POPOTO_BACKEND", "").strip()
-                        or "redis",
+                        "backend": backend,
                         "server": None,
                         "postgres": None,
                         "error": str(exc),
@@ -268,7 +277,11 @@ def _cmd_doctor(args: Any) -> int:
         return 1
     info = service.status()
 
-    if not args.no_latency and info.get("reachable"):
+    if (
+        not args.no_latency
+        and info.get("reachable")
+        and not service.schema_pending(info)
+    ):
         info["hook_read_ms"] = _measure_hook_read(service)
 
     if args.json:

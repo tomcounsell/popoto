@@ -540,14 +540,29 @@ def _busy(exc: BaseException) -> Optional[BackendBusyError]:
 
 def close_pools() -> None:
     """Close every pool this process opened (tests, interpreter shutdown),
-    the async bridge's per-loop pools included."""
-    if _async_bridge is not None:
-        _async_bridge.close_all()
+    the async bridge's per-loop pools included.
+
+    The sync pools go first, and each close is independent: they are the
+    ones whose threads hold a process in interpreter shutdown, so a failure
+    closing the bridge's pools (or one sync pool) must not leave the rest
+    open. The first error is re-raised once everything has been tried."""
+    first: Optional[BaseException] = None
     with _pools_lock:
         for (dsn, pid), pool in list(_pools.items()):
-            if pid == os.getpid():
-                pool.close()
-            del _pools[(dsn, pid)]
+            try:
+                if pid == os.getpid():
+                    pool.close()
+            except Exception as exc:
+                first = first or exc
+            finally:
+                del _pools[(dsn, pid)]
+    if _async_bridge is not None:
+        try:
+            _async_bridge.close_all()
+        except Exception as exc:
+            first = first or exc
+    if first is not None:
+        raise first
 
 
 # -- health -------------------------------------------------------------------
