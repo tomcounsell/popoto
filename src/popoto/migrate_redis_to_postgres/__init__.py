@@ -805,6 +805,12 @@ FAMILY_DISPOSITIONS: dict[str, tuple[str, str]] = {
     "$KeyF": (REBUILDABLE, "key-field index; a B-tree"),
     "$UniqueKeyF": (REBUILDABLE, "unique key index; a UNIQUE index"),
     "$AutoKeyF": (REBUILDABLE, "auto key index; a B-tree"),
+    "$IndexF": (REBUILDABLE, "indexed field value Sets; a B-tree"),
+    "$IdxPtr": (
+        REBUILDABLE,
+        "indexed field pointers (which $IndexF Set holds the record); "
+        "derived from the field value",
+    ),
     "$IndexedF": (REBUILDABLE, "indexed field; a B-tree"),
     "$UniqueF": (REBUILDABLE, "unique field; a UNIQUE index"),
     "$SortedF": (REBUILDABLE, "sorted index; a B-tree"),
@@ -821,7 +827,6 @@ FAMILY_DISPOSITIONS: dict[str, tuple[str, str]] = {
     "$WF": (NOT_CARRIED, "write-filter priority tier; not stored on Postgres"),
     "stream": (NOT_CARRIED, "event stream; records cross, the stream does not"),
     "$TOMBPRIOR": (EXPECTED_EMPTY, "tombstone priors; no carry path"),
-    "$IdxPtr": (EXPECTED_EMPTY, "legacy index pointers"),
 }
 
 _SUBKIND_PREFIXES = ("$AT", "$CyclicDecayF")

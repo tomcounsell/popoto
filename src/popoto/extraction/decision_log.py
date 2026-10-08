@@ -352,7 +352,7 @@ for _, field in ipairs(order) do
 end
 return out
 """
-"""Repair script for a summary hash that drifted before the #811 fix."""
+"""Repair script for a drifted summary hash (pre-#811 hashes, and #822)."""
 
 
 def _packb(value: str) -> bytes:
@@ -493,7 +493,11 @@ class DecisionLog:
         can reach an irreversible side effect with zero decision-log rows.
 
         No summary update accompanies it: the per-turn summary aggregates
-        terminal states only, and ``pending`` is never counted into it.
+        terminal states only, and ``pending`` is never counted into it. On
+        Redis that also means a ``pending`` write over an already-terminal
+        row does not take that row's counts back out: the documented #822
+        drift, repaired by :meth:`rebuild_turn_summary` (see
+        :meth:`turn_summary`).
 
         Args:
             agent_id: Owning agent. Never ``None``.
@@ -1165,7 +1169,14 @@ class DecisionLog:
         Redis keeps a hash that ``TERMINAL_WRITE_LUA`` maintains atomically
         with the row; Postgres derives it on read with an indexed
         ``GROUP BY`` and cannot drift. Both return the same dict for the same
-        sequence of writes.
+        sequence of writes, with one documented Redis-only exception (#822):
+        :meth:`write_pending` is a plain save with no summary step, so a
+        ``pending`` write over a row that is already terminal leaves that
+        row's counts in the hash, and the next terminal write counts the row
+        again. It is reachable when an unclaimed non-``accept`` write lands
+        between :meth:`assemble`'s row read and its ``write_pending``. The
+        hash over-counts until :meth:`rebuild_turn_summary` recomputes it;
+        Postgres is unaffected.
         """
         if self._backend is not None:
             return self._pg_turn_summary(agent_id, turn_id)
@@ -1182,9 +1193,12 @@ class DecisionLog:
     def rebuild_turn_summary(self, agent_id: str, turn_id: str) -> Dict[str, int]:
         """Recompute a turn's summary from its detail rows and return it.
 
-        The repair for Redis summary hashes written before the #811 fix,
-        which could disagree with their rows after a terminal-to-terminal
-        write. Run it per turn once every process runs the fixed version.
+        The repair for Redis summary hashes that disagree with their rows:
+        hashes written before the #811 fix (a terminal-to-terminal write),
+        and the Redis-only drift after a ``pending`` write over a terminal
+        row (#822, see :meth:`turn_summary`). Run it per turn once every
+        process runs the fixed version; until then a mixed fleet may
+        undercount.
         One ``EVAL`` (``TURN_SUMMARY_REBUILD_LUA``), so concurrent terminal
         writes serialize around it. An operator call, never on the hot path.
 

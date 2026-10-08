@@ -453,13 +453,19 @@ snapshot. Each key family of a migrated model has a disposition, recorded in
 - **irreplaceable**: carried. This covers record hashes, confidence
   evidence, access counters and staged reads, edges, validity, cycles and
   pressure, and the prediction ledger.
-- **rebuildable**: rebuilt by the save. This covers class sets, key and
-  sorted indexes, BM25, existence filters and geo.
+- **rebuildable**: rebuilt by the save. This covers class sets, key,
+  indexed-field (`$IndexF`) and sorted indexes, BM25, existence filters and
+  geo. It also covers the `$IdxPtr:` pointer keys every `IndexedField` writes
+  today: each one only names the `$IndexF` Set its record currently sits in,
+  which is derived from the field value, so it is counted and skipped (#822).
+  `JournalEntry` writes five per entry.
 - **not carried**: dropped by design and counted. This covers the access
   log, the frequency sketch, write-filter priority and the event stream.
-- **expected empty**: `$TOMBPRIOR`, legacy `$IdxPtr` pointers, and NUL-byte
-  index-pointer fields. Any key here **stops the run** (exit code 3) before
-  anything is written.
+- **expected empty**: `$TOMBPRIOR` and the NUL-byte index-pointer fields of
+  the pre-#476 in-hash scheme. Any key here **stops the run** (exit code 3)
+  before anything is written. The pre-#540 pointer side keys
+  (`<record key>\x00idxptr\x00<field>`) sit in the record namespace and are
+  not hashes, so they stop the run too.
 
 A key family the tool does not recognize also stops the run, unless you pass
 `--accept-unclassified` after reading `inventory.json`. Keys of other models

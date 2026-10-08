@@ -656,7 +656,13 @@ def test_a_memory_model_on_postgres_under_a_redis_default_is_refused(pg):
                 content_field="content",
                 auditable_extraction=_auditable_config(journal=ProvenanceJournal),
             )
-        assert "set_backend('postgres')" in str(e.value)
+        message = str(e.value)
+        assert "set_backend('postgres')" in message
+        # #822: the error names which side is on which backend.
+        assert "memory model RecPgPinned is on 'postgres'" in message
+        assert "process default ('redis')" in message
+        assert "pin RecPgPinned to 'redis'" in message
+        assert "journal entry model" not in message
     finally:
         set_backend(previous)
 
@@ -675,11 +681,21 @@ def test_a_journal_entry_model_in_another_store_is_refused(pg):
     class RedisJournal(ProvenanceJournal):
         entry_model = RedisEntry
 
-    with pytest.raises(BackendCapabilityError, match="split its audit trail"):
+    with pytest.raises(BackendCapabilityError, match="split its audit trail") as e:
         SubconsciousMemory(
             agent_id="audit",
             auditable_extraction=_auditable_config(journal=RedisJournal),
         )
+    # #822: the default is already Postgres, so re-binding it is not advice;
+    # the fix is the journal's pin.
+    message = str(e.value)
+    assert "journal entry model RedisEntry is on 'redis'" in message
+    assert "process default ('postgres')" in message
+    assert "already 'postgres'" in message
+    assert "remove RedisEntry's Meta.backend = 'redis' pin" in message
+    assert "set_backend('postgres')" not in message
+    assert "POPOTO_BACKEND" not in message
+    assert "memory model" not in message
 
 
 def test_a_postgres_journal_under_a_redis_default_is_refused(pg):
@@ -699,11 +715,19 @@ def test_a_postgres_journal_under_a_redis_default_is_refused(pg):
 
     previous = set_backend("redis")
     try:
-        with pytest.raises(BackendCapabilityError, match="split its audit trail"):
+        with pytest.raises(BackendCapabilityError, match="split its audit trail") as e:
             SubconsciousMemory(
                 agent_id="audit",
                 auditable_extraction=_auditable_config(journal=PgJournal),
             )
+        # #822: here binding the default to Postgres is right, and so is
+        # dropping the journal's pin.
+        message = str(e.value)
+        assert "journal entry model PgEntry is on 'postgres'" in message
+        assert "process default ('redis')" in message
+        assert "set_backend('postgres')" in message
+        assert "remove PgEntry's Meta.backend = 'postgres' pin" in message
+        assert "memory model" not in message
     finally:
         set_backend(previous)
 
@@ -725,13 +749,20 @@ def test_a_redis_pinned_model_and_journal_under_a_postgres_default_is_refused(pg
         class Meta:
             backend = "redis"
 
-    with pytest.raises(BackendCapabilityError, match="split its audit trail"):
+    with pytest.raises(BackendCapabilityError, match="split its audit trail") as e:
         SubconsciousMemory(
             agent_id="audit",
             model_class=RedisModel,
             content_field="content",
             auditable_extraction=_auditable_config(journal=RedisJournal2),
         )
+    # #822: both pins point at Redis, so moving the whole trail there is a
+    # valid alternative to dropping the journal's pin.
+    message = str(e.value)
+    assert "journal entry model RedisEntry2 is on 'redis'" in message
+    assert "remove RedisEntry2's Meta.backend = 'redis' pin" in message
+    assert "set_backend('redis')" in message
+    assert "set_backend('postgres')" not in message
 
 
 def test_a_redis_pinned_model_with_the_default_journal_under_a_postgres_default_is_allowed(

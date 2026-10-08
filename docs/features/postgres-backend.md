@@ -854,20 +854,40 @@ key, the guarded terminal write (refuse a terminal write over an assembled
 claim is a `popoto_lease` row (`INSERT ... ON CONFLICT ... WHERE expires_at <=
 now`, so a lapsed claim is takeable and a release is token-checked), and
 `turn_summary` is a `GROUP BY` over the turn's rows computed on read. Every
-method has the same semantics on both backends, `turn_summary` included: a
-rollup of the rows' current terminal states, zero counts absent, `pending`
-never counted, an empty or `NULL` reason counted as `reason:`.
+method has the same semantics on both backends: rows, return values, the
+guard, `list_pending` and the claim. `turn_summary` means the same thing on
+both (a rollup of the rows' current terminal states, zero counts absent,
+`pending` never counted, an empty or `NULL` reason counted as `reason:`), and
+Postgres always returns exactly that. Redis can drift from it in one case,
+listed in the divergence table below: a `pending` write over a row that is
+already terminal (#822). `DecisionLog.rebuild_turn_summary` repairs it.
 
 Construction refuses only the split trail, whenever `auditable_extraction` is
-set: a log that would land in Redis while the memory model is on Postgres
-(bind the process default with `set_backend("postgres")` or
-`POPOTO_BACKEND=postgres`), or a journal entry model in a different store from
-the log, in either direction (a Redis default with a Postgres-pinned journal is
-refused too). A memory model pinned to Redis under a Postgres default keeps its
-log in Postgres, alongside the journal. Data placement changes with the
-binding: a process that moves to Postgres starts with an empty decision log,
-as it does for the journal; migrate existing rows with the Redis-to-Postgres
-migration tool. Pinned by `tests/postgres/test_postgres_decision_log.py`
+set: a log that would land in Redis while the memory model is on Postgres, or
+a journal entry model in a different store from the log, in either direction
+(a Redis default with a Postgres-pinned journal is refused too). The error
+names which side is on which backend and gives the fix for that direction
+(#822). Under a Redis default it says to bind the default with
+`set_backend("postgres")` or `POPOTO_BACKEND=postgres`, or to remove the one
+pin. Under a Postgres default, where re-binding would change nothing, it says
+to remove the journal entry model's `Meta.backend` pin. A memory model pinned
+to Redis under a Postgres default keeps its log in Postgres, alongside the
+journal. Data placement changes with the binding: a process that moves to
+Postgres starts with an empty decision log, as it does for the journal.
+Migrate existing rows with the
+[Redis-to-Postgres migration tool](redis-to-postgres-migration.md), naming
+both `popoto.extraction.decision_log:DecisionRecord` and
+`popoto.recipes.provenance_journal:JournalEntry`, so the rows' `entry_id`s
+travel with their journal. The summary hash and claim keys stay behind:
+Postgres derives the summary, and a claim is a lease. The decision log never
+joins a caller's `transaction()` or `popoto.batch()`. Each of its statements
+takes its own pooled connection and autocommits, as the Lua scripts do on
+Redis. While four or more `transaction()` blocks are open at once
+(`Defaults.PG_POOL_MAX_SIZE` is 4), every pooled connection is held, so each
+of the log's statements waits `Defaults.PG_CONNECT_TIMEOUT_SECONDS` and then
+raises `BackendBusyError` ([a busy pool](#topology-and-the-outage-contract) is the
+backend's general limit, not the log's). Keep units short, or keep fewer
+concurrent units than the pool size. Pinned by `tests/postgres/test_postgres_decision_log.py`
 (including a whole extraction under a Redis connection layer that refuses
 every command) and by the conformance classes in
 `tests/test_auditable_extraction.py` and `tests/test_reference_resolution.py`.
@@ -2734,6 +2754,7 @@ cast to the column's type.
 | A question-queue delivery when another transaction holds a candidate's row (M4) | the script runs after the other write and sees it | `FOR UPDATE SKIP LOCKED`: that candidate is passed over for the next, as one another worker claimed would be. Pinned: `test_postgres_question_queue.py::test_a_candidate_another_writer_holds_is_skipped` |
 | A proposal that duplicates two or more open candidates (M4) | folds into the first in `QuestionCandidate.query.filter(agent_id=…)`'s order: set order | the first in `_pk` order (the "order of results" row above, seen through dedup). Pinned on both legs by `tests/test_question_queue.py::TestPropose::test_a_proposal_duplicating_two_candidates_folds_into_the_first`, and counted as the queue probe's `dedup_order` class |
 | `DefaultMemory`'s eviction counter (M4) | a Redis string `MemoryService.status()` reads | a `popoto_counter` row: a Postgres-bound `DefaultMemory` needs no Redis, and the Redis-only `MemoryService` does not report it |
+| `DecisionLog.turn_summary` after a `pending` write over a terminal row (#822): an unclaimed non-`accept` verdict landing between `assemble`'s row read and its `write_pending` | `write_pending` is a plain save, so it overwrites the terminal row without taking back its `state:`/`reason:` counts, and the next terminal write treats `pending` as new: `reject` then `pending` then `accept` leaves `{state:reject: 1, state:accept: 1, ...}` for one `accept` row. The rows are right; the hash over-counts until `DecisionLog.rebuild_turn_summary(agent_id, turn_id)` recomputes it | derived from the rows with `GROUP BY` on read: `{state:accept: 1, reason:accepted: 1}`, and `rebuild_turn_summary` returns the same. Pinned on both legs: `test_auditable_extraction.py::TestAssemblyAgainstTheRealJournal::test_a_pending_write_over_a_terminal_row_is_a_documented_divergence` |
 | `ProvenanceJournal` with a caller `pipeline=` (M4) | a Redis pipeline: the annotation and close are queued, `target_closed` is `None` and `close_index` names the close in `execute()`'s results | the backend's unit of work only (anything else raises `ValueError`): the annotation and close run inside it, `target_closed` is known at the call, `close_index` is `None`. Pinned: `test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close` |
 | `AppendOnlyMixin`: two saves of one key in one unit of work (M4) | both pass the guard (the documented intra-pipeline shape) | the second is refused (the guard reads inside the transaction). Pinned: `test_postgres_recipes.py::test_append_only_sees_its_own_transaction` |
 | `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` (reads); a worker thread (writes) | the async backend: the sync call's Postgres I/O on `psycopg.AsyncConnection`, on the running loop, no thread (M5, [Async](#async-m5)) |

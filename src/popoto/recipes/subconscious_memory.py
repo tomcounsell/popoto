@@ -110,6 +110,73 @@ the character count of the content it wrapped, spending the difference on
 """
 
 
+def _split_trail_message(
+    model_name: str,
+    model_store: str,
+    log_store: str,
+    entry_name: str,
+    journal_store: str,
+    *,
+    model_split: bool,
+    journal_split: bool,
+) -> str:
+    """The refusal text for an auditable trail split across stores (#822).
+
+    Names each mismatch with the side that sits on each backend, then gives
+    advice that actually resolves *that* mismatch. The decision log always
+    follows the process default, so the fix is either moving the default to
+    the pinned side or removing the pin. ``set_backend('postgres')`` is only
+    advice when the default is not already Postgres.
+    """
+    mismatches = []
+    if model_split:
+        mismatches.append(
+            f"the memory model {model_name} is on {model_store!r} but the "
+            f"decision log follows the process default ({log_store!r})"
+        )
+    if journal_split:
+        mismatches.append(
+            f"the journal entry model {entry_name} is on {journal_store!r} "
+            f"but the decision log follows the process default ({log_store!r})"
+        )
+    fixes = []
+    if log_store == "redis":
+        # The default is Redis, so every split side is pinned elsewhere.
+        target = model_store if model_split else journal_store
+        fixes.append(
+            f"bind the process default with set_backend({target!r}) or "
+            f"POPOTO_BACKEND={target}"
+        )
+        # A single pin is the other way out, but only when it is the only
+        # mismatch: removing one pin leaves the other split standing.
+        if journal_split and not model_split:
+            fixes.append(
+                f"remove {entry_name}'s Meta.backend = {journal_store!r} pin so "
+                "the journal follows the process default"
+            )
+        if model_split and not journal_split:
+            fixes.append(f"pin {model_name} to 'redis'")
+    else:
+        # The default is already non-Redis (only the journal can split here,
+        # since a model split needs a Redis log). Re-binding to it is moot.
+        fixes.append(
+            f"the process default is already {log_store!r}, so remove "
+            f"{entry_name}'s Meta.backend = {journal_store!r} pin so the "
+            "journal follows it"
+        )
+        if model_store == journal_store:
+            fixes.append(
+                f"bind the process default with set_backend({journal_store!r}) "
+                f"if the whole audit trail belongs on {journal_store!r}"
+            )
+    return (
+        "auditable_extraction would split its audit trail across stores: "
+        + "; ".join(mismatches)
+        + ". To keep the decision log, the journal and the resolution sidecar "
+        "in one store, " + ", or ".join(fixes) + "."
+    )
+
+
 # ---------------------------------------------------------------------------
 # SubconsciousMemory
 # ---------------------------------------------------------------------------
@@ -313,14 +380,15 @@ class SubconsciousMemory:
             journal_split = _store(log_backend) != _store(journal_backend)
             if model_split or journal_split:
                 raise BackendCapabilityError(
-                    f"auditable_extraction would split its audit trail "
-                    f"across stores: {model_class.__name__} is stored on "
-                    f"the {_store(backend)!r} backend, the decision log "
-                    f"follows the process default backend ({_store(log_backend)}) "
-                    f"and the journal entry model is on {_store(journal_backend)}. "
-                    "Bind the process default with set_backend('postgres') "
-                    "or POPOTO_BACKEND=postgres so the decision log, the "
-                    "journal and the resolution sidecar share one store"
+                    _split_trail_message(
+                        model_class.__name__,
+                        _store(backend),
+                        _store(log_backend),
+                        getattr(entry_model, "__name__", repr(entry_model)),
+                        _store(journal_backend),
+                        model_split=model_split,
+                        journal_split=journal_split,
+                    )
                 )
 
             from ..extraction.decision_log import DecisionLog
