@@ -113,7 +113,7 @@ messages = [
 ]
 ```
 
-**Performance note:** `assess_quality=True` adds bounded overhead — one `might_exist` call per query cue plus one `get_confidence` read per selected record (up to `max_items` reads). On a warm cache with 10 items, expect roughly 5% additional latency on `assemble()`. Confidence reads are pipelined in a single Redis round-trip batch.
+**Performance note:** `assess_quality=True` adds bounded overhead — one `might_exist` call per query cue plus one `get_confidence` read per selected record (up to `max_items` reads). On a warm cache with 10 items, expect roughly 5% additional latency on `assemble()`. Each confidence read is its own round trip: an `HGET` of the companion hash on Redis, a read of the record's state columns on Postgres.
 
 ### Building `RetrievalQuality` from a custom pipeline
 
@@ -198,7 +198,7 @@ Built-in `group_by` string values: `"hour"` (0–23), `"weekday"` (0–6, Monday
 
 Each `stats_dict` value has keys: `count`, `mean`, `stddev`, `p50`, `p90`, `p99`, `max`.
 
-**Implementation note:** `error_summary` reads the error sorted set via `ZREVRANGE` then fetches per-instance metadata via a pipelined batch of `HGET` calls — one call per member. This is one network round-trip regardless of `limit`. Corrupt msgpack entries are logged at warning level and skipped. The function is an eventually-consistent sampling tool, not a transactional snapshot; a resolution landing mid-batch may appear in some rows and not others.
+**Implementation note:** on Redis, `error_summary` reads the error sorted set via `ZREVRANGE` then fetches per-instance metadata via a pipelined batch of `HGET` calls — one call per member. This is one network round-trip regardless of `limit`. Corrupt msgpack entries are logged at warning level and skipped. The function is an eventually-consistent sampling tool, not a transactional snapshot; a resolution landing mid-batch may appear in some rows and not others.
 
 Empty error set returns `{"__all__": {"count": 0, "mean": 0.0, ...}}` rather than raising.
 
@@ -334,19 +334,34 @@ adaptive = AdaptiveAssembler(inner, rng=rng)
 
 ## Performance notes
 
-- `assess_quality=True` on `assemble()` adds bounded overhead: one `might_exist` per query cue plus `get_confidence` reads pipelined in a single Redis round-trip for all selected records. Measured at ~5% additional latency on a 10-item selection with a warm cache.
-- `error_summary()` reads the error sorted set with `ZREVRANGE` (one round-trip) then issues all per-instance `HGET` calls in a single pipelined batch regardless of `limit`. The total cost is two Redis round-trips.
-- `AdaptiveAssembler` has no additional Redis overhead beyond the wrapped `ContextAssembler`. The rolling-window bookkeeping is pure in-memory Python.
+- `assess_quality=True` on `assemble()` adds bounded overhead: one `might_exist` per query cue plus one `get_confidence` read per selected record. Measured at ~5% additional latency on a 10-item selection with a warm cache.
+- `error_summary()` costs two round trips regardless of `limit`: on Redis a `ZREVRANGE` of the error sorted set, then one pipelined batch of per-instance `HGET` calls; on Postgres one `SELECT` of the error table's top rows, then one `SELECT` of their ledger entries.
+- `AdaptiveAssembler` has no additional storage overhead beyond the wrapped `ContextAssembler`. The rolling-window bookkeeping is pure in-memory Python.
 
 ---
 
 ## Limitations and v2 roadmap
 
-- **No cross-restart persistence.** `AdaptiveAssembler`'s learned `score_weights` are per-process. If the agent restarts, adaptation starts over from the initial weights. Persisting learned weights to Redis is a v2 scope item.
+- **No cross-restart persistence.** `AdaptiveAssembler`'s learned `score_weights` are per-process. If the agent restarts, adaptation starts over from the initial weights. Persisting learned weights to the store is a v2 scope item.
 - **Source credibility is bookkeeping-only in v1.** The plan design includes per-source credibility weighting of observation signals, but applying it requires a new per-source score index and significant changes to the `_apply_*` dispatch. v1 records the intent; the application is deferred to v2.
 - **No statistical significance testing on keep/revert.** The loop uses mean comparison over a rolling window. A t-test or bootstrap CI before accepting a weight change would reduce noise but slow convergence. Marked as a v2 option.
 - **`quality_metric` is a proxy, not a task metric.** `fok_score * avg_confidence` optimizes retrieval quality as measured by the memory layer, not downstream task performance. Monitor actual task outcomes alongside the adaptive loop. See plan Risk 2 for the Goodhart's Law caution.
-- **`error_summary` is eventually consistent.** Not a transactional snapshot: a resolution landing between the `ZREVRANGE` and the pipelined `HGET` batch may appear in some rows and not others. Use as a sampling/debugging tool, not a real-time gauge.
+- **`error_summary` is eventually consistent.** Not a transactional snapshot: a resolution landing between the two reads (on Redis, the `ZREVRANGE` and the pipelined `HGET` batch) may appear in some rows and not others. Use as a sampling/debugging tool, not a real-time gauge.
+
+## On Postgres
+
+All three tiers run on a Postgres-bound model (#759 M2c, M5); the assembler,
+prediction-ledger and adaptive-assembler tests run on both backends.
+`assess()` and `assess_quality` read the exact `ExistenceFilter` token table
+and the record's confidence columns, and `error_summary` reads the
+`popoto_prediction_ledger` and `popoto_prediction_error` engine tables, with
+the grouping and statistics computed by the same Python on both. Because
+`might_exist` is exact on Postgres, the feeling-of-knowing signal sees no bloom
+false positives, and a cue whose only record was deleted no longer counts as
+known (the `ExistenceFilter.might_exist` row of
+[Documented divergences](postgres-backend.md#records-and-other-behaviour)).
+See [ContextAssembler](postgres-backend.md#contextassembler-m2c) and
+[Long-tail fields](postgres-backend.md#long-tail-fields-m5).
 
 ---
 

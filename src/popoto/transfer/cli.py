@@ -381,8 +381,7 @@ def _cmd_export(args: Any) -> int:
         sys.stderr.write(f"popoto-transfer export: {exc}\n")
         return 1
 
-    from redis import exceptions as redis_exceptions
-
+    from ..backends.types import OUTAGE_ERRORS
     from ..exceptions import ModelException
     from ..models.query import QueryException
     from .export import export_records
@@ -401,18 +400,20 @@ def _cmd_export(args: Any) -> int:
             )
             return 1
 
+    # OUTAGE_ERRORS covers a store outage on either backend (#816), including
+    # redis-py's TimeoutError, which is not the builtin one listed here.
+    failures: tuple[type[BaseException], ...] = (
+        ModelException,
+        QueryException,
+        TimeoutError,
+        OSError,
+        KeyboardInterrupt,
+    ) + OUTAGE_ERRORS
     try:
         result = export_records(
             model_class, stream=stream, chunk_size=args.chunk_size, **filters
         )
-    except (
-        ModelException,
-        QueryException,
-        redis_exceptions.ConnectionError,
-        TimeoutError,
-        OSError,
-        KeyboardInterrupt,
-    ) as exc:
+    except failures as exc:
         message = "interrupted" if isinstance(exc, KeyboardInterrupt) else str(exc)
         sys.stderr.write(f"popoto-transfer export: {message}\n")
         if part_path is not None:
@@ -459,12 +460,18 @@ def _cmd_import(args: Any) -> int:
         sys.stderr.write(f"popoto-transfer import: could not open {in_path!r}: {exc}\n")
         return 1
 
-    from redis import exceptions as redis_exceptions
-
+    from ..backends.types import OUTAGE_ERRORS
     from ..exceptions import ModelException
     from ..models.query import QueryException
     from .import_ import import_records
 
+    # OUTAGE_ERRORS: a store outage on either backend (#816), as on export.
+    failures: tuple[type[BaseException], ...] = (
+        ModelException,
+        QueryException,
+        TimeoutError,
+        OSError,
+    ) + OUTAGE_ERRORS
     try:
         report = import_records(
             model_class,
@@ -474,13 +481,7 @@ def _cmd_import(args: Any) -> int:
             on_embedding_mismatch=args.on_embedding_mismatch,
             preserve_keys=not args.regenerate_keys,
         )
-    except (
-        ModelException,
-        QueryException,
-        redis_exceptions.ConnectionError,
-        TimeoutError,
-        OSError,
-    ) as exc:
+    except failures as exc:
         # ModelException also covers an on_conflict="error" collision, which
         # raises from inside the per-record loop after earlier records in
         # this run have already been written. Its own message says so; it

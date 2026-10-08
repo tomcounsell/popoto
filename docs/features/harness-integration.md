@@ -1,9 +1,8 @@
 # Harness Integration
 
 Subconscious memory for Claude Code, Codex, Hermes, and OpenClaw, backed by
-your own Redis or Valkey. No API keys, no hosted service, no schema to write.
-The harness integration does not run on the Postgres backend in 1.10; see
-[Redis or Valkey only](#redis-or-valkey-only).
+your own Redis, Valkey or PostgreSQL 18+ ([On Postgres](#on-postgres)). No
+API keys, no hosted service, no schema to write.
 
 ```bash
 pip install 'popoto[mcp]'
@@ -178,7 +177,7 @@ that measured cost the first time it is used.
 "Stored verbatim" is the point of raw ingestion and also its hazard: a hook
 fires on every turn, and terminal turns contain pasted API keys. The
 [never-record firewall](never-record-firewall.md) runs ahead of the write
-path so that class of content never reaches Redis.
+path so that class of content never reaches storage, on either backend.
 
 It is deterministic — regex and entropy, no model — and it runs at two
 points. At the turn level, inside `SubconsciousMemory.extract_memories()`,
@@ -227,22 +226,6 @@ both a database-0 target and a URL with no database at all (`redis://host:6379/`
 which is *not* database 0) raise, because the alternative is writing your
 memories somewhere you did not ask for.
 
-### Redis or Valkey only
-
-The harness integration needs Redis or Valkey; `POPOTO_BACKEND=postgres` is
-not a supported configuration for a harness process, and no test covers it.
-`MemoryService`, which every hook, the MCP server, and `doctor` go through,
-keeps the per-turn handoff (pending and injected record keys) and its health
-and eviction reporting in Redis directly, so only the `DefaultMemory`
-records would move and `doctor` would describe a store the memories are not
-in.
-
-Hooks inherit the harness's environment. If your shell exports
-`POPOTO_BACKEND=postgres` for an application, unset it in the environment
-the harness runs in. For agent memory on Postgres today, run
-`SubconsciousMemory` in your own loop: see
-[Running on Postgres](../guides/subconscious-memory-recipe.md#running-on-postgres).
-
 ### Database 0 is refused
 
 `MemoryService` raises `Db0RefusedError` when the database it would write to
@@ -271,6 +254,106 @@ survives. If database 0 really is where this corpus belongs,
 `POPOTO_MEMORY_ENABLED=0` short-circuits the check entirely. A disabled
 memory layer writes to no database, so there is nothing to refuse — the kill
 switch stays a clean no-op on a database-0 host, with no log line per turn.
+
+### On Postgres
+
+The hook, the MCP server, `doctor` and `demo` run on the
+[Postgres backend](postgres-backend.md) with no Redis at all
+([#814](https://github.com/tomcounsell/popoto/issues/814)). Select it the way
+any Popoto process does; the `POPOTO_MEMORY_*` variables above keep their
+meaning, except the two that only describe a Redis connection:
+
+```bash
+export POPOTO_BACKEND=postgres
+export POPOTO_POSTGRES_URL=postgresql://db.internal:5432/agents
+export POPOTO_POSTGRES_SCHEMA=popoto      # optional; default "popoto"
+```
+
+| Variable | On Postgres |
+|---|---|
+| `POPOTO_BACKEND` | `postgres` selects it for the hook process, the MCP server and `doctor`. Without it the integration stays on Redis, exactly as before |
+| `POPOTO_POSTGRES_URL` | The DSN. Required: selecting Postgres without it fails every operation (logged, counted, and reported by `doctor`) rather than falling back to Redis |
+| `POPOTO_POSTGRES_SCHEMA` | Where the tables live. Created on first write |
+| `POPOTO_MEMORY_URL`, `REDIS_URL` | **Not read.** No Redis connection is bound, probed or dialled, so a `REDIS_URL` your harness happens to export (even one naming database 0, or a server that is down) changes nothing |
+| `POPOTO_MEMORY_ALLOW_DB0` | Not applicable. [Database 0 is refused](#database-0-is-refused) is a Redis rule |
+
+Everything the integration keeps between turns moves with the backend. The
+memories are `DefaultMemory` rows; the read-to-write handoff, the per-session
+injection suppression and the last-success timestamps are typed tables
+(`popoto_harness_pending`, `popoto_harness_injected`, `popoto_harness_event`)
+that expire with the session, as the Redis keys do; and the counters `doctor`
+reads are rows of `popoto_counter`, alongside `DefaultMemory`'s eviction
+counter. The behavior is the same on both backends, including the turn-keyed
+claim (two writers racing on one turn: exactly one reports it) and the
+32-entry cap. One difference is stricter: a redelivered read hook is
+deduplicated under a lock on Postgres, where Redis only checks before
+writing. Session state is not migrated by `migrate_redis_to_postgres` (an
+hour of handoff is not worth carrying over), and counters start from zero on
+the new backend.
+
+`doctor` reports the Postgres server instead of Redis:
+
+```
+$ popoto-memory doctor
+popoto-memory doctor
+
+  status         enabled
+  backend        postgres
+  postgres dsn   host=db.internal port=5432 dbname=agents
+  url source     POPOTO_POSTGRES_URL
+  postgres       reachable, postgresql 18.6, ping 1.37 ms
+  schema         popoto (10 tables)
+  pgvector       0.8.7 (public)
+  health         ok, dropped_writes=0
+  agent id       my-project
+  model          DefaultMemory
+  retrieval      lexical (query-sensitive)
+  ...
+```
+
+The DSN line shows host, port, database and user only, never the password.
+`postgres` is `UNREACHABLE` (with the error and the backend's health record)
+when the server does not answer, and `UNSUPPORTED` when it is older than
+PostgreSQL 18 or not UTF8; both exit 1, as an unreachable Redis does.
+`schema` says `not created yet` before the first write. `pgvector` is
+informational: `DefaultMemory` does not need it, only models with an
+`EmbeddingField` do.
+
+`doctor --json` has the same keys on both backends, so a script written
+against one shape never meets a `KeyError` on the other:
+
+| Key | On Redis | On Postgres |
+|---|---|---|
+| `backend` | `"redis"` | `"postgres"` |
+| `reachable` | server answered | server answered and is PostgreSQL 18+ / UTF8 |
+| `server` | `"redis 8.2.1"` or `"valkey 8.1.0"` | `"postgresql 18.6"` |
+| `postgres` | `null` | `dsn`, `schema`, `schema_exists`, `schema_tables`, `server_version`, `supported`, `pgvector`, `database`, `health` |
+| `redis_url` | the redacted URL, as before | `null` |
+| `redis_reachable` | as before | `null` (not applicable, never `false`) |
+
+On Redis every key that existed before keeps its value and position;
+`backend`, `reachable` and `postgres` are appended.
+
+A hook on an unreachable Postgres behaves as one on an unreachable Redis
+(see [Failure behavior](#failure-behavior)): exit 0, no output, one log line,
+and a stderr warning that names the backend, such as
+`popoto memory injected_read failed (backend: postgres): ...`. The hook
+caps both of its Postgres waits at the same 1 second it gives Redis: the
+connect timeout, so an outage costs the prompt about a second once per hook
+process, and the statement timeout, so a held lock (a migration, `maintain`,
+a stuck writer) costs about a second per statement instead of the library's
+30. Only the hook subcommand lowers them; the MCP server and an in-process
+caller such as the Hermes plugin keep the library defaults.
+
+`doctor` creates nothing. Pointed at a schema that does not exist yet, it
+reports the schema as `not created yet` with a record count of 0 and skips its
+latency probe, because on Postgres the first read creates the schema and its
+tables.
+
+To remove a scratch agent's bookkeeping (handoffs, suppression sets,
+counters, last-success stamps) on either backend, call
+`MemoryService.purge_integration_state()`. It never deletes memory records;
+delete those through the model.
 
 ### The one deliberate divergence from the benchmarked configuration
 
@@ -333,6 +416,8 @@ What to read:
   into transcripts.
 - **Redis unreachable** exits 1 and prints the command to fix it.
 - **Database 0** exits 1 before connecting, with the refusal message.
+- **On Postgres** the connection block is the Postgres one; see
+  [On Postgres](#on-postgres).
 
 `popoto-memory doctor --json` emits the same data machine-readably.
 
@@ -341,17 +426,23 @@ What to read:
 A memory failure must never break a user's turn, so every path swallows and
 continues. Swallowing silently is the failure mode that makes users conclude
 memory does not work, so each swallowed exception always appends a line to
-`POPOTO_MEMORY_LOG` -- that's the reliable channel. It also tries to
-increment a Redis counter that `doctor` reads back, but that write is
-best-effort against the same client that just failed: when the failure is
-Redis being unreachable, the counter does not get incremented, which is
-exactly when `doctor` has nothing to read back anyway.
+`POPOTO_MEMORY_LOG` -- that's the reliable channel -- and logs a warning to
+stderr that names the backend in use (`... failed (backend: redis): ...`).
+It also tries to increment a counter that `doctor` reads back, but that
+write is best-effort against the same store that just failed: when the
+failure is the server being unreachable, the counter does not get
+incremented, which is exactly when `doctor` has nothing to read back anyway.
+The same holds on Postgres, where an outage (`BackendUnavailableError`)
+short-circuits the rest of the hook process as a Redis connection error
+does.
 
 **An outage costs one attempt, not five.** The integration binds its
 connection with a 1-second connect and socket timeout and no redis-py
-retries (the default is 10), and once a `ConnectionError`/`TimeoutError` has
-been recorded, every later Redis operation in that hook process is skipped
-outright. The shipped Claude Code and Codex hook configs also carry an
+retries (the default is 10), and once an outage has been recorded -- a redis
+`ConnectionError`/`TimeoutError`, or, for a model bound to Postgres, a
+`popoto.backends.BackendUnavailableError` (#816; any member of
+`popoto.backends.OUTAGE_ERRORS`) -- later `assemble()` calls in that hook
+process, and the failure-counter write, are skipped outright. The shipped Claude Code and Codex hook configs also carry an
 explicit `"timeout": 10`. Against a server that accepts connections and
 never answers, this is the difference between roughly 25 seconds on the
 user's prompt and under 2.
@@ -423,8 +514,8 @@ The integration is built to append at the tail and never above it.
 `render_context()` in `hooks.py` emits into the user turn on all four
 harnesses — `additionalContext` for Claude Code and Codex, `context` for
 Hermes, `appendContext` for OpenClaw — precisely so the cached system prefix
-survives across turns. The write path touches Redis only, so capture never
-mutates anything the harness is reading.
+survives across turns. The write path touches only the memory store (Redis
+or Postgres), so capture never mutates anything the harness is reading.
 
 The residual cost is that injected blocks accumulate: they cannot be removed
 without invalidating everything behind them. Tuning `POPOTO_MEMORY_MAX_TOKENS`
@@ -497,8 +588,8 @@ popoto-memory demo                          # narrated tour of the loop
 python examples/harness_memory/verify.py    # the same loop as assertions
 ```
 
-Both run against local Redis or Valkey with no API keys and clean up after
-themselves. See `examples/harness_memory/README.md`.
+Both run against local Redis or Valkey (or Postgres, with
+`POPOTO_BACKEND=postgres`) with no API keys and clean up after themselves. See `examples/harness_memory/README.md`.
 
 ## Where the code lives
 

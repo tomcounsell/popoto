@@ -111,7 +111,8 @@ report_outcomes(event_id, outcome_map, *, apply_effects=False, instances=None)
 
 For each `memory_key -> outcome` in `outcome_map` whose key was injected in this
 event, appends `{key, outcome, at}` to the event's `outcomes`. Keys are the same
-redis keys stored in `injected` (i.e. `instance.db_key.redis_key`); outcomes are
+record keys stored in `injected` (i.e. `instance.db_key.redis_key`, the same
+string on both backends); outcomes are
 validated against `ObservationProtocol.VALID_OUTCOMES`.
 
 Record-only by default — telemetry is pure observation and does not double-apply
@@ -145,9 +146,9 @@ already stores the fused score, so they need no schema change).
 
 ## Scope and constraints
 
-- **Valkey-safe:** only core commands. The injection trace uses read-only
-  pipelined `ZSCORE`; the event write is an ordinary model `save()`. No modules,
-  no Lua.
+- **Valkey-safe:** only core commands. On Redis the injection trace uses
+  read-only pipelined `ZSCORE`; the event write is an ordinary model `save()`.
+  No modules, no Lua.
 - **TTL mandatory:** `AssemblyEvent.Meta.ttl` bounds the store; the recorder can
   shorten but the record always expires.
 - **Not self-benchmarking:** no before/after gates and no automated tuning. This
@@ -157,6 +158,17 @@ already stores the fused score, so they need no schema change).
 - **Namespace:** popoto owns model-keyed, queryable, TTL'd records
   (`AssemblyEvent:*`); a deployment's own counter namespace (e.g. `analytics:*`)
   is separate by design.
+
+## On Postgres
+
+Telemetry runs unchanged on a Postgres-bound process (#759 M5); every test in
+`tests/test_memory_telemetry.py` runs on both backends. `AssemblyEvent` is a
+table row whose `Meta.ttl` sets the `_expires_at` column, so an event expires
+there as on Redis and is invisible to every read from that instant, and the
+trace's score proxy reads the backend (the partition's decay ranking or the
+sorted column) instead of pipelined `ZSCORE`. See
+[Record expiry](postgres-backend.md#record-expiry-m5) and
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
 
 ## See Also
 

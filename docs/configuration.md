@@ -203,8 +203,7 @@ set_backend(PostgresBackend(
 
 `set_backend()` sets the process default and returns the previous one; `set_backend(None)` returns to `POPOTO_BACKEND`. It also accepts a name (`set_backend("postgres")`), which builds the backend from the environment variables above.
 
-!!! warning "An instance passed to `set_backend()` is only the process default"
-    A model that declares `Meta.backend = "postgres"` does not use it: the name resolves to the backend built from `POPOTO_POSTGRES_URL`, and raises `BackendUnavailableError` when that variable is unset. When you configure Postgres in code, leave `Meta.backend` off the models that should use that instance.
+A Postgres instance passed to `set_backend()` also serves every model that declares `Meta.backend = "postgres"`, ahead of `POPOTO_POSTGRES_URL`, so you can configure Postgres in code and keep `Meta.backend` on those models. A model that declares `Meta.backend = "redis"` always gets the stock Redis backend. See [Selecting the backend](features/postgres-backend.md#selecting-the-backend).
 
 `popoto.backends.get_backend(Model)` returns the backend a model is bound to; its `health.as_dict()` reports outages and dropped writes.
 

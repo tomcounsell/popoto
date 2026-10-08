@@ -42,8 +42,8 @@ per model with `class Meta: backend = "postgres"` (see
 structure is in the [Postgres Backend](postgres-backend.md) reference, and the
 places where results differ are its
 [documented divergences](postgres-backend.md#documented-divergences). The
-[harness integration](harness-integration.md) runs on Redis or Valkey only in
-1.10.
+[harness integration](harness-integration.md) runs on all three
+([On Postgres](harness-integration.md#on-postgres)).
 
 ## The 17 primitives
 

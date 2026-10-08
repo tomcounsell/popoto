@@ -545,15 +545,25 @@ def ensure_table(
     """
     with conn.transaction():
         cur = conn.cursor()
-        before = catalog_before(cur, ts.schema) if grant_to is not None else None
-        outcome = _ensure_table_in(cur, ts, auto=auto)
-        if grant_to is not None and before is not None and outcome != "current":
-            grant_created(cur, ts.schema, grant_to, before)
+        capture: Optional[list[CatalogBefore]] = [] if grant_to is not None else None
+        outcome = _ensure_table_in(cur, ts, auto=auto, capture=capture)
+        if grant_to is not None and capture and outcome != "current":
+            grant_created(cur, ts.schema, grant_to, capture[0])
         return outcome
 
 
-def _ensure_table_in(cur: Any, ts: TableSpec, *, auto: bool) -> str:
-    """:func:`ensure_table`'s work, on ``cur`` inside its transaction."""
+def _ensure_table_in(
+    cur: Any,
+    ts: TableSpec,
+    *,
+    auto: bool,
+    capture: Optional[list[CatalogBefore]] = None,
+) -> str:
+    """:func:`ensure_table`'s work, on ``cur`` inside its transaction.
+
+    ``capture`` (grants, #808) receives the :class:`CatalogBefore` snapshot,
+    taken once both advisory locks are held: an object another session
+    created before we got the lock never counts as ours."""
     schema_q = quote_ident(ts.schema)
     registry = f"{schema_q}.{POPOTO_SCHEMA_TABLE}"
     # Waiting for another process's DDL is not bounded by the short DDL
@@ -565,6 +575,7 @@ def _ensure_table_in(cur: Any, ts: TableSpec, *, auto: bool) -> str:
     exists = cur.execute(
         "SELECT 1 FROM pg_namespace WHERE nspname = %s", (ts.schema,)
     ).fetchone()
+    schema_existed = bool(exists)
     if not exists:
         if not auto:
             raise SchemaDriftError(
@@ -578,6 +589,9 @@ def _ensure_table_in(cur: Any, ts: TableSpec, *, auto: bool) -> str:
         "SELECT pg_advisory_xact_lock(hashtext(%s))",
         (table_lock_key(ts.schema, ts.table),),
     )
+    if capture is not None:
+        snap = catalog_before(cur, ts.schema)
+        capture.append(CatalogBefore(snap.relations, schema_existed))
     row = cur.execute(
         f"SELECT model, fingerprint, columns, indexes, format_version, "
         f"popoto_version FROM {registry} WHERE table_name = %s",
@@ -710,7 +724,8 @@ def catalog_before(conn: Any, schema: str) -> CatalogBefore:
     or cursor), inside the DDL transaction it precedes."""
     rows = conn.execute(
         "SELECT c.oid FROM pg_class c JOIN pg_namespace n "
-        "ON n.oid = c.relnamespace WHERE n.nspname = %s",
+        "ON n.oid = c.relnamespace WHERE n.nspname = %s "
+        "AND c.xmin IS DISTINCT FROM pg_current_xact_id_if_assigned()::xid",
         (schema,),
     ).fetchall()
     (existed,) = conn.execute(

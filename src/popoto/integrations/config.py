@@ -9,6 +9,12 @@ place to pass Python arguments, so the environment is the whole interface.
 Every variable is optional. The zero-configuration path is "local Redis or
 Valkey on the default port, memories scoped to this project".
 
+The URL variables, :func:`bind_connection` and the database-0 refusal
+describe a *Redis* connection. On the Postgres backend (``POPOTO_BACKEND=postgres``
+with ``POPOTO_POSTGRES_URL``, #814) :class:`~popoto.integrations.service.MemoryService`
+never calls into them: the connection is the backend's own, and a
+``REDIS_URL`` in the environment is not read.
+
 ======================================  =============================  ====
 Variable                                Default                        Note
 ======================================  =============================  ====

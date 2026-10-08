@@ -68,8 +68,8 @@ an association graph. The loop is the same on either backend; with
 loop up level by level, from a single decaying field to the full assembly.
 Running inside Claude Code, Codex, Hermes, or OpenClaw instead of your own
 loop? [Add memory to your harness](features/harness-integration.md) wires the
-same primitives into hooks and MCP, no glue code required. The harness
-integration runs on Redis or Valkey only in 1.10.
+same primitives into hooks and MCP, no glue code required. It runs on Redis,
+Valkey or Postgres.
 
 ## What is measured
 

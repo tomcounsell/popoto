@@ -65,6 +65,11 @@ and batched deletes, increments, resets and ``transaction=False``.
 ``--with-geo`` appends the ``GeoField`` scenarios (#759 M5): saves, a move, a
 clear, a refused point, and every search shape and refusal.
 
+``--with-harness`` appends the harness-integration scenarios (#814): a
+Redis-bound ``MemoryService``'s capture, assemble (with per-session
+suppression), turn-keyed and positional feedback, a missed turn, search,
+correct, status, the heuristic-ingest notice and the hook adapter.
+
 The script refuses to run unless ``REDIS_URL`` names a non-zero database
 (CLAUDE.md, #577), and it clears only the keys its own models own.
 """
@@ -186,6 +191,9 @@ def _clear() -> None:
         for pattern in (f"*{model.__name__}*",):
             for key in client.scan_iter(match=pattern, count=1000):
                 client.delete(key)
+    for pattern in EXTRA_CLEAR_PATTERNS:
+        for key in client.scan_iter(match=pattern, count=1000):
+            client.delete(key)
 
 
 def _norm(value: Any) -> Any:
@@ -1593,6 +1601,7 @@ if WITH_STREAMS:
         sub.pubsub.close()
         return [first and first["type"], count, piped is pipe, got]
 
+
 # -- the long tail (#759 M5), behind --with-longtail ------------------------------
 #
 # CyclicDecayField, TDValueField and PredictionLedgerMixin gained a non-Redis
@@ -2067,6 +2076,123 @@ if WITH_GEO:
         for obj in TrGeo.query.all():
             obj.delete()
         return out
+
+
+# -- the harness integration (#814), behind --with-harness ---------------------
+# #814 gives MemoryService a Postgres path for its session state (the pending
+# list, the injected set, the counters and timestamps), branching on the
+# memory model's backend. These scenarios pin that a Redis-bound service's
+# wire -- capture, assemble with suppression, the turn-keyed and positional
+# feedback claims, a miss, search, correct, status, the heuristic notice and
+# the hook adapter -- is unchanged. ``datetime.now`` inside the service is
+# frozen too: its last-success stamps go on the wire. Off by default.
+
+WITH_HARNESS = "--with-harness" in sys.argv
+
+EXTRA_CLEAR_PATTERNS: tuple[str, ...] = ()
+
+if WITH_HARNESS:
+    from datetime import timezone as _tz  # noqa: E402
+    from pathlib import Path as _Path  # noqa: E402
+
+    import popoto.integrations.service as _svc  # noqa: E402
+    from popoto.integrations import hooks as _hooks  # noqa: E402
+    from popoto.integrations.config import MemoryConfig as _MemCfg  # noqa: E402
+    from popoto.recipes.default_memory import DefaultMemory as _DefMem  # noqa: E402
+
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> "_FrozenDatetime":  # type: ignore[override]
+            return cls.fromtimestamp(_FROZEN, tz=tz or _tz.utc)
+
+    _svc.datetime = _FrozenDatetime  # type: ignore[misc]
+
+    if _DefMem not in MODELS:
+        MODELS = MODELS + (_DefMem,)
+    EXTRA_CLEAR_PATTERNS = ("$popoto_memory:*trace-harness*",)
+    _HARNESS_LOG = _Path(tempfile.mkdtemp(prefix="popoto-trace-harness-"))
+
+    def _harness(**overrides: Any) -> Any:
+        options: dict[str, Any] = dict(
+            agent_id="trace-harness",
+            log_path=_HARNESS_LOG / "memory.log",
+            max_items=3,
+            max_tokens=400,
+        )
+        options.update(overrides)
+        return _svc.MemoryService(_MemCfg(**options))
+
+    @scenario
+    def m814_harness_capture():
+        service = _harness()
+        return [
+            service.capture("Deploys are blue-green with automatic rollback", "s1"),
+            service.capture("The staging database resets nightly at 02:00", "s1"),
+            service.capture("   ", "s1"),
+        ]
+
+    @scenario
+    def m814_harness_assemble_and_suppress():
+        service = _harness()
+        return [
+            service.assemble("how do deploys roll back?", "s1", turn_id="t1"),
+            service.assemble("how do deploys roll back?", "s1", turn_id="t1"),
+            service.assemble("when does staging reset?", "s1", turn_id="t2"),
+            service.assemble("how do deploys roll back?", "s2"),
+        ]
+
+    @scenario
+    def m814_harness_feedback():
+        service = _harness()
+        return [
+            service.feedback("s1", turn_id="t2"),
+            service.feedback("s1", turn_id="t-missing"),
+            service.feedback("s1", turn_id="t1"),
+            service.feedback("s2"),
+            service.feedback("s2"),
+        ]
+
+    @scenario
+    def m814_harness_fifo_untagged():
+        service = _harness(turn_keyed=False)
+        return [
+            service.assemble("staging database", "s3", turn_id="t1"),
+            service.feedback("s3", turn_id="t1"),
+        ]
+
+    @scenario
+    def m814_harness_search_and_correct():
+        service = _harness()
+        found = service.search("deploys rollback")
+        return [found, service.correct(found[0]["key"]) if found else None]
+
+    @scenario
+    def m814_harness_status():
+        info = _harness().status()
+        info.pop("ping_ms", None)
+        info.pop("log_path", None)
+        info.pop("log_tail", None)
+        return info
+
+    @scenario
+    def m814_harness_heuristic_notice():
+        service = _harness(ingest="heuristic")
+        return [type(service.extractor).__name__, type(service.extractor).__name__]
+
+    @scenario
+    def m814_harness_hook_adapter():
+        service = _harness()
+        read = _hooks.run(
+            '{"hook_event_name": "UserPromptSubmit", "prompt": "staging reset",'
+            ' "session_id": "s4", "prompt_id": "p1"}',
+            service=service,
+        )
+        write = _hooks.run(
+            '{"hook_event_name": "Stop", "session_id": "s4", "prompt_id": "p1",'
+            ' "last_assistant_message": "Staging resets at 02:00 UTC."}',
+            service=service,
+        )
+        return [read, write]
 
 
 def main() -> None:

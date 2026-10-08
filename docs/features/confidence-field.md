@@ -1,12 +1,13 @@
 # ConfidenceField
 
-A `Field` subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule.
+A `Field` subclass that tracks confidence metadata per member, updated atomically (a Lua script on Redis, one `UPDATE` on Postgres) using a capped-evidence Bayesian rule.
 
 ## Overview
 
 `ConfidenceField` maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. The update rule is a **capped-evidence Bayesian** (also called "forgetful Bayesian"): within an evidence window it is an exact running mean — order-invariant and prior-weighted; beyond the cap it is bounded exponential forgetting at a constant rate.
 
-The field stores its metadata in a companion Redis hash:
+On Redis the field stores its metadata in a companion hash (on Postgres, in
+four columns on the record's row; see [On Postgres](#on-postgres)):
 
 - `{confidence, evidence_count, corroborations, contradictions}`
 
@@ -16,7 +17,7 @@ The field stores its metadata in a companion Redis hash:
 |-----------|------|---------|-------------|
 | `initial_confidence` | float | 0.5 | Starting confidence for new members (0-1). Acts as one prior pseudo-observation in the running mean. |
 | `evidence_cap` | int | 20 | Maximum effective evidence count. Within this window updates are a running mean; beyond it updates apply a fixed gain of `1/(cap+1)`, producing bounded exponential forgetting. Must be an integer ≥ 1. |
-| `partition_by` | str or tuple | `()` | Field name(s) to partition the companion hash by. Splits the single Redis hash into per-partition hashes for efficient reads. |
+| `partition_by` | str or tuple | `()` | Field name(s) to partition the companion hash by. On Redis, splits the single companion hash into per-partition hashes for efficient reads. |
 
 > **Warning — same cap across processes**: The `evidence_cap` is passed per-call and is NOT stored in the companion hash. All processes updating the same companion hash entry must be configured with identical `evidence_cap` values. Divergent caps produce silently inconsistent gain schedules with no runtime detection.
 
@@ -118,7 +119,7 @@ The comparison uses an epsilon guard: discharge fires only when `conf < 0.1 - 1e
 Atomically update confidence using the capped-evidence Bayesian formula.
 
 - **signal**: Float 0-1. Values >= 0.5 corroborate, < 0.5 contradict.
-- **pipeline**: Optional Redis pipeline to queue the update on.
+- **pipeline**: Optional Redis pipeline to queue the update on (on Postgres, the backend's `transaction()` or a `popoto.batch()`; see [On Postgres](#on-postgres)).
 - **Returns**: The new confidence value — or `None` when queued on a pipeline.
 - **Raises**: `TypeError` if unsaved or wrong field type; `ValueError` if signal out of range.
 
@@ -137,7 +138,7 @@ records is now one `execute()` (`inject_context` went from 25 round trips per
 turn to 8). If you passed `pipeline=` before and relied on the returned
 float, read the value back with `get_confidence` after `execute()`.
 
-> **Warning**: All processes calling `update_confidence` on the same companion hash entry must use identical `evidence_cap` values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.
+> **Warning**: All processes calling `update_confidence` on the same companion hash entry must use identical `evidence_cap` values. The cap is not stored (on either backend) and divergent values produce silently inconsistent update trajectories.
 
 ### `ConfidenceField.get_confidence(instance, field_name)`
 
@@ -155,7 +156,7 @@ Note: `evidence_count` reflects real observations only — the prior pseudo-coun
 
 ### Inspecting Companion Hash Keys
 
-Each `ConfidenceField` stores its confidence metadata in a companion Redis hash alongside
+On Redis, each `ConfidenceField` stores its confidence metadata in a companion hash alongside
 the main model hash. The public companion key methods let you build these Redis keys
 for debugging, monitoring, or direct Redis inspection without reverse-engineering
 suffix conventions.
@@ -282,6 +283,32 @@ forgetting is persisted back onto the record: the decay path is a pure reader of
 |-----|------|-------------|
 | `$ConfidencF:{Model}:{field}:data` | HASH | Unpartitioned: all members' confidence metadata |
 | `$ConfidencF:{Model}:{field}:data:{partition_value}` | HASH | Partitioned: members in one partition |
+
+## On Postgres
+
+On a Postgres-bound model the attribute is its own `double precision`
+column and the evidence state is four more on the record's row
+(`<f>__conf`, `<f>__n`, `<f>__corr`, `<f>__contra`); `NULL` state is the seed,
+so a re-save never resets it. `update_confidence` is the script's arithmetic
+as one `UPDATE … RETURNING`, so the stored confidence is bit-identical to the
+Redis one (see
+[Ranking and memory state](postgres-backend.md#ranking-and-memory-state-m2a)).
+A partitioned field needs no separate storage: its partition is the row's
+partition columns, and queries still need the partition filters.
+
+- `pipeline=` takes the backend's `transaction()` or a `popoto.batch()`: the
+  update runs inside it and its value is returned and the attribute synced
+  (the `update_confidence(…, pipeline=uow)` row in
+  [Records and other behaviour](postgres-backend.md#records-and-other-behaviour)).
+  A Redis pipeline cannot carry the write: the update runs at once and
+  returns `None`.
+- The companion-hash APIs work on Redis structures only and raise
+  `BackendCapabilityError` on a Postgres model: `get_confidence_filtered`
+  (an `HSCAN` pattern) and `migrate_to_partitioned`. `get_data_hash_key` and
+  the key patterns above name Redis keys that a Postgres model never writes.
+- The state of an expired `Meta.ttl` record goes with its row; see the
+  expired-record state row in
+  [Records and other behaviour](postgres-backend.md#records-and-other-behaviour).
 
 ## Working Example: Popoto Kitchen
 

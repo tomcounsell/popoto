@@ -18,7 +18,7 @@ RRF fusion merges these ranked lists without needing comparable score scales. It
 
 ### BM25Field
 
-`BM25Field` maintains a full inverted index and corpus statistics in Redis sorted sets. It computes BM25 scores at query time via a server-side Lua script. No Redis modules required -- works on both Redis and Valkey.
+`BM25Field` maintains a full inverted index and corpus statistics. On Redis it keeps them in sorted sets and computes BM25 scores at query time via a server-side Lua script; no Redis modules are required, so it works on both Redis and Valkey. On Postgres it keeps postings and document-length tables and computes the same formula in SQL (see [On Postgres](#on-postgres)).
 
 ```python
 import popoto
@@ -31,7 +31,7 @@ class Memory(popoto.Model):
     content_bm25 = BM25Field(source="raw_content")
 ```
 
-BM25Field is a "side-effect field" -- it does not store a value on the model instance. When a model is saved, the `on_save()` hook reads text from the `source` field, tokenizes it, and atomically updates the inverted index via a Lua script.
+BM25Field is a "side-effect field" -- it does not store a value on the model instance. When a model is saved, the `on_save()` hook reads text from the `source` field, tokenizes it, and atomically updates the inverted index (via a Lua script on Redis, in the record's own save statement on Postgres).
 
 **Parameters:**
 
@@ -48,7 +48,7 @@ BM25Field is a "side-effect field" -- it does not store a value on the model ins
 
 **Redis Key Patterns:**
 
-All BM25 data lives in native Redis structures (sorted sets and strings):
+On Redis, all BM25 data lives in native Redis structures (sorted sets and strings):
 
 | Key | Type | Contents |
 |-----|------|----------|
@@ -94,7 +94,7 @@ scored = BM25Field.search(Memory, "content_bm25", "redis deployment", limit=50)
 
 **Scoping a search with `allowed_keys`.** The BM25 index is corpus-wide: `search()`
 scores every record of the model, not just one agent's. Pass `allowed_keys` to confine
-it to a set of Redis keys:
+it to a set of record keys (`redis_key`, the same on both backends):
 
 ```python
 scoped = BM25Field.search(
@@ -123,9 +123,9 @@ cannot walk an unbounded corpus on every query. At the cap the result is honestl
 short rather than silently empty.
 
 Ordering is deterministic: results are sorted by BM25 score descending, and equal scores
-are tie-broken by `redis_key` ascending (byte-wise) inside the scoring Lua script -- before
-`limit` truncation -- so identical searches always return identical orderings on both Redis
-and Valkey. `keyword_search()` and RRF fusion via `fuse()` inherit this determinism, since
+are tie-broken by `redis_key` ascending (byte-wise) inside the scoring -- before
+`limit` truncation -- so identical searches always return identical orderings on Redis,
+Valkey and Postgres. `keyword_search()` and RRF fusion via `fuse()` inherit this determinism, since
 RRF consumes rank positions.
 
 ### fuse() -- Reciprocal Rank Fusion
@@ -201,7 +201,7 @@ and remain retrievable by their own owner.
 
 ### Maintenance
 
-`BM25Field.recompute_stats()` recalculates `avgdl` and `n` from scratch to correct floating-point drift that may accumulate over many incremental updates:
+`BM25Field.recompute_stats()` recalculates `avgdl` and `n` from scratch to correct floating-point drift that may accumulate over many incremental updates on Redis (on Postgres the statistics are counted live and it is a no-op):
 
 ```python
 BM25Field.recompute_stats(Memory, "content_bm25")
@@ -247,9 +247,8 @@ def hybrid_search(query: str, limit: int = 10) -> list:
     graph_results = []
     if keyword_results:
         seed_key = keyword_results[0][0]
-        propagated = CoOccurrenceField.propagate(
-            Memory, "associations", seed_key, hops=2, limit=50
-        )
+        associations = Memory._meta.fields["associations"]
+        propagated = associations.propagate(Memory, [seed_key], depth=2)
         graph_results = list(propagated.items())
 
     # 4. Fuse with RRF
@@ -270,7 +269,7 @@ def hybrid_search(query: str, limit: int = 10) -> list:
 ### How it works
 
 1. **ExistenceFilter pre-check** -- O(1) Bloom filter test. If the query terms are definitely absent from the corpus, skip retrieval entirely.
-2. **BM25 keyword search** -- Server-side Lua script computes BM25 scores across the inverted index. Returns exact-match precision for technical terms, error codes, and identifiers.
+2. **BM25 keyword search** -- The server computes BM25 scores (a Lua script on Redis, SQL on Postgres) across the inverted index. Returns exact-match precision for technical terms, error codes, and identifiers.
 3. **Semantic search** -- Embedding similarity captures conceptual relevance that keyword matching misses.
 4. **Graph propagation** -- CoOccurrence associations surface related records that share no lexical or semantic overlap with the query but were historically accessed together.
 5. **RRF fusion** -- Reciprocal Rank Fusion merges all ranked lists using rank positions, not raw scores. Documents appearing in multiple lists get boosted. The `k=60` constant smooths rank influence so a #1 result in one list does not overwhelm a consistent #5 across three lists.
@@ -282,12 +281,41 @@ def hybrid_search(query: str, limit: int = 10) -> list:
 | `BM25_K1` | Term frequency saturation | Increase (1.5-2.0) for long documents where term repetition is meaningful. Decrease (0.5-1.0) for short texts. |
 | `BM25_B` | Length normalization | 0.75 works well for mixed-length corpora. Set lower (0.3) if short documents should not be penalized. |
 | `k` (RRF) | Rank smoothing | Default 60 is the standard. Lower values (10-20) amplify top-ranked results. Higher values (100+) flatten rank influence. |
-| `limit` per signal | Recall pool size | Over-fetch per signal (50-100) then let RRF select the top-K. Larger pools improve fusion quality at the cost of more Redis operations. |
+| `limit` per signal | Recall pool size | Over-fetch per signal (50-100) then let RRF select the top-K. Larger pools improve fusion quality at the cost of more server work. |
+
+## On Postgres
+
+On a Postgres-bound model each signal keeps its state in the database beside
+the records, written by the record's save statement: BM25 postings and
+document lengths, the embedding as a pgvector `vector(d)` column (pgvector
+must be installed), and the ExistenceFilter as an exact token table. The
+BM25 formula, constants, tokenizer and tie order are Redis's, and
+`keyword_search`, `semantic_search`, `fuse()` and `composite_score` work as
+documented here; `fuse()` scopes the fused set by the builder's filters in
+one `SELECT`. See [Search](postgres-backend.md#search-m2b), with
+[BM25](postgres-backend.md#bm25), [Embeddings](postgres-backend.md#embeddings)
+and [Membership](postgres-backend.md#membership).
+
+`Query.recall()` is available on Postgres only: it runs the BM25 and vector
+arms (and a decay arm, on a model with one `DecayingSortedField`) and the
+weighted RRF in one statement, with per-scope BM25 statistics by default. It
+replaces the hand-written recipe above on a Postgres model. On a Redis model
+it raises `BackendCapabilityError`. See
+[Fusion and recall()](postgres-backend.md#fusion-and-recall).
+
+Differences, from
+[Documented divergences](postgres-backend.md#records-and-other-behaviour):
+the ExistenceFilter pre-check is exact (no false positives, deleted records
+forgotten), `recompute_stats` is a no-op, embeddings are not `.npy` files
+(`garbage_collect` returns `0`), equal vector similarities tie by key, and
+`BM25Field.search(allowed_keys=)` keeps the best
+`max(limit, SCOPED_SEARCH_FETCH_CAP)` records overall, the window Redis's
+widening loop reaches.
 
 ## See also
 
 - [BM25Field in Models and Fields](../fields.md#bm25field) -- field configuration reference
 - [ExistenceFilter](existence-filter.md) -- Bloom filter pre-check
-- [Composite Score Query](composite-score-query.md) -- weighted ZUNIONSTORE fusion (complementary to RRF)
+- [Composite Score Query](composite-score-query.md) -- weighted score fusion (complementary to RRF)
 - [ContextAssembler](context-assembler.md) -- token-budgeted retrieval-to-injection pipeline
 - [Agent Memory Quickstart](../guides/agent-memory-quickstart.md) -- progressive adoption guide
