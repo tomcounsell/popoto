@@ -454,9 +454,10 @@ documented ("discards memoised bindings").
   in `pytest_plugin.py` and the tests' paired calls: harmless, and removing
   them belongs after 1.10.0 ships so this release-blocker diff stays minimal;
   waits on the 1.10.0 release tag.
-- `transfer/cli.py:286` Redis DB-0 guard: not deferred work — it is
-  legitimately Redis-specific (dropped in the issue's recon). Nothing else is
-  deferred; every acceptance criterion is in scope.
+
+Not a deferral: `transfer/cli.py:286` (the Redis DB-0 guard) is legitimately
+Redis-specific and was dropped in the issue's recon. Nothing else is deferred;
+every acceptance criterion is in scope.
 
 ## Update System
 
@@ -500,19 +501,114 @@ agent runs) is fixed in place by Defect 1; no new tool surface is added.
 
 ## Success Criteria
 
-TBD
+- [ ] `SubconsciousMemory.inject_context`, `extract_memories` (save path) and
+  `report_outcomes` re-raise `BackendUnavailableError`, each with a test; a
+  non-outage exception still degrades, each with a test.
+- [ ] `MemoryService._record_failure` sets `_redis_down` on
+  `BackendUnavailableError`, with a test.
+- [ ] `popoto-transfer` export and import report `BackendUnavailableError` (and
+  `redis.exceptions.TimeoutError`) through a handler that names the outage
+  tuple: one stderr line, exit 1, with tests.
+- [ ] `set_backend(<instance named "postgres">)` serves a
+  `Meta.backend="postgres"` model with `POPOTO_POSTGRES_URL` unset, with a test.
+- [ ] A `Meta.backend="postgres"` model under a Redis-instance default resolves
+  to Postgres-by-name, and a `Meta.backend="redis"` model under a
+  Postgres-instance default resolves to Redis, with tests.
+- [ ] `_instance("postgres")` from streams and pubsub returns the same
+  instance as the model path (spike-1), with a test.
+- [ ] `redis_db.OUTAGE_ERRORS` value is unchanged; no module under
+  `src/popoto` other than `backends/types.py` imports it (drift guard test).
+- [ ] `set_backend` signature unchanged.
+- [ ] Full suite passes (`pytest`), `ruff check src/`, `black --check src/ tests/`,
+  `scripts/mypy_ratchet.py` (no rise), `mkdocs build --strict`.
+- [ ] Documentation updated (`/do-docs`), CHANGELOG entry added.
+- [ ] No xfail tests relate to this bug (searched: none), so none to convert.
 
 ## Team Orchestration
 
-TBD
+### Team Members
+
+- **Builder (backend-core)**
+  - Name: outage-binding-builder
+  - Role: Implement both defects plus tests and docs on `fix/pg-outage-and-backend-binding`
+  - Agent Type: builder
+  - Domain: Redis/Popoto data (paste the Redis/Popoto rules from `DOMAIN_FRAMING.md`; ad-hoc scripts set `REDIS_URL=redis://localhost:6379/<n≠0>` before importing popoto)
+  - Resume: true
+
+- **Validator (backend-core)**
+  - Name: outage-binding-validator
+  - Role: Verify success criteria and the Verification table, state the environment with every count
+  - Agent Type: validator
+  - Resume: true
 
 ## Step by Step Tasks
 
-TBD
+### 1. Neutral outage tuple and consumers (Defect 1)
+- **Task ID**: build-outage-tuple
+- **Depends On**: none
+- **Validates**: tests/test_outage_errors.py (create), tests/test_subconscious_memory.py, tests/test_integrations_service.py, tests/test_transfer_cli.py
+- **Informed By**: spike-2 (no import cycle; home is `backends/types.py`), spike-3 (transfer misses Redis timeouts)
+- **Assigned To**: outage-binding-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Define `OUTAGE_ERRORS` in `backends/types.py`; export from `backends/__init__.py` (`__all__` too).
+- Re-point `context_assembler.py`, `subconscious_memory.py`, `integrations/service.py` imports; leave the `except` sites untouched.
+- Replace `redis_exceptions.ConnectionError` in both `transfer/cli.py` handlers with the neutral tuple; drop unused `redis_exceptions` imports.
+- Amend the `redis_db.py:813-818` comment (value unchanged).
+- Write the tests listed under Test Impact for these four modules, including the AST drift guard and the non-outage-degrades siblings.
+
+### 2. Instance-aware `_instance` (Defect 2)
+- **Task ID**: build-instance-binding
+- **Depends On**: none
+- **Validates**: tests/test_backend_selection.py, tests/postgres/ (skips without POSTGRES_URL)
+- **Informed By**: spike-1 (fix in `_instance`, not `_resolve`), spike-4 (no test asserts the old precedence)
+- **Assigned To**: outage-binding-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- In `_instance(name)`, under `_lock`, return `_default` when it is a non-string instance with `getattr(_default, "name", None) == name`; do not write it into `_instances`.
+- Update `set_backend` / `_instance` docstrings and the `pytest_plugin.py:1098` comment (call stays).
+- Write the resolution tests listed under Test Impact (instance serves pinned model with env unset; cross-name pins still resolve by name in both directions; instance beats a cached entry; `set_backend(None)` falls back; streams/pubsub agree).
+
+### 3. Validate code
+- **Task ID**: validate-code
+- **Depends On**: build-outage-tuple, build-instance-binding
+- **Assigned To**: outage-binding-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run the Verification table; run the full suite with `POPOTO_TEST_DB=<free n>` and report environment (redis-py version, extras, DB).
+- Re-run the scratch repro from the Freshness Check against the branch: all four `isinstance`/`is` checks flip as expected and `_resolve(M)` returns the instance.
+
+### 4. Documentation
+- **Task ID**: document-feature
+- **Depends On**: validate-code
+- **Assigned To**: outage-binding-builder
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Apply every item in the Documentation section, including the CHANGELOG entry.
+- `mkdocs build --strict`.
+
+### 5. Final Validation
+- **Task ID**: validate-all
+- **Depends On**: document-feature
+- **Assigned To**: outage-binding-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Re-run the Verification table and confirm every Success Criterion.
 
 ## Verification
 
-TBD
+| Check | Command | Expected |
+|-------|---------|----------|
+| Tests pass | `pytest -q -p no:cacheprovider` | exit code 0 |
+| Targeted tests pass | `pytest -q tests/test_outage_errors.py tests/test_backend_selection.py tests/test_subconscious_memory.py tests/test_integrations_service.py tests/test_transfer_cli.py` | exit code 0 |
+| Lint clean | `ruff check src/` | exit code 0 |
+| Format clean | `black --check src/ tests/` | exit code 0 |
+| Type ratchet | `scripts/mypy_ratchet.py` | exit code 0 |
+| Docs build | `mkdocs build --strict` | exit code 0 |
+| Neutral tuple includes PG outage | `REDIS_URL=redis://localhost:6379/15 python -c "from popoto.backends import OUTAGE_ERRORS, BackendUnavailableError as B; print(issubclass(B, OUTAGE_ERRORS))"` | output contains True |
+| Redis tuple unchanged | `REDIS_URL=redis://localhost:6379/15 python -c "import redis; from popoto.redis_db import OUTAGE_ERRORS as R; print(R == (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError))"` | output contains True |
+| No src module imports the Redis tuple except types.py | `grep -rn "redis_db import OUTAGE_ERRORS" src/popoto \| grep -v "backends/types.py" \| wc -l` | match count == 0 |
+| Transfer no longer names only the redis ConnectionError | `grep -c "redis_exceptions.ConnectionError" src/popoto/transfer/cli.py` | match count == 0 |
 
 ## Critique Results
 
@@ -523,4 +619,19 @@ TBD
 
 ## Open Questions
 
-TBD
+None that block the build. The issue's two planner questions are decided
+above, recorded here so critique can challenge them:
+
+1. **Where the neutral tuple lives, and `redis_db.OUTAGE_ERRORS`'s meaning.**
+   Decided: `popoto.backends.types.OUTAGE_ERRORS` (re-exported from
+   `popoto.backends`); `redis_db.OUTAGE_ERRORS` keeps its exact Redis-pair
+   value for external importers. Alternative rejected: widening
+   `redis_db.OUTAGE_ERRORS` in place — simpler, but puts a backend-neutral
+   definition in the Redis module and silently changes an exported value.
+2. **Precedence and memoisation.** Decided: matching `set_backend` instance >
+   `_instances` cache / `_swap_instance` > env build; the instance is never
+   cached in `_instances`, so `set_backend(None)` or a replacement needs no
+   eviction; `_bound` needs no change (keyed by `id(backend)`, cleared by
+   `set_backend`). The rule is name-symmetric, so a custom instance named
+   `"redis"` now also serves `Meta.backend="redis"` models (Risk 1). If the
+   maintainer wants the rule Postgres-only, it is a one-condition change.
