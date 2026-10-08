@@ -1048,7 +1048,7 @@ def test_main_role_permission_error_wraps_only_popoto_privileges():
     """Table, schema and sequence privileges on popoto's schema are wrapped
     (with the grants help); any other ``InsufficientPrivilege`` -- a
     function, or an object elsewhere -- is handed back unchanged."""
-    import psycopg
+    psycopg = pytest.importorskip("psycopg")
 
     backend = PostgresBackend(dsn="postgresql://h/db", schema="popoto")
     sql = 'SELECT * FROM "popoto"."t"'
