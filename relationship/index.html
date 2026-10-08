@@ -583,6 +583,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/postgres-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Postgres
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../guides/subconscious-memory-recipe/" class="md-nav__link">
         
   
@@ -3745,8 +3773,8 @@ assigned only after the order is accepted.</p>
 <p>Use double-underscore notation to query by fields on the related model.</p>
 <div class="admonition warning">
 <p class="admonition-title">Redis: currently broken</p>
-<p>On the Redis backend this lookup raises today (a <code>KeyError</code> or an
-<code>AttributeError</code>, depending on the related field) instead of returning
+<p>On the Redis backend this lookup raises today (a <code>KeyError</code> or a
+<code>QueryException</code>, depending on the related field) instead of returning
 matches. The bug is tracked in #771 and is row (xii) of
 <a href="../features/postgres-backend/#query-results">Query results</a>. On Postgres
 the lookup works as shown. On Redis, query the related model first and

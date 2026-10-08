@@ -581,6 +581,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../guides/postgres-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Postgres
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../guides/subconscious-memory-recipe/" class="md-nav__link">
         
   
@@ -3717,6 +3745,8 @@
 (<a href="https://github.com/tomcounsell/popoto/issues/759">#759</a>). Redis keeps
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.</p>
+<p>New to it? Start with <a href="../../guides/postgres-quickstart/">Use Postgres</a>, which goes from an empty database
+to a working memory loop. This page is the reference; server requirements (PostgreSQL 18+, UTF8, pgvector) are listed under <a href="#known-limitations">Known limitations</a>.</p>
 <p>Postgres support ships in popoto 1.10.0. It is opt-in: a model uses Postgres
 only when you select it (below), and every model that does not keeps running
 on Redis exactly as before. Redis behaviour is unchanged unless noted.</p>
@@ -3738,7 +3768,7 @@ model that uses it when you declare it, so it never fails halfway through.
 That refusal and the other places where Postgres behaves differently from
 Redis are collected under <a href="#known-limitations">Known limitations</a>.</p>
 <h2 id="selecting-the-backend">Selecting the backend<a class="headerlink" href="#selecting-the-backend" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[postgres]'</span><span class="w">      </span><span class="c1"># psycopg[binary,pool] + pgvector</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[postgres]'</span><span class="w">   </span><span class="c1"># psycopg[binary,pool], psycopg-pool, pgvector, numpy, greenlet</span>
 </code></pre></div>
 <p>A backend is chosen per model, or once for the whole process:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>

@@ -583,6 +583,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/postgres-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Postgres
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../guides/subconscious-memory-recipe/" class="md-nav__link">
         
   
@@ -3425,8 +3453,6 @@ that seeds rows already writes to the leg's backend.</p>
 the tests need not request <code>backend</code> themselves:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">pytestmark</span> <span class="o">=</span> <span class="p">[</span><span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">conformance</span><span class="p">,</span> <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">usefixtures</span><span class="p">(</span><span class="s2">"backend"</span><span class="p">)]</span>
 </code></pre></div>
-<p>M0's <code>conformance(harness=True)</code> flag and its "Postgres backend arrives in
-M1" skip are gone: every leg has a backend to run against.</p>
 <p><strong>The Postgres leg skips when it cannot run.</strong> If <code>psycopg</code> is not installed or
 <code>POSTGRES_URL</code> is unset, each <code>[postgres]</code> parameter reports <code>SKIPPED</code> with a
 reason naming what is missing (<code>pytest -rs</code> shows it). <code>psycopg</code> is imported
