@@ -294,18 +294,6 @@ and the assembler re-raises that too. The tuple it tests against is
 `BackendUnavailableError`; catch that one when a model may be bound to either
 backend.
 
-### On Postgres
-
-`ContextAssembler` works unchanged on a model bound to Postgres
-(`Meta.backend = "postgres"`, #759 M2c), and returns the same ranked records
-as on Redis: every stage reaches storage through field and query methods that
-dispatch on the model's backend, the hybrid path ranks BM25 with corpus-wide
-statistics as `BM25Field.search` does, and the post-retrieval effects (staged
-reads for the selected records, competitive suppression for the rest) run as
-bulk statements in one transaction. A Postgres-bound assembler issues no Redis
-command. See [Postgres Backend](postgres-backend.md#contextassembler-m2c) for
-what each stage runs and the few documented differences.
-
 ### Push Path
 
 1. **CyclicDecayField scan**: Find records whose cyclic + pressure score exceeds `DEFAULT_SURFACING_THRESHOLD`.
@@ -494,6 +482,36 @@ assembler itself never proposes a question. See [Question Queue](question-queue.
 See [Confidence Gate](#confidence-gate)
 for the full `metadata["gate"]` shape, the fault-tolerant `get_confidence()`
 failure path, and the no-default policy on `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`.
+
+## On Postgres
+
+`ContextAssembler` works unchanged on a model bound to Postgres
+(`Meta.backend = "postgres"`) and returns the same ranked records as on
+Redis. Every stage reaches storage through field and query methods that
+dispatch on the model's backend, the hybrid path ranks BM25 with corpus-wide
+statistics as `BM25Field.search` does (it does not call `recall()`), and the
+post-retrieval effects (staged reads for the selected records, competitive
+suppression for the rest) run as bulk statements in one transaction. A
+Postgres-bound assembler issues no Redis command. See
+[ContextAssembler (M2c)](postgres-backend.md#contextassembler-m2c) for what
+each stage runs.
+
+Differences (the first three are rows in
+[Documented divergences](postgres-backend.md#records-and-other-behaviour)):
+
+- The ExistenceFilter short-circuit is exact, so a cue whose only record was
+  deleted or rewritten short-circuits on Postgres but not on Redis.
+- A reload after `touch()` sees the touched time, so after an `acted`
+  outcome a record's formatted `relevance` can differ, and a token budget can
+  then admit a different record.
+- Records with the same text (and so the same vector) tie by key on
+  Postgres, in file-listing order on Redis.
+- The post-effects are all-or-nothing: a failed statement drops the call's
+  staged reads and suppression signals with one warning, where Redis skips
+  only the failing candidate. Reads are staged only on models with
+  `AccessTrackerMixin`.
+- An outage raises `BackendUnavailableError` (see
+  [Outages are raised, not swallowed](#outages-are-raised-not-swallowed)).
 
 ## See Also
 

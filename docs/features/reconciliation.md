@@ -170,7 +170,7 @@ audit but is excluded from selection and from confirmation counts.
 
 Every resolved conflict closes the loser through `ProvenanceJournal.supersede()`,
 which appends a `supersede` annotation and closes the target's interval in one
-`MULTI`/`EXEC`. It has to be that call rather than `save_and_supersede()` applied
+`MULTI`/`EXEC` (one transaction on Postgres). It has to be that call rather than `save_and_supersede()` applied
 to the winner: the winner is already persisted, so re-saving it would raise
 `AppendOnlyViolation` — the same rule as "nothing here mutates a persisted
 entry".
@@ -270,6 +270,20 @@ line of `CONVENTION_BOOK_V1` is a **version bump, not an edit**: replay pins the
 wording that produced a merge, so a silent reword would make history
 irreproducible.
 
+## On Postgres
+
+Reconciliation runs unchanged on a Postgres-bound journal: `ClaimClass` and
+`ClaimMembership` are ordinary model rows, the reconciler-side embedding cache
+is the `popoto_embedding_cache (model, member, vector)` engine table instead
+of the `POPOTO:M5:embedding_cache` hash (`erase_entry` drops the row there),
+and `reconciliation_consumer` reads the journal's stream from the backend's
+events table. A Postgres-bound journal and its reconciler send Redis no
+command. The single-writer invariant is a deployment contract and applies on
+both backends. The one behavioral difference is inherited from the journal:
+a loser's close that fails rolls back its `supersede` annotation too (see
+[Provenance Journal, On Postgres](provenance-journal.md#on-postgres)). See
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+
 ## See Also
 
 - [Provenance Journal](provenance-journal.md) — the append-only log this stage
@@ -280,7 +294,7 @@ irreproducible.
 - [ValidityField and SupersessionProtocol](validity-and-supersession.md) — the
   membership mechanism that closes a supersession loser's interval, reached
   only through `ProvenanceJournal.supersede()` so the annotation and the close
-  share one `MULTI`/`EXEC`
+  share one `MULTI`/`EXEC` (one transaction on Postgres)
 - [Reference Resolution](reference-resolution.md) — the M4 stage upstream:
   its distilled `statement` is what a capture reconciles on, and its
   `valid_from` is a declared value this stage never recomputes

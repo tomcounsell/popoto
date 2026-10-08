@@ -201,21 +201,6 @@ from the detail rows in one script call; run it per turn once every process
 has the fix. On Postgres the summary is a `GROUP BY` computed on read and
 cannot drift, so the same call just returns it.
 
-## Backends
-
-`DecisionLog` follows `DecisionRecord`'s backend, the process default, as the
-journal does. On Redis nothing changed beyond the summary fix above. On
-Postgres `SubconsciousMemory(auditable_extraction=...)` constructs and runs
-with no Redis command: rows, the guarded terminal write, the assembly claim
-(a lease row) and the summary all live in Postgres, with the same semantics.
-Construction refuses only the split trail, whenever `auditable_extraction` is
-set: a decision log that would land in Redis while the memory model is on
-Postgres, or a decision log in a different store from the journal entry model
-(in either direction). The error says how to bind the process default. A
-memory model pinned to Redis under a Postgres default keeps its decision log in
-Postgres, next to the journal. See [Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
-A process that moves to Postgres starts with an empty decision log.
-
 ## The terminal-write conflict guard
 
 Every terminal write — including the pre-LLM `firewall_drop`, which cannot
@@ -244,7 +229,7 @@ hence the dedicated Lua script.
 ## The atomic assembly claim
 
 Before writing a `pending` row, assembly claims the candidate with a single
-atomic op:
+atomic op. On Redis it is:
 
 ```
 SET popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id} <token> NX PX <ttl>
@@ -253,20 +238,23 @@ SET popoto:m3:claim:{agent_id}:{turn_id}:{candidate_id} <token> NX PX <ttl>
 `<ttl>` is `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS` (30,000 ms), a pinned in-repo
 constant — not a constructor kwarg, per this project's convention that
 experimental-tuning numbers live in `popoto.fields.constants.Defaults`, not
-as user-facing config surface.
+as user-facing config surface. On Postgres the claim is one upsert on the
+`popoto_lease` table that succeeds only when no unexpired lease holds the
+key, with the same TTL.
 
 The claim closes a TOCTOU window in the dedup probe: without it, two
 runners racing the same `(agent_id, turn_id, candidate_id)` — a duplicated
 delivery racing a crash-retry, both seeing a surviving `pending` row — could
 both probe, both find nothing yet, and both append, producing two permanent
 journal entries (the journal itself can't catch this: `append()` takes no
-idempotency key and `AppendOnlyViolation` only fires when a record's Redis
-key already exists). The claim's *loser* performs no journal write and no
+idempotency key and `AppendOnlyViolation` only fires when a record's key
+already exists). The claim's *loser* performs no journal write and no
 row transition at all — it no-ops and leaves the candidate entirely to the
-winner. Release is token-checked (a small Lua `if GET == token then DEL`) so
+winner. Release is token-checked (a small Lua `if GET == token then DEL` on Redis,
+a `DELETE ... WHERE token = ...` on Postgres) so
 a runner can never delete a claim it no longer owns.
 
-`SET NX PX` was chosen over `WATCH`/`MULTI` compare-and-set deliberately:
+On Redis, `SET NX PX` was chosen over `WATCH`/`MULTI` compare-and-set deliberately:
 `WATCH` needs a dedicated connection held across the transaction plus a
 retry loop, which doesn't compose with Popoto's shared connection pool.
 Both are Valkey-safe (core commands and Lua only, no modules); `SET NX` is
@@ -428,6 +416,35 @@ else" becomes a `per_generator_rule` breakdown instead of a single opaque
 aggregate number. Sentence spans are the smallest candidate shape that makes
 the decision log informative — a raw-turn candidate is one candidate per
 turn, with nothing left to discriminate between.
+
+## On Postgres
+
+`DecisionLog` follows `DecisionRecord`'s backend, the process default, as the
+journal does. On Postgres the decision rows live in the `DecisionRecord`
+table, and `SubconsciousMemory(auditable_extraction=...)` runs with no Redis
+command.
+See [Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+
+- The guarded terminal write is one `INSERT ... ON CONFLICT` statement under
+  the record's advisory lock, with the same refusal rule and the same
+  `terminal_conflict_refused` marker.
+- The assembly claim is a `popoto_lease` row, released only by its token.
+- `turn_summary` is a `GROUP BY` over the turn's rows, computed on read, so
+  it cannot drift and `rebuild_turn_summary` just returns it.
+- `list_for_agent` is an indexed `filter(agent_id=...)` query. The Redis
+  `SCAN` and its reason (terminal writes skip the ORM's index sets) do not
+  apply.
+
+Construction refuses a split audit trail with `BackendCapabilityError`
+whenever `auditable_extraction` is set: a decision log that would land in
+Redis while the memory model is on Postgres, or a decision log in a different
+store from the journal entry model (in either direction). The error says how
+to bind the process default. A memory model pinned to Redis under a Postgres
+default keeps its decision log in Postgres, next to the journal.
+
+Limitations: a process that moves to Postgres starts with an empty decision
+log, since nothing copies Redis rows across. `DecisionLog(redis_client=...)`
+pins the Redis path whatever the process default is.
 
 ## See Also
 

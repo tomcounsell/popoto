@@ -39,9 +39,9 @@ policy.save()
 | Field | Storage | Role |
 |-------|---------|------|
 | `q_value` | Model hash (`TDValueField`) | Learned Q-value; updated by TD(0) |
-| `expected_value` | Sorted set (score) | Pure recency clock; decays with time |
+| `expected_value` | Sorted set score on Redis; its own column on Postgres | Pure recency clock; decays with time |
 
-`expected_value` is a `DecayingSortedField(partition_by="agent_id", base_score_field="q_value")`. The sorted-set score is the decay-weighted access timestamp; `q_value` supplies the base magnitude. Because the two slots are independent, a `save()`, `touch()`, or `"acted"` outcome that refreshes the decay clock does not overwrite the Q-value, and a TD update to `q_value` does not alter the recency clock.
+`expected_value` is a `DecayingSortedField(partition_by="agent_id", base_score_field="q_value")`. The clock (the sorted-set score on Redis) is the decay-weighted access timestamp; `q_value` supplies the base magnitude. Because the two slots are independent, a `save()`, `touch()`, or `"acted"` outcome that refreshes the decay clock does not overwrite the Q-value, and a TD update to `q_value` does not alter the recency clock.
 
 ### Crystallization Handler
 
@@ -114,11 +114,19 @@ from popoto.fields.constants import Defaults
 
 ## On Postgres
 
-`PolicyEntry` runs unchanged on a Postgres-bound model (#759 M5): its
-`TDValueField`, `PredictionLedgerMixin`, `ConfidenceField`, decay clock,
-co-occurrence graph and existence filter are all stored there, and its
-`EventStreamMixin` mutation log is still sent to Redis after each write
-commits. See [Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+`PolicyEntry` runs unchanged on a Postgres-bound model (#759 M5); its tests
+run on both backends. `q_value` is a `numeric` column and `td_update` one
+`UPDATE`, the decay clock is the `expected_value` column rather than a sorted
+set score, the ledger, confidence state, co-occurrence edges and existence
+tokens are Postgres columns and tables, and the `EventStreamMixin` mutation
+log is appended to the backend's events tables in the save's own transaction,
+where the crystallization and temporal-discovery `StreamConsumer` handlers
+read it. Two behaviours follow the backend: the existence filter is exact
+rather than a bloom filter, and a reload after `touch()` sees the touched
+clock (both rows of
+[Documented divergences](postgres-backend.md#records-and-other-behaviour)).
+See [Long-tail fields](postgres-backend.md#long-tail-fields-m5) and
+[Event streams and pub/sub](postgres-backend.md#event-streams-and-pubsub-m5).
 
 ## See Also
 
