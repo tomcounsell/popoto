@@ -179,7 +179,7 @@ Without either, every model stays on Redis. `import popoto` never imports `psyco
 | `POPOTO_POSTGRES_URL` | *(required for Postgres)* | The DSN, e.g. `postgresql://db.internal:5432/agents`. The only place popoto reads a Postgres URL from: it never reads `DATABASE_URL` or `POSTGRES_URL`. |
 | `POPOTO_POSTGRES_SCHEMA` | `popoto` | Schema that holds popoto's tables. |
 | `POPOTO_POSTGRES_MAINTENANCE_URL` | unset (the main DSN) | Optional second DSN to the same database, for work that needs a real session: `REINDEX`/`DROP INDEX CONCURRENTLY`, first-use DDL, and the shared `LISTEN` session. Set it when `POPOTO_POSTGRES_URL` goes through PgBouncer in transaction mode. See [A maintenance DSN](features/postgres-backend.md#a-maintenance-dsn-for-pgbouncer-transaction-mode). |
-| `POPOTO_POSTGRES_GRANT_MAIN_ROLE` | unset (falsy) | `1`/`true`/`yes`/`on` makes popoto grant the main DSN's role access to the tables its own DDL creates on the maintenance DSN, when the two DSNs run as different roles. Off, popoto grants nothing. See [Two roles](features/postgres-backend.md#two-roles-an-application-role-and-an-owner-role). Known gap ([#808](https://github.com/tomcounsell/popoto/issues/808)): in a rolling deploy where processes disagree on this flag, a process with it on that adds a column to a table an older process just created also grants on that table. |
+| `POPOTO_POSTGRES_GRANT_MAIN_ROLE` | unset (falsy) | `1`/`true`/`yes`/`on` makes popoto grant the main DSN's role access to the tables its own DDL creates on the maintenance DSN, when the two DSNs run as different roles. Off, popoto grants nothing. See [Two roles](features/postgres-backend.md#two-roles-an-application-role-and-an-owner-role). |
 | `POPOTO_POSTGRES_LISTEN_URL` | unset | DSN for the process's one shared `LISTEN` session (blocking stream reads, `Subscriber`). Unset, the maintenance DSN is used, else the main DSN. |
 | `POPOTO_SCHEMA_AUTO` | `1` | `0`/`false`/`no`/`off` turns off the automatic first-use `CREATE TABLE` and additive migrations, for deployments that run the DDL themselves. |
 
@@ -205,7 +205,7 @@ set_backend(PostgresBackend(
 
 A Postgres instance passed to `set_backend()` also serves every model that declares `Meta.backend = "postgres"`, ahead of `POPOTO_POSTGRES_URL`, so you can configure Postgres in code and keep `Meta.backend` on those models. A model that declares `Meta.backend = "redis"` always gets the stock Redis backend. See [Selecting the backend](features/postgres-backend.md#selecting-the-backend).
 
-`popoto.backends.get_backend(Model)` returns the backend a model is bound to; its `health.as_dict()` reports outages and dropped writes.
+`popoto.backends.get_backend(Model)` returns the backend a model is bound to. For a Postgres-bound model, `get_backend(Model).health.as_dict()` reports outages and dropped writes; the Redis backend keeps no health record.
 
 ### What to read next
 

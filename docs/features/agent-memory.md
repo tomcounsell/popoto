@@ -31,7 +31,8 @@ Each primitive below covers one of those. Each is independently useful.
 
 Every primitive and layer on this page runs on both backends behind the same
 model API. **Postgres is the recommended substrate for agent memory**: since
-1.10 every agent-memory feature runs on it, its deployment model is one central
+1.10 every agent-memory feature runs on it except the WriteFilter priority
+tier (see the [divergences](postgres-backend.md#documented-divergences)), its deployment model is one central
 database for every agent and machine, and new capabilities land there first.
 Redis and Valkey remain fully supported.
 

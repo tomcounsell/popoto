@@ -104,7 +104,7 @@ stronger boundary if you want one enforced by Redis rather than by a query
 filter.
 
 The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
-`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in the Claude Code's environment; see
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in Claude Code's environment; see
 [On Postgres](../features/harness-integration.md#on-postgres).
 
 One turn becomes one record, verbatim. Issue #489 measured
