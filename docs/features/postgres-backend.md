@@ -73,6 +73,18 @@ the DSN directly:
 `grant_main_role=True` to opt in to [per-object
 grants](#two-roles-an-application-role-and-an-owner-role).
 
+**The instance rule.** That instance serves every model without
+`Meta.backend` *and* every model with `Meta.backend = "postgres"`: since #816
+a `set_backend` instance is the backend its own `name` resolves to, so a
+Postgres-pinned model, `resolve_stream_backend(backend="postgres")` and a
+publish joining a Postgres transaction all use it, and `POPOTO_POSTGRES_URL`
+is not consulted for them. (Before #816 a pinned model ignored the instance
+and built its own backend from `POPOTO_POSTGRES_URL`, raising when it was
+unset or silently using that database when it was set.) A model pinned to a
+*different* name still resolves by name, and the rule does not apply to
+Redis: `Meta.backend = "redis"` always resolves to the stock Redis backend,
+even under a Redis-named `set_backend` instance, exactly as before.
+
 **Laziness.** `import popoto` never imports `psycopg`. Defining a
 `Meta.backend = "postgres"` model never touches the network either: class
 creation only checks the model's fields against a static capability table.
@@ -182,23 +194,14 @@ pinned by a test on both backends (see
 - **Exact structures.** `ExistenceFilter` and `FrequencySketch` are exact on
   Postgres (no false positives, no over-counting).
 
-**The harness integration still needs Redis.** `MemoryService` (the core of
-the [harness hooks and MCP tools](harness-integration.md)) keeps its
-per-session injected-key sets, pending captures and failure counters in Redis
-whatever backend the memory models use, and it does not see the eviction
-counter a Postgres-bound `DefaultMemory` keeps in `popoto_counter`.
-
-**Per-object grants race in a rolling deploy.** With
-`grant_main_role=True`, a table that an older process (flag off) creates
-during the same rollout can be granted to the application role by a newer
-process (flag on) that adds a column to it. Only popoto's own tables and the
-configured main role are involved. Tracked in
-[#808](https://github.com/tomcounsell/popoto/issues/808); see
-[Two roles](#two-roles-an-application-role-and-an-owner-role). The same issue
-notes that `MainRolePermissionError` wraps *any* insufficient-privilege error
-on the main DSN, so its "refused access in schema" wording can be misleading
-for a privilege error that has nothing to do with the schema; the original
-error is kept as its cause.
+**Harness session state does not migrate.** The
+[harness integration](harness-integration.md) runs on Postgres with no Redis
+commands (see its [On Postgres](harness-integration.md#on-postgres) section).
+Its between-turn bookkeeping (pending captures, injected-key sets, counters)
+lives in its own tables, and the
+[Redis to Postgres migration](redis-to-postgres-migration.md) does not copy
+it: after a switch, those counters start at zero and the first turn of each
+session may inject a memory the Redis side had already injected.
 
 ## Supported fields (M1, M1.1, M2a, M2b, M3, M4, M5)
 
@@ -699,8 +702,9 @@ arm's tie order (records with the same text have the same vector, which Redis
 returns in file-listing order and Postgres by key).
 
 An outage raises `BackendUnavailableError` from `assemble()`, as a Redis
-outage raises `ConnectionError`; it is in
-`popoto.recipes.context_assembler.OUTAGE_ERRORS`. That is the retrieval
+outage raises `ConnectionError`; catch `popoto.backends.OUTAGE_ERRORS`, which
+holds both (`popoto.recipes.context_assembler.OUTAGE_ERRORS` is the same
+object since #816). That is the retrieval
 path's rule, not every helper's: the quality helpers behind
 `assess_quality` and `assess()` (score spread, feeling-of-knowing,
 staleness) catch every exception and degrade, on both backends (unchanged
@@ -884,8 +888,33 @@ tables created on first use, like `popoto_recall_proposal`:
 
 `DefaultMemory`'s eviction counts and pages its partition through the sorted
 reads above and records the eviction in `popoto_counter`, so a
-Postgres-bound `DefaultMemory` issues no Redis command; `MemoryService`
-(the Redis-only integration) does not see that counter.
+Postgres-bound `DefaultMemory` issues no Redis command, and `MemoryService`
+reads that counter back with its own (below).
+
+**The harness integration** (#814). `MemoryService` -- the `popoto-memory`
+hook, the MCP server and `doctor` -- follows `DefaultMemory`'s backend. On
+Postgres its session state is the `_harness` adapter's tables and its
+counters are `popoto_counter` rows under the same key strings the Redis
+counters use, so a Postgres-bound hook process binds no Redis connection and
+sends Redis no command:
+
+| State | Redis | Postgres |
+|---|---|---|
+| Read-to-write handoff | `$popoto_memory:pending:{agent}:{session}` list: `RPUSH`/`LTRIM`/`EXPIRE`, claimed by `LRANGE` + `LREM`, else `LPOP` | `popoto_harness_pending (agent, session, seq, turn, keys, expires_at)`: one message under the session's advisory lock; the claim is one `DELETE … RETURNING` |
+| Injection suppression | `$popoto_memory:injected:{agent}:{session}` set: `SADD`/`EXPIRE`, `SMEMBERS` | `popoto_harness_injected (agent, session, member, expires_at)` |
+| Last-success timestamps | `$popoto_memory:last:{agent}:{op}` strings | `popoto_harness_event (agent, name, stamp)` |
+| Counters | `$popoto_memory:counter:{agent}:{op}` strings, `INCR`, read by `SCAN` | `popoto_counter` rows, read by key prefix (`_counter` `scan`) |
+
+Each session's rows share one expiry, refreshed on every write as `EXPIRE`
+refreshes the Redis key, and every read filters expired rows; a write also
+deletes up to 20 expired rows of any session in passing, so abandoned
+sessions do not accumulate. `PostgresBackend.describe()` is the one
+read-only round trip `doctor` makes for the server facts (version and
+support, schema, pgvector, the DSN summary). Pinned by
+`tests/test_integrations_backends.py` (both legs) and
+`tests/postgres/test_postgres_harness.py`, which runs the real hook and
+`doctor` subprocesses with Redis unreachable and a connect guard that
+records any Redis dial.
 `MemoryLifecycle.tombstone()` archives the record as `restore()` will decode
 it: on Redis the raw hash bytes, on Postgres the stored row encoded the way a
 Redis save would write it, so `decode_popoto_model_hashmap` restores it
@@ -1990,7 +2019,14 @@ though the row is there. Check the row before replaying such a write. Statements
 
 When Postgres is unreachable, or a connect or statement timeout fires
 (`Defaults.PG_CONNECT_TIMEOUT_SECONDS`, `Defaults.PG_STATEMENT_TIMEOUT_MS`),
-the call raises **`BackendUnavailableError`**. The backend's health record
+the call raises **`BackendUnavailableError`**. To catch an outage on either
+backend, catch `popoto.backends.OUTAGE_ERRORS` (the redis-py
+`ConnectionError`/`TimeoutError` pair plus `BackendUnavailableError`), not
+`popoto.redis_db.OUTAGE_ERRORS`, which is the Redis pair only. It is the
+tuple `SubconsciousMemory`, `ContextAssembler`, the harness integration's
+one-attempt breaker and `popoto-transfer` all test against (#816), so a
+Postgres outage re-raises from the recipes instead of reading as "no
+memories". `BackendRetryableError` is not in it. The backend's health record
 tracks the outage:
 
 ```python
@@ -2131,8 +2167,10 @@ The example above runs the main DSN as `app` and the maintenance DSN as
 creates belong to `owner`, and `app` cannot use them until it is granted
 access. **Popoto grants nothing by default.** On the first save, `app` fails
 loudly with `popoto.backends.postgres.MainRolePermissionError` (a
-`PermissionError`). The message carries the server's own `permission denied`
-text and links to this section. It is not an outage, so `health` is
+`PermissionError`). It wraps a table, schema or sequence privilege refused on
+popoto's own schema; any other `permission denied` (a function such as
+`pg_read_file`, say) reaches you as the driver's own error. The message
+carries the server's own `permission denied` text and links to this section. It is not an outage, so `health` is
 untouched. The roles need only this:
 
 ```sql
@@ -2197,28 +2235,20 @@ same transaction and only on the objects that transaction created:
 
 "Created by that transaction" is checked in the catalog: the object's
 `pg_class` (or `pg_namespace`) row was written by this transaction and was not
-there when it began. A table only altered (`ADD COLUMN`) is not created. So
-popoto never grants on a table you create by hand, on another role's table, or
-on a schema it did not create. It runs no `ALTER DEFAULT PRIVILEGES` and no
-`ON ALL TABLES`.
-
-One race breaks the "not there when it began" test
-([#808](https://github.com/tomcounsell/popoto/issues/808), open). The DDL
-transaction takes its snapshot of the catalog *before* it acquires the
-advisory locks that serialise popoto's DDL. In a rolling deploy, an old
-process (flag off) can create a model's table while a new process (flag on)
-waits on that lock; the new process then adds a column to the table, counts it
-as created by itself, and grants `app` read/write on it. The object is still
-popoto's own table and the grantee is still the main role, so nothing outside
-popoto is exposed, but in that window a table another session created *is*
-granted. Once the tables exist, a process's first use creates nothing
+there once the transaction held the DDL's advisory locks. A table only altered
+(`ADD COLUMN`) is not created, and an object another session made, at any
+moment, never qualifies: that includes a table an older process (flag off)
+created while this one waited for the lock, which this one then only
+migrates. So popoto
+never grants on a table you create by hand, on another role's table, or on a
+schema it did not create. It runs no `ALTER DEFAULT PRIVILEGES` and no
+`ON ALL TABLES`. Once the tables exist, a process's first use creates nothing
 and grants nothing. A `REVOKE` you run stays revoked across restarts, and the
 next save fails with `MainRolePermissionError` instead of quietly regaining
 access. If the schema already existed when popoto first ran (you made it, or
 an earlier deploy without the flag did), grant `app` `USAGE` on it yourself.
-Tables created before the flag was turned on are not granted (apart from the
-#808 race above, which can grant one that another process creates during the
-same rollout): use the statements above.
+Tables created before the flag was turned on are not granted: use the
+statements above.
 
 The Redis-to-Postgres migration tool follows the same setting. It reads
 `MigrationConfig(grant_main_role=...)`, falling back to

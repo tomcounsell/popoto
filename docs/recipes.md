@@ -25,7 +25,7 @@ runtime.
 ## Bulk Operations
 
 Popoto provides bulk operation methods for efficient batch processing using
-Redis pipelines. These methods significantly reduce network round-trips
+Redis pipelines (one transaction per call on Postgres). These methods significantly reduce network round-trips
 compared to individual operations, making them ideal for importing data,
 batch updates, and cleanup tasks.
 
@@ -284,7 +284,7 @@ documentation and examples.
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `_ttl` | `int` or `None` | Value of `Meta.ttl` | Time-to-live in seconds. Set to `None` to make the instance permanent. Takes precedence over `Meta.ttl`. |
-| `_expire_at` | `datetime` or `None` | `None` | Absolute expiration timestamp. Calls Redis `EXPIREAT` on save. |
+| `_expire_at` | `datetime` or `None` | `None` | Absolute expiration timestamp. Calls Redis `EXPIREAT` on save (sets the `_expires_at` column on Postgres). |
 
 !!! warning
     Setting both `_ttl` and `_expire_at` on the same instance raises a
@@ -667,7 +667,7 @@ The sweep grid and the metrics it reports are described in
 
 ## StreamConsumer
 
-A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.
+A Redis Streams consumer group framework for background processing (on Postgres it runs over the backend's events tables). Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.
 
 ### Basic usage
 
@@ -767,3 +767,39 @@ count = consumer.process_batch_sync()
 ```
 
 This is generic infrastructure — the processing logic is application code. One use case: pattern crystallization from raw events into `PolicyCache` entries.
+
+## On Postgres
+
+Most of these recipes run unchanged on a Postgres-bound model. What differs:
+
+- **Bulk operations**: `bulk_create`, `bulk_update` and `bulk_delete` each
+  run inside one `transaction()`, so a unique conflict anywhere rolls back the
+  whole batch ([Transactions](features/postgres-backend.md#transactions)).
+  The warning about raw `DEL`/`FLUSHDB` is Redis advice; on Postgres the
+  secondary indexes are the table's own B-trees.
+- **Index maintenance**: only the companion tables (BM25 postings, vector
+  rows, existence tokens, open-claim pointers) can drift, and
+  `rebuild_indexes()` ends with `REINDEX TABLE CONCURRENTLY`; the bloom
+  `legacy_hash` conversion does not apply
+  ([Index maintenance and transfer](features/postgres-backend.md#index-maintenance-and-transfer-m5)).
+- **Instance TTL**: `_ttl` and `_expire_at` set the `_expires_at` column and
+  need `Meta.ttl` on the model; without it the save raises
+  `BackendCapabilityError`, one of the
+  [Documented divergences](features/postgres-backend.md#records-and-other-behaviour)
+  ([Record expiry](features/postgres-backend.md#record-expiry-m5)).
+- **Exceptions**: `save(migrate_key=True)` that changes a key field raises
+  `BackendCapabilityError`, so the `KeyMutationError` example above has no
+  migration path; create the new record and delete the old one. Postgres also
+  raises the `popoto.backends` errors: `BackendUnavailableError` for an
+  outage, `BackendRetryableError` after retries run out, and
+  `BackendCapabilityError` for an unsupported operation
+  ([Topology and the outage contract](features/postgres-backend.md#topology-and-the-outage-contract)).
+- **Benchmarking**: the external benchmark harness runs on Redis only.
+- **MemoryLifecycle**: tombstones live in `popoto_tombstone`, and a
+  `KeyField` tier is refused when the lifecycle is built (promotion would be
+  a key migration); declare the tier as an `IndexedField`
+  ([Recipes, mixins and the queue](features/postgres-backend.md#recipes-mixins-and-the-queue-m4)).
+- **StreamConsumer**: the same consumer logic (retries, reclaim,
+  dead-lettering) runs over the events tables, with `XAUTOCLAIM` taking
+  pending rows `FOR UPDATE SKIP LOCKED` and blocking reads waiting on
+  `LISTEN` ([Event streams and pub/sub](features/postgres-backend.md#event-streams-and-pubsub-m5)).

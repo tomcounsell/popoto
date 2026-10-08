@@ -181,8 +181,8 @@ is expected to consume:
   Popoto model field is msgpack-packed by the base encoding, but this one
   field is deliberately re-encoded as a JSON string so the reference detail
   (surface offsets, resolved text, assumptions, candidate lists, clarifying
-  questions) stays readable with plain `redis-cli HGET`, not just from
-  Python.
+  questions) stays readable with plain `redis-cli HGET` on Redis, or a plain
+  `SELECT` on Postgres, not just from Python.
 - **The `TurnContext` header**, denormalized onto the row: `speaker`,
   `captured_at`, `timezone`, `window_truncated`.
 - **No TTL.** Matching M3's decision log, rows are unbounded and never
@@ -196,7 +196,7 @@ log = ResolutionLog()
 row = log.get("agent-7", "t-41", "t-41:sentence:0")
 ```
 
-`ResolutionLog.write()` never raises — a Redis error or a bad `resolution`
+`ResolutionLog.write()` never raises — a storage error or a bad `resolution`
 shape is caught, logged, and turned into a `False` return, because the
 sidecar is not load-bearing: by the time it runs, the candidate's accept
 outcome and its `res:*` journal tag are already committed
@@ -271,6 +271,20 @@ or newer** — older releases do not accept the `output_config` parameter
 this stage passes) and an API key to produce a non-degraded result;
 without either it returns the same degraded `Resolution` the kill switch
 produces, matching M3's fail-open contract.
+
+## On Postgres
+
+`ResolutionRecord` is an ordinary model, so on Postgres each sidecar row is a
+row of its table, written by `save()` and read by `query.get()`. The
+resolution stage itself does not touch storage. Nothing else differs: the
+`res:*` tags and `valid_from` land on the journal entry like any other field,
+and `write()` still catches and logs any storage error. The sidecar follows
+the process default backend, and `SubconsciousMemory` refuses an
+`auditable_extraction` setup that would split the decision log and the
+journal across stores (see
+[Auditable Extraction](auditable-extraction.md#on-postgres)). The
+conformance tests in `tests/test_reference_resolution.py` run on both
+backends.
 
 ## See Also
 

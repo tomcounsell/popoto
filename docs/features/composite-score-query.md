@@ -1,6 +1,6 @@
 # CompositeScoreQuery
 
-Multi-factor retrieval for Popoto models. Combines N sorted set indexes with configurable weights via Redis `ZUNIONSTORE` and returns top-K results ranked by composite score.
+Multi-factor retrieval for Popoto models. Combines N sorted set indexes with configurable weights and returns top-K results ranked by composite score: via `ZUNIONSTORE` on Redis, as one `SELECT` on Postgres (see [On Postgres](#on-postgres)).
 
 ## Quick start
 
@@ -83,6 +83,8 @@ Also available as `Query.composite_score()` (convenience method that creates a Q
 
 ## How it works
 
+This section describes the Redis implementation.
+
 1. **Index resolution**: Each named index maps to a Redis sorted set key. Native ZSET fields resolve directly. Non-ZSET sources (ConfidenceField, AccessTracker) are materialized into temporary sorted sets.
 
 2. **ZUNIONSTORE**: Redis combines all resolved sorted set keys into a single temporary sorted set with the specified weights and aggregate mode.
@@ -160,4 +162,28 @@ Since dividing all scores by a positive constant preserves ordering, temperature
 
 ## Temp key conventions
 
-All temporary keys follow the pattern `$CSQ:{ModelName}:{type}:{uid}` where `uid` is a random 8-character hex string. Keys are deleted in a `finally` block and also set with `EXPIRE 5` as a safety net against process crashes.
+On Redis, all temporary keys follow the pattern `$CSQ:{ModelName}:{type}:{uid}` where `uid` is a random 8-character hex string. Keys are deleted in a `finally` block and also set with `EXPIRE 5` as a safety net against process crashes.
+
+## On Postgres
+
+On a Postgres-bound model `composite_score` takes the same arguments and is one
+`SELECT` over the model's rows: each index is an arm scoring the records its
+Redis sorted set would hold, and the aggregate, tie order (descending key),
+`min_score`, `temperature` and `post_filter` behave as on Redis. No temporary
+keys are written. See
+[Ranking and memory state](postgres-backend.md#ranking-and-memory-state-m2a).
+The same `QueryException`s are raised for unknown fields, missing partition
+filters and missing mixins.
+
+Differences, from
+[Documented divergences](postgres-backend.md#records-and-other-behaviour):
+
+- The `"priority"` index raises `BackendCapabilityError`: the WriteFilter
+  priority tier is not stored on Postgres.
+- A `co_occurrence_boost` or `similarity_boost` key with no record cannot take
+  a top-K slot on Postgres; on Redis it takes one and is dropped at hydration,
+  so Redis can return fewer records (never in another order).
+- A NaN decay score scores 0 in its arm on Postgres; on Redis the composite's
+  `ZADD` refuses it with `ResponseError`.
+- Scores agree to within 1e-9: Redis's decay arm holds `%.14g`-rounded
+  scores where Postgres uses the full `double`.

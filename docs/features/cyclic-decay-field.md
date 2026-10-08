@@ -4,7 +4,7 @@ A `DecayingSortedField` subclass that adds cyclical resonance and homeostatic pr
 
 ## Overview
 
-`CyclicDecayField` extends `DecayingSortedField` with two additional temporal forces computed atomically in a single Lua script:
+`CyclicDecayField` extends `DecayingSortedField` with two additional temporal forces computed atomically in one server-side step (a single Lua script on Redis, one SQL expression on Postgres):
 
 1. **Cyclical resonance**: Periodic boosts following cosine curves. A record about Q1 renewals can resurface every January.
 2. **Homeostatic pressure**: Urgency that builds linearly the longer an item goes unresolved. Discharged by calling `resolve_pressure()`.
@@ -251,11 +251,25 @@ The scoring formula below, the save-time merge (#698's three-way rule) and
 `strengthen_cycle` / `weaken_cycle` / `resolve_pressure` are the same SQL
 transcriptions of the three scripts, bit for bit, and the ranking has the same
 missing validity gate. See
-[Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+[Long-tail fields](postgres-backend.md#long-tail-fields-m5).
+
+Differences, from
+[Documented divergences](postgres-backend.md#records-and-other-behaviour):
+
+- `rank_decayed(zset_key, …)` raises `BackendCapabilityError`; rank with
+  `top_by_decay` (or `top_by_relevance`), which work on both backends.
+- A NaN score ranks last and every other score keeps its place.
+- `strengthen_cycle` / `weaken_cycle` / `resolve_pressure` on a record that
+  no longer exists (or has expired) write nothing, where Redis writes orphan
+  companion entries.
+- A non-numeric factor raises `ValueError`, and `import_state` refuses a
+  non-numeric cycle slot with `ValueError`.
+- The `$CyclicDecayF:` hashes described under
+  [Redis Data Model](#redis-data-model) are not used.
 
 ## Scoring Formula
 
-The extended Lua script computes per member:
+The extended Lua script (on Postgres, its SQL transcription) computes per member:
 
 ```
 elapsed_days = max((now - last_updated) / 86400, 0.01)

@@ -103,7 +103,7 @@ Crystallization is **idempotent via watermark**: re-running on an unchanged epis
 
 - **One crystallizer per partition.** Concurrent crystallization of the same partition is not coordinated — two processes reading the same episode set and both calling `_observe_episodes` will double-observe episodes, inflating confidence counts. Run a single crystallizer per partition.
 - **NTP-synced writers.** The watermark guarantee assumes episode writers and the crystallizer are within ordinary NTP clock synchronization. A writer whose clock lags behind the current watermark will record episodes with `recorded_at` timestamps below the watermark; the strict `>` filter skips those episodes permanently on all subsequent runs.
-- **`last_reinforced` stores episode time, not crystallize time.** The stored score for `last_reinforced` equals the maximum observed episode `recorded_at` — which may predate the wall-clock time the crystallize call ran. An operator running `ZSCORE` on the recency index reads "newest episode processed", not "when crystallize last ran". Under batched or nightly crystallization, patterns will rank correspondingly older in recency-weighted recall (`DEFAULT_SCORE_WEIGHTS` weights `last_reinforced` at 0.4) than they would under wall-clock semantics.
+- **`last_reinforced` stores episode time, not crystallize time.** The stored score for `last_reinforced` equals the maximum observed episode `recorded_at` — which may predate the wall-clock time the crystallize call ran. An operator reading the stored value (`ZSCORE` on the recency index on Redis, the `last_reinforced` column on Postgres) reads "newest episode processed", not "when crystallize last ran". Under batched or nightly crystallization, patterns will rank correspondingly older in recency-weighted recall (`DEFAULT_SCORE_WEIGHTS` weights `last_reinforced` at 0.4) than they would under wall-clock semantics.
 
 Note: within the evidence window, the capped-evidence update rule is order-invariant (to ~1e-12), which bounds — but does not eliminate — confidence drift if the single-crystallizer constraint is violated. Do not rely on commutativity as a substitute for the operational constraint.
 
@@ -210,6 +210,18 @@ fp = compute_fingerprint({"task": "deploy", "env": "staging"})  # SHA-256, 16 he
 ```
 
 This produces deterministic 16-hex-char fingerprints suitable for use as a `KeyField` value.
+
+## On Postgres
+
+`TrajectoryMemory` runs unchanged on Postgres-bound models; `tests/test_trajectory_memory.py`
+runs on both backends. Episodes and patterns are rows, `crystallize()` reads a
+partition's episodes with one filtered query (the watermark comparison runs in
+Python, as on Redis), confidence is one
+`UPDATE` with the same capped-evidence arithmetic, and `recall()`'s
+`composite_score` is one `SELECT` (`rank_composite`). The single-crystallizer
+constraint above still applies: nothing in the recipe coordinates two
+crystallizers on either backend. See
+[Ranking and memory state](../features/postgres-backend.md#ranking-and-memory-state-m2a).
 
 ## See Also
 
