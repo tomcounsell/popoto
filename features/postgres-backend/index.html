@@ -6261,8 +6261,10 @@ use raises the error and writes nothing.</p>
 creates belong to <code>owner</code>, and <code>app</code> cannot use them until it is granted
 access. <strong>Popoto grants nothing by default.</strong> On the first save, <code>app</code> fails
 loudly with <code>popoto.backends.postgres.MainRolePermissionError</code> (a
-<code>PermissionError</code>). The message carries the server's own <code>permission denied</code>
-text and links to this section. It is not an outage, so <code>health</code> is
+<code>PermissionError</code>). It wraps a table, schema or sequence privilege refused on
+popoto's own schema; any other <code>permission denied</code> (a function such as
+<code>pg_read_file</code>, say) reaches you as the driver's own error. The message
+carries the server's own <code>permission denied</code> text and links to this section. It is not an outage, so <code>health</code> is
 untouched. The roles need only this:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="k">owner</span><span class="w"> </span><span class="n">LOGIN</span><span class="w"> </span><span class="n">PASSWORD</span><span class="w"> </span><span class="s1">'...'</span><span class="p">;</span>
 <a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="n">app</span><span class="w"> </span><span class="n">LOGIN</span><span class="w"> </span><span class="n">PASSWORD</span><span class="w"> </span><span class="s1">'...'</span><span class="p">;</span>
@@ -6338,8 +6340,11 @@ same transaction and only on the objects that transaction created:</p>
 </table>
 <p>"Created by that transaction" is checked in the catalog: the object's
 <code>pg_class</code> (or <code>pg_namespace</code>) row was written by this transaction and was not
-there when it began. A table only altered (<code>ADD COLUMN</code>) is not created, and
-an object another session made, at any moment, never qualifies. So popoto
+there once the transaction held the DDL's advisory locks. A table only altered
+(<code>ADD COLUMN</code>) is not created, and an object another session made, at any
+moment, never qualifies: that includes a table an older process (flag off)
+created while this one waited for the lock, which this one then only
+migrates. So popoto
 never grants on a table you create by hand, on another role's table, or on a
 schema it did not create. It runs no <code>ALTER DEFAULT PRIVILEGES</code> and no
 <code>ON ALL TABLES</code>. Once the tables exist, a process's first use creates nothing

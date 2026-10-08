@@ -4042,21 +4042,21 @@ transaction began.</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/backends/postgres/schema.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-698">698</a></span>
-<span class="normal"><a href="#__codelineno-0-699">699</a></span>
-<span class="normal"><a href="#__codelineno-0-700">700</a></span>
-<span class="normal"><a href="#__codelineno-0-701">701</a></span>
-<span class="normal"><a href="#__codelineno-0-702">702</a></span>
-<span class="normal"><a href="#__codelineno-0-703">703</a></span>
-<span class="normal"><a href="#__codelineno-0-704">704</a></span>
-<span class="normal"><a href="#__codelineno-0-705">705</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="k">class</span><span class="w"> </span><span class="nc">CatalogBefore</span><span class="p">:</span>
-<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="w">    </span><span class="sd">"""What :func:`grant_created` compares against: the relations already</span>
-<a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">    in the schema, and whether the schema itself existed, when the DDL</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">    transaction began."""</span>
-<a id="__codelineno-0-703" name="__codelineno-0-703"></a>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a>    <span class="n">relations</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
-<a id="__codelineno-0-705" name="__codelineno-0-705"></a>    <span class="n">schema_existed</span><span class="p">:</span> <span class="nb">bool</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-712">712</a></span>
+<span class="normal"><a href="#__codelineno-0-713">713</a></span>
+<span class="normal"><a href="#__codelineno-0-714">714</a></span>
+<span class="normal"><a href="#__codelineno-0-715">715</a></span>
+<span class="normal"><a href="#__codelineno-0-716">716</a></span>
+<span class="normal"><a href="#__codelineno-0-717">717</a></span>
+<span class="normal"><a href="#__codelineno-0-718">718</a></span>
+<span class="normal"><a href="#__codelineno-0-719">719</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-712" name="__codelineno-0-712"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a><span class="k">class</span><span class="w"> </span><span class="nc">CatalogBefore</span><span class="p">:</span>
+<a id="__codelineno-0-714" name="__codelineno-0-714"></a><span class="w">    </span><span class="sd">"""What :func:`grant_created` compares against: the relations already</span>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a><span class="sd">    in the schema, and whether the schema itself existed, when the DDL</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a><span class="sd">    transaction began."""</span>
+<a id="__codelineno-0-717" name="__codelineno-0-717"></a>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>    <span class="n">relations</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>    <span class="n">schema_existed</span><span class="p">:</span> <span class="nb">bool</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -4762,10 +4762,10 @@ and its companions and sequences -- in the same transaction
 <a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">    """</span>
 <a id="__codelineno-0-546" name="__codelineno-0-546"></a>    <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">transaction</span><span class="p">():</span>
 <a id="__codelineno-0-547" name="__codelineno-0-547"></a>        <span class="n">cur</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>        <span class="n">before</span> <span class="o">=</span> <span class="n">catalog_before</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="n">ts</span><span class="o">.</span><span class="n">schema</span><span class="p">)</span> <span class="k">if</span> <span class="n">grant_to</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a>        <span class="n">outcome</span> <span class="o">=</span> <span class="n">_ensure_table_in</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">auto</span><span class="o">=</span><span class="n">auto</span><span class="p">)</span>
-<a id="__codelineno-0-550" name="__codelineno-0-550"></a>        <span class="k">if</span> <span class="n">grant_to</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">before</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">outcome</span> <span class="o">!=</span> <span class="s2">"current"</span><span class="p">:</span>
-<a id="__codelineno-0-551" name="__codelineno-0-551"></a>            <span class="n">grant_created</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="n">ts</span><span class="o">.</span><span class="n">schema</span><span class="p">,</span> <span class="n">grant_to</span><span class="p">,</span> <span class="n">before</span><span class="p">)</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a>        <span class="n">capture</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">CatalogBefore</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span> <span class="k">if</span> <span class="n">grant_to</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a>        <span class="n">outcome</span> <span class="o">=</span> <span class="n">_ensure_table_in</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">auto</span><span class="o">=</span><span class="n">auto</span><span class="p">,</span> <span class="n">capture</span><span class="o">=</span><span class="n">capture</span><span class="p">)</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a>        <span class="k">if</span> <span class="n">grant_to</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">capture</span> <span class="ow">and</span> <span class="n">outcome</span> <span class="o">!=</span> <span class="s2">"current"</span><span class="p">:</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a>            <span class="n">grant_created</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="n">ts</span><span class="o">.</span><span class="n">schema</span><span class="p">,</span> <span class="n">grant_to</span><span class="p">,</span> <span class="n">capture</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 <a id="__codelineno-0-552" name="__codelineno-0-552"></a>        <span class="k">return</span> <span class="n">outcome</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -4791,15 +4791,15 @@ name, so it is escaped rather than refused (:func:<code>quote_ident</code>).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/backends/postgres/schema.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-691">691</a></span>
-<span class="normal"><a href="#__codelineno-0-692">692</a></span>
-<span class="normal"><a href="#__codelineno-0-693">693</a></span>
-<span class="normal"><a href="#__codelineno-0-694">694</a></span>
-<span class="normal"><a href="#__codelineno-0-695">695</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="k">def</span><span class="w"> </span><span class="nf">quote_role</span><span class="p">(</span><span class="n">role</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="w">    </span><span class="sd">"""Double-quote a role name as Postgres quotes any identifier. A role</span>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">    name is whatever the server reports (``current_user``), not a field</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">    name, so it is escaped rather than refused (:func:`quote_ident`)."""</span>
-<a id="__codelineno-0-695" name="__codelineno-0-695"></a>    <span class="k">return</span> <span class="s1">'"'</span> <span class="o">+</span> <span class="n">role</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">'"'</span><span class="p">,</span> <span class="s1">'""'</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'"'</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-705">705</a></span>
+<span class="normal"><a href="#__codelineno-0-706">706</a></span>
+<span class="normal"><a href="#__codelineno-0-707">707</a></span>
+<span class="normal"><a href="#__codelineno-0-708">708</a></span>
+<span class="normal"><a href="#__codelineno-0-709">709</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="k">def</span><span class="w"> </span><span class="nf">quote_role</span><span class="p">(</span><span class="n">role</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a><span class="w">    </span><span class="sd">"""Double-quote a role name as Postgres quotes any identifier. A role</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="sd">    name is whatever the server reports (``current_user``), not a field</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="sd">    name, so it is escaped rather than refused (:func:`quote_ident`)."""</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>    <span class="k">return</span> <span class="s1">'"'</span> <span class="o">+</span> <span class="n">role</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">'"'</span><span class="p">,</span> <span class="s1">'""'</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'"'</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4823,29 +4823,31 @@ or cursor), inside the DDL transaction it precedes.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/backends/postgres/schema.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-708">708</a></span>
-<span class="normal"><a href="#__codelineno-0-709">709</a></span>
-<span class="normal"><a href="#__codelineno-0-710">710</a></span>
-<span class="normal"><a href="#__codelineno-0-711">711</a></span>
-<span class="normal"><a href="#__codelineno-0-712">712</a></span>
-<span class="normal"><a href="#__codelineno-0-713">713</a></span>
-<span class="normal"><a href="#__codelineno-0-714">714</a></span>
-<span class="normal"><a href="#__codelineno-0-715">715</a></span>
-<span class="normal"><a href="#__codelineno-0-716">716</a></span>
-<span class="normal"><a href="#__codelineno-0-717">717</a></span>
-<span class="normal"><a href="#__codelineno-0-718">718</a></span>
-<span class="normal"><a href="#__codelineno-0-719">719</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="k">def</span><span class="w"> </span><span class="nf">catalog_before</span><span class="p">(</span><span class="n">conn</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">schema</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CatalogBefore</span><span class="p">:</span>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a><span class="w">    </span><span class="sd">"""Read :class:`CatalogBefore` for ``schema`` on ``conn`` (a connection</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a><span class="sd">    or cursor), inside the DDL transaction it precedes."""</span>
-<a id="__codelineno-0-711" name="__codelineno-0-711"></a>    <span class="n">rows</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
-<a id="__codelineno-0-712" name="__codelineno-0-712"></a>        <span class="s2">"SELECT c.oid FROM pg_class c JOIN pg_namespace n "</span>
-<a id="__codelineno-0-713" name="__codelineno-0-713"></a>        <span class="s2">"ON n.oid = c.relnamespace WHERE n.nspname = </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
-<a id="__codelineno-0-714" name="__codelineno-0-714"></a>        <span class="p">(</span><span class="n">schema</span><span class="p">,),</span>
-<a id="__codelineno-0-715" name="__codelineno-0-715"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
-<a id="__codelineno-0-716" name="__codelineno-0-716"></a>    <span class="p">(</span><span class="n">existed</span><span class="p">,)</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
-<a id="__codelineno-0-717" name="__codelineno-0-717"></a>        <span class="s2">"SELECT to_regnamespace(</span><span class="si">%s</span><span class="s2">) IS NOT NULL"</span><span class="p">,</span> <span class="p">(</span><span class="n">schema</span><span class="p">,)</span>
-<a id="__codelineno-0-718" name="__codelineno-0-718"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
-<a id="__codelineno-0-719" name="__codelineno-0-719"></a>    <span class="k">return</span> <span class="n">CatalogBefore</span><span class="p">(</span><span class="nb">frozenset</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">),</span> <span class="nb">bool</span><span class="p">(</span><span class="n">existed</span><span class="p">))</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-722">722</a></span>
+<span class="normal"><a href="#__codelineno-0-723">723</a></span>
+<span class="normal"><a href="#__codelineno-0-724">724</a></span>
+<span class="normal"><a href="#__codelineno-0-725">725</a></span>
+<span class="normal"><a href="#__codelineno-0-726">726</a></span>
+<span class="normal"><a href="#__codelineno-0-727">727</a></span>
+<span class="normal"><a href="#__codelineno-0-728">728</a></span>
+<span class="normal"><a href="#__codelineno-0-729">729</a></span>
+<span class="normal"><a href="#__codelineno-0-730">730</a></span>
+<span class="normal"><a href="#__codelineno-0-731">731</a></span>
+<span class="normal"><a href="#__codelineno-0-732">732</a></span>
+<span class="normal"><a href="#__codelineno-0-733">733</a></span>
+<span class="normal"><a href="#__codelineno-0-734">734</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-722" name="__codelineno-0-722"></a><span class="k">def</span><span class="w"> </span><span class="nf">catalog_before</span><span class="p">(</span><span class="n">conn</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">schema</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CatalogBefore</span><span class="p">:</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="w">    </span><span class="sd">"""Read :class:`CatalogBefore` for ``schema`` on ``conn`` (a connection</span>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="sd">    or cursor), inside the DDL transaction it precedes."""</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a>    <span class="n">rows</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a>        <span class="s2">"SELECT c.oid FROM pg_class c JOIN pg_namespace n "</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="s2">"ON n.oid = c.relnamespace WHERE n.nspname = </span><span class="si">%s</span><span class="s2"> "</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="s2">"AND c.xmin IS DISTINCT FROM pg_current_xact_id_if_assigned()::xid"</span><span class="p">,</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a>        <span class="p">(</span><span class="n">schema</span><span class="p">,),</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a>    <span class="p">(</span><span class="n">existed</span><span class="p">,)</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a>        <span class="s2">"SELECT to_regnamespace(</span><span class="si">%s</span><span class="s2">) IS NOT NULL"</span><span class="p">,</span> <span class="p">(</span><span class="n">schema</span><span class="p">,)</span>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a>    <span class="k">return</span> <span class="n">CatalogBefore</span><span class="p">(</span><span class="nb">frozenset</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">),</span> <span class="nb">bool</span><span class="p">(</span><span class="n">existed</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4883,22 +4885,7 @@ TABLES</code>. Returns the statements it ran.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/backends/postgres/schema.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-722">722</a></span>
-<span class="normal"><a href="#__codelineno-0-723">723</a></span>
-<span class="normal"><a href="#__codelineno-0-724">724</a></span>
-<span class="normal"><a href="#__codelineno-0-725">725</a></span>
-<span class="normal"><a href="#__codelineno-0-726">726</a></span>
-<span class="normal"><a href="#__codelineno-0-727">727</a></span>
-<span class="normal"><a href="#__codelineno-0-728">728</a></span>
-<span class="normal"><a href="#__codelineno-0-729">729</a></span>
-<span class="normal"><a href="#__codelineno-0-730">730</a></span>
-<span class="normal"><a href="#__codelineno-0-731">731</a></span>
-<span class="normal"><a href="#__codelineno-0-732">732</a></span>
-<span class="normal"><a href="#__codelineno-0-733">733</a></span>
-<span class="normal"><a href="#__codelineno-0-734">734</a></span>
-<span class="normal"><a href="#__codelineno-0-735">735</a></span>
-<span class="normal"><a href="#__codelineno-0-736">736</a></span>
-<span class="normal"><a href="#__codelineno-0-737">737</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-737">737</a></span>
 <span class="normal"><a href="#__codelineno-0-738">738</a></span>
 <span class="normal"><a href="#__codelineno-0-739">739</a></span>
 <span class="normal"><a href="#__codelineno-0-740">740</a></span>
@@ -4936,60 +4923,75 @@ TABLES</code>. Returns the statements it ran.</p>
 <span class="normal"><a href="#__codelineno-0-772">772</a></span>
 <span class="normal"><a href="#__codelineno-0-773">773</a></span>
 <span class="normal"><a href="#__codelineno-0-774">774</a></span>
-<span class="normal"><a href="#__codelineno-0-775">775</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-722" name="__codelineno-0-722"></a><span class="k">def</span><span class="w"> </span><span class="nf">grant_created</span><span class="p">(</span>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a>    <span class="n">conn</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">schema</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">before</span><span class="p">:</span> <span class="n">CatalogBefore</span>
-<a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="w">    </span><span class="sd">"""Grant ``role`` access to exactly what this transaction created in</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="sd">    ``schema`` (#800): run on ``conn`` after the DDL and before its commit.</span>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a><span class="sd">    "Created here" is two facts together: the object's catalog row was</span>
-<a id="__codelineno-0-729" name="__codelineno-0-729"></a><span class="sd">    written by this transaction (its ``xmin`` is this transaction's id), and</span>
-<a id="__codelineno-0-730" name="__codelineno-0-730"></a><span class="sd">    it was not there when the transaction began (``before``). The first</span>
-<a id="__codelineno-0-731" name="__codelineno-0-731"></a><span class="sd">    excludes everything another session made, however concurrently; the</span>
-<a id="__codelineno-0-732" name="__codelineno-0-732"></a><span class="sd">    second excludes a table this transaction only altered (``ADD COLUMN``</span>
-<a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="sd">    rewrites its ``pg_class`` row). So nothing an admin made by hand, no</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="sd">    other role's table and no object a previous process created is ever</span>
-<a id="__codelineno-0-735" name="__codelineno-0-735"></a><span class="sd">    granted on, and a warm start -- nothing created -- grants nothing, which</span>
-<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">    leaves any ``REVOKE`` an admin has run in place.</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a>
-<a id="__codelineno-0-738" name="__codelineno-0-738"></a><span class="sd">    Tables get :data:`APP_TABLE_PRIVILEGES` (the registry only</span>
-<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="sd">    :data:`APP_REGISTRY_PRIVILEGES`), sequences</span>
-<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="sd">    :data:`APP_SEQUENCE_PRIVILEGES`, and the schema ``USAGE`` only when this</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">    transaction created it. No ``ALTER DEFAULT PRIVILEGES``, no ``ON ALL</span>
-<a id="__codelineno-0-742" name="__codelineno-0-742"></a><span class="sd">    TABLES``. Returns the statements it ran."""</span>
-<a id="__codelineno-0-743" name="__codelineno-0-743"></a>    <span class="n">rows</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
-<a id="__codelineno-0-744" name="__codelineno-0-744"></a>        <span class="s2">"SELECT c.oid, c.relkind, c.relname FROM pg_class c JOIN pg_namespace n "</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a>        <span class="s2">"ON n.oid = c.relnamespace WHERE n.nspname = </span><span class="si">%s</span><span class="s2"> "</span>
-<a id="__codelineno-0-746" name="__codelineno-0-746"></a>        <span class="s2">"AND c.relkind IN ('r', 'p', 'S') "</span>
-<a id="__codelineno-0-747" name="__codelineno-0-747"></a>        <span class="s2">"AND c.xmin = pg_current_xact_id_if_assigned()::xid ORDER BY c.oid"</span><span class="p">,</span>
-<a id="__codelineno-0-748" name="__codelineno-0-748"></a>        <span class="p">(</span><span class="n">schema</span><span class="p">,),</span>
-<a id="__codelineno-0-749" name="__codelineno-0-749"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a>    <span class="p">(</span><span class="n">schema_created</span><span class="p">,)</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a>        <span class="s2">"SELECT xmin = pg_current_xact_id_if_assigned()::xid "</span>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a>        <span class="s2">"FROM pg_namespace WHERE nspname = </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a>        <span class="p">(</span><span class="n">schema</span><span class="p">,),</span>
-<a id="__codelineno-0-754" name="__codelineno-0-754"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span> <span class="ow">or</span> <span class="p">(</span><span class="kc">False</span><span class="p">,)</span>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a>    <span class="n">s</span><span class="p">,</span> <span class="n">r</span> <span class="o">=</span> <span class="n">quote_role</span><span class="p">(</span><span class="n">schema</span><span class="p">),</span> <span class="n">quote_role</span><span class="p">(</span><span class="n">role</span><span class="p">)</span>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a>    <span class="n">statements</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a>    <span class="k">if</span> <span class="n">schema_created</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">before</span><span class="o">.</span><span class="n">schema_existed</span><span class="p">:</span>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a>        <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"GRANT USAGE ON SCHEMA </span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2"> TO </span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a>    <span class="k">for</span> <span class="n">oid</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="k">if</span> <span class="nb">int</span><span class="p">(</span><span class="n">oid</span><span class="p">)</span> <span class="ow">in</span> <span class="n">before</span><span class="o">.</span><span class="n">relations</span><span class="p">:</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a>        <span class="n">target</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">quote_role</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">))</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>        <span class="k">if</span> <span class="n">kind</span> <span class="o">==</span> <span class="s2">"S"</span><span class="p">:</span>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a>            <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a>                <span class="sa">f</span><span class="s2">"GRANT </span><span class="si">{</span><span class="n">APP_SEQUENCE_PRIVILEGES</span><span class="si">}</span><span class="s2"> ON SEQUENCE </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2"> TO </span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a>            <span class="p">)</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a>        <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="n">POPOTO_SCHEMA_TABLE</span><span class="p">:</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a>            <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a>                <span class="sa">f</span><span class="s2">"GRANT </span><span class="si">{</span><span class="n">APP_REGISTRY_PRIVILEGES</span><span class="si">}</span><span class="s2"> ON TABLE </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2"> TO </span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a>            <span class="p">)</span>
-<a id="__codelineno-0-771" name="__codelineno-0-771"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-772" name="__codelineno-0-772"></a>            <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"GRANT </span><span class="si">{</span><span class="n">APP_TABLE_PRIVILEGES</span><span class="si">}</span><span class="s2"> ON TABLE </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2"> TO </span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-773" name="__codelineno-0-773"></a>    <span class="k">for</span> <span class="n">statement</span> <span class="ow">in</span> <span class="n">statements</span><span class="p">:</span>
-<a id="__codelineno-0-774" name="__codelineno-0-774"></a>        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">statement</span><span class="p">)</span>
-<a id="__codelineno-0-775" name="__codelineno-0-775"></a>    <span class="k">return</span> <span class="n">statements</span>
+<span class="normal"><a href="#__codelineno-0-775">775</a></span>
+<span class="normal"><a href="#__codelineno-0-776">776</a></span>
+<span class="normal"><a href="#__codelineno-0-777">777</a></span>
+<span class="normal"><a href="#__codelineno-0-778">778</a></span>
+<span class="normal"><a href="#__codelineno-0-779">779</a></span>
+<span class="normal"><a href="#__codelineno-0-780">780</a></span>
+<span class="normal"><a href="#__codelineno-0-781">781</a></span>
+<span class="normal"><a href="#__codelineno-0-782">782</a></span>
+<span class="normal"><a href="#__codelineno-0-783">783</a></span>
+<span class="normal"><a href="#__codelineno-0-784">784</a></span>
+<span class="normal"><a href="#__codelineno-0-785">785</a></span>
+<span class="normal"><a href="#__codelineno-0-786">786</a></span>
+<span class="normal"><a href="#__codelineno-0-787">787</a></span>
+<span class="normal"><a href="#__codelineno-0-788">788</a></span>
+<span class="normal"><a href="#__codelineno-0-789">789</a></span>
+<span class="normal"><a href="#__codelineno-0-790">790</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-737" name="__codelineno-0-737"></a><span class="k">def</span><span class="w"> </span><span class="nf">grant_created</span><span class="p">(</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a>    <span class="n">conn</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">schema</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">before</span><span class="p">:</span> <span class="n">CatalogBefore</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a><span class="w">    </span><span class="sd">"""Grant ``role`` access to exactly what this transaction created in</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a><span class="sd">    ``schema`` (#800): run on ``conn`` after the DDL and before its commit.</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a><span class="sd">    "Created here" is two facts together: the object's catalog row was</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a><span class="sd">    written by this transaction (its ``xmin`` is this transaction's id), and</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a><span class="sd">    it was not there when the transaction began (``before``). The first</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a><span class="sd">    excludes everything another session made, however concurrently; the</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">    second excludes a table this transaction only altered (``ADD COLUMN``</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">    rewrites its ``pg_class`` row). So nothing an admin made by hand, no</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">    other role's table and no object a previous process created is ever</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="sd">    granted on, and a warm start -- nothing created -- grants nothing, which</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">    leaves any ``REVOKE`` an admin has run in place.</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">    Tables get :data:`APP_TABLE_PRIVILEGES` (the registry only</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="sd">    :data:`APP_REGISTRY_PRIVILEGES`), sequences</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">    :data:`APP_SEQUENCE_PRIVILEGES`, and the schema ``USAGE`` only when this</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">    transaction created it. No ``ALTER DEFAULT PRIVILEGES``, no ``ON ALL</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="sd">    TABLES``. Returns the statements it ran."""</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a>    <span class="n">rows</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>        <span class="s2">"SELECT c.oid, c.relkind, c.relname FROM pg_class c JOIN pg_namespace n "</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="s2">"ON n.oid = c.relnamespace WHERE n.nspname = </span><span class="si">%s</span><span class="s2"> "</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>        <span class="s2">"AND c.relkind IN ('r', 'p', 'S') "</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>        <span class="s2">"AND c.xmin = pg_current_xact_id_if_assigned()::xid ORDER BY c.oid"</span><span class="p">,</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>        <span class="p">(</span><span class="n">schema</span><span class="p">,),</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>    <span class="p">(</span><span class="n">schema_created</span><span class="p">,)</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>        <span class="s2">"SELECT xmin = pg_current_xact_id_if_assigned()::xid "</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>        <span class="s2">"FROM pg_namespace WHERE nspname = </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>        <span class="p">(</span><span class="n">schema</span><span class="p">,),</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span> <span class="ow">or</span> <span class="p">(</span><span class="kc">False</span><span class="p">,)</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>    <span class="n">s</span><span class="p">,</span> <span class="n">r</span> <span class="o">=</span> <span class="n">quote_role</span><span class="p">(</span><span class="n">schema</span><span class="p">),</span> <span class="n">quote_role</span><span class="p">(</span><span class="n">role</span><span class="p">)</span>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a>    <span class="n">statements</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a>    <span class="k">if</span> <span class="n">schema_created</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">before</span><span class="o">.</span><span class="n">schema_existed</span><span class="p">:</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a>        <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"GRANT USAGE ON SCHEMA </span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2"> TO </span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a>    <span class="k">for</span> <span class="n">oid</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a>        <span class="k">if</span> <span class="nb">int</span><span class="p">(</span><span class="n">oid</span><span class="p">)</span> <span class="ow">in</span> <span class="n">before</span><span class="o">.</span><span class="n">relations</span><span class="p">:</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-777" name="__codelineno-0-777"></a>        <span class="n">target</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">quote_role</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">))</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-778" name="__codelineno-0-778"></a>        <span class="k">if</span> <span class="n">kind</span> <span class="o">==</span> <span class="s2">"S"</span><span class="p">:</span>
+<a id="__codelineno-0-779" name="__codelineno-0-779"></a>            <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-780" name="__codelineno-0-780"></a>                <span class="sa">f</span><span class="s2">"GRANT </span><span class="si">{</span><span class="n">APP_SEQUENCE_PRIVILEGES</span><span class="si">}</span><span class="s2"> ON SEQUENCE </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2"> TO </span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-781" name="__codelineno-0-781"></a>            <span class="p">)</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>        <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="n">POPOTO_SCHEMA_TABLE</span><span class="p">:</span>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a>            <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a>                <span class="sa">f</span><span class="s2">"GRANT </span><span class="si">{</span><span class="n">APP_REGISTRY_PRIVILEGES</span><span class="si">}</span><span class="s2"> ON TABLE </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2"> TO </span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-785" name="__codelineno-0-785"></a>            <span class="p">)</span>
+<a id="__codelineno-0-786" name="__codelineno-0-786"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-787" name="__codelineno-0-787"></a>            <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"GRANT </span><span class="si">{</span><span class="n">APP_TABLE_PRIVILEGES</span><span class="si">}</span><span class="s2"> ON TABLE </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2"> TO </span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-788" name="__codelineno-0-788"></a>    <span class="k">for</span> <span class="n">statement</span> <span class="ow">in</span> <span class="n">statements</span><span class="p">:</span>
+<a id="__codelineno-0-789" name="__codelineno-0-789"></a>        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">statement</span><span class="p">)</span>
+<a id="__codelineno-0-790" name="__codelineno-0-790"></a>    <span class="k">return</span> <span class="n">statements</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
