@@ -858,10 +858,13 @@ method has the same semantics on both backends, `turn_summary` included: a
 rollup of the rows' current terminal states, zero counts absent, `pending`
 never counted, an empty or `NULL` reason counted as `reason:`.
 
-Construction refuses only the split trail: a log that would land in Redis
-while the memory model is on Postgres (bind the process default with
-`set_backend("postgres")` or `POPOTO_BACKEND=postgres`), or a journal entry
-model in a different store from the log. Data placement changes with the
+Construction refuses only the split trail, whenever `auditable_extraction` is
+set: a log that would land in Redis while the memory model is on Postgres
+(bind the process default with `set_backend("postgres")` or
+`POPOTO_BACKEND=postgres`), or a journal entry model in a different store from
+the log, in either direction (a Redis default with a Postgres-pinned journal is
+refused too). A memory model pinned to Redis under a Postgres default keeps its
+log in Postgres, alongside the journal. Data placement changes with the
 binding: a process that moves to Postgres starts with an empty decision log,
 as it does for the journal; migrate existing rows with the Redis-to-Postgres
 migration tool. Pinned by `tests/postgres/test_postgres_decision_log.py`

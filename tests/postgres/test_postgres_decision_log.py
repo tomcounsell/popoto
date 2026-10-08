@@ -292,6 +292,77 @@ def test_an_auditable_extraction_runs_with_zero_redis_commands(pg, monkeypatch):
     assert recorder.calls == []
 
 
+class _Mixed:
+    """Verdict by marker word, so one turn exercises every terminal state."""
+
+    def __call__(self, candidate):
+        text = candidate.text.lower()
+        if "secret" in text:
+            return VerdictResult(
+                candidate.candidate_id,
+                Verdict.FIREWALL_DROP,
+                ReasonCode.PRE_LLM_CANDIDATE_BLOCK,
+            )
+        if "rejected" in text:
+            return VerdictResult(
+                candidate.candidate_id, Verdict.REJECT, ReasonCode.NOT_A_FACT
+            )
+        if "withheld" in text:
+            return VerdictResult(
+                candidate.candidate_id, Verdict.WITHHOLD, ReasonCode.LOW_CONFIDENCE
+            )
+        return VerdictResult(
+            candidate.candidate_id, Verdict.ACCEPT, ReasonCode.ACCEPTED
+        )
+
+
+def test_every_decision_log_path_runs_with_zero_redis_commands(pg, monkeypatch):
+    """The full sequence under one recorder: empty turn, firewall drop,
+    reject, withhold, accept, duplicate assembly (the same turn re-run),
+    claim contention (a pre-held claim), list_pending, turn_summary and
+    compute_metrics. Not one Redis command."""
+    recorder = _RedisRecorder(monkeypatch)
+    memory = SubconsciousMemory(
+        agent_id="agent-seq",
+        auditable_extraction=AuditableExtractionConfig(
+            verdict_provider=_Mixed(), journal=ProvenanceJournal
+        ),
+    )
+    log = DecisionLog()
+
+    # empty turn
+    assert memory.extract_memories("   ", turn_id="t-empty") == []
+    assert log.turn_summary("agent-seq", "t-empty")
+
+    # firewall drop, reject, withhold, accept in one turn
+    text = (
+        "The secret sentence is here. Bob rejected the change. "
+        "Carol withheld the review. Alice deployed the service."
+    )
+    first = memory.extract_memories(text, turn_id="t-mixed")
+    assert len(first) == 1
+    summary = log.turn_summary("agent-seq", "t-mixed")
+    for state in ("firewall_drop", "reject", "withhold", "accept"):
+        assert summary[f"state:{state}"] == 1, summary
+    assert memory._last_extraction_privacy_dropped is False
+
+    # duplicate assembly: the same turn again adds no second journal entry
+    memory.extract_memories(text, turn_id="t-mixed")
+    assert len(list(JournalEntry.query.filter(turn_id="t-mixed"))) == 1
+
+    # claim contention: a pre-held claim leaves the candidate unassembled
+    held = log.acquire_claim("agent-seq", "t-held", "t-held:sentence:0")
+    assert held is not None
+    assert memory.extract_memories("Dave shipped it.", turn_id="t-held") == []
+    assert log.release_claim("agent-seq", "t-held", "t-held:sentence:0", held)
+
+    assert log.list_pending("agent-seq") is not None
+    log.list_for_agent("agent-seq")
+    log.turn_summary("agent-seq", "t-held")
+    log.compute_metrics("agent-seq", {})
+    assert recorder.calls == []
+
+
 # -- outage ---------------------------------------------------------------------
 
 

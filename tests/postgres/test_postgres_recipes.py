@@ -682,6 +682,58 @@ def test_a_journal_entry_model_in_another_store_is_refused(pg):
         )
 
 
+def test_a_postgres_journal_under_a_redis_default_is_refused(pg):
+    """The mirror split trail: the process default is Redis (so the decision
+    log would land there) but the journal's entry model is pinned to
+    Postgres. Also refused."""
+    from popoto.backends import set_backend
+    from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+    from popoto.recipes.subconscious_memory import SubconsciousMemory
+
+    class PgEntry(JournalEntry):
+        class Meta:
+            backend = "postgres"
+
+    class PgJournal(ProvenanceJournal):
+        entry_model = PgEntry
+
+    previous = set_backend("redis")
+    try:
+        with pytest.raises(BackendCapabilityError, match="split its audit trail"):
+            SubconsciousMemory(
+                agent_id="audit",
+                auditable_extraction=_auditable_config(journal=PgJournal),
+            )
+    finally:
+        set_backend(previous)
+
+
+def test_a_redis_pinned_model_and_journal_under_a_postgres_default_is_refused(pg):
+    """Memory model and journal both pinned to Redis under a Postgres
+    default: the log is in Postgres, the journal in Redis."""
+    from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+    from popoto.recipes.subconscious_memory import SubconsciousMemory
+
+    class RedisEntry2(JournalEntry):
+        class Meta:
+            backend = "redis"
+
+    class RedisJournal2(ProvenanceJournal):
+        entry_model = RedisEntry2
+
+    class RedisModel(RecPgPinned):
+        class Meta:
+            backend = "redis"
+
+    with pytest.raises(BackendCapabilityError, match="split its audit trail"):
+        SubconsciousMemory(
+            agent_id="audit",
+            model_class=RedisModel,
+            content_field="content",
+            auditable_extraction=_auditable_config(journal=RedisJournal2),
+        )
+
+
 _FIRST_USE_CHILD = """
 import random, sys, time
 from popoto.backends.postgres import PostgresBackend

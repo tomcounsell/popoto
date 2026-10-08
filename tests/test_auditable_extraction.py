@@ -1022,7 +1022,10 @@ class TestDecisionLogCore:
 
     @pytest.mark.redis_only(
         reason="the stored summary hash exists only on Redis; Postgres has no "
-        "hash to clamp"
+        "hash to clamp. Postgres twins: "
+        "test_summary_follows_a_terminal_to_terminal_transition[postgres] and "
+        "tests/postgres/test_postgres_decision_log.py::"
+        "test_rebuild_turn_summary_is_turn_summary"
     )
     def test_a_transition_clamps_a_field_the_drifted_hash_never_counted(self):
         log = DecisionLog()

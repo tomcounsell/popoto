@@ -208,9 +208,12 @@ journal does. On Redis nothing changed beyond the summary fix above. On
 Postgres `SubconsciousMemory(auditable_extraction=...)` constructs and runs
 with no Redis command: rows, the guarded terminal write, the assembly claim
 (a lease row) and the summary all live in Postgres, with the same semantics.
-Construction refuses only the split trail — a decision log that would land in
-a different store from the memory model or the journal — and says how to bind
-the process default. See [Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
+Construction refuses only the split trail, whenever `auditable_extraction` is
+set: a decision log that would land in Redis while the memory model is on
+Postgres, or a decision log in a different store from the journal entry model
+(in either direction). The error says how to bind the process default. A
+memory model pinned to Redis under a Postgres default keeps its decision log in
+Postgres, next to the journal. See [Postgres Backend](postgres-backend.md#recipes-mixins-and-the-queue-m4).
 A process that moves to Postgres starts with an empty decision log.
 
 ## The terminal-write conflict guard
