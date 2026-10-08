@@ -321,6 +321,7 @@ popoto models, so each crosses only when you list it:
 ```bash
 python -m popoto.migrate_redis_to_postgres ... \
     --model popoto.extraction.decision_log:DecisionRecord \
+    --model popoto.recipes.provenance_journal:JournalEntry \
     --model popoto.recipes.memory_telemetry:AssemblyEvent
 ```
 
@@ -339,7 +340,9 @@ of the backend page describes.
   `DecisionLog.rebuild_turn_summary` before migrating, because the summary
   hashes are not copied; on Postgres that method returns `turn_summary`
   unchanged. A terminal `accept` row's `entry_id` names a journal entry, so
-  copy the journal's entry model in the same run if those references
+  copy the journal's entry model in the same run, as the command above
+  does with `popoto.recipes.provenance_journal:JournalEntry` (or your own
+  entry model if you pass one to `ProvenanceJournal`), if those references
   need to resolve on Postgres.
 - **`AssemblyEvent`** (memory telemetry, outcomes included) lands in
   `<schema>.assembly_event`. It declares `Meta.ttl` (seven days by default),
@@ -504,13 +507,35 @@ snapshot. Each key family of a migrated model has a disposition, recorded in
 - **irreplaceable**: carried. This covers record hashes, confidence
   evidence, access counters and staged reads, edges, validity, cycles and
   pressure, and the prediction ledger.
-- **rebuildable**: rebuilt by the save. This covers class sets, key and
-  sorted indexes, BM25, existence filters and geo.
+- **rebuildable**: rebuilt by the save. This covers class sets, key,
+  indexed-field (`$IndexF`), unique-field (`$UniquF`) and sorted-field
+  (`$SortF`) indexes, BM25, existence filters and geo. The prefixes are the
+  ones the field classes really write (`"UniqueField".strip("Field")` is
+  `Uniqu`, not `Unique`), and a test derives each one from the field classes
+  so a rename fails the suite instead of a client's migration. It also covers
+  the `$IdxPtr:` pointer keys every `IndexedField` and `UniqueField` writes:
+  each one only names the `$IndexF` Set its record currently sits in, which
+  is derived from the field value, so it is counted and skipped (#822).
+  `JournalEntry` writes five per entry.
 - **not carried**: dropped by design and counted. This covers the access
-  log, the frequency sketch, write-filter priority and the event stream.
-- **expected empty**: `$TOMBPRIOR`, legacy `$IdxPtr` pointers, and NUL-byte
-  index-pointer fields. Any key here **stops the run** (exit code 3) before
-  anything is written.
+  log, the frequency sketch, write-filter priority, the event stream, and
+  three families that are transient or telemetry rather than record state:
+  `$RP:` pending recall proposals (a one-hour observation queue; unresolved
+  ones count as deferred), `$NR:` never-record refusal counts and drop log
+  (`roundtrip_policy = "rebuild"`), and `$CSQ:` query temp keys (they carry a
+  TTL and exist only while a query runs). Each is counted in the report's
+  lossy section.
+- **unsupported**: `$TOMB:<Model>:data` and `:index`, the tombstone archive
+  of deleted records. It holds deleted-record payloads for `restore()` and
+  the tool has no carry path for it, so it **stops the run** (exit code 3)
+  before anything is written, and `--accept-unclassified` does not waive it.
+  Clear it first (the model's tombstone `purge_all()`), or accept losing the
+  restore window and migrate without it.
+- **expected empty**: `$TOMBPRIOR` and the NUL-byte index-pointer fields of
+  the pre-#476 in-hash scheme. Any key here **stops the run** (exit code 3)
+  before anything is written. The pre-#540 pointer side keys
+  (`<record key>\x00idxptr\x00<field>`) sit in the record namespace and are
+  not hashes, so they stop the run too.
 
 A key family the tool does not recognize also stops the run, unless you pass
 `--accept-unclassified` after reading `inventory.json`. Keys of other models
