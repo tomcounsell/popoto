@@ -54,7 +54,7 @@ Example:
 import itertools
 import logging
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from .context_assembler import AssemblyResult, ContextAssembler
 from .default_memory import DefaultMemory
@@ -306,7 +306,7 @@ class SubconsciousMemory:
                 else log_backend
             )
 
-            def _store(b):
+            def _store(b: Any) -> str:
                 return "redis" if b is None else b.name
 
             model_split = backend is not None and log_backend is None

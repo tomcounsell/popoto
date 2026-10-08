@@ -734,6 +734,50 @@ def test_a_redis_pinned_model_and_journal_under_a_postgres_default_is_refused(pg
         )
 
 
+def test_a_redis_pinned_model_with_the_default_journal_under_a_postgres_default_is_allowed(
+    pg,
+):
+    """The allowed counterpart: a memory model pinned to Redis under a
+    Postgres process default, with the default journal, constructs. The
+    decision log and journal both follow the process default (Postgres), so
+    the audit trail is one store; only the memory model is elsewhere."""
+    from popoto.backends.routing import non_redis_backend
+    from popoto.extraction.decision_log import DecisionLog, DecisionRecord
+    from popoto.recipes.provenance_journal import JournalEntry, ProvenanceJournal
+    from popoto.recipes.subconscious_memory import SubconsciousMemory
+
+    class RedisModel2(RecPgPinned):
+        class Meta:
+            backend = "redis"
+
+    memory = SubconsciousMemory(
+        agent_id="audit",
+        model_class=RedisModel2,
+        content_field="content",
+        auditable_extraction=_auditable_config(journal=ProvenanceJournal),
+    )
+    assert memory.decision_log is not None
+    assert non_redis_backend(RedisModel2) is None
+    log_backend = non_redis_backend(DecisionRecord)
+    assert log_backend is not None and log_backend.name == "postgres"
+    assert non_redis_backend(JournalEntry).name == "postgres"
+    # A write through the log lands in (and reads back from) Postgres.
+    from popoto.extraction.candidates import Candidate
+
+    text = "Alice deployed the service."
+    candidate = Candidate(
+        text=text,
+        turn_id="t-allowed",
+        candidate_id="t-allowed:sentence:0",
+        start=0,
+        end=len(text),
+        generator_rule="sentence",
+    )
+    DecisionLog().write_pending("allowed-case", candidate)
+    rows = DecisionLog().list_for_agent("allowed-case")
+    assert [r.candidate_id for r in rows] == ["t-allowed:sentence:0"]
+
+
 _FIRST_USE_CHILD = """
 import random, sys, time
 from popoto.backends.postgres import PostgresBackend
