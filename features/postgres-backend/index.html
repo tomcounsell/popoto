@@ -3048,6 +3048,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#supported-fields-m1-m11-m2a-m2b-m3-m4-m5" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3427,6 +3438,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#supported-fields-m1-m11-m2a-m2b-m3-m4-m5" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3691,29 +3713,30 @@
 
 
 <h1 id="postgres-backend-v2">Postgres Backend (v2)<a class="headerlink" href="#postgres-backend-v2" title="Permanent link">&para;</a></h1>
-<p>Popoto v2 keeps one model API with two native storage backends behind it
+<p>Popoto keeps one model API with two native storage backends behind it
 (<a href="https://github.com/tomcounsell/popoto/issues/759">#759</a>). Redis keeps
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.</p>
-<p>This page covers the first Postgres milestones: <strong>plain models</strong> (M1),
-<strong>plain-field breadth</strong> (M1.1), the <strong>ranking and memory-state half of
-Valor's slice</strong> (M2a), <strong>search</strong> (M2b), <strong><code>ContextAssembler</code></strong> (M2c), the
-<strong>validity axis</strong> (M3), the <strong>co-occurrence graph and the remaining
-recipes</strong> (M4), and M5: <strong>record expiry</strong> (<code>Meta.ttl</code>), <strong><code>popoto.batch()</code></strong>
-and the <strong>long-tail memory fields</strong> (<code>CyclicDecayField</code>, <code>TDValueField</code> and
-<code>PredictionLedgerMixin</code>).
-That means records, queries, <code>Q</code> objects, ordering, counting and atomic
-increments for the field types listed below, including indexed, unique, tag,
-relationship and collection fields, plus decay ranking, confidence
+<p>Postgres support ships in popoto 1.10.0. It is opt-in: a model uses Postgres
+only when you select it (below), and every model that does not keeps running
+on Redis exactly as before. Redis behaviour is unchanged unless noted.</p>
+<p>On Postgres you get the same model API: records, queries, <code>Q</code> objects,
+ordering, counting and atomic increments for every field type listed under
+<a href="#supported-fields-m1-m11-m2a-m2b-m3-m4-m5">Supported fields</a>, including
+indexed, unique, tag, relationship, collection, date/time, bytes and geo
+fields. The agent-memory layer runs there too: decay ranking, confidence
 (partitioned too), read tracking, the write filter, <code>ObservationProtocol</code> and
 <code>composite_score</code>, BM25 keyword search, pgvector embeddings, exact membership
-filters, fusion and <code>recall()</code>, the assembler over all of them,
+filters, fusion and <code>recall()</code>, <code>ContextAssembler</code> over all of them,
 <code>ValidityField</code> with <code>SupersessionProtocol</code>, <code>CoOccurrenceField</code> with its
-graph expansion, the remaining recipes and mixins on top, records that
-expire, batches that commit as one transaction, and cyclic decay, TD values
-and the prediction ledger. Models that use other fields stay on Redis until
-their milestone. Popoto refuses them when you declare them, so they never
-fail halfway through.</p>
+graph expansion, the recipes and mixins on top, <code>CyclicDecayField</code>,
+<code>TDValueField</code> and the prediction ledger. So do the operational pieces:
+record expiry (<code>Meta.ttl</code>), <code>transaction()</code> and <code>popoto.batch()</code>, async
+methods, event streams and pub/sub, and index maintenance and transfer.</p>
+<p>The one field Postgres does not store is <code>DataFrameField</code>. Popoto refuses a
+model that uses it when you declare it, so it never fails halfway through.
+That refusal and the other places where Postgres behaves differently from
+Redis are collected under <a href="#known-limitations">Known limitations</a>.</p>
 <h2 id="selecting-the-backend">Selecting the backend<a class="headerlink" href="#selecting-the-backend" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[postgres]'</span><span class="w">      </span><span class="c1"># psycopg[binary,pool] + pgvector</span>
 </code></pre></div>
@@ -3770,9 +3793,7 @@ grants</a>.</p>
 a <code>set_backend</code> instance is the backend its own <code>name</code> resolves to, so a
 Postgres-pinned model, <code>resolve_stream_backend(backend="postgres")</code> and a
 publish joining a Postgres transaction all use it, and <code>POPOTO_POSTGRES_URL</code>
-is not consulted for them. (Before #816 a pinned model ignored the instance
-and built its own backend from <code>POPOTO_POSTGRES_URL</code>, raising when it was
-unset or silently using that database when it was set.) A model pinned to a
+is not consulted for them. A model pinned to a
 <em>different</em> name still resolves by name, and the rule does not apply to
 Redis: <code>Meta.backend = "redis"</code> always resolves to the stock Redis backend,
 even under a Redis-named <code>set_backend</code> instance, exactly as before.</p>
@@ -3784,6 +3805,123 @@ the model's <strong>first</strong> query or save. <code>bind()</code> itself onl
 spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.</p>
+<p><strong><code>Meta.backend</code> is not inherited.</strong> Like every popoto <code>Meta</code> option, it is
+read from the class's own <code>Meta</code>: a subclass that declares no <code>Meta</code> of its
+own takes the process default, not its parent's backend. Repeat
+<code>backend = "postgres"</code> on each concrete model that needs it.</p>
+<h2 id="known-limitations">Known limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h2>
+<p>This section collects what Postgres does not do, or does differently, in
+1.10.0. Each item links to the section with the details.</p>
+<p><strong>Server requirements.</strong> Popoto checks these on a model's first query or
+save, not at import or class creation, and raises <code>BackendCapabilityError</code>
+when one fails:</p>
+<ul>
+<li><strong>PostgreSQL 18 or newer</strong> (<code>server_version_num &gt;= 180000</code>).</li>
+<li><strong><code>server_encoding</code> UTF8.</strong> Ties are ordered bytewise, as on Redis.</li>
+<li><strong>pgvector, for <code>EmbeddingField</code> only.</strong> A model with an <code>EmbeddingField</code>
+  needs the <code>vector</code> extension installed in its database, in a schema on the
+  connection's <code>search_path</code> (the default, <code>public</code>, is). Popoto never runs
+  <code>CREATE EXTENSION</code>; an operator with that privilege does. Models without an
+  <code>EmbeddingField</code> do not need pgvector. PostGIS is not used: geo fields run
+  on plain columns (see <a href="#geo-m5">Geo</a>).</li>
+</ul>
+<p><strong>Refused when you declare the model.</strong> With <code>Meta.backend = "postgres"</code>,
+class creation raises <code>BackendCapabilityError</code> (with the process default,
+the model's first use does) for:</p>
+<ul>
+<li><code>DataFrameField</code>. Store the frame's JSON in a <code>DictField</code> or a
+  <code>BytesField</code> instead.</li>
+<li>An <code>IndexedField</code> or <code>UniqueField</code> whose type is not <code>int</code>, <code>float</code>, <code>str</code>,
+  <code>bool</code>, <code>Decimal</code>, <code>datetime</code>, <code>date</code> or <code>time</code> (a collection type, for
+  example), and a <code>SortedField</code> whose type is not numeric or a date/time.</li>
+<li>A custom field that overrides a storage hook, and any field kind the
+  backend does not know.</li>
+</ul>
+<p><strong>Refused at the call.</strong> These raise <code>BackendCapabilityError</code> on a Postgres
+model, before anything is written:</p>
+<ul>
+<li><code>save(migrate_key=True)</code> that changes a key field. Create the new record and
+  delete the old one. For the same reason, <code>MemoryLifecycle</code> with a
+  <code>KeyField</code> tier is refused when you build it; declare the tier as an
+  <code>IndexedField</code>.</li>
+<li><code>_ttl</code> / <code>_expire_at</code> on a model without <code>Meta.ttl</code>
+  (<a href="#record-expiry-m5">Record expiry</a>).</li>
+<li><code>order_by</code> on a collection field (divergence (xvii) below).</li>
+<li>A <code>GeoField</code> radius filter used to scope a ranking or a search (<code>recall</code>,
+  <code>top_by_decay</code>, and the like). It scopes <code>filter()</code> and <code>count()</code>.</li>
+<li><code>rebuild_indexes()</code> while a <code>transaction()</code> or <code>popoto.batch()</code> is open in
+  the same thread or task
+  (<a href="#index-maintenance-and-transfer-m5">Index maintenance</a>).</li>
+<li>A write that would wait on a record lock that an enclosing transaction in
+  the same thread or task holds, which could never be granted
+  (<a href="#popotobatch-m5"><code>popoto.batch()</code></a>).</li>
+<li>One <code>popoto.batch()</code> that writes to both Redis and Postgres, or to two
+  Postgres backends.</li>
+<li><code>raw_update()</code> naming a field that has no stored column.</li>
+<li><code>auditable_extraction</code> when the model, the decision log and the journal
+  would land in different stores. Under a Redis default, bind the default with
+  <code>set_backend("postgres")</code> or <code>POPOTO_BACKEND=postgres</code>, or remove the one
+  pin; under a Postgres default, remove the journal entry model's
+  <code>Meta.backend</code> pin. A Redis default with a Postgres-pinned journal is
+  refused too.</li>
+</ul>
+<p><strong>Redis-only APIs.</strong> These inspect Redis structures and raise
+<code>BackendCapabilityError</code> on a Postgres model: <code>load_raw_hash</code>,
+<code>Query.keys(clean=…)</code> / <code>Query.keys(catchall=…)</code>,
+<code>DecayingSortedField.rank_decayed(zset_key, …)</code> and
+<code>CyclicDecayField.rank_decayed(zset_key, …)</code> (use <code>Model.query.top_by_decay()</code>,
+which works on both), and <code>ConfidenceField.get_confidence_filtered</code> /
+<code>ConfidenceField.migrate_to_partitioned</code>.</p>
+<p><strong>Postgres-only APIs.</strong> <code>Model.query.recall()</code> and
+<code>Model.query.top_by_relevance()</code> raise <code>BackendCapabilityError</code> on Redis. On
+Redis, use <code>keyword_search</code> / <code>semantic_search</code> with <code>fuse()</code>, and
+<code>top_by_decay()</code>.</p>
+<p><strong>Not stored on Postgres.</strong> The <code>WriteFilterMixin</code> priority tier is a no-op:
+the gate still runs, but no priority is kept, so
+<code>composite_score({"priority": …})</code> raises <code>BackendCapabilityError</code>. The
+confirmed access log (a list of read timestamps) is not kept either; the
+access counters are.</p>
+<p><strong>Results that differ from Redis.</strong> Redis behaviour is unchanged in 1.10.0,
+so the two backends disagree in places. They fall into a few groups, each row
+pinned by a test on both backends (see
+<a href="#documented-divergences">Documented divergences</a>):</p>
+<ul>
+<li><strong>Queries where Redis's answer is wrong.</strong> Composed <code>Q</code> objects that drop
+  an unindexed leaf, ignored lookups and bounds, unimplemented <code>KeyField</code>
+  lookups, and similar. Postgres returns the correct rows. The Redis bugs are
+  tracked in <a href="https://github.com/tomcounsell/popoto/issues/771">#771</a> (open);
+  until it is fixed, code that relied on the Redis result will see different
+  rows on Postgres.</li>
+<li><strong>Typed comparison.</strong> Postgres compares numbers, decimals and instants by
+  value where Redis compares key strings.</li>
+<li><strong>Atomicity.</strong> A failed statement rolls back the whole <code>transaction()</code> or
+  batch, where Redis <code>MULTI</code>/<code>EXEC</code> applies the other commands.</li>
+<li><strong>Ordering and edge values.</strong> With no ordering requested, Postgres returns
+  rows in bytewise <code>_pk</code> order; NaN, <code>\x00</code>, out-of-range integers and aware
+  <code>time</code> values are refused or normalised rather than stored as Redis
+  stores them.</li>
+<li><strong>Exact structures.</strong> <code>ExistenceFilter</code> and <code>FrequencySketch</code> are exact on
+  Postgres (no false positives, no over-counting).</li>
+</ul>
+<p><strong>Not carried by the Redis to Postgres migration.</strong> The tombstone archive
+(<code>$TOMB:&lt;Model&gt;:data</code> and <code>:index</code>, the deleted-record payloads
+<code>MemoryLifecycle.restore()</code> reads) has no carry path, so the tool stops the run
+before writing anything (exit code 3, #829); clear the archive first or accept
+losing the restore window. See the
+<a href="../redis-to-postgres-migration/">migration guide</a>.</p>
+<p><strong>Decision-log summary drift on Redis.</strong> <code>DecisionLog.turn_summary</code> is exact on
+Postgres. On Redis, a <code>pending</code> write over a row that is already terminal
+leaves the summary over-counting until <code>rebuild_turn_summary</code> runs; the
+Postgres answer is the right one. A fix for the Redis side is open (#831), and
+until it lands the divergence below stands.</p>
+<p><strong>Harness session state does not migrate.</strong> The
+<a href="../harness-integration/">harness integration</a> runs on Postgres with no Redis
+commands (see its <a href="../harness-integration/#on-postgres">On Postgres</a> section).
+Its between-turn bookkeeping (pending captures, injected-key sets, counters)
+lives in its own tables, and the
+<a href="../redis-to-postgres-migration/">Redis to Postgres migration</a> does not copy
+it: after a switch, those counters start at zero and the first turn of each
+session may inject a memory the Redis side had already injected.</p>
 <h2 id="supported-fields-m1-m11-m2a-m2b-m3-m4-m5">Supported fields (M1, M1.1, M2a, M2b, M3, M4, M5)<a class="headerlink" href="#supported-fields-m1-m11-m2a-m2b-m3-m4-m5" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -3825,101 +3963,101 @@ first query does not.</p>
 <td>—</td>
 </tr>
 <tr>
-<td><code>IndexedField(type=T)</code> / <code>UniqueField(type=T)</code> (M1.1)</td>
+<td><code>IndexedField(type=T)</code> / <code>UniqueField(type=T)</code></td>
 <td><code>T</code> (a scalar type)</td>
 <td>B-tree on the column; <code>UNIQUE</code> for a unique field</td>
 </tr>
 <tr>
-<td><code>TagField</code> (M1.1)</td>
+<td><code>TagField</code></td>
 <td><code>text[]</code>, normalised (sorted, unique, <code>str(tag)</code>; untagged is <code>{}</code>)</td>
 <td>GIN: <code>__contains</code> and <code>__all</code> are <code>@&gt;</code>, <code>__any</code> is <code>&amp;&amp;</code></td>
 </tr>
 <tr>
-<td><code>Relationship(model=M)</code> (M1.1)</td>
+<td><code>Relationship(model=M)</code></td>
 <td><code>text</code> holding the target's <code>_pk</code></td>
 <td>B-tree (no foreign key: Redis enforces none, and references may be circular)</td>
 </tr>
 <tr>
-<td><code>ListField</code> / <code>DictField</code> / <code>SetField</code> / <code>TupleField</code>, <code>Field(type=list/dict/set/tuple)</code> (M1.1)</td>
+<td><code>ListField</code> / <code>DictField</code> / <code>SetField</code> / <code>TupleField</code>, <code>Field(type=list/dict/set/tuple)</code></td>
 <td><code>jsonb</code></td>
 <td>—</td>
 </tr>
 <tr>
-<td><code>ListField(max_length=N)</code> (M1.1)</td>
+<td><code>ListField(max_length=N)</code></td>
 <td><code>jsonb</code>, each element type-tagged as <code>push()</code> writes it on Redis</td>
 <td>—</td>
 </tr>
 <tr>
-<td><code>BytesField</code> / <code>DateField</code> / <code>TimeField</code> (M1.1)</td>
+<td><code>BytesField</code> / <code>DateField</code> / <code>TimeField</code></td>
 <td><code>bytea</code> / <code>date</code> / <code>time</code></td>
 <td>—</td>
 </tr>
 <tr>
-<td><code>Meta.indexes</code> (M1.1)</td>
+<td><code>Meta.indexes</code></td>
 <td>—</td>
 <td>a composite B-tree per entry; <code>UNIQUE</code> when <code>is_unique</code></td>
 </tr>
 <tr>
-<td><code>DecayingSortedField(partition_by=…, base_score_field=…)</code> (M2a)</td>
+<td><code>DecayingSortedField(partition_by=…, base_score_field=…)</code></td>
 <td><code>double precision</code>: the decay clock, in epoch seconds</td>
 <td>B-tree <code>(partition cols…, f, _pk COLLATE "C")</code></td>
 </tr>
 <tr>
-<td><code>ConfidenceField</code> (M2a; <code>partition_by=</code> M3)</td>
+<td><code>ConfidenceField</code> (<code>partition_by=</code> too)</td>
 <td><code>double precision</code> for the attribute, plus the state <code>&lt;f&gt;__conf</code> (<code>double precision</code>), <code>&lt;f&gt;__n</code>, <code>&lt;f&gt;__corr</code>, <code>&lt;f&gt;__contra</code> (<code>bigint</code>)</td>
 <td>—</td>
 </tr>
 <tr>
-<td><code>BM25Field(source=…)</code> (M2b)</td>
+<td><code>BM25Field(source=…)</code></td>
 <td>no column of its own: postings <code>&lt;table&gt;__&lt;f&gt;__post (scope, term, _pk, tf)</code> and lengths <code>&lt;table&gt;__&lt;f&gt;__dl (_pk, scope, len)</code></td>
 <td>postings <code>PRIMARY KEY (scope, term, _pk)</code> plus a B-tree on <code>_pk</code>; lengths <code>(scope) INCLUDE (len)</code></td>
 </tr>
 <tr>
-<td><code>EmbeddingField(source=…)</code> (M2b)</td>
+<td><code>EmbeddingField(source=…)</code></td>
 <td><code>&lt;f&gt; bigint</code> (the dimension count Redis stores), <code>&lt;f&gt;__vec vector(d)</code>, <code>&lt;f&gt;__model text</code>, <code>&lt;f&gt;__hash text</code>, plus the narrow vector table <code>&lt;table&gt;__&lt;f&gt;__vec (_pk, scope, v vector(d))</code>, <code>v</code> stored <code>PLAIN</code></td>
 <td>HNSW <code>vector_cosine_ops</code> on <code>&lt;f&gt;__vec</code>; a partial B-tree on rows with no vector, and a B-tree on <code>&lt;f&gt;__model</code> (the backfill's probe); <code>(scope)</code> on the narrow table</td>
 </tr>
 <tr>
-<td><code>ExistenceFilter</code> / <code>FrequencySketch</code> (M2b)</td>
+<td><code>ExistenceFilter</code> / <code>FrequencySketch</code></td>
 <td>no column: <code>&lt;table&gt;__&lt;f&gt;__tok (token, _pk)</code> / <code>&lt;table&gt;__&lt;f&gt;__cnt (token, count)</code></td>
 <td><code>PRIMARY KEY (token, _pk)</code> / <code>PRIMARY KEY (token)</code></td>
 </tr>
 <tr>
-<td><code>ContentField</code> (M2b, pulled forward from M5)</td>
+<td><code>ContentField</code></td>
 <td><code>text</code> holding the content itself (no <code>$CF:</code> reference, no file)</td>
 <td>—</td>
 </tr>
 <tr>
-<td><code>ValidityField</code> (M3)</td>
+<td><code>ValidityField</code></td>
 <td><code>double precision</code> for the declared value, plus <code>&lt;f&gt;__valid_from</code>, <code>&lt;f&gt;__invalid_at</code>, <code>&lt;f&gt;__ingested_at</code> (<code>double precision</code>; <code>'Infinity'</code> = open) and <code>&lt;f&gt;__supersedes</code>, <code>&lt;f&gt;__superseded_by</code> (<code>text</code>); companion <code>&lt;table&gt;__&lt;f&gt;__open (digest, member)</code></td>
 <td>B-tree on <code>&lt;f&gt;__valid_from</code> and on <code>&lt;f&gt;__invalid_at</code>; the companion's <code>member</code> references <code>_pk</code> <code>ON DELETE CASCADE</code></td>
 </tr>
 <tr>
-<td><code>CoOccurrenceField(symmetric=…, max_edges=…)</code> (M4)</td>
+<td><code>CoOccurrenceField(symmetric=…, max_edges=…)</code></td>
 <td>no column: the edge table <code>&lt;table&gt;__&lt;f&gt;__edge (src, dst, weight)</code></td>
 <td><code>PRIMARY KEY (src, dst)</code></td>
 </tr>
 <tr>
-<td><code>CyclicDecayField(cycles=…, pressure_rate=…)</code> (M5)</td>
+<td><code>CyclicDecayField(cycles=…, pressure_rate=…)</code></td>
 <td><code>double precision</code>: the decay clock, as for <code>DecayingSortedField</code>; the cycles as four parallel <code>double precision[]</code> columns <code>&lt;f&gt;__cycle_period</code>, <code>&lt;f&gt;__cycle_amp</code>, <code>&lt;f&gt;__cycle_phase</code>, <code>&lt;f&gt;__cycle_base</code> (the #698 declared baseline, a <code>NULL</code> element = unknown); the pressure as <code>&lt;f&gt;__pressure_rate</code> and <code>&lt;f&gt;__pressure_at</code> (<code>last_resolved</code>). <code>NULL</code> = no companion-hash entry</td>
 <td>B-tree <code>(partition cols…, f, _pk COLLATE "C")</code></td>
 </tr>
 <tr>
-<td><code>TDValueField</code> (M5)</td>
+<td><code>TDValueField</code></td>
 <td><code>numeric</code>, as <code>DecimalField</code></td>
 <td>—</td>
 </tr>
 <tr>
-<td><code>GeoField</code> (M5)</td>
+<td><code>GeoField</code></td>
 <td><code>jsonb</code> for the coordinates as given, plus <code>&lt;f&gt;__geohash bigint</code> (the score <code>GEOADD</code> stores; <code>NULL</code> = not in the geo index) and <code>&lt;f&gt;__geolon</code> / <code>&lt;f&gt;__geolat</code> (<code>double precision</code>, the position decoded from that score)</td>
 <td>partial B-tree on <code>&lt;f&gt;__geohash</code> (no PostGIS, no GiST)</td>
 </tr>
 </tbody>
 </table>
-<p><code>PredictionLedgerMixin</code> (M5) adds no column: its ledger is two engine tables
+<p><code>PredictionLedgerMixin</code> adds no column: its ledger is two engine tables
 (see <a href="#long-tail-fields-m5">Long-tail fields</a>). <code>DataFrameField</code> is refused
 at declaration with its reason: a pandas <code>DataFrame</code> is not stored on Postgres
-in v2 (the field needs the optional <code>dataframe</code> extra, which no CI job
+in 1.10.0 (the field needs the optional <code>dataframe</code> extra, which no CI job
 installs, so a column for it would ship untested); store the frame's JSON in a
 <code>DictField</code> or a <code>BytesField</code>.</p>
 <p>Every table also has:</p>
@@ -3929,7 +4067,7 @@ installs, so a column for it would ship untested); store the frame's JSON in a
   identical on both backends.</li>
 <li><code>_created_at</code> and <code>_updated_at</code> (<code>timestamptz</code>), which the engine maintains.
   They are Postgres-only.</li>
-<li><code>_migrated_from jsonb</code> and <code>_estimated_fields text[]</code> (M2b), the import
+<li><code>_migrated_from jsonb</code> and <code>_estimated_fields text[]</code>, the import
   contract for the one-off Redis-to-Postgres copy (#756). An importer records
   where a row came from and which values it inferred. Every native write
   (<code>save</code>, <code>atomic_increment</code>, <code>push</code>, and the embedding backfill) sets
@@ -3978,8 +4116,8 @@ commits and the others raise <code>ModelException</code>
 be served, and every contender failed with <code>BackendBusyError</code>.</p>
 <p>Two units that claim the same values in <strong>opposite orders</strong> can deadlock on
 those index entries: Postgres breaks it and one unit raises
-<code>BackendRetryableError</code>, as for any cross-record deadlock (lock order, §6 of
-the plan). Measured with 4 threads × 40 transactions, each claiming two
+<code>BackendRetryableError</code>, as for any cross-record deadlock (see "One lock
+order for every writer" under <a href="#search-m2b">Search</a>). Measured with 4 threads × 40 transactions, each claiming two
 values shared by every thread, half in each order (PostgreSQL 18.6,
 localhost): 80-90 of 160 were deadlock victims at pool size 4 or 16, against
 95 on <code>main</code> at pool size 16 (at pool size 4, <code>main</code> failed 136 with
@@ -3987,7 +4125,7 @@ localhost): 80-90 of 160 were deadlock victims at pool size 4 or 16, against
 order (sorted) to avoid them. No advisory lock is taken on the value: a
 unit's later statement cannot be ordered before its earlier ones, so a value
 lock would deadlock in the same shapes and remove none.</p>
-<p><strong>Memory state (M2a).</strong> A <code>ConfidenceField</code> keeps two things, as it does on
+<p><strong>Memory state.</strong> A <code>ConfidenceField</code> keeps two things, as it does on
 Redis: the model attribute (the hash value there, its own column here) and
 the evidence state (the companion hash entry there, the four <code>__</code> columns
 here). State that is <code>NULL</code> is the seed Redis writes on save with <code>HSETNX</code>
@@ -3996,24 +4134,27 @@ re-save never resets it. A model with <code>AccessTrackerMixin</code> gains
 <code>_access_count</code>, <code>_last_accessed</code>, <code>_staged_reads</code> and <code>_staged_at</code>; staged
 reads count only while <code>_staged_at</code> is within <code>_staged_ttl_seconds</code>, which is
 what the Redis list's refreshed <code>EXPIRE</code> means. <code>WriteFilterMixin</code>'s gate runs
-above the seam as before; its priority tier is not stored (plan §5 M2).
+above the seam as before; its priority tier is not stored.
 <code>RecallProposal</code> keeps its pending proposals in one engine table per schema,
 <code>popoto_recall_proposal</code>, created on first use like <code>popoto_schema</code>. No state
 column is indexed: each index would make every <code>update_confidence</code> or
 <code>confirm_access</code> a non-HOT update, and nothing filters or orders by one alone.
-A partitioned <code>ConfidenceField</code> (M3) needs nothing more: its state is the
+A partitioned <code>ConfidenceField</code> needs nothing more: its state is the
 record's own columns, so its partition is the row's partition columns, and a
 partition change that keeps the key keeps the state.
-<code>PredictionLedgerMixin</code> keeps its ledger in Redis until M5 and is refused on a
-Postgres model too, rather than issuing Redis commands for a record Redis does
-not hold. <code>EventStreamMixin</code> writes its stream to the backend's events tables
-(M5, <a href="#event-streams-and-pubsub-m5">Event streams and pub/sub</a>), in the
+<code>PredictionLedgerMixin</code> keeps its ledger in two engine tables (see
+<a href="#long-tail-fields-m5">Long-tail fields</a>). <code>EventStreamMixin</code> writes its
+stream to the backend's events tables
+(<a href="#event-streams-and-pubsub-m5">Event streams and pub/sub</a>), in the
 save's own transaction.</p>
-<p><code>Meta.ttl</code> (M5) adds an engine column, <code>_expires_at</code>; see
+<p><code>Meta.ttl</code> adds an engine column, <code>_expires_at</code>; see
 <a href="#record-expiry-m5">Record expiry</a>.</p>
-<p><code>GeoField</code> (M5) is stored without PostGIS; see <a href="#geo-m5">Geo</a>.</p>
+<p><code>GeoField</code> is stored without PostGIS; see <a href="#geo-m5">Geo</a>.</p>
 <p>An <code>IndexedField</code> on a collection type is refused, as is a custom field that
-overrides a storage hook. A model that uses one of them raises
+overrides a storage hook: <code>on_save</code>, <code>on_delete</code>, <code>filter_query</code>,
+<code>format_value_pre_save</code> or <code>pre_save_validate</code>. A subclass of a built-in field
+that overrides none of the five is accepted and stored as its base field. A
+model that uses one of them raises
 <code>BackendCapabilityError</code> when you declare it with <code>Meta.backend =
 "postgres"</code>, or on first use when it takes the process default.</p>
 <h2 id="what-the-schema-looks-like">What the schema looks like<a class="headerlink" href="#what-the-schema-looks-like" title="Permanent link">&para;</a></h2>
@@ -4121,7 +4262,7 @@ row takes that record's advisory lock first, not only a save: <code>delete</code
 <code>atomic_increment</code>, a capped-list push, <code>touch</code>, <code>update_confidence</code>, the
 access tracker's writes, <code>on_context_used</code>'s <code>FOR UPDATE</code> and an
 <code>ExistenceFilter</code> row. The order is any <code>(model, field)</code> lock (a
-<code>ValidityField</code>'s, M3), then the record-key locks sorted by <code>_pk</code>, then the row locks in <code>_pk</code>
+<code>ValidityField</code>'s), then the record-key locks sorted by <code>_pk</code>, then the row locks in <code>_pk</code>
 order. A record's key lock is always the first lock taken on it, so a
 transaction that runs <code>update_confidence(x, pipeline=tx)</code> and then
 <code>x.save(pipeline=tx)</code> queues a concurrent <code>x.save()</code> behind it instead of
@@ -4129,7 +4270,7 @@ deadlocking with it. Transactions that each take several records in
 different orders can still deadlock; that surfaces as
 <code>BackendRetryableError</code>. Pinned by
 <code>test_a_confidence_update_then_save_cannot_deadlock_a_save</code> and its control.
-A record delete on a model with a symmetric <code>CoOccurrenceField</code> (M4) writes
+A record delete on a model with a symmetric <code>CoOccurrenceField</code> writes
 rows in its <em>partners'</em> edge sets too (the reverse edges), so it takes the
 partners' record-key locks with the deleted keys', in one sorted sequence,
 before it touches a row. The lock statement runs twice: the first takes the
@@ -4246,7 +4387,7 @@ Every scoping argument is optional, and they compose. BM25's statistics are
 agent's corpus must not skew another's IDF. <code>bm25_stats="corpus"</code> uses the
 corpus-wide statistics <code>BM25Field.search</code> uses.</p>
 <p>A model with one <code>DecayingSortedField</code> adds a third arm, <code>weights["decay"]</code>
-(default 1.0): <code>top_by_decay</code>'s ranking (<code>DECAY_SCORE_LUA</code> over the M2a
+(default 1.0): <code>top_by_decay</code>'s ranking (<code>DECAY_SCORE_LUA</code> over the decay
 columns: the field's clock, its <code>base_score_field</code>, and <code>&lt;f&gt;__conf</code>
 modulation when the field resolves a <code>ConfidenceField</code>), computed in the
 fused statement itself over the same scope and filters. It adds no round
@@ -4257,7 +4398,7 @@ returns <code>[(instance, score)]</code> ranked by decay × confidence in SQL, t
 <code>ZREVRANGE</code>. <code>scope</code> is the decay field's <code>partition_by</code> value; <code>None</code> ranks
 every partition together. On a Redis-bound model it raises
 <code>BackendCapabilityError</code>; use <code>top_by_decay</code> there.</p>
-<p><strong>Both read through the validity gate (M3).</strong> On a model with a
+<p><strong>Both read through the validity gate.</strong> On a model with a
 <code>ValidityField</code>, <code>top_by_relevance</code> and <code>recall</code> leave out a record closed at
 or before <code>as_of</code> and one that starts after it, as <code>top_by_decay</code>,
 <code>composite_score</code> and the assembler do. <code>as_of</code> is epoch seconds and defaults
@@ -4267,14 +4408,14 @@ it, so <code>as_of</code> in the past returns the records that were valid then. 
 decay), so a superseded record cannot enter through the lexical arm either.
 <code>Defaults.VALIDITY_GATING_ENABLED = False</code> turns it off, and a model without a
 <code>ValidityField</code> is unaffected.</p>
-<p><strong><code>composite_score(similarity_boost=…)</code></strong> works on Postgres too (M2b). The
+<p><strong><code>composite_score(similarity_boost=…)</code></strong> works on Postgres too. The
 mapping is one more arm, weight 1.0 and last, as its temporary set is in the
 Redis <code>ZUNIONSTORE</code>. <code>semantic_search(indexes=…)</code> uses it, and on a model
-with a <code>ValidityField</code> the validity mask applies to it as to every arm (M3;
-pinned two-leg by <code>tests/test_semantic_search.py::TestSemanticSearchWithIndexes</code>). The order is the
+with a <code>ValidityField</code> the validity mask applies to it as to every arm
+(pinned two-leg by <code>tests/test_semantic_search.py::TestSemanticSearchWithIndexes</code>). The order is the
 same on both backends; with three or more summed arms a score can differ by
 up to 2 ulp, because <code>ZUNIONSTORE</code> adds the smallest input set first while
-Postgres adds the arms in order. <code>co_occurrence_boost=</code> is an arm too (M4):
+Postgres adds the arms in order. <code>co_occurrence_boost=</code> is an arm too:
 weight 1.0, after the indexes and before <code>similarity_boost</code>, the position its
 temporary set takes in the <code>ZUNIONSTORE</code>.</p>
 <h2 id="contextassembler-m2c">ContextAssembler (M2c)<a class="headerlink" href="#contextassembler-m2c" title="Permanent link">&para;</a></h2>
@@ -4296,7 +4437,7 @@ gate, <code>assess_quality</code> and <code>emit_trace</code>, plus <code>assess
 <tbody>
 <tr>
 <td>ExistenceFilter short-circuit</td>
-<td><code>might_exist</code> on the exact token table (M2b)</td>
+<td><code>might_exist</code> on the exact token table</td>
 </tr>
 <tr>
 <td>Hybrid / lexical pull</td>
@@ -4304,7 +4445,7 @@ gate, <code>assess_quality</code> and <code>emit_trace</code>, plus <code>assess
 </tr>
 <tr>
 <td>Zero-signal fallback, composite pull, <code>assess</code> probe</td>
-<td><code>composite_score</code>: <code>rank_composite</code>, one <code>SELECT</code> (M2a)</td>
+<td><code>composite_score</code>: <code>rank_composite</code>, one <code>SELECT</code></td>
 </tr>
 <tr>
 <td>Tag scoping</td>
@@ -4312,7 +4453,7 @@ gate, <code>assess_quality</code> and <code>emit_trace</code>, plus <code>assess
 </tr>
 <tr>
 <td>Score proxy (<code>assess_quality</code>, <code>emit_trace</code>, <code>assess</code>)</td>
-<td>the partition's <code>rank_decayed</code> for a decay field, with the model's validity gate at now (M3: a record closed now or not yet started scores <code>None</code> and counts as stale, as on Redis, which runs <code>DECAY_SCORE_LUA</code> with the gate; pinned two-leg by <code>test_the_score_proxy_gates_on_validity_at_now</code>), the column for a plain sorted field</td>
+<td>the partition's <code>rank_decayed</code> for a decay field, with the model's validity gate at now (a record closed now or not yet started scores <code>None</code> and counts as stale, as on Redis, which runs <code>DECAY_SCORE_LUA</code> with the gate; pinned two-leg by <code>test_the_score_proxy_gates_on_validity_at_now</code>), the column for a plain sorted field</td>
 </tr>
 <tr>
 <td>Post-effects</td>
@@ -4336,8 +4477,8 @@ fixture's texts as written, several records share a text and so a vector, and
 the hybrid path's parity then holds only up to the vector-arm tie row below. <code>scripts/probe_assembler_parity.py</code> builds
 random corpora on both legs and compares <code>assemble()</code> (keys, formatted output
 and token count, metadata, trace, quality, and the post-effects' confidence and
-staged-read state), <code>on_context_used()</code> and <code>assess()</code>; its classes are in the
-PR that introduced M2c, and <code>test_postgres_assembler.py</code> runs a 12-shape slice
+staged-read state), <code>on_context_used()</code> and <code>assess()</code>; its classes are in
+the probe's docstring, and <code>test_postgres_assembler.py</code> runs a 12-shape slice
 of it in CI.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/13<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
@@ -4455,7 +4596,7 @@ by an earlier, no-deeper one: each result is the heaviest walk of at most
 <a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">pk</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="k">SELECT</span><span class="w"> </span><span class="n">pk</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="ss">"_seed"</span><span class="p">)</span>
 <a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="w"> </span><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">pk</span><span class="w"> </span><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="k">max</span><span class="p">(</span><span class="n">w</span><span class="p">)</span><span class="w"> </span><span class="k">DESC</span><span class="p">,</span><span class="w"> </span><span class="n">pk</span><span class="w"> </span><span class="k">COLLATE</span><span class="w"> </span><span class="ss">"C"</span>
 </code></pre></div>
-<p><code>safe_mul</code> is the saturating product of the decay SQL (M2a).</p>
+<p><code>safe_mul</code> is the saturating product of the decay SQL.</p>
 <p>That statement only runs while it expands at most
 <code>Defaults.PG_GRAPH_RECURSIVE_MAX_LAYERS</code> (2) layers, i.e. <code>ceil(depth) &lt;= 2</code>
 (the default <code>depth=2</code>). A recursive CTE sees only the previous layer, so it
@@ -4540,8 +4681,8 @@ read of the source's rows, the stored weights unclamped (<code>graph_expand</cod
 depth 1), with <code>(</code> for an exclusive minimum, <code>limit=0</code> empty and a negative
 limit everything.</p>
 <p><code>recipes/graph_traversal.traverse</code> runs unchanged on top: <code>propagate</code>, the
-relationship walk (M1.1's <code>sample_related_keys</code>), and the confidence and
-decay modulation (M2a/M2c). <code>ContextAssembler</code>'s graph arm and
+relationship walk (<code>sample_related_keys</code>), and the confidence and
+decay modulation. <code>ContextAssembler</code>'s graph arm and
 <code>composite_score(co_occurrence_boost=)</code> work on a Postgres model as on Redis.</p>
 <p><strong>The seeded probe.</strong> <code>scripts/probe_graph_parity.py</code> replays the same random
 sequence of writes on both legs -- weights from typical to <code>-inf</code>, ties and the
@@ -4550,8 +4691,8 @@ deletes and <code>import_state</code> (NaN weights included) -- comparing every 
 then each key's full edge set, <code>get_linked</code> (<code>limit=None</code> and a NaN bound
 included), <code>propagate</code> (depths up to <code>1e9</code> and <code>inf</code>, decays up to <code>0.999999</code>)
 on all three Postgres paths, <code>export_state</code>, <code>composite_score</code> with the boost
-and <code>traverse()</code>. Its classes are in its docstring and the PR that introduced
-M4; the documented ones are the M4 rows of the table above.
+and <code>traverse()</code>. Its classes are in its docstring; the documented ones are the
+co-occurrence rows of the <a href="#records-and-other-behaviour">divergence table</a>.
 <code>tests/postgres/test_postgres_graph.py</code> runs a 25-shape slice in CI.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/13<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
@@ -4575,7 +4716,7 @@ tables created on first use, like <code>popoto_recall_proposal</code>:</p>
 <tr>
 <td><code>Model.idle_seconds</code></td>
 <td><code>OBJECT IDLETIME</code>: whole seconds since the key was last read or written</td>
-<td>whole seconds since the later of the row's last write (<code>_updated_at</code>) and, with <code>AccessTrackerMixin</code>, its last <em>confirmed</em> read (<code>_last_accessed</code>); <code>None</code> with no row, or an expired one (M5)</td>
+<td>whole seconds since the later of the row's last write (<code>_updated_at</code>) and, with <code>AccessTrackerMixin</code>, its last <em>confirmed</em> read (<code>_last_accessed</code>); <code>None</code> with no row, or an expired one</td>
 </tr>
 <tr>
 <td><code>SortedFieldMixin.count</code> / <code>members</code> / <code>score</code></td>
@@ -4709,13 +4850,14 @@ two saves of one key in one transaction refuse the second (on Redis the
 "intra-pipeline" shape stays open, as its module docstring records).</p>
 <p><strong><code>ProvenanceJournal</code></strong> runs its pre-flight unchanged and then appends --
 and, for a closing kind, closes the target's interval -- in <strong>one
-transaction</strong> (<code>SupersessionProtocol.save_and_invalidate</code>, M3): its own, or
+transaction</strong> (<code>SupersessionProtocol.save_and_invalidate</code>): its own, or
 the caller's when the backend's unit of work is passed as <code>pipeline=</code>. The
 close's outcome is known at the call, so <code>AnnotationResult.target_closed</code> is
 the truth (on Redis a caller pipeline reports <code>None</code>, "unknown until you
 execute", with a <code>close_index</code> to read after <code>EXEC</code>), and a close that fails
 rolls the annotation back with it (on Redis the queued annotation is kept:
-the M3 row below). Any other <code>pipeline=</code> object, a Redis pipeline included, is
+the <code>ProvenanceJournal</code> row of the
+<a href="#records-and-other-behaviour">divergence table</a>). Any other <code>pipeline=</code> object, a Redis pipeline included, is
 refused with <code>ValueError</code> before anything is written.
 <code>AppendOnlyMixin.hard_delete</code> removes the row (its open-claim pointer
 cascades) and clears the <code>&lt;f&gt;__supersedes</code> / <code>&lt;f&gt;__superseded_by</code> columns of
@@ -4723,21 +4865,21 @@ the records that named it, the value side of the Redis chain hashes. The
 reconciler's statement-vector cache is <code>popoto_embedding_cache (model,
 member, vector)</code>, beside the entries, and <code>erase_entry</code> drops it there.
 <code>JournalEntry</code> composes <code>EventStreamMixin</code>: on Postgres its mutation log is
-the backend's events table (M5), appended in the journal write's own
+the backend's events table, appended in the journal write's own
 transaction (a caller's <code>transaction()</code> or <code>popoto.batch()</code> included), and the reconciler's <code>StreamConsumer</code> trigger
 (<code>reconciliation_consumer</code>, which names <code>JournalEntry</code> as its model) reads it
 there. A rolled-back write leaves no entry, and a Postgres-bound journal and
 its reconciler send Redis no command at all. Pinned by
 <code>tests/postgres/test_postgres_journal.py</code> and
 <code>tests/postgres/test_postgres_events.py::test_a_postgres_journal_and_its_reconciler_send_redis_nothing</code>.</p>
-<p><strong>Memory telemetry</strong> runs on Postgres since M5's record expiry:
+<p><strong>Memory telemetry</strong> runs on Postgres, on top of record expiry:
 <code>AssemblyEvent</code> declares <code>Meta.ttl</code>, so its events expire there as on Redis,
 and <code>report_outcomes()</code> and <code>TelemetryAnalyzer</code> read them back. Pinned by
 <code>tests/test_memory_telemetry.py</code>, whose every test runs on both legs.</p>
 <p><strong>Decision log</strong> (#811). <code>SubconsciousMemory(auditable_extraction=...)</code>
 constructs and runs on a Postgres-bound process with no Redis command at all.
 <code>DecisionLog</code> follows <code>DecisionRecord</code>'s backend (the process default, as the
-journal does): the per-candidate row is a <code>decisionrecord</code> row under a unique
+journal does): the per-candidate row is a <code>decision_record</code> row under a unique
 key, the guarded terminal write (refuse a terminal write over an assembled
 <code>accept</code>) is one statement run under the row's advisory lock, the assembly
 claim is a <code>popoto_lease</code> row (<code>INSERT ... ON CONFLICT ... WHERE expires_at &lt;=
@@ -4892,7 +5034,7 @@ streams), else the process default; <code>reconciliation_consumer</code> names
   notification arrives when the entry is visible. <code>LISTEN</code> needs a session,
   so the wait rides the process's <strong>one shared <code>LISTEN</code> session</strong> (below),
   never a pooled connection -- PgBouncer in transaction mode would hand a
-  pooled connection to another client between statements (§3 Topology). Its
+  pooled connection to another client between statements (<a href="#topology-and-the-outage-contract">Topology</a>). Its
   DSN is <code>POPOTO_POSTGRES_LISTEN_URL</code> when set (point it past a
   transaction-mode pooler at the server), else the
   <a href="#a-maintenance-dsn-for-pgbouncer-transaction-mode">maintenance DSN</a> when
@@ -5166,7 +5308,7 @@ ids <code>e1, e2, …</code> in creation order, and compares every reply and err
 (<code>popoto/backends/postgres/longtail.py</code>). Every number a script computes is
 computed in SQL operation for operation, in <code>double precision</code> and in the
 script's order of evaluation; <code>cos</code> and <code>power</code> are the platform <code>libm</code> on
-both servers, as for M2a's decay expression. Numbers a script <em>replies</em> went
+both servers, as for the decay expression. Numbers a script <em>replies</em> went
 through Lua's <code>tostring</code> (<code>%.14g</code>) and numbers it <em>stores</em> through
 <code>cmsgpack</code>, which packs an integral number as an integer; Postgres applies the
 same rules on the way out. The seeded probe compares both legs bit for bit:</p>
@@ -5176,7 +5318,7 @@ same rules on the way out. The seeded probe compares both legs bit for bit:</p>
 </code></pre></div>
 <p><strong><code>CyclicDecayField</code>.</strong> The clock is the field's column; the cycles and the
 pressure are columns beside it (the table above). Why parallel arrays and not
-the <code>jsonb</code> the plan first proposed: an amplitude is a <code>double</code> the score
+a single <code>jsonb</code> column: an amplitude is a <code>double</code> the score
 multiplies, it can be <code>NaN</code> or <code>±inf</code> (a declared <code>float("inf")</code> passes the
 field's validation), and a <code>jsonb</code> number is <code>numeric</code>, which holds neither
 and adds a text round trip to every row a ranking scans.</p>
@@ -5186,7 +5328,7 @@ and adds a text round trip to every row a ranking scans.</p>
   assembler's push path), and the assembler's score proxy:</li>
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">(</span><span class="k">SELECT</span><span class="w"> </span><span class="n">y</span><span class="p">.</span><span class="n">dc</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">y</span><span class="p">.</span><span class="n">p</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="p">(</span><span class="k">SELECT</span><span class="w"> </span><span class="n">z</span><span class="p">.</span><span class="n">d</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">z</span><span class="p">.</span><span class="k">c</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">dc</span><span class="p">,</span><span class="w"> </span><span class="n">z</span><span class="p">.</span><span class="n">p</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="p">(</span><span class="k">SELECT</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span><span class="o">&lt;</span><span class="n">DECAY_SCORE_LUA</span><span class="s1">'s expression, M2a&gt; AS d,</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span><span class="o">&lt;</span><span class="n">DECAY_SCORE_LUA</span><span class="s1">'s expression&gt; AS d,</span>
 <a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="s1">    (SELECT 0 + coalesce(sum(u.a * cos(6.283185307179586 * (&lt;now&gt; - coalesce(u.h, 0)) / u.p)</span>
 <a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="s1">                            ORDER BY u.o), 0)</span>
 <a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="s1">       FROM unnest(t.f__cycle_period, t.f__cycle_amp, t.f__cycle_phase)</span>
@@ -5200,12 +5342,12 @@ and adds a text round trip to every row a ranking scans.</p>
 </code></pre></div>
 <p>shown in its plain form. A row whose cycles or pressure lie outside the box
   where no step can leave the double range takes a clamped form instead:
-  each step through M2a's saturating helpers (plus a saturating divide, and
+  each step through the decay SQL's saturating helpers (plus a saturating divide, and
   <code>cos(±inf)</code> = <code>NaN</code> where Postgres would raise "input is out of range"),
   and the terms folded left to right by a recursive CTE with a saturating
   add. The script's unsplit <code>base * pow</code> equals <code>DECAY_SCORE_LUA</code>'s
   <code>sign * |base| * pow</code> once <code>+ cyclic</code> (at least <code>0</code>) has turned a <code>-0</code>
-  into <code>+0</code>, so the decay half is M2a's expression unchanged. The script has
+  into <code>+0</code>, so the decay half is the decay expression unchanged. The script has
   no validity gate (its <code>KEYS</code> are all taken), so a cyclic ranking ignores
   the gate on Postgres too (<code>TestCyclicDecayGatingGap</code>, and the "Known
   limitations" of <a href="../validity-and-supersession/">validity and supersession</a>).
@@ -5266,7 +5408,7 @@ where a plain <code>::float8</code> cast raises "value out of range"
 <p><strong><code>PredictionLedgerMixin</code>.</strong> The <code>$PL:{Class}:meta:{pk}</code> entry is a row of
 <code>popoto_prediction_ledger (model, member, entry jsonb, lua_packed)</code> and the
 <code>$PL:{Class}:errors:{part}</code> sorted set is <code>popoto_prediction_error (model,
-part, member, error)</code>, engine tables created on first use like the M4 ones.
+part, member, error)</code>, engine tables created on first use like the recipes' ones.
 <code>RESOLVE_PREDICTION_LUA</code> is one statement:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="k">WITH</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="p">(</span><span class="k">UPDATE</span><span class="w"> </span><span class="n">popoto_prediction_ledger</span>
 <a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">              </span><span class="k">SET</span><span class="w"> </span><span class="n">entry</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">entry</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">&lt;</span><span class="err">{</span><span class="n">resolved</span><span class="p">,</span><span class="w"> </span><span class="n">prediction_error</span><span class="p">,</span><span class="w"> </span><span class="n">resolution_mode</span><span class="p">,</span><span class="w"> </span><span class="n">resolved_at</span><span class="err">}</span><span class="o">&gt;</span><span class="p">,</span>
@@ -5290,7 +5432,7 @@ and that refusal is reproduced. <code>get_highest_errors</code> is <code>ZREVRAN
 (<code>limit &lt;= 0</code> counts from the end). Like the Redis keys, the ledger is not
 removed when the record is deleted. The entry is <code>jsonb</code> with this module's
 tags for what JSON lacks (<code>bytes</code>, a non-finite or exponent-form float, a
-<code>-0.0</code>, a non-<code>str</code> key), never msgpack (plan §8).</p>
+<code>-0.0</code>, a non-<code>str</code> key), never msgpack.</p>
 <p><strong><code>ObservationProtocol</code></strong> applies the whole effects matrix on Postgres now,
 in the order the Redis functions apply it and inside the batch's one
 transaction: <code>strengthen_cycle</code> and <code>resolve_pressure</code> on <code>acted</code>,
@@ -5299,7 +5441,7 @@ outcome but <code>deferred</code> (with its confidence feedback on the batch's
 connection, so it never waits on the batch's own row lock), and the
 pressure auto-discharge on <code>contradicted</code>, reading the confidence the batch
 just updated. Every ledger and cycle write takes the record-key lock the
-batch already holds, so the plan's one lock order is kept; a rolled-back
+batch already holds, so the one lock order is kept; a rolled-back
 batch resolves nothing.</p>
 <p><strong>Expiry and <code>popoto.batch()</code>.</strong> On a <code>Meta.ttl</code> model every long-tail
 statement that addresses the record row -- the ledger's <code>EXISTS</code> guard, the
@@ -5604,9 +5746,14 @@ the next section.</p>
 <td>Raise <code>max_edges</code> on the destination before the import if the source's sets are larger.</td>
 </tr>
 <tr>
-<td><code>WriteFilterMixin</code> priority, Valor's outcome telemetry</td>
-<td>Not exercised on Postgres by M5. Unverified.</td>
-<td>Verify before relying on it.</td>
+<td><code>WriteFilterMixin</code> priority tier</td>
+<td>Not stored on Postgres: the gate still decides whether a record is saved, but no priority set is kept, and <code>composite_score({"priority": …})</code> raises <code>BackendCapabilityError</code>.</td>
+<td>Priority sets do not carry over. Re-derive priority from the records if you need it.</td>
+</tr>
+<tr>
+<td>Memory telemetry (<code>AssemblyEvent</code>, outcomes included)</td>
+<td>Runs on Postgres; pinned on both legs by <code>tests/test_memory_telemetry.py</code>. A copy re-saves each event, so its <code>Meta.ttl</code> expiry restarts at the import.</td>
+<td>Name the model to copy it (<code>--model popoto.recipes.memory_telemetry:AssemblyEvent</code>); otherwise its keys are out of scope and Postgres starts empty.</td>
 </tr>
 </tbody>
 </table>
@@ -6141,8 +6288,8 @@ and grants nothing. A <code>REVOKE</code> you run stays revoked across restarts,
 next save fails with <code>MainRolePermissionError</code> instead of quietly regaining
 access. If the schema already existed when popoto first ran (you made it, or
 an earlier deploy without the flag did), grant <code>app</code> <code>USAGE</code> on it yourself.
-Tables created before the flag was turned on are never granted either: use
-the statements above.</p>
+Tables created before the flag was turned on are not granted: use the
+statements above.</p>
 <p>The Redis-to-Postgres migration tool follows the same setting. It reads
 <code>MigrationConfig(grant_main_role=...)</code>, falling back to
 <code>POPOTO_POSTGRES_GRANT_MAIN_ROLE</code>, and grants nothing otherwise.</p>
@@ -6150,8 +6297,9 @@ the statements above.</p>
 DDL and so grants nothing, whatever the flag says. Run the grants above.</p>
 <p>The reverse case is an existing deployment whose tables were created by
 <code>app</code>, before the maintenance DSN was set. There <code>REINDEX</code> and additive
-<code>ALTER TABLE</code> need the maintenance role to own the tables. On PostgreSQL 17
-and later, the <code>MAINTAIN</code> privilege is enough for <code>REINDEX</code>. Move the
+<code>ALTER TABLE</code> need the maintenance role to own the tables. The <code>MAINTAIN</code>
+privilege (PostgreSQL 17 added it; popoto needs 18 anyway) is enough for
+<code>REINDEX</code>. Move the
 ownership once, as a superuser (or a role with the privileges of both):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="c1">-- every object app owns in this database, not only popoto's</span>
 <a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="n">REASSIGN</span><span class="w"> </span><span class="n">OWNED</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">app</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="k">owner</span><span class="p">;</span>
@@ -6216,18 +6364,18 @@ caller transaction, the save has already committed by the time it runs, so
 it runs immediately. Pinned by
 <code>test_after_commit_callbacks_run_only_after_commit</code> and
 <code>tests/postgres/test_postgres_recipes.py::test_post_save_redis_side_effects_wait_for_commit</code>.</p>
-<p><strong>Before-commit hook (M5).</strong> <code>uow.before_commit(fn)</code> runs <code>fn</code> <em>inside</em> the
+<p><strong>Before-commit hook.</strong> <code>uow.before_commit(fn)</code> runs <code>fn</code> <em>inside</em> the
 transaction, just before its <code>COMMIT</code>, in registration order; an exception
 from it rolls the whole unit back and propagates. A save's or delete's
 <code>EventStreamMixin</code> entry is queued beside them with
 <code>uow.defer_stream_append(stream, fn)</code> inside a caller's <code>transaction()</code> or a
 <code>popoto.batch()</code>; those run after the <code>before_commit</code> callbacks, sorted by
 stream key, so the stream row locks are the last locks the transaction takes
-(after every record-key and row lock, the one lock order of §6), always in
+(after every record-key and row lock, the one lock order), always in
 the same order, and the entry commits or rolls back with the record. Pinned by
 <code>tests/postgres/test_postgres_journal.py::test_the_mutation_stream_is_written_only_after_commit</code>.</p>
-<p>Before #759 M2a's patch these reached the caller as raw psycopg
-<code>DeadlockDetected</code> / <code>SerializationFailure</code>. A statement whose completion is
+<p>Popoto maps psycopg's <code>DeadlockDetected</code> and <code>SerializationFailure</code> to
+<code>BackendRetryableError</code>; neither reaches the caller raw. A statement whose completion is
 unknown (SQLSTATE 40003) is not retryable -- it may have committed -- and is
 reported as <code>BackendUnavailableError</code>.</p>
 <h3 id="popotobatch-m5"><code>popoto.batch()</code> (M5)<a class="headerlink" href="#popotobatch-m5" title="Permanent link">&para;</a></h3>
@@ -6254,7 +6402,7 @@ already holds on a record it saved; a second save of an append-only key in
 one batch sees the first and is refused, as in a <code>transaction()</code>.</p>
 <p><strong>Stream entries and side effects follow the batch.</strong> A save's
 <code>EventStreamMixin</code> entry, a custom <code>_xadd_event</code> and a <code>Publisher</code>'s message
-join the batch's transaction (M5, <a href="#event-streams-and-pubsub-m5">Event streams and pub/sub</a>):
+join the batch's transaction (<a href="#event-streams-and-pubsub-m5">Event streams and pub/sub</a>):
 the entries are appended just before <code>execute()</code> commits, one per save, in
 save order, and the message is delivered at that <code>COMMIT</code>; a batch that
 <code>reset()</code>, a <code>with</code> block or a failed <code>execute()</code> rolled back appends and
@@ -6430,8 +6578,8 @@ below; <code>tests/postgres/test_postgres_ttl.py</code> runs a 40-shape slice.</
 <code>async_update_or_create</code>, the bulk twins, <code>async_delete_all</code>, and
 <code>Query.async_get</code>/<code>async_get_many</code>/<code>async_filter</code>/<code>async_all</code>/<code>async_count</code>/
 <code>async_keys</code> -- runs on the model's <strong>async backend</strong>, with its I/O on
-<code>psycopg.AsyncConnection</code> on the running event loop. Before M5 they ran the
-sync call in a worker thread. A Redis-bound model's <code>async_*</code> methods are
+<code>psycopg.AsyncConnection</code> on the running event loop, not in a worker
+thread. A Redis-bound model's <code>async_*</code> methods are
 unchanged, command for command (<code>scripts/trace_async_redis_wire.py</code>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends.postgres.aio</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_async_backend</span>
 <a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>
@@ -6465,14 +6613,14 @@ it from the coroutine:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">pipe</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">batch</span><span class="p">()</span>
 <a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="k">await</span> <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
 <a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a><span class="k">await</span> <span class="n">Note</span><span class="p">(</span><span class="n">owner</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">slug</span><span class="o">=</span><span class="s2">"2"</span><span class="p">)</span><span class="o">.</span><span class="n">async_save</span><span class="p">(</span><span class="n">pipeline</span><span class="o">=</span><span class="n">pipe</span><span class="p">)</span>
-<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a><span class="k">await</span> <span class="n">pipe</span><span class="o">.</span><span class="n">async_execute</span><span class="p">()</span>     <span class="c1"># COMMIT on the loop; then the XADDs, in order</span>
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a><span class="k">await</span> <span class="n">pipe</span><span class="o">.</span><span class="n">async_execute</span><span class="p">()</span>     <span class="c1"># COMMIT on the loop, stream entries included</span>
 </code></pre></div>
 <p><code>pipe.execute()</code> on such a batch raises <code>BridgeMisuseError</code> naming
 <code>async_execute()</code>; <code>await pipe.async_reset()</code> rolls it back. A plain
 <code>reset()</code> or leaving a <code>with</code> block schedules the rollback on the running
 loop as a task. If that rollback fails (its connection broke), the failure
 is logged once at WARNING; the server rolls back a transaction whose
-connection is gone. The Redis side effects wait for the commit exactly as in a
+connection is gone. After-commit hooks wait for the commit exactly as in a
 sync batch. <code>async_execute()</code> on any other batch (Redis commands, or a
 transaction a sync call opened) runs <code>execute()</code> in a worker thread.
 Pinned by <code>test_postgres_async.py::test_an_async_save_joins_a_batch_on_the_loop</code>.</p>
@@ -6495,20 +6643,20 @@ a connection, and one that waits longer than <code>PG_CONNECT_TIMEOUT_SECONDS</c
 raises <code>BackendBusyError</code>, not an outage (<a href="#topology-and-the-outage-contract">Topology</a>).</p>
 <p><strong>What still leaves the loop.</strong> An embedding provider is a sync API: its call,
 and the backfill's wait on it, run in a worker thread so they never block the
-loop. Redis I/O that a Postgres model's sync path makes (an
-<code>EventStreamMixin</code>'s <code>XADD</code>) is a blocking call on the loop thread.
-<code>async_check_indexes</code>/<code>async_clean_indexes</code>/<code>async_rebuild_indexes</code> stay on a
-worker thread on every backend: their bodies scan Redis index keys.</p>
+loop. A Postgres model's stream entries are rows written in the save's own
+transaction, so they make no Redis call. <code>async_check_indexes</code>,
+<code>async_clean_indexes</code> and <code>async_rebuild_indexes</code> run on the async backend on
+Postgres, and in a worker thread on Redis
+(<a href="#index-maintenance-and-transfer-m5">Index maintenance</a>).</p>
 <p><strong>Model hooks run on the event-loop thread.</strong> The bridge runs the whole sync
 method, so a model's overrides of <code>save()</code>, <code>pre_save()</code> and <code>delete()</code>, and
 its fields' <code>pre_save_validate</code>/<code>on_save</code>/<code>on_delete</code> hooks, run inside it, on
-the loop thread, with the loop running. Before M5 they ran in a worker thread.
-Two consequences:</p>
+the loop thread, with the loop running, not in a worker thread. Two
+consequences:</p>
 <ul>
 <li>A hook that calls <code>asyncio.run()</code> (or <code>loop.run_until_complete()</code>) now
   raises <code>RuntimeError: asyncio.run() cannot be called from a running event
-  loop</code>. It worked under the thread shim. <code>asyncio.get_running_loop()</code> now
-  succeeds inside a hook, so a hook that branches on it sees a loop.</li>
+  loop</code>. <code>asyncio.get_running_loop()</code> succeeds inside a hook, so a hook that branches on it sees a loop.</li>
 <li>A hook that blocks (<code>time.sleep</code>, <code>requests</code>, a sync client of another
   service) blocks the whole loop for that long, not one worker thread.</li>
 </ul>
@@ -6612,8 +6760,9 @@ corpus on both backends -- ages from fresh to centuries, the future, shared
 timestamps and pathological clocks; base scores of every type the script reads,
 from <code>5e-324</code> to <code>1e305</code>; signal sequences; partitions; staged and confirmed
 reads -- and compares <code>rank_decayed</code>, <code>top_by_decay</code>, confidence,
-read tracking and <code>composite_score</code> between the legs. Its classes and the
-two documented NaN rows are in the PR that introduced M2a;
+read tracking and <code>composite_score</code> between the legs. Its classes are in its
+docstring; the two documented NaN rows are the NaN decay-score rows of the
+<a href="#records-and-other-behaviour">divergence table</a>;
 <code>tests/postgres/test_memory_probe.py</code> runs a 40-shape slice of it in CI.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
@@ -6621,7 +6770,7 @@ two documented NaN rows are in the PR that introduced M2a;
 </code></pre></div>
 <p><strong><code>ObservationProtocol.on_context_used</code></strong> applies all five outcomes for a
 batch in one transaction: the batch's rows are locked <code>FOR UPDATE</code> in <code>_pk</code>
-order first (the plan's §6 lock order), then each instance's effects run in
+order first (the one lock order), then each instance's effects run in
 that order -- <code>touch</code> for <code>acted</code>, staged reads confirmed (<code>acted</code>, <code>used</code>) or
 discarded (the rest), the confidence signal (<code>acted</code>, <code>contradicted</code>), and its
 proposal resolved. A deadlock or serialization failure retries the whole
@@ -6629,17 +6778,17 @@ batch up to <code>Defaults.PG_TRANSACTION_RETRIES</code> times and then raises
 <code>BackendRetryableError</code>; inside a <code>transaction()</code> you pass as <code>pipeline</code> it
 raises that error at once, for you to retry.</p>
 <h2 id="documented-divergences">Documented divergences<a class="headerlink" href="#documented-divergences" title="Permanent link">&para;</a></h2>
-<p>Redis behaviour does not change to match Postgres in v2 M1 (plan gate (a)).
+<p>Redis behaviour does not change to match Postgres in 1.10.0.
 Where a test pins one of these, it pins both behaviours explicitly or carries a
 <code>redis_only(reason=...)</code> mark.</p>
 <h3 id="query-results">Query results<a class="headerlink" href="#query-results" title="Permanent link">&para;</a></h3>
 <p>Each row is pinned on both conformance legs: rows (i)–(xi) by a test in
-<code>tests/test_backend_parity_edges.py</code>, rows (xii)–(xx) (M1.1) in
+<code>tests/test_backend_parity_edges.py</code>, rows (xii)–(xx) in
 <code>tests/test_backend_parity_fields.py</code>. In rows (i)–(iv), (vi), (vii), (xii),
 (xiv), (xv) and (xviii)–(xx) Redis's result is a bug in its query layer,
 tracked in #771. The examples use <code>code</code>/<code>group</code> (<code>KeyField</code>), <code>rank</code>
 (<code>SortedField</code>), <code>note</code>/<code>hits</code> (unindexed) and <code>at</code> (an unindexed
-<code>DatetimeField</code>); the M1.1 rows use <code>IndexedField</code>s named by type (<code>s</code> str,
+<code>DatetimeField</code>); rows (xii)–(xx) use <code>IndexedField</code>s named by type (<code>s</code> str,
 <code>i</code> int, <code>f</code> float, <code>dec</code> Decimal, <code>dte</code> date), a <code>DateField</code> <code>day</code>, a
 <code>ListField</code> <code>lst</code>, a capped <code>ListField(max_length=3)</code> <code>cap</code>, a
 <code>TupleField</code> <code>pair</code> and a <code>Relationship</code> <code>author</code>/<code>owner</code>.</p>
@@ -6816,7 +6965,7 @@ Redis; Postgres matches the score <code>1</code>/<code>0</code>, and <code>None<
 <p>A lone unindexed-field <code>Q</code> (<code>filter(Q(hits=5))</code>), one lower plus one upper
 bound on a sorted field, and <code>values=</code> that projects the filtered field all
 agree on both backends.</p>
-<p>M1.1 cases that agree on both backends, and are pinned as such: a string
+<p>Field-type cases that agree on both backends, and are pinned as such: a string
 filter on an <code>IndexedField</code> of type <code>bool</code>, <code>date</code> or <code>datetime</code> that is the
 stored value's key string (<code>b="True"</code>, <code>dte="2026-01-01"</code>,
 <code>dtm="2026-01-01T12:00:00.000000Z"</code>; <code>"true"</code> matches neither); an aware
@@ -6838,7 +6987,7 @@ cast to the column's type.</p>
 <tr>
 <td><code>save(migrate_key=True)</code> that changes a key field</td>
 <td>rewrites the key and its index entries</td>
-<td>raises <code>BackendCapabilityError</code> (v2). Create the new record and delete the old one.</td>
+<td>raises <code>BackendCapabilityError</code>. Create the new record and delete the old one.</td>
 </tr>
 <tr>
 <td>Unit-of-work / bulk failure</td>
@@ -6858,7 +7007,7 @@ cast to the column's type.</p>
 <tr>
 <td>A Redis <code>pipeline=</code> handed to a Postgres model</td>
 <td>queued</td>
-<td>the write runs immediately, and the pipeline comes back untouched for the caller to execute. A <code>popoto.batch()</code> is the exception since M5: the write joins the batch's Postgres transaction (see <a href="#popotobatch-m5"><code>popoto.batch()</code></a>)</td>
+<td>the write runs immediately, and the pipeline comes back untouched for the caller to execute. A <code>popoto.batch()</code> is the exception: the write joins the batch's Postgres transaction (see <a href="#popotobatch-m5"><code>popoto.batch()</code></a>)</td>
 </tr>
 <tr>
 <td><code>atomic_increment</code> of an <code>IntField</code> by a non-integral delta (<code>hits=5</code>, <code>+1.5</code>)</td>
@@ -6906,12 +7055,12 @@ cast to the column's type.</p>
 <td><code>SchemaDriftError</code> at once, naming the lock the unit holds; the DDL would wait on the unit forever. Use the model once outside the unit first. Pinned: <code>tests/postgres/test_postgres_unit_connection.py::test_a_field_added_after_the_unit_used_its_table_is_refused_at_once</code>, and, for the auto-key shape #826 closed, <code>test_an_auto_key_table_bound_before_its_first_instance_needs_no_ddl</code></td>
 </tr>
 <tr>
-<td>An aware <code>time</code> in a <code>TimeField</code> / <code>SortedField(type=time)</code> (M1.1)</td>
+<td>An aware <code>time</code> in a <code>TimeField</code> / <code>SortedField(type=time)</code></td>
 <td>stored with its offset (<code>isoformat()</code>)</td>
 <td><code>ValueError</code> naming the field: a <code>time</code> column holds wall-clock time only. Use a <code>DatetimeField</code> when the offset matters. Pinned: <code>tests/postgres/test_postgres_fields.py::test_an_aware_time_is_refused</code></td>
 </tr>
 <tr>
-<td><code>push()</code> on a capped <code>ListField</code> whose record was deleted (M1.1)</td>
+<td><code>push()</code> on a capped <code>ListField</code> whose record was deleted</td>
 <td><code>LPUSH</code> recreates an orphan list key</td>
 <td>raises <code>ModelException</code> (<code>UPDATE</code> finds no row). After a successful <code>push()</code> the in-memory list is the stored list, not a local prepend. Pinned: <code>test_push_on_a_record_that_no_longer_exists_raises</code></td>
 </tr>
@@ -6921,347 +7070,347 @@ cast to the column's type.</p>
 <td>raise <code>BackendCapabilityError</code></td>
 </tr>
 <tr>
-<td><code>Model.idle_seconds</code> (M4)</td>
+<td><code>Model.idle_seconds</code></td>
 <td><code>OBJECT IDLETIME</code>: any read or write resets it (an <code>HGETALL</code> included)</td>
 <td>whole seconds since the row's last write or, with <code>AccessTrackerMixin</code>, its last confirmed read; an unconfirmed read does not reset it. Pinned: <code>tests/postgres/test_postgres_recipes.py::test_idle_seconds_counts_a_confirmed_read</code></td>
 </tr>
 <tr>
-<td><code>MemoryLifecycle</code> with a <code>KeyField</code> tier (M4)</td>
+<td><code>MemoryLifecycle</code> with a <code>KeyField</code> tier</td>
 <td>promotion is a key migration (<code>save(migrate_key=True)</code>)</td>
-<td>refused when you build it: <code>MemoryLifecycle(...)</code> raises <code>BackendCapabilityError</code> naming <code>IndexedField</code>, because every promotion would be a key migration, which v2 refuses. Declare the tier as an <code>IndexedField</code> on Postgres; promotion is then a plain save. Pinned: <code>test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres</code>, <code>test_lifecycle_promotes_a_non_key_tier</code>, and <code>tests/test_memory_lifecycle.py</code>, whose Postgres leg runs every test against <code>IndexedField</code>-tier twins of its models</td>
+<td>refused when you build it: <code>MemoryLifecycle(...)</code> raises <code>BackendCapabilityError</code> naming <code>IndexedField</code>, because every promotion would be a key migration, which the Postgres backend refuses. Declare the tier as an <code>IndexedField</code> on Postgres; promotion is then a plain save. Pinned: <code>test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres</code>, <code>test_lifecycle_promotes_a_non_key_tier</code>, and <code>tests/test_memory_lifecycle.py</code>, whose Postgres leg runs every test against <code>IndexedField</code>-tier twins of its models</td>
 </tr>
 <tr>
-<td>A question-queue delivery when another transaction holds a candidate's row (M4)</td>
+<td>A question-queue delivery when another transaction holds a candidate's row</td>
 <td>the script runs after the other write and sees it</td>
 <td><code>FOR UPDATE SKIP LOCKED</code>: that candidate is passed over for the next, as one another worker claimed would be. Pinned: <code>test_postgres_question_queue.py::test_a_candidate_another_writer_holds_is_skipped</code></td>
 </tr>
 <tr>
-<td>A proposal that duplicates two or more open candidates (M4)</td>
+<td>A proposal that duplicates two or more open candidates</td>
 <td>folds into the first in <code>QuestionCandidate.query.filter(agent_id=…)</code>'s order: set order</td>
 <td>the first in <code>_pk</code> order (the "order of results" row above, seen through dedup). Pinned on both legs by <code>tests/test_question_queue.py::TestPropose::test_a_proposal_duplicating_two_candidates_folds_into_the_first</code>, and counted as the queue probe's <code>dedup_order</code> class</td>
 </tr>
 <tr>
-<td><code>DefaultMemory</code>'s eviction counter (M4)</td>
+<td><code>DefaultMemory</code>'s eviction counter</td>
 <td>a Redis string <code>MemoryService.status()</code> reads</td>
-<td>a <code>popoto_counter</code> row: a Postgres-bound <code>DefaultMemory</code> needs no Redis, and the Redis-only <code>MemoryService</code> does not report it</td>
+<td>a <code>popoto_counter</code> row, which <code>MemoryService.status()</code> reads on Postgres: a Postgres-bound <code>DefaultMemory</code> needs no Redis</td>
 </tr>
 <tr>
-<td><code>DecisionLog.turn_summary</code> after a <code>pending</code> write over a terminal row (#822): an unclaimed non-<code>accept</code> verdict landing between <code>assemble</code>'s row read and its <code>write_pending</code></td>
+<td><code>DecisionLog.turn_summary</code> after a <code>pending</code> write over a terminal row: an unclaimed non-<code>accept</code> verdict landing between <code>assemble</code>'s row read and its <code>write_pending</code></td>
 <td><code>write_pending</code> is a plain save, so it overwrites the terminal row without taking back its <code>state:</code>/<code>reason:</code> counts, and the next terminal write treats <code>pending</code> as new: <code>reject</code> then <code>pending</code> then <code>accept</code> leaves <code>{state:reject: 1, state:accept: 1, ...}</code> for one <code>accept</code> row. The rows are right; the hash over-counts until <code>DecisionLog.rebuild_turn_summary(agent_id, turn_id)</code> recomputes it</td>
 <td>derived from the rows with <code>GROUP BY</code> on read: <code>{state:accept: 1, reason:accepted: 1}</code>, and <code>rebuild_turn_summary</code> returns the same. Pinned on both legs: <code>test_auditable_extraction.py::TestAssemblyAgainstTheRealJournal::test_a_pending_write_over_a_terminal_row_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td><code>ProvenanceJournal</code> with a caller <code>pipeline=</code> (M4)</td>
+<td><code>ProvenanceJournal</code> with a caller <code>pipeline=</code></td>
 <td>a Redis pipeline: the annotation and close are queued, <code>target_closed</code> is <code>None</code> and <code>close_index</code> names the close in <code>execute()</code>'s results</td>
 <td>the backend's unit of work only (anything else raises <code>ValueError</code>): the annotation and close run inside it, <code>target_closed</code> is known at the call, <code>close_index</code> is <code>None</code>. Pinned: <code>test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close</code></td>
 </tr>
 <tr>
-<td><code>AppendOnlyMixin</code>: two saves of one key in one unit of work (M4)</td>
+<td><code>AppendOnlyMixin</code>: two saves of one key in one unit of work</td>
 <td>both pass the guard (the documented intra-pipeline shape)</td>
 <td>the second is refused (the guard reads inside the transaction). Pinned: <code>test_postgres_recipes.py::test_append_only_sees_its_own_transaction</code></td>
 </tr>
 <tr>
 <td><code>async_get</code>/<code>async_filter</code>/<code>async_count</code>/…</td>
 <td>native <code>redis.asyncio</code> (reads); a worker thread (writes)</td>
-<td>the async backend: the sync call's Postgres I/O on <code>psycopg.AsyncConnection</code>, on the running loop, no thread (M5, <a href="#async-m5">Async</a>)</td>
+<td>the async backend: the sync call's Postgres I/O on <code>psycopg.AsyncConnection</code>, on the running loop, no thread (<a href="#async-m5">Async</a>)</td>
 </tr>
 <tr>
 <td><code>async_load(db_key=&lt;str&gt;)</code> (the type its signature names)</td>
-<td>raises <code>AttributeError: 'str' object has no attribute 'redis_key'</code>: the native path reads <code>db_key.redis_key</code> (pre-existing, before M5). The sync <code>load(db_key=&lt;str&gt;)</code> works</td>
+<td>raises <code>AttributeError: 'str' object has no attribute 'redis_key'</code>: the native path reads <code>db_key.redis_key</code> (a pre-existing Redis-path bug). The sync <code>load(db_key=&lt;str&gt;)</code> works</td>
 <td>runs the sync <code>load</code>: the record, or <code>None</code> when there is none. Pinned on both legs: <code>tests/test_async_parity.py::test_async_load_with_a_string_db_key_is_a_documented_divergence</code></td>
 </tr>
 <tr>
 <td><code>async_all</code> on an <code>AccessTrackerMixin</code> model</td>
 <td>stages a read per record (its native path hydrates through <code>_async_get_many_objects</code>), although <code>all()</code> is non-tracking by design</td>
-<td>does not stage, as <code>all()</code> does not (before M5 too)</td>
+<td>does not stage, as <code>all()</code> does not</td>
 </tr>
 <tr>
-<td><code>ExistenceFilter.might_exist</code> (M2b)</td>
+<td><code>ExistenceFilter.might_exist</code></td>
 <td>a bloom filter: false positives are possible, and a deleted record stays "seen"</td>
-<td>exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: <code>test_existence_filter.py::TestMembershipExactness</code></td>
+<td>exact: no false positives, and a deleted record is forgotten. Pinned on both legs: <code>test_existence_filter.py::TestMembershipExactness</code></td>
 </tr>
 <tr>
-<td><code>FrequencySketch.get_frequency</code> (M2b)</td>
+<td><code>FrequencySketch.get_frequency</code></td>
 <td>a count-min sketch: never under, may be over</td>
 <td>the exact count of saves (never decremented, like the sketch). Pinned: same class</td>
 </tr>
 <tr>
-<td><code>ExistenceFilter.fill_ratio</code> (M2b)</td>
+<td><code>ExistenceFilter.fill_ratio</code></td>
 <td>the fraction of set bits</td>
 <td>an estimate, <code>1 - e^(-k·n/m)</code> for the <code>n</code> distinct tokens stored</td>
 </tr>
 <tr>
-<td><code>save(update_fields=[…])</code> naming a <code>BM25Field</code>'s or <code>EmbeddingField</code>'s <strong>source</strong>, or only a <strong>scope</strong> column (M2b)</td>
+<td><code>save(update_fields=[…])</code> naming a <code>BM25Field</code>'s or <code>EmbeddingField</code>'s <strong>source</strong>, or only a <strong>scope</strong> column</td>
 <td>only the listed fields' hooks run, so the BM25 index keeps the old text or scope, and the vector (and its hash) the old text</td>
 <td>re-indexes and re-embeds on the source; moves the postings and the narrow vector row on a scope change. Pinned: <code>test_update_fields_naming_the_source_reindexes</code>, <code>test_update_fields_naming_the_source_re_embeds</code></td>
 </tr>
 <tr>
-<td><code>save(update_fields=[…])</code> naming a partitioned sorted field (<code>DecayingSortedField</code>, <code>SortedField(partition_by=…)</code>) but not its partition column, after an unsaved change to that column (M2b, #774 review)</td>
+<td><code>save(update_fields=[…])</code> naming a partitioned sorted field (<code>DecayingSortedField</code>, <code>SortedField(partition_by=…)</code>) but not its partition column, after an unsaved change to that column (#774 review)</td>
 <td>the field's hook reads the partition from the instance, so the member moves to the instance's partition sorted set while the hash keeps the old value: <code>filter(agent="B").top_by_decay()</code> finds a record whose <code>agent</code> is <code>"A"</code> (#771)</td>
 <td>the partition is the stored column, so the record stays where the row says; the BM25 postings, document length and narrow vector row follow the stored row too. Pinned: <code>test_backend_parity_memory.py::test_a_partial_save_with_an_unsaved_partition_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td><code>EmbeddingField</code> storage (M2b)</td>
+<td><code>EmbeddingField</code> storage</td>
 <td>a <code>.npy</code> file per record plus <code>_index.json</code>, and an in-process matrix cache</td>
 <td>the <code>vector(d)</code> column. No file, no cache, and <code>garbage_collect</code> / <code>sweep_stale_tempfiles</code> return <code>0</code>. The tests that assert files are <code>redis_only</code></td>
 </tr>
 <tr>
-<td>Vector-arm ties and precision (M2b)</td>
+<td>Vector-arm ties and precision</td>
 <td>equal similarities come back in directory-listing order; numpy float32 dot products</td>
 <td>ties by key, bytewise; pgvector's <code>&lt;=&gt;</code>. Both are float32 accumulations in a different order, so similarities differ by an amount that grows with the dimension. Measured maximum absolute difference over 10,000 vector-query pairs per dimension (clustered Gaussian vectors, PostgreSQL 18.6, pgvector 0.8.7): 2.5e-7 at 2-d, 2.3e-7 at 8-d, 5.3e-7 at 64-d, 8.9e-7 at 256-d, 1.2e-6 at 768-d, 1.4e-6 at 1024-d, 1.7e-6 at 1536-d (the #774 review measured 1.56e-6) and 2.3e-6 at 3072-d. So 1e-6 holds only up to about 256 dimensions; above that, near-ties can order differently</td>
 </tr>
 <tr>
-<td><code>ContentField</code> (M2b)</td>
+<td><code>ContentField</code></td>
 <td>a <code>$CF:</code> reference in the hash, with the content in a file store</td>
 <td>the content itself in a <code>text</code> column</td>
 </tr>
 <tr>
-<td><code>BM25Field.recompute_stats</code> (M2b)</td>
+<td><code>BM25Field.recompute_stats</code></td>
 <td>corrects the running <code>avgdl</code>'s floating drift</td>
 <td>a no-op: <code>N</code> and <code>avgdl</code> are counted live</td>
 </tr>
 <tr>
-<td>The <code>$BM25:</code> / <code>$EF:</code> / <code>$FS:</code> keys (M2b)</td>
+<td>The <code>$BM25:</code> / <code>$EF:</code> / <code>$FS:</code> keys</td>
 <td>the index, readable through the raw client</td>
 <td>not used: postings, length and token tables. The tests that read the keys are <code>redis_only</code></td>
 </tr>
 <tr>
-<td>A reload after <code>touch()</code> (M2a)</td>
+<td>A reload after <code>touch()</code></td>
 <td><code>touch</code> moves only the sorted-set score, so the hash, and a reload, keep the save-time value</td>
 <td>the clock is the field's column, so a reload sees the touched time. Pinned: <code>test_a_reload_after_touch_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td><code>DecayingSortedField.rank_decayed(zset_key, …)</code> (M2a, TD-40)</td>
+<td><code>DecayingSortedField.rank_decayed(zset_key, …)</code> (TD-40)</td>
 <td>ranks that sorted set</td>
 <td>raises <code>BackendCapabilityError</code> naming <code>top_by_decay</code>, the backend-neutral call</td>
 </tr>
 <tr>
-<td><code>composite_score({"priority": …})</code> (M2a)</td>
+<td><code>composite_score({"priority": …})</code></td>
 <td>ranks by the WriteFilter priority set</td>
-<td>raises <code>BackendCapabilityError</code>: the priority tier is a no-op on Postgres (plan §5 M2)</td>
+<td>raises <code>BackendCapabilityError</code>: the priority tier is a no-op on Postgres</td>
 </tr>
 <tr>
-<td><code>composite_score(similarity_boost=…, co_occurrence_boost=…)</code> (M2b, M4)</td>
+<td><code>composite_score(similarity_boost=…, co_occurrence_boost=…)</code></td>
 <td>injects each boost as an arm</td>
 <td>an arm on both. A key with no record cannot take a top-K slot on Postgres, where on Redis it takes one and is then dropped at hydration, so Redis can return fewer records (never in another order). Pinned: <code>test_backend_parity_memory.py::test_composite_co_occurrence_boost_is_an_arm_on_both_backends</code>; the graph probe's <code>composite_orphan_slot</code> class</td>
 </tr>
 <tr>
-<td>A NaN edge weight (<code>link(…, initial_weight=nan)</code> on a new edge, a NaN <code>strengthen</code> or <code>weaken_all</code> result) (M4)</td>
+<td>A NaN edge weight (<code>link(…, initial_weight=nan)</code> on a new edge, a NaN <code>strengthen</code> or <code>weaken_all</code> result)</td>
 <td><code>ZADD</code> refuses it: <code>ResponseError: value is not a valid float</code>. A symmetric write whose <em>second</em> script fails keeps the first script's write</td>
 <td><code>ValueError</code> with the same text, and the whole write rolls back. Pinned: <code>test_postgres_graph.py::test_a_nan_weight_raises_value_error</code></td>
 </tr>
 <tr>
-<td>A NaN weight in <code>CoOccurrenceField.import_state</code> (one that survives the <code>max_edges</code> truncation) (M4)</td>
+<td>A NaN weight in <code>CoOccurrenceField.import_state</code> (one that survives the <code>max_edges</code> truncation)</td>
 <td><code>DELETE</code> runs, then <code>ZADD</code> refuses the NaN: <code>ResponseError: value is not a valid float</code>, and the record's edge set is left <strong>empty</strong></td>
 <td>refused before any write: <code>ValueError</code> with the same text, and the edge set is unchanged. No NaN edge is stored on either (stored, Postgres would rank it above every weight and <code>least(NaN, cap)</code> is the cap). Pinned on both legs: <code>test_co_occurrence_field.py::TestImportStateAndErrorParity::test_a_nan_import_is_refused_a_documented_divergence</code>; the graph probe's <code>nan_import_keeps_set</code> class</td>
 </tr>
 <tr>
-<td><code>CoOccurrenceField.get_linked(…, limit=None)</code> (M4)</td>
+<td><code>CoOccurrenceField.get_linked(…, limit=None)</code></td>
 <td>redis-py refuses it client-side: <code>DataError: ``start`` and ``num`` must both be specified</code> (before any NaN-bound check)</td>
 <td><code>ValueError</code> with the same text, in the same order. Pinned on both legs: <code>test_get_linked_limit_none_a_documented_divergence</code>; the graph probe's <code>limit_none_error_type</code> class</td>
 </tr>
 <tr>
-<td>A NaN <code>min_weight</code> in <code>CoOccurrenceField.get_linked</code> (M4)</td>
+<td>A NaN <code>min_weight</code> in <code>CoOccurrenceField.get_linked</code></td>
 <td><code>ResponseError: min or max is not a float</code></td>
 <td><code>ValueError</code> with the same text. Pinned on both legs: <code>test_get_linked_nan_min_weight_a_documented_divergence</code>; the probe's <code>nan_error_type</code> class</td>
 </tr>
 <tr>
-<td>The order of <code>propagate()</code>'s dict, and so of equal weights in <code>graph_traversal.traverse()</code> (M4)</td>
+<td>The order of <code>propagate()</code>'s dict, and so of equal weights in <code>graph_traversal.traverse()</code></td>
 <td>Lua table iteration order</td>
 <td>weight descending, then key bytewise. The dict and its weights are equal on both; <code>traverse()</code> sorts by weight, so only ties can be listed in another order (the graph probe's <code>traverse_tie_order</code> class)</td>
 </tr>
 <tr>
-<td><code>link()</code>'s reply for a weight at or past <code>2**63</code> in magnitude (M4)</td>
+<td><code>link()</code>'s reply for a weight at or past <code>2**63</code> in magnitude</td>
 <td>the server's C <code>(long long)</code> cast of the Lua number: <code>-inf</code> and anything under <code>-2**63</code> reply <code>-2**63</code> on arm64 and x86-64; above <code>2**63</code> (only with a cap past it) arm64 saturates to <code>2**63 - 1</code>, x86-64 replies <code>-2**63</code></td>
 <td>the arm64 values</td>
 </tr>
 <tr>
-<td>Where a NaN decay score ranks (M2a)</td>
+<td>Where a NaN decay score ranks</td>
 <td>NaN (<code>0 * inf</code>: a <code>-inf</code> clock with above-prior confidence) makes the script's comparator inconsistent (<code>x &gt; nan</code> is always false), so <code>table.sort</code> places it arbitrarily and can misorder real scores around it</td>
 <td>real scores sorted, NaN last; every member's score is the same on both. Pinned: <code>test_where_a_nan_score_ranks_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td>A NaN decay score in <code>composite_score</code> (M2a)</td>
+<td>A NaN decay score in <code>composite_score</code></td>
 <td><code>rank_decayed</code> replies <code>nan</code> (<code>0 * inf</code>: a <code>-inf</code> clock with above-prior confidence) and the composite's <code>ZADD</code> refuses it: <code>ResponseError: value is not a valid float</code></td>
 <td>that arm scores 0 for the record, the value <code>ZUNIONSTORE</code> gives a NaN product. Pinned: <code>test_a_nan_decay_score_in_composite_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td>The confirmed access log (M2a)</td>
+<td>The confirmed access log</td>
 <td>a capped list of read timestamps (<code>$AT:…:access_log</code>)</td>
-<td>not kept: <code>access_count</code> and <code>last_accessed</code> are. <code>export_state</code> carries the counters only, and a Redis export's <code>access_log</code> is dropped on import (M5). The tests that read the log are <code>redis_only</code></td>
+<td>not kept: <code>access_count</code> and <code>last_accessed</code> are. <code>export_state</code> carries the counters only, and a Redis export's <code>access_log</code> is dropped on import. The tests that read the log are <code>redis_only</code></td>
 </tr>
 <tr>
-<td><code>raw_update()</code> (M5)</td>
+<td><code>raw_update()</code></td>
 <td><code>HSET</code> on each key, creating a partial hash for a key with no record; every index stays stale until <code>rebuild_indexes()</code></td>
 <td>an <code>UPDATE</code> of the rows that exist (a missing key is not created; the return value counts updated rows); unknown names and fields with no column (<code>BM25Field</code>…) raise <code>BackendCapabilityError</code>. B-trees follow the row at once; only companion tables (BM25 postings, narrow vectors, existence tokens) stay stale until <code>rebuild_indexes()</code>. Pinned: <code>tests/postgres/test_postgres_maintain.py</code></td>
 </tr>
 <tr>
-<td><code>check_indexes()</code> (M5)</td>
+<td><code>check_indexes()</code></td>
 <td>counts orphan index entries of five kinds</td>
 <td>those five are always <code>0</code> (they are the table's own B-trees); the dict adds <code>side_tables</code> (the companion-table drift) and <code>invalid_indexes</code>, plus <code>side_tables["graph_edges"]["dangling"]</code> (informational, not in <code>total</code>: Redis keeps such edges) (see <a href="#index-maintenance-and-transfer-m5">Index maintenance</a>)</td>
 </tr>
 <tr>
-<td><code>rebuild_indexes()</code> (M5)</td>
+<td><code>rebuild_indexes()</code></td>
 <td>deletes every index key and re-runs each field's <code>on_save</code>, so a <code>FrequencySketch</code> counts each record again and an <code>EmbeddingField</code> may call the provider; runs inside a batch</td>
 <td>rewrites only drifted companion rows, never counts a sketch twice and never calls the provider; then <code>REINDEX TABLE CONCURRENTLY</code> and <code>ANALYZE</code>, bounded by <code>PG_MAINTAIN_*</code> timeouts. Refused (<code>BackendCapabilityError</code>) inside an open <code>transaction()</code>/batch; a <code>REINDEX</code> that stops early raises <code>MaintenanceIncompleteError</code>, not an outage</td>
 </tr>
 <tr>
-<td><code>update_confidence(…, pipeline=uow)</code> with a Postgres <code>transaction()</code> (M2a)</td>
+<td><code>update_confidence(…, pipeline=uow)</code> with a Postgres <code>transaction()</code></td>
 <td>(a Redis pipeline queues the update and returns <code>None</code>)</td>
 <td>the update runs inside the transaction, so its value is returned and the attribute synced</td>
 </tr>
 <tr>
-<td><code>CyclicDecayField.rank_decayed(zset_key, …)</code> (M5)</td>
+<td><code>CyclicDecayField.rank_decayed(zset_key, …)</code></td>
 <td>ranks that sorted set with <code>CYCLIC_DECAY_LUA</code></td>
 <td>raises <code>BackendCapabilityError</code> naming <code>top_by_decay</code>, as <code>DecayingSortedField.rank_decayed</code> does</td>
 </tr>
 <tr>
-<td>A cycles entry written raw (<code>import_state</code>) (M5)</td>
+<td>A cycles entry written raw (<code>import_state</code>)</td>
 <td>Python msgpack keeps the importer's <code>float</code> for an integral period or baseline until the next save or adjustment re-packs it through cmsgpack</td>
 <td>cmsgpack's <code>int</code> at once. Values identical (probe class <code>cyclic_merge_raw_types</code>)</td>
 </tr>
 <tr>
-<td>A non-numeric cycle slot (a string period, a malformed entry) (M5)</td>
+<td>A non-numeric cycle slot (a string period, a malformed entry)</td>
 <td>storable; the merge falls back to the declaration with a warning, and the ranking may raise</td>
 <td>unrepresentable: <code>import_state</code> refuses a non-numeric slot with <code>ValueError</code></td>
 </tr>
 <tr>
-<td><code>strengthen_cycle</code> / <code>weaken_cycle</code> / <code>resolve_pressure</code> / <code>td_update</code> on a record that no longer exists, or has expired (M5)</td>
+<td><code>strengthen_cycle</code> / <code>weaken_cycle</code> / <code>resolve_pressure</code> / <code>td_update</code> on a record that no longer exists, or has expired</td>
 <td><code>resolve_pressure</code> and <code>td_update</code> write orphan companion or hash entries (<code>HSET</code>)</td>
 <td>nothing is written; <code>td_update</code> replies what the script replies from <code>Q = 0</code> (on an expired record that is the same reply: Redis's <code>HGET</code> of the expired key is <code>nil</code>)</td>
 </tr>
 <tr>
-<td>A non-numeric <code>strengthen_cycle</code> / <code>weaken_cycle</code> factor (<code>None</code>, <code>"abc"</code>, <code>True</code>) (M5)</td>
+<td>A non-numeric <code>strengthen_cycle</code> / <code>weaken_cycle</code> factor (<code>None</code>, <code>"abc"</code>, <code>True</code>)</td>
 <td>the script's multiplication fails: <code>ResponseError: user_script:15: attempt to perform arithmetic on local 'factor' (a nil value) …</code>, nothing written</td>
 <td><code>ValueError</code> with the same text, before anything is written. Pinned on both legs: <code>test_backend_parity_longtail.py::test_a_non_numeric_factor_is_refused_before_writing</code></td>
 </tr>
 <tr>
-<td><code>td_update</code> on a stored <code>Decimal('-0')</code> (M5)</td>
+<td><code>td_update</code> on a stored <code>Decimal('-0')</code></td>
 <td><code>tonumber("-0")</code> is <code>-0.0</code>, so with a target of <code>-0.0</code> the TD error is <code>-0.0 - -0.0</code> = <code>0.0</code></td>
 <td>a <code>numeric</code> has no <code>-0</code>: the value is stored as <code>0</code>, and the reply is <code>-0.0 - 0.0</code> = <code>-0.0</code>. The stored values compare equal. Pinned on both legs: <code>test_backend_parity_longtail.py::test_td_update_from_a_negative_zero_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td>A NaN <code>CyclicDecayField</code> score (M5)</td>
+<td>A NaN <code>CyclicDecayField</code> score</td>
 <td>the script's comparator is inconsistent around it (<code>x &gt; nan</code> is false): its sort may misplace real scores, or raise "invalid order function for sorting"</td>
-<td>NaN ranks last and every other score keeps its place (M2a's rule; probe class <code>cyclic_rank_nan</code>)</td>
+<td>NaN ranks last and every other score keeps its place (the decay ranking's rule; probe class <code>cyclic_rank_nan</code>)</td>
 </tr>
 <tr>
-<td><code>td_update(…, pipeline=uow)</code> with a Postgres <code>transaction()</code> (M5)</td>
+<td><code>td_update(…, pipeline=uow)</code> with a Postgres <code>transaction()</code></td>
 <td>(a Redis pipeline queues the script and returns <code>None</code>)</td>
 <td>the update runs inside the transaction, so the TD error is returned, as <code>update_confidence</code> does</td>
 </tr>
 <tr>
-<td>A NaN <code>td_update</code> value (M5)</td>
+<td>A NaN <code>td_update</code> value</td>
 <td>stored as <code>tostring(nan)</code>, <code>"nan"</code> or <code>"-nan"</code> by platform</td>
 <td><code>numeric</code> <code>NaN</code>, unsigned</td>
 </tr>
 <tr>
-<td>The key order of a resolved ledger entry (M5)</td>
+<td>The key order of a resolved ledger entry</td>
 <td>cmsgpack's Lua-table iteration order</td>
 <td>the entry's own order. Dicts compare equal</td>
 </tr>
 <tr>
-<td>A NaN prediction error (M5) (<code>inf</code> against a number, <code>inf - inf</code>)</td>
+<td>A NaN prediction error (<code>inf</code> against a number, <code>inf - inf</code>)</td>
 <td>the script marks the entry resolved, then its <code>ZADD</code> refuses the score (<code>ResponseError: value is not a valid float</code>), and Redis does not roll the <code>HSET</code> back: the entry reads resolved with a NaN error and no error-set member</td>
 <td>refused before anything is written: <code>ValueError</code> with the same text, and the entry stays unresolved. Pinned on both legs: <code>test_backend_parity_longtail.py::test_a_nan_prediction_error_is_a_documented_divergence</code>; the probe's <code>ledger_nan_error</code> class</td>
 </tr>
 <tr>
-<td>An integer in a ledger entry that rounds to <code>2**63</code> or more as a double (M5)</td>
+<td>An integer in a ledger entry that rounds to <code>2**63</code> or more as a double</td>
 <td>cmsgpack's conversion is undefined behaviour in C: the re-packed value differs by platform (<code>-2**63</code>, <code>-1</code>)</td>
 <td>the double</td>
 </tr>
 <tr>
-<td><code>execute_supersede(mode="open")</code> naming a member with no record (M3)</td>
+<td><code>execute_supersede(mode="open")</code> naming a member with no record</td>
 <td><code>ZADD NX</code> indexes the member anyway</td>
 <td>writes nothing: the interval is the record's row. Only a direct <code>execute_supersede</code> call can ask for it. Pinned: <code>tests/postgres/test_postgres_validity.py::test_mode_open_on_a_member_with_no_record_writes_nothing</code></td>
 </tr>
 <tr>
-<td>An open-claim pointer naming a record that does not exist (M3)</td>
+<td>An open-claim pointer naming a record that does not exist</td>
 <td>storable (a manual <code>SET</code>, or a partial <code>import_state</code>); <code>supersede</code> reads it as "no incumbent"</td>
 <td>unrepresentable: the pointer table's foreign key refuses it, and deleting a record cascades to its pointers. <code>import_state</code> for a record that is not stored raises <code>ValidityMemberAbsentError</code> (a <code>ValidityError</code>, so a <code>ValueError</code>) chained from the driver's <code>ForeignKeyViolation</code>; Redis's <code>import_state</code> never raises there. Pinned: <code>test_a_pointer_cannot_name_a_record_that_does_not_exist</code></td>
 </tr>
 <tr>
-<td><code>save_and_supersede</code> / <code>save_and_invalidate</code> whose close fails (M3)</td>
+<td><code>save_and_supersede</code> / <code>save_and_invalidate</code> whose close fails</td>
 <td><code>MULTI</code>/<code>EXEC</code> keeps the successor's save, and the typed error's text carries redis-py's <code>Command # N (...) of pipeline caused error:</code> prefix</td>
 <td>the whole unit rolls back, so the successor is not saved either; same exception type, and the text is the bare reply line</td>
 </tr>
 <tr>
-<td>A NaN <code>valid_from</code> on save (M3)</td>
+<td>A NaN <code>valid_from</code> on save</td>
 <td>the script's <code>ZADD</code> refuses it: <code>ResponseError: … value is not a valid float</code> from the pipelined <code>EVALSHA</code>, after <code>MULTI</code>/<code>EXEC</code> has written the record's hash, so the record exists with no interval</td>
 <td>refused before anything is written: <code>ModelException("value is not a valid float")</code> -- the same text, popoto's save error (as row (v) of the query table). Stored, a NaN start would sort above every float and hide the record from every gate. Pinned: <code>tests/test_validity_parity.py::TestNanInstants::test_a_nan_valid_from_on_save_is_refused</code></td>
 </tr>
 <tr>
-<td>A NaN <code>valid_from</code> in a direct <code>execute_supersede(mode="open")</code> call (M3)</td>
+<td>A NaN <code>valid_from</code> in a direct <code>execute_supersede(mode="open")</code> call</td>
 <td>the script's first <code>ZADD</code> refuses it: <code>ResponseError: value is not a valid float script: …</code>, nothing written. Every other NaN instant in <code>supersede</code> / <code>invalidate</code> / <code>execute_supersede</code> is refused on both legs alike -- <code>ValueError("value is not a valid float (&lt;instant&gt; is NaN)")</code> before the first write (#778, which on Redis used to close and chain the incumbent first); this one is left to the script because it is the save path's own refusal (the row above)</td>
 <td><code>ValueError</code> with the same text, nothing written. Pinned: <code>tests/test_validity_parity.py::TestNanInstants::test_a_nan_valid_from_in_mode_open_is_a_documented_divergence</code>; the shared refusal by <code>::test_a_nan_at_is_refused_and_writes_nothing</code> and <code>::test_a_nan_instant_in_execute_supersede_writes_nothing</code></td>
 </tr>
 <tr>
-<td>A NaN <code>as_of</code> / <code>validity__as_of</code> (M3)</td>
+<td>A NaN <code>as_of</code> / <code>validity__as_of</code></td>
 <td>the range reads (<code>filter</code>, <code>resolve_*_keys</code>, the composite mask) raise <code>ResponseError: min or max is not a float</code>; the decay ranking's gate excludes nothing</td>
 <td><code>QueryException</code> with the same text (as row (v) of the query table); the decay ranking excludes nothing</td>
 </tr>
 <tr>
-<td><code>SupersessionProtocol.supersede</code>/<code>invalidate</code> with the backend's <code>transaction()</code> as <code>pipeline</code> (M3)</td>
+<td><code>SupersessionProtocol.supersede</code>/<code>invalidate</code> with the backend's <code>transaction()</code> as <code>pipeline</code></td>
 <td>(a Redis pipeline queues the script; the closed key is unknown until <code>execute()</code>)</td>
 <td>runs inside the transaction: the closed key is returned and a typed error raised at the call. A Redis pipeline is refused with <code>ValueError</code> by <code>supersede</code>, <code>invalidate</code> and <code>save_and_*</code> alike: it cannot carry a Postgres write. Pinned: <code>test_a_redis_pipeline_is_refused_by_supersede_and_invalidate</code></td>
 </tr>
 <tr>
-<td><code>_ttl</code> / <code>_expire_at</code> on a model without <code>Meta.ttl</code> (M5)</td>
+<td><code>_ttl</code> / <code>_expire_at</code> on a model without <code>Meta.ttl</code></td>
 <td><code>EXPIRE</code>/<code>EXPIREAT</code> on the hash</td>
 <td><code>BackendCapabilityError</code> before anything is written: only a <code>Meta.ttl</code> model has <code>_expires_at</code> and the read filter, so a model that never expires keeps plans that never check. Declare <code>Meta.ttl</code>; an instance can opt out with <code>_ttl = None</code>. Pinned on both legs: <code>test_backend_parity_ttl.py::test_an_instance_ttl_without_meta_ttl_is_a_documented_divergence</code>, and <code>tests/postgres/test_postgres_ttl.py::test_an_instance_ttl_needs_meta_ttl</code></td>
 </tr>
 <tr>
-<td>A <code>_ttl</code> that is not a whole number (<code>1.5</code>) (M5)</td>
+<td>A <code>_ttl</code> that is not a whole number (<code>1.5</code>)</td>
 <td><code>MULTI</code>/<code>EXEC</code> writes the hash, then <code>EXPIRE</code> fails: <code>ResponseError: value is not an integer or out of range</code>, and the record stays with its old TTL, or none</td>
 <td><code>ModelException</code> with the same text, before anything is written. Pinned: <code>test_backend_parity_ttl.py::test_a_fractional_ttl_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td><code>count()</code> / <code>keys()</code> after a record expires (M5)</td>
+<td><code>count()</code> / <code>keys()</code> after a record expires</td>
 <td>count the class or index set, which keeps the expired member until a hydrating read (<code>get</code>, <code>filter</code>, <code>all</code>) purges it or <code>clean_indexes</code> runs</td>
 <td>count live rows only. Probe class <code>count_orphans</code>. Pinned: <code>test_backend_parity_ttl.py::test_count_after_expiry_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td>Rankings, search and membership after a record expires (M5)</td>
+<td>Rankings, search and membership after a record expires</td>
 <td>the sorted sets, BM25 postings, vector file and bloom keep the member: <code>top_by_decay(n=…)</code> can give a slot to it and return fewer than <code>n</code> after hydration drops it, BM25's <code>N</code>/<code>avgdl</code>/<code>df</code> count it, and <code>might_exist</code> stays <code>True</code></td>
 <td>the record is in none of them from the instant it expires: <code>n</code> live records, statistics over live documents, <code>might_exist</code> <code>False</code> once no live record holds the token. Pinned: <code>test_backend_parity_ttl.py::test_ranking_after_expiry_is_a_documented_divergence</code>, and each read in <code>tests/postgres/test_postgres_ttl.py::test_every_public_read_misses_an_expired_record</code></td>
 </tr>
 <tr>
-<td>State keyed by an expired record (M5): its confidence entry, validity intervals and open-claim pointers, staged reads, <code>CyclicDecayField</code> cycles and pressure</td>
+<td>State keyed by an expired record: its confidence entry, validity intervals and open-claim pointers, staged reads, <code>CyclicDecayField</code> cycles and pressure</td>
 <td>kept in their own keys until something cleans them; <code>ConfidenceField.update_confidence</code> refuses (its script checks the hash); <code>strengthen_cycle</code> / <code>weaken_cycle</code> still adjust the cycles entry, <code>export_state</code> returns it, and a save over the key merges with it</td>
 <td>gone with the row: reads see the seed / no interval / no pointer, and <code>chain</code> stops at it as at a hard delete; an adjustment finds no entry (<code>[]</code>), <code>export_state</code> returns <code>None</code>, and a save starts from the declaration. <code>update_confidence</code> refuses on both. Pinned on both legs: <code>test_backend_parity_ttl.py::test_state_keyed_by_an_expired_record_is_a_documented_divergence</code> and <code>test_backend_parity_longtail.py::test_cycle_state_of_an_expired_record_is_a_documented_divergence</code>; the validity half in <code>tests/postgres/test_postgres_ttl.py::test_validity_reads_miss_an_expired_record</code>. The prediction ledger is <strong>not</strong> in this row: its <code>EXISTS</code> guard misses an expired record on both legs (<code>record</code>/<code>resolve</code> raise <code>TypeError</code>, <code>auto_resolve</code> returns <code>None</code>), and its entries outlive the record on both, as they outlive a delete (<code>test_the_ledger_treats_an_expired_record_as_absent</code>)</td>
 </tr>
 <tr>
-<td>A save over an expired key (M5)</td>
+<td>A save over an expired key</td>
 <td><code>HSET</code> creates a new hash, but the expired record's companion state (confidence entry, BM25 postings, interval) is still there for the new one to inherit</td>
 <td>the expired row and its side rows are deleted first: a fresh record, confidence at the seed. Pinned on both legs: <code>test_backend_parity_ttl.py::test_a_save_over_an_expired_key_is_a_documented_divergence</code>; the postings in <code>tests/postgres/test_postgres_ttl.py::test_a_save_over_an_expired_key_writes_a_fresh_record</code></td>
 </tr>
 <tr>
-<td><code>atomic_increment</code> through an instance whose record expired (or was deleted) under it (M5)</td>
+<td><code>atomic_increment</code> through an instance whose record expired (or was deleted) under it</td>
 <td>the script <code>HSET</code>s the field onto a fresh key: a one-field hash with no TTL, outside the class set</td>
 <td><code>ModelException</code> (<code>… no longer exists</code>), as for any missing row. Probe class <code>increment_after_expiry</code>. Pinned: <code>test_backend_parity_ttl.py::test_increment_after_expiry_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td>The instant of expiry (M5)</td>
+<td>The instant of expiry</td>
 <td>a key is expired once the server's millisecond clock is <em>past</em> its expiry, so it is still there at that exact millisecond</td>
 <td>a row is expired once <code>_expires_at &lt;= now</code> (microseconds), so <code>ttl=0</code> is gone even under a frozen clock. Observable only with the frozen test clock: two real clocks never land on one instant</td>
 </tr>
 <tr>
-<td>Removing <code>Meta.ttl</code> from a model whose table has <code>_expires_at</code> (M5)</td>
+<td>Removing <code>Meta.ttl</code> from a model whose table has <code>_expires_at</code></td>
 <td>the next save simply stops issuing <code>EXPIRE</code>; the key keeps the TTL it had</td>
 <td><code>SchemaDriftError</code> (a column the model no longer declares): drop the column by hand, or keep <code>Meta.ttl</code> and set <code>_ttl = None</code> per instance. Pinned: <code>test_backend_parity_ttl.py::test_removing_meta_ttl_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td>A failed statement inside <code>popoto.batch()</code> (M5)</td>
+<td>A failed statement inside <code>popoto.batch()</code></td>
 <td><code>MULTI</code>/<code>EXEC</code> applies the other queued commands</td>
 <td>the whole batch rolls back; <code>execute()</code> raises <code>BackendError</code>. Pinned: <code>test_backend_parity_ttl.py::test_a_failed_batch_is_a_documented_divergence</code></td>
 </tr>
 <tr>
-<td>A <code>popoto.batch()</code> used for both Redis and Postgres writes (M5)</td>
+<td>A <code>popoto.batch()</code> used for both Redis and Postgres writes</td>
 <td>one store: a raw command and a model save share one <code>MULTI</code>/<code>EXEC</code></td>
 <td>refused with <code>BackendCapabilityError</code> before the second backend's first command, in either order. Pinned on both legs: <code>test_backend_parity_ttl.py::test_a_batch_of_raw_commands_and_model_writes_is_a_documented_divergence</code>; the reverse order in <code>tests/postgres/test_postgres_ttl.py::test_a_batch_refuses_to_mix_backends</code></td>
 </tr>
 <tr>
-<td>A write that waits on a record an open batch or <code>transaction()</code> on the same thread holds (M5): a nested batch writing the same record, or a plain save of a record saved in an open batch</td>
+<td>A write that waits on a record an open batch or <code>transaction()</code> on the same thread holds: a nested batch writing the same record, or a plain save of a record saved in an open batch</td>
 <td>a queued command holds no lock: both apply, in execution order</td>
 <td><code>BackendCapabilityError</code> before anything is sent (it could never be granted); the holding batch is unharmed. Another thread waits for the commit. Pinned: <code>tests/postgres/test_postgres_ttl.py::test_nested_batches_writing_one_record_are_refused_at_once</code>, <code>::test_a_write_outside_the_batch_to_a_record_in_it_is_refused</code></td>
 </tr>
@@ -7292,7 +7441,7 @@ one companion table:</p>
 </tr>
 </tbody>
 </table>
-<p><strong>Why not <code>tstzrange</code>.</strong> The plan proposed one <code>tstzrange</code> column. A
+<p><strong>Why not <code>tstzrange</code>.</strong> An alternative design is one <code>tstzrange</code> column. A
 <code>timestamptz</code> keeps microseconds, so the Redis score <code>1700000000.1234567</code>
 comes back <code>1700000000.123457</code>, two scores one ulp apart become one instant,
 and the gate's <code>invalid_at &lt;= as_of</code> flips for a close one ulp after <code>as_of</code>
@@ -7304,7 +7453,7 @@ allows (its check is <code>close &lt; start</code>): <code>tstzrange(t, t)</code
 close are both lost (and <code>lower &gt; upper</code> raises). A range <em>can</em> tell "no
 <code>invalid_at</code> recorded" from "<code>invalid_at</code> is <code>+inf</code>" (<code>upper_inf('[t,)')</code> is
 true, <code>upper_inf('[t,infinity)')</code> false), so that is not a reason; the columns
-spell it <code>NULL</code> vs <code>'Infinity'</code>. So the interval follows M2a's clock decision:
+spell it <code>NULL</code> vs <code>'Infinity'</code>. So the interval follows the decay clock's representation:
 <code>double precision</code> epoch seconds, bit-identical to the score.</p>
 <p><strong>The exclusion rule</strong> every gate applies -- <code>top_by_decay</code>'s ranking,
 <code>composite_score</code>'s mask, <code>ValidityField.resolve_excluded_keys</code>, the
@@ -7390,7 +7539,9 @@ invalidations, direct <code>execute_supersede</code> calls in every mode, <code>
 and deletes on both backends, comparing every return value and exception
 (type and text), the intervals, links, pointers and chains, and every gated
 read at the interval ends, <code>±inf</code>, <code>1e308</code> and NaN. Its documented classes are
-the M3 rows of the table above; <code>tests/postgres/test_validity_probe.py</code> runs a
+the validity rows (<code>execute_supersede</code>, open-claim pointers, <code>save_and_*</code>,
+NaN <code>valid_from</code> and <code>as_of</code>, <code>SupersessionProtocol</code>) of the
+<a href="#records-and-other-behaviour">divergence table</a>; <code>tests/postgres/test_validity_probe.py</code> runs a
 25-shape slice in CI.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/10<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
@@ -7400,13 +7551,13 @@ the M3 rows of the table above; <code>tests/postgres/test_validity_probe.py</cod
 <p><code>scripts/bench_backend_seam.py</code> measures the public API on both backends. It
 seeds 2,000 records, runs <code>ANALYZE</code>, and then makes three runs of 300
 iterations per operation, with the two backends interleaved within each run.
-The M1 targets are <code>Model.save()</code> p50 at most 2x Redis and <code>filter</code> +
-hydration p50 at most 1x Redis. M2a adds <code>rank_decayed</code> with a base score and
+The targets are <code>Model.save()</code> p50 at most 2x Redis and <code>filter</code> +
+hydration p50 at most 1x Redis; for <code>rank_decayed</code> with a base score and
 confidence modulation over all 2,000 records (top 10): Postgres p50 at most
 1x Redis, <code>DECAY_SCORE_LUA</code> against one <code>SELECT</code>; <code>top_by_decay</code> with
-hydration is measured beside it. M3 adds the same ranking with a validity gate
+hydration is measured beside it; and for the same ranking with a validity gate
 (a tenth of the records superseded, a twentieth not yet started): Postgres
-p50 at most 1x Redis. The PRs that introduced each milestone
+p50 at most 1x Redis. The PRs that introduced each target
 record the measured numbers and the environment they were taken on.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/14<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/postgres<span class="w"> </span><span class="se">\</span>
