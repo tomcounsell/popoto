@@ -381,8 +381,7 @@ def _cmd_export(args: Any) -> int:
         sys.stderr.write(f"popoto-transfer export: {exc}\n")
         return 1
 
-    from redis import exceptions as redis_exceptions
-
+    from ..backends.types import OUTAGE_ERRORS
     from ..exceptions import ModelException
     from ..models.query import QueryException
     from .export import export_records
@@ -408,7 +407,7 @@ def _cmd_export(args: Any) -> int:
     except (
         ModelException,
         QueryException,
-        redis_exceptions.ConnectionError,
+        *OUTAGE_ERRORS,
         TimeoutError,
         OSError,
         KeyboardInterrupt,
@@ -459,8 +458,7 @@ def _cmd_import(args: Any) -> int:
         sys.stderr.write(f"popoto-transfer import: could not open {in_path!r}: {exc}\n")
         return 1
 
-    from redis import exceptions as redis_exceptions
-
+    from ..backends.types import OUTAGE_ERRORS
     from ..exceptions import ModelException
     from ..models.query import QueryException
     from .import_ import import_records
@@ -477,7 +475,7 @@ def _cmd_import(args: Any) -> int:
     except (
         ModelException,
         QueryException,
-        redis_exceptions.ConnectionError,
+        *OUTAGE_ERRORS,
         TimeoutError,
         OSError,
     ) as exc:

@@ -471,6 +471,64 @@ def test_resolution_attribute_not_a_model_exits_one(capsys):
     assert "not a Popoto Model" in err
 
 
+# ---------------------------------------------------------------------------
+# Backend outages (#816) -- the one place this module stubs: an outage cannot
+# be produced on demand against a live server, so the transfer function is
+# replaced by one that raises it.
+# ---------------------------------------------------------------------------
+
+
+def _outage_cases():
+    import redis
+
+    from popoto.backends import BackendUnavailableError
+
+    return [
+        pytest.param(
+            BackendUnavailableError("postgres: connection refused"),
+            id="backend-unavailable",
+        ),
+        # redis-py's TimeoutError is not the builtin one the handler also
+        # names, so before #816 it escaped as a traceback.
+        pytest.param(
+            redis.exceptions.TimeoutError("read timed out"), id="redis-timeout"
+        ),
+    ]
+
+
+def _raiser(exc):
+    def _raise(*args, **kwargs):
+        raise exc
+
+    return _raise
+
+
+@pytest.mark.parametrize("outage", _outage_cases())
+def test_export_reports_an_outage_in_one_line(outage, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("popoto.transfer.export.export_records", _raiser(outage))
+    out_path = tmp_path / "out.jsonl"
+
+    exit_code = main(["export", "--model", MODEL_SPEC, "--out", str(out_path)])
+
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert err == f"popoto-transfer export: {outage}\n"
+    assert not out_path.exists()
+    assert not (tmp_path / "out.jsonl.part").exists()
+
+
+@pytest.mark.parametrize("outage", _outage_cases())
+def test_import_reports_an_outage_in_one_line(outage, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("popoto.transfer.import_.import_records", _raiser(outage))
+    in_path = tmp_path / "in.jsonl"
+    in_path.write_text("")
+
+    exit_code = main(["import", "--model", MODEL_SPEC, "--in", str(in_path)])
+
+    assert exit_code == 1
+    assert capsys.readouterr().err == f"popoto-transfer import: {outage}\n"
+
+
 def test_resolution_via_cwd_insertion(tmp_path, monkeypatch, capsys):
     """A helper module written to ``tmp_path`` resolves once CWD is on
     ``sys.path`` -- proving the console-script CWD gap fix (Technical

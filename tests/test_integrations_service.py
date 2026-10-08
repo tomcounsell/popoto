@@ -712,6 +712,35 @@ def test_feedback_degrades_quietly_when_redis_is_down(tmp_path, turn_id):
     assert service.feedback("s1", turn_id=turn_id) == 0
 
 
+def test_breaker_trips_on_a_backend_outage_and_short_circuits(tmp_path):
+    """A Postgres outage is an outage: one attempt, then no more round trips
+    (#816). ``BackendUnavailableError`` subclasses the builtin
+    ``ConnectionError``, so the Redis-only tuple never matched it and every
+    hook call retried a dead server."""
+    from unittest.mock import MagicMock
+
+    from popoto.backends import BackendUnavailableError
+
+    service = make_service(tmp_path)
+    assembler = service.memory.assembler
+    assembler.assemble = MagicMock(
+        side_effect=BackendUnavailableError("postgres: connection refused")
+    )
+
+    assert service.assemble("deploys", session_id=None) == ""
+    assert service._redis_down is True
+    assert assembler.assemble.call_count == 1
+
+    assert service.assemble("deploys again", session_id=None) == ""
+    assert assembler.assemble.call_count == 1
+
+
+def test_breaker_ignores_a_non_outage_failure(tmp_path):
+    service = make_service(tmp_path)
+    service._record_failure("assemble", ValueError("bad query"))
+    assert service._redis_down is False
+
+
 def test_failures_are_logged_and_counted(tmp_path):
     service = make_service(tmp_path)
     service._record_failure("assemble", RuntimeError("redis went away"))

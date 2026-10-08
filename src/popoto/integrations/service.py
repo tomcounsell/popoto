@@ -41,7 +41,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from ..redis_db import OUTAGE_ERRORS
+from ..backends.types import OUTAGE_ERRORS
 from .config import redact_url, PENDING_TTL_SECONDS, MemoryConfig, bind_connection
 
 logger = logging.getLogger("POPOTO.integrations")
