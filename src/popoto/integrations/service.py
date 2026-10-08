@@ -30,8 +30,18 @@ free; pruning an already-sent block would cost every token behind it.
 
 Failures are swallowed -- a memory error must never break a user's turn --
 but never silently. Each swallowed exception appends a line to the
-configured log file and increments a Redis counter that
-``popoto-memory doctor`` reads back.
+configured log file and increments a counter that ``popoto-memory doctor``
+reads back.
+
+**It runs on whichever backend** :class:`~popoto.recipes.DefaultMemory`
+**is bound to** (#814). On Redis the session state -- the pending-turn list,
+the injected-key set, the counters and the last-success timestamps -- is the
+raw keys named by the ``*_KEY_PREFIX`` constants below, exactly as before. On
+Postgres (``POPOTO_BACKEND=postgres``) the same state is typed engine tables
+reached through the backend's ``_harness`` and ``_counter`` adapters
+(``popoto/backends/postgres/recipes.py``), and the process sends Redis no
+command at all: no connection is bound, the database-0 guard (a Redis rule)
+does not apply, and ``status()`` probes the Postgres server instead.
 """
 
 import json
@@ -72,6 +82,17 @@ consumes one turn at a time; suppression needs the session-wide union."""
 LAST_EVENT_KEY_PREFIX = "$popoto_memory:last"
 """Redis key prefix for last-success timestamps, so a silently broken
 injection is visible in ``doctor`` without reading the log."""
+
+HARNESS_FIELD = "_harness"
+"""The Postgres backend's ``field_call`` adapter for the session state above
+(``popoto.backends.postgres.recipes.HARNESS_FIELD``). Spelled here rather than
+imported so the hook's import path never loads the Postgres backend package
+on a Redis-bound process."""
+
+COUNTER_FIELD = "_counter"
+"""The backend counter adapter the Postgres leg keeps its counters in, under
+the same key strings as the Redis counters, so the ``DefaultMemory``
+eviction counter (#596) is read back with them on both backends."""
 
 MAX_PENDING_TURNS = 32
 """Cap on queued unresolved turns per session. A harness that reads without
@@ -169,7 +190,14 @@ class MemoryService:
         # POPOTO_MEMORY_URL was set explicitly, so a test under the pytest
         # plugin, or a host application that configured its own connection,
         # keeps the one it chose.
-        bind_connection(self.config)
+        #
+        # Redis only (#814). On another backend there is no Redis connection
+        # to bind and no database 0 to refuse: binding would be the one Redis
+        # call a Postgres-bound hook makes. A disabled service skips the
+        # backend lookup too, so the kill switch works under any
+        # misconfiguration of POPOTO_BACKEND.
+        if not self.config.enabled or self.backend_name == "redis":
+            bind_connection(self.config)
 
     # -- lazy wiring ----------------------------------------------------
 
@@ -226,10 +254,73 @@ class MemoryService:
 
     @property
     def redis(self) -> Any:
-        """Popoto's shared Redis or Valkey client."""
+        """Popoto's shared Redis or Valkey client.
+
+        Used only when :attr:`backend_name` is ``"redis"``; nothing on the
+        Postgres path reads it.
+        """
         from ..redis_db import POPOTO_REDIS_DB
 
         return POPOTO_REDIS_DB
+
+    @property
+    def backend_name(self) -> str:
+        """The name of the backend the memory model is bound to.
+
+        ``DefaultMemory``'s ``Meta.backend`` when it names one, else the
+        process default (:func:`popoto.backends.default_backend_name`:
+        ``set_backend()``, else ``POPOTO_BACKEND``, else ``"redis"``). Resolved
+        without constructing or connecting to the backend, so it answers even
+        when the backend is unreachable or misconfigured; an unknown
+        ``POPOTO_BACKEND`` raises :class:`ValueError`, which every entry point
+        already reports as misconfiguration.
+        """
+        explicit = getattr(getattr(self.model, "_meta", None), "backend", None)
+        if explicit:
+            return str(explicit)
+        from ..backends import default_backend_name
+
+        return default_backend_name()
+
+    def _backend_label(self) -> str:
+        """:attr:`backend_name` for a message: never raises."""
+        try:
+            return self.backend_name
+        except Exception:
+            return os.environ.get("POPOTO_BACKEND", "").strip() or "unknown"
+
+    def _store(self) -> Any:
+        """The model's backend when it is not Redis, else ``None``.
+
+        ``None`` selects the raw-key Redis code below, which is unchanged
+        byte for byte; anything else is a backend whose ``field_call``
+        adapters hold the session state. Resolving it issues no Redis command
+        and dials nothing (``bind()`` only compiles the table spec); a
+        Postgres backend selected without ``POPOTO_POSTGRES_URL`` raises
+        :class:`~popoto.backends.BackendUnavailableError` here, which each
+        caller records as that operation's failure.
+        """
+        from ..backends.routing import non_redis_backend
+
+        return non_redis_backend(self.model)
+
+    def _state(self, store: Any, field: str, op: str, *args: Any) -> Any:
+        """One ``field_call`` on a non-Redis backend's state adapters."""
+        return store.field_call(self.model._meta.spec, field, op, *args)
+
+    def ping(self) -> None:
+        """Round-trip to the bound backend; raises when it is unreachable.
+
+        ``PING`` on Redis, :meth:`PostgresBackend.describe` on Postgres. Used
+        by ``popoto-memory demo`` before it seeds anything.
+        """
+        store = self._store()
+        if store is None:
+            self.redis.ping()
+            return
+        describe = getattr(store, "describe", None)
+        if describe is not None:
+            describe()
 
     # -- public operations ----------------------------------------------
 
@@ -503,40 +594,40 @@ class MemoryService:
 
         Returns:
             A dict with connection, configuration, retrieval mode, record
-            count, counters, and last-success timestamps.
+            count, counters, and last-success timestamps. ``backend`` names
+            the backend and ``reachable`` says whether its server answered
+            (and, on Postgres, meets the version floor). Both backends carry
+            the same key set: on Redis ``redis_url`` and ``redis_reachable``
+            are filled as they always have been and ``postgres`` is ``None``;
+            on Postgres ``postgres`` is a sub-dict (DSN summary, schema,
+            server version, pgvector, health) and ``redis_url`` /
+            ``redis_reachable`` are ``None``, never absent.
         """
-        info: Dict[str, Any] = {
-            "enabled": self.config.enabled,
-            "redis_url": redact_url(self.config.url),
-            "url_source": self.config.url_source,
-            "agent_id": self.config.agent_id,
-            "max_items": self.config.max_items,
-            "max_tokens": self.config.max_tokens,
-            "ingest": self.config.ingest,
-            "log_path": str(self.config.log_path),
-            "model": "DefaultMemory",
-            "redis_reachable": False,
-            "server": None,
-            "retrieval_mode": None,
-            "query_blind": None,
-            "record_count": None,
-            "counters": {},
-            "last_success": {},
-            "errors": [],
-        }
-
         try:
-            t0 = time.perf_counter()
-            server_info = self.redis.info("server")
-            info["redis_reachable"] = True
-            info["ping_ms"] = round((time.perf_counter() - t0) * 1000, 2)
-            name = "valkey" if server_info.get("valkey_version") else "redis"
-            version = server_info.get("valkey_version") or server_info.get(
-                "redis_version"
-            )
-            info["server"] = f"{name} {version}"
+            backend_name = self.backend_name
         except Exception as exc:
-            info["errors"].append(f"redis unreachable: {exc}")
+            backend_name = self._backend_label()
+            info: Dict[str, Any] = self._status_base(backend_name)
+            info["errors"].append(f"backend unresolved: {exc}")
+            return info
+
+        info = self._status_base(backend_name)
+        if backend_name == "redis":
+            try:
+                t0 = time.perf_counter()
+                server_info = self.redis.info("server")
+                info["redis_reachable"] = True
+                info["reachable"] = True
+                info["ping_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+                name = "valkey" if server_info.get("valkey_version") else "redis"
+                version = server_info.get("valkey_version") or server_info.get(
+                    "redis_version"
+                )
+                info["server"] = f"{name} {version}"
+            except Exception as exc:
+                info["errors"].append(f"redis unreachable: {exc}")
+                return info
+        elif not self._status_postgres(info):
             return info
 
         try:
@@ -545,6 +636,16 @@ class MemoryService:
             info["query_blind"] = mode == "composite"
         except Exception as exc:
             info["errors"].append(f"retrieval mode unresolved: {exc}")
+
+        if self.schema_pending(info):
+            # Every read below would create the schema and its tables (a
+            # Postgres table is made on first use), so a doctor pointed at the
+            # wrong database would quietly create popoto's objects there and
+            # then report them present. Nothing has been written, so nothing
+            # is lost by not reading: the counts are zero.
+            info["record_count"] = 0
+            info["log_tail"] = self.log_tail()
+            return info
 
         try:
             info["record_count"] = self.model.query.filter(
@@ -565,6 +666,180 @@ class MemoryService:
 
         info["log_tail"] = self.log_tail()
         return info
+
+    @staticmethod
+    def schema_pending(info: Dict[str, Any]) -> bool:
+        """Whether a :meth:`status` result describes a Postgres schema that
+        does not exist yet. A caller that would read through the model (the
+        doctor's latency probe) must skip the read then: on Postgres the
+        first read creates the schema and its tables, and ``doctor`` creates
+        nothing it was asked to check."""
+        pg = info.get("postgres")
+        return isinstance(pg, dict) and pg.get("schema_exists") is False
+
+    def _status_base(self, backend_name: str) -> Dict[str, Any]:
+        """The configuration half of :meth:`status`, before any probe.
+
+        On Redis the keys come in the order they always have (``redis_url``
+        second, ``redis_reachable`` before ``server``), with ``backend``,
+        ``reachable`` and ``postgres`` (``None``) appended, so ``doctor
+        --json`` on Redis only gains keys. Both shapes carry the same key set.
+        """
+        if backend_name == "redis":
+            return {
+                "enabled": self.config.enabled,
+                "redis_url": redact_url(self.config.url),
+                "url_source": self.config.url_source,
+                "agent_id": self.config.agent_id,
+                "max_items": self.config.max_items,
+                "max_tokens": self.config.max_tokens,
+                "ingest": self.config.ingest,
+                "log_path": str(self.config.log_path),
+                "model": "DefaultMemory",
+                "redis_reachable": False,
+                "server": None,
+                "retrieval_mode": None,
+                "query_blind": None,
+                "record_count": None,
+                "counters": {},
+                "last_success": {},
+                "errors": [],
+                "backend": backend_name,
+                "reachable": False,
+                "postgres": None,
+            }
+        # config.url and its source describe a Redis connection. On another
+        # backend the connection comes from that backend's own variable, so
+        # reporting the Redis one would point an operator at a setting
+        # nothing reads.
+        #
+        # ``redis_url`` / ``redis_reachable`` stay in the dict as ``None``
+        # rather than being dropped: a consumer of ``doctor --json`` written
+        # against the Redis shape indexes them unconditionally, and a
+        # missing key is a KeyError where ``None`` reads as "not applicable".
+        return {
+            "enabled": self.config.enabled,
+            "backend": backend_name,
+            "redis_url": None,
+            "url_source": (
+                "POPOTO_POSTGRES_URL" if backend_name == "postgres" else "unknown"
+            ),
+            "agent_id": self.config.agent_id,
+            "max_items": self.config.max_items,
+            "max_tokens": self.config.max_tokens,
+            "ingest": self.config.ingest,
+            "log_path": str(self.config.log_path),
+            "model": "DefaultMemory",
+            "redis_reachable": None,
+            "reachable": False,
+            "server": None,
+            "retrieval_mode": None,
+            "query_blind": None,
+            "record_count": None,
+            "counters": {},
+            "last_success": {},
+            "errors": [],
+        }
+
+    def _status_postgres(self, info: Dict[str, Any]) -> bool:
+        """Probe a non-Redis backend for :meth:`status`; ``True`` when it is
+        usable. Fills ``info["postgres"]`` with what the backend reports:
+        DSN summary (never the password), schema, server version and whether
+        popoto supports it, pgvector, and the backend's health record."""
+        pg: Dict[str, Any] = {
+            "dsn": None,
+            "schema": None,
+            "schema_exists": None,
+            "schema_tables": None,
+            "server_version": None,
+            "supported": None,
+            "pgvector": None,
+            "health": None,
+        }
+        info["postgres"] = pg
+        try:
+            store = self._store()
+        except Exception as exc:
+            info["errors"].append(f"{info['backend']} unavailable: {exc}")
+            return False
+        if store is None:  # pragma: no cover - backend_name said otherwise
+            info["errors"].append("backend resolved to redis unexpectedly")
+            return False
+        pg["dsn"] = getattr(store, "dsn_summary", None)
+        pg["schema"] = getattr(store, "schema", None)
+        describe = getattr(store, "describe", None)
+        try:
+            if describe is None:
+                raise RuntimeError(
+                    f"the {info['backend']!r} backend reports no server facts"
+                )
+            t0 = time.perf_counter()
+            facts = describe()
+            info["ping_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+        except Exception as exc:
+            info["errors"].append(f"{info['backend']} unreachable: {exc}")
+            pg["health"] = self._health_of(store)
+            return False
+        pg.update(
+            {
+                key: facts.get(key)
+                for key in (
+                    "schema",
+                    "schema_exists",
+                    "schema_tables",
+                    "server_version",
+                    "supported",
+                    "pgvector",
+                    "database",
+                )
+            }
+        )
+        pg["health"] = self._health_of(store)
+        info["server"] = f"postgresql {facts.get('server_version')}"
+        if not facts.get("supported"):
+            info["errors"].append(
+                f"postgres server {facts.get('server_version')} "
+                f"({facts.get('server_encoding')}) is not supported: popoto "
+                "needs PostgreSQL 18 or newer with server_encoding UTF8"
+            )
+            return False
+        info["reachable"] = True
+        return True
+
+    @staticmethod
+    def _health_of(store: Any) -> Optional[Dict[str, Any]]:
+        health = getattr(store, "health", None)
+        as_dict = getattr(health, "as_dict", None)
+        return as_dict() if as_dict is not None else None
+
+    def purge_integration_state(self) -> int:
+        """Delete the integration's own state for this agent id.
+
+        The pending handoffs, injected sets, counters and last-success
+        stamps -- never memory records, which the caller deletes through the
+        model. For a scratch agent id (``examples/harness_memory/verify.py``)
+        that should leave nothing behind: on Redis the keys under the agent's
+        prefixes, on Postgres the agent's rows in the harness tables and
+        ``popoto_counter``, which would otherwise never expire. Returns how
+        many keys or rows were removed.
+        """
+        agent = self.config.agent_id
+        counter_prefix = f"{COUNTER_KEY_PREFIX}:{agent}:"
+        store = self._store()
+        if store is not None:
+            return int(
+                self._state(store, HARNESS_FIELD, "purge", agent, counter_prefix)
+            )
+        removed = 0
+        for prefix in (
+            PENDING_KEY_PREFIX,
+            INJECTED_KEY_PREFIX,
+            COUNTER_KEY_PREFIX,
+            LAST_EVENT_KEY_PREFIX,
+        ):
+            for key in self.redis.scan_iter(match=f"{prefix}:{agent}:*", count=200):
+                removed += int(self.redis.delete(key))
+        return removed
 
     def log_tail(self, lines: int = 5) -> List[str]:
         """Return the last ``lines`` entries of the failure log.
@@ -648,6 +923,24 @@ class MemoryService:
                     continue
             if not keys:
                 return
+            store = self._store()
+            if store is not None:
+                # The same contract on a typed table: one entry per turn,
+                # tagged when the harness sent a turn id, deduplicated on it,
+                # capped and expiring with the session (the adapter's
+                # docstring has the statement).
+                self._state(
+                    store,
+                    HARNESS_FIELD,
+                    "pending_push",
+                    self.config.agent_id,
+                    session_id,
+                    keys,
+                    turn_id if (self.config.turn_keyed and turn_id) else None,
+                    MAX_PENDING_TURNS,
+                    PENDING_TTL_SECONDS,
+                )
+                return
             redis_key = self._pending_key(session_id)
             if self.config.turn_keyed and turn_id:
                 # Advisory, not atomic: two concurrent pushes for the same
@@ -702,7 +995,17 @@ class MemoryService:
         if not session_id:
             return None
         try:
-            members = self.redis.smembers(self._injected_key(session_id))
+            store = self._store()
+            if store is None:
+                members = self.redis.smembers(self._injected_key(session_id))
+            else:
+                members = self._state(
+                    store,
+                    HARNESS_FIELD,
+                    "injected_read",
+                    self.config.agent_id,
+                    session_id,
+                )
         except Exception as exc:
             self._record_failure("injected_read", exc)
             return None
@@ -729,6 +1032,18 @@ class MemoryService:
                 except Exception:
                     continue
             if not keys:
+                return
+            store = self._store()
+            if store is not None:
+                self._state(
+                    store,
+                    HARNESS_FIELD,
+                    "injected_mark",
+                    self.config.agent_id,
+                    session_id,
+                    keys,
+                    PENDING_TTL_SECONDS,
+                )
                 return
             redis_key = self._injected_key(session_id)
             pipe = self.redis.pipeline()
@@ -762,6 +1077,13 @@ class MemoryService:
         pop positionally: reporting against whatever sits at the head is
         exactly the misattribution this change removes.
         """
+        try:
+            store = self._store()
+            if store is not None:
+                return self._pop_pending_store(store, session_id, turn_id)
+        except Exception as exc:
+            self._record_failure("pending_pop", exc)
+            return []
         redis_key = self._pending_key(session_id)
         try:
             if turn_id and self.config.turn_keyed:
@@ -793,6 +1115,30 @@ class MemoryService:
             self._record_failure("pending_pop", exc)
             return []
 
+    def _pop_pending_store(
+        self, store: Any, session_id: str, turn_id: Optional[str]
+    ) -> List[str]:
+        """:meth:`_pop_pending` on a non-Redis backend, with the same three
+        outcomes: the turn's entry when one is staged (or nothing, when a
+        concurrent caller claimed it first), a recorded ``pending_miss`` when
+        the session holds tagged entries but none for this turn, and the
+        positional pop of the oldest entry otherwise."""
+        agent = self.config.agent_id
+        if turn_id and self.config.turn_keyed:
+            keys, hit, saw_tagged = self._state(
+                store, HARNESS_FIELD, "pending_claim", agent, session_id, turn_id
+            )
+            if hit:
+                return list(keys or [])
+            if saw_tagged:
+                self._record_failure(
+                    "pending_miss",
+                    LookupError(f"no pending entry for turn {turn_id}"),
+                )
+                return []
+        popped = self._state(store, HARNESS_FIELD, "pending_pop", agent, session_id)
+        return list(popped or [])
+
     # -- observability ---------------------------------------------------
 
     def _record_failure(self, operation: str, exc: BaseException) -> None:
@@ -803,9 +1149,20 @@ class MemoryService:
         client that just failed: when Redis itself is unreachable, the
         counter write also fails silently, which is exactly the case a
         user whose Redis moved needs the log line for.
+
+        The warning names the backend in use (#814), because a hook's stderr
+        is often all an operator sees and "Error 61 connecting to ..." does
+        not say which store was being dialled. A Postgres outage
+        (:class:`~popoto.backends.BackendUnavailableError`) trips the same
+        once-per-process short circuit a Redis connection error does.
         """
-        logger.warning("popoto memory %s failed: %s", operation, exc)
-        if isinstance(exc, OUTAGE_ERRORS):
+        backend = self._backend_label()
+        logger.warning(
+            "popoto memory %s failed (backend: %s): %s", operation, backend, exc
+        )
+        from ..backends.types import BackendUnavailableError
+
+        if isinstance(exc, OUTAGE_ERRORS) or isinstance(exc, BackendUnavailableError):
             self._redis_down = True
         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
         detail = " ".join(str(exc).split())
@@ -820,7 +1177,12 @@ class MemoryService:
         if self._redis_down:
             return
         try:
-            self.redis.incr(f"{COUNTER_KEY_PREFIX}:{self.config.agent_id}:{operation}")
+            key = f"{COUNTER_KEY_PREFIX}:{self.config.agent_id}:{operation}"
+            store = self._store()
+            if store is None:
+                self.redis.incr(key)
+            else:
+                self._state(store, COUNTER_FIELD, "increment", key, 1)
         except Exception:
             pass
 
@@ -833,6 +1195,19 @@ class MemoryService:
         """
         try:
             stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            store = self._store()
+            if store is not None:
+                agent = self.config.agent_id
+                self._state(
+                    store,
+                    HARNESS_FIELD,
+                    "touch",
+                    agent,
+                    operation,
+                    stamp,
+                    f"{COUNTER_KEY_PREFIX}:{agent}:{operation}_ok",
+                )
+                return
             pipe = self.redis.pipeline()
             pipe.set(
                 f"{LAST_EVENT_KEY_PREFIX}:{self.config.agent_id}:{operation}", stamp
@@ -845,6 +1220,10 @@ class MemoryService:
     def _read_counters(self) -> Dict[str, int]:
         prefix = f"{COUNTER_KEY_PREFIX}:{self.config.agent_id}:"
         out: Dict[str, int] = {}
+        store = self._store()
+        if store is not None:
+            counts = self._state(store, COUNTER_FIELD, "scan", prefix)
+            return {name[len(prefix) :]: int(v) for name, v in counts.items()}
         for key in self.redis.scan_iter(match=f"{prefix}*", count=100):
             name = key.decode() if isinstance(key, bytes) else str(key)
             value = self.redis.get(name)
@@ -857,6 +1236,11 @@ class MemoryService:
     def _read_last_events(self) -> Dict[str, str]:
         prefix = f"{LAST_EVENT_KEY_PREFIX}:{self.config.agent_id}:"
         out: Dict[str, str] = {}
+        store = self._store()
+        if store is not None:
+            return dict(
+                self._state(store, HARNESS_FIELD, "events", self.config.agent_id)
+            )
         for key in self.redis.scan_iter(match=f"{prefix}*", count=100):
             name = key.decode() if isinstance(key, bytes) else str(key)
             value = self.redis.get(name)
@@ -871,7 +1255,11 @@ class MemoryService:
         """Log the measured cost of leaving the default ingest mode, once."""
         marker = f"{COUNTER_KEY_PREFIX}:{self.config.agent_id}:heuristic_notice"
         try:
-            first = self.redis.setnx(marker, 1)
+            store = self._store()
+            if store is None:
+                first = self.redis.setnx(marker, 1)
+            else:
+                first = self._state(store, COUNTER_FIELD, "set_if_absent", marker, 1)
         except Exception:
             first = True
         if first:

@@ -53,6 +53,7 @@ the outage is logged at ERROR once per ``Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS``
 from __future__ import annotations
 
 import asyncio
+import atexit
 import contextlib
 import contextvars
 import datetime
@@ -317,6 +318,24 @@ def _schema_auto() -> bool:
 
 _pools: dict[tuple[str, int], Any] = {}
 _pools_lock = threading.Lock()
+_atexit_registered = False
+
+
+def _close_pools_at_exit() -> None:
+    """Close this process's pools while its threads can still run.
+
+    ``psycopg_pool`` starts a scheduler and worker threads per pool. Left to
+    interpreter finalization, the pool's ``__del__`` asks each to stop after
+    the threads can no longer be scheduled, then waits 5 s per thread for a
+    join that cannot happen: a short-lived process (the ``popoto-memory
+    hook``, a CLI, a script) took ~20 s to exit after its last statement
+    (#814). ``atexit`` runs before finalization, so the threads stop at once.
+    Never raises: a failure here must not turn a clean exit into a traceback.
+    """
+    try:
+        close_pools()
+    except Exception:  # pragma: no cover - best effort at shutdown
+        pass
 
 
 def _import_psycopg() -> Any:
@@ -408,6 +427,7 @@ def _pool_for(dsn: str) -> Any:
     """The process's pool for ``dsn``, created lazily (and again after a
     fork: a child never reuses the parent's sockets). Inside the async
     bridge, the running loop's pool instead (:mod:`.aio`)."""
+    global _atexit_registered
     bridge = _bridged()
     if bridge is not None:
         return bridge.pool(dsn)
@@ -446,6 +466,9 @@ def _pool_for(dsn: str) -> Any:
                 name=f"popoto-{os.getpid()}",
             )
             _pools[key] = pool
+            if not _atexit_registered:
+                atexit.register(_close_pools_at_exit)
+                _atexit_registered = True
     return pool
 
 
@@ -525,14 +548,29 @@ def _busy(exc: BaseException) -> Optional[BackendBusyError]:
 
 def close_pools() -> None:
     """Close every pool this process opened (tests, interpreter shutdown),
-    the async bridge's per-loop pools included."""
-    if _async_bridge is not None:
-        _async_bridge.close_all()
+    the async bridge's per-loop pools included.
+
+    The sync pools go first, and each close is independent: they are the
+    ones whose threads hold a process in interpreter shutdown, so a failure
+    closing the bridge's pools (or one sync pool) must not leave the rest
+    open. The first error is re-raised once everything has been tried."""
+    first: Optional[BaseException] = None
     with _pools_lock:
         for (dsn, pid), pool in list(_pools.items()):
-            if pid == os.getpid():
-                pool.close()
-            del _pools[(dsn, pid)]
+            try:
+                if pid == os.getpid():
+                    pool.close()
+            except Exception as exc:
+                first = first or exc
+            finally:
+                del _pools[(dsn, pid)]
+    if _async_bridge is not None:
+        try:
+            _async_bridge.close_all()
+        except Exception as exc:
+            first = first or exc
+    if first is not None:
+        raise first
 
 
 # -- health -------------------------------------------------------------------
@@ -1824,6 +1862,70 @@ class PostgresBackend(
     def close(self) -> None:
         close_pools()
         self.forget_tables()
+
+    @property
+    def dsn_summary(self) -> str:
+        """``host=… port=… dbname=… user=…`` for this backend's DSN: safe to
+        print, never the password or any other connection option."""
+        return _describe_dsn(self.dsn)
+
+    def describe(self) -> dict[str, Any]:
+        """What a diagnostic needs to know about this backend's server, in
+        one read-only round trip (#814, ``popoto-memory doctor``).
+
+        Returns ``server_version`` (the server's own string),
+        ``server_version_num``, ``supported`` (the version floor and the UTF8
+        encoding popoto requires), ``database``, ``user``, the configured
+        ``schema`` and whether it ``schema_exists`` with how many
+        ``schema_tables``, and ``pgvector`` (``None`` when the extension is not
+        installed, else its ``version``, ``schema`` and whether that schema is
+        ``on_search_path``). Never runs DDL and never creates the schema: a
+        doctor that created what it was asked to check would always report
+        it present.
+
+        Raises :class:`~popoto.backends.BackendUnavailableError` when the
+        server cannot be reached, and records it on :attr:`health` like any
+        other read.
+        """
+        rows, _ = self._run(
+            "SELECT current_setting('server_version'), "
+            "current_setting('server_version_num')::int, "
+            "current_setting('server_encoding'), current_database(), current_user, "
+            "EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = %s), "
+            "(SELECT count(*) FROM pg_tables WHERE schemaname = %s), "
+            "(SELECT e.extversion FROM pg_extension e WHERE e.extname = 'vector'), "
+            "(SELECT n.nspname FROM pg_extension e JOIN pg_namespace n "
+            "ON n.oid = e.extnamespace WHERE e.extname = 'vector'), "
+            "(SELECT n.nspname = ANY(current_schemas(false)) FROM pg_extension e "
+            "JOIN pg_namespace n ON n.oid = e.extnamespace "
+            "WHERE e.extname = 'vector')",
+            [self.schema, self.schema],
+        )
+        row = rows[0]
+        version_num = int(row[1])
+        encoding = str(row[2])
+        pgvector: Optional[dict[str, Any]] = None
+        if row[7] is not None:
+            pgvector = {
+                "version": str(row[7]),
+                "schema": row[8],
+                "on_search_path": bool(row[9]),
+            }
+        return {
+            "dsn": self.dsn_summary,
+            "server_version": str(row[0]),
+            "server_version_num": version_num,
+            "server_encoding": encoding,
+            "supported": version_num >= MIN_SERVER_VERSION_NUM
+            and encoding.upper() in ("UTF8", "UTF-8"),
+            "min_server_version_num": MIN_SERVER_VERSION_NUM,
+            "database": row[3],
+            "user": row[4],
+            "schema": self.schema,
+            "schema_exists": bool(row[5]),
+            "schema_tables": int(row[6] or 0),
+            "pgvector": pgvector,
+        }
 
     # -- B. records ------------------------------------------------------------
 

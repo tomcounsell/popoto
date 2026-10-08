@@ -773,8 +773,33 @@ tables created on first use, like `popoto_recall_proposal`:
 
 `DefaultMemory`'s eviction counts and pages its partition through the sorted
 reads above and records the eviction in `popoto_counter`, so a
-Postgres-bound `DefaultMemory` issues no Redis command; `MemoryService`
-(the Redis-only integration) does not see that counter.
+Postgres-bound `DefaultMemory` issues no Redis command, and `MemoryService`
+reads that counter back with its own (below).
+
+**The harness integration** (#814). `MemoryService` -- the `popoto-memory`
+hook, the MCP server and `doctor` -- follows `DefaultMemory`'s backend. On
+Postgres its session state is the `_harness` adapter's tables and its
+counters are `popoto_counter` rows under the same key strings the Redis
+counters use, so a Postgres-bound hook process binds no Redis connection and
+sends Redis no command:
+
+| State | Redis | Postgres |
+|---|---|---|
+| Read-to-write handoff | `$popoto_memory:pending:{agent}:{session}` list: `RPUSH`/`LTRIM`/`EXPIRE`, claimed by `LRANGE` + `LREM`, else `LPOP` | `popoto_harness_pending (agent, session, seq, turn, keys, expires_at)`: one message under the session's advisory lock; the claim is one `DELETE … RETURNING` |
+| Injection suppression | `$popoto_memory:injected:{agent}:{session}` set: `SADD`/`EXPIRE`, `SMEMBERS` | `popoto_harness_injected (agent, session, member, expires_at)` |
+| Last-success timestamps | `$popoto_memory:last:{agent}:{op}` strings | `popoto_harness_event (agent, name, stamp)` |
+| Counters | `$popoto_memory:counter:{agent}:{op}` strings, `INCR`, read by `SCAN` | `popoto_counter` rows, read by key prefix (`_counter` `scan`) |
+
+Each session's rows share one expiry, refreshed on every write as `EXPIRE`
+refreshes the Redis key, and every read filters expired rows; a write also
+deletes up to 20 expired rows of any session in passing, so abandoned
+sessions do not accumulate. `PostgresBackend.describe()` is the one
+read-only round trip `doctor` makes for the server facts (version and
+support, schema, pgvector, the DSN summary). Pinned by
+`tests/test_integrations_backends.py` (both legs) and
+`tests/postgres/test_postgres_harness.py`, which runs the real hook and
+`doctor` subprocesses with Redis unreachable and a connect guard that
+records any Redis dial.
 `MemoryLifecycle.tombstone()` archives the record as `restore()` will decode
 it: on Redis the raw hash bytes, on Postgres the stored row encoded the way a
 Redis save would write it, so `decode_popoto_model_hashmap` restores it

@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Complete
 type: bug
 appetite: Medium
 owner: Solo dev
@@ -913,24 +913,29 @@ boundaries.
 | No new Redis import in integrations side state | `grep -n "POPOTO_REDIS_DB\|get_REDIS_DB" src/popoto/integrations/service.py` | output contains only the `redis` property |
 | Doctor on Postgres | `POPOTO_BACKEND=postgres POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres POPOTO_POSTGRES_SCHEMA=harness_verify popoto-memory doctor --json` | output contains "pgvector" |
 
-## Open Questions
+## Resolved Questions
 
-1. **Hook connect timeout on Postgres.**
-   - The hook process inherits `PG_CONNECT_TIMEOUT_SECONDS = 5.0`, against
-     Redis's 1.0 s (`HOOK_SOCKET_TIMEOUT_SECONDS`).
-   - When Postgres is down, every prompt therefore stalls up to 5 s before
-     the hook fails open.
-   - Should the hook process pin a shorter connect timeout (for example 1.0 s,
-     as a magic constant mirroring the Redis hook) in this PR?
-   - Recommendation: yes. It is a few lines, and it applies only in the hook
-     entry point, not to the library default.
-2. **`doctor --json` key shape on Postgres.**
-   - Proposed: add `backend`, `reachable`, `server` and `postgres`, and *omit*
-     `redis_url` / `redis_reachable` on Postgres rather than reporting
-     `false`.
-   - Is any consumer known to read `redis_reachable` unconditionally? Only
-     the in-repo MCP server and `cli.py` do, and both are updated here.
-3. **Ordering with #816.**
-   - Build this on top of #816 once it merges (clean), or proceed in parallel
-     with the local outage widening and rebase?
-   - Recommendation: proceed in parallel. The overlap is one expression.
+The maintainer answered all three (2026-10-08). The build applied each answer.
+
+1. **Hook connect timeout on Postgres: yes.**
+   - The hook entry point pins the connect timeout at
+     `HOOK_SOCKET_TIMEOUT_SECONDS` (1.0 s) as a magic constant. The library
+     default is unchanged.
+   - Review then found that the 30 s statement timeout had the same problem
+     under a held lock. The hook caps that at the same 1 s budget
+     (`cli._bound_postgres_waits`).
+   - Tests: a silent listener (accepts TCP, never answers) and a table held
+     under `ACCESS EXCLUSIVE`. Each fails open within budget, and each test
+     fails without its cap (≈5 s and ≈30 s respectively).
+2. **`doctor --json` key shape: one key set on both backends.**
+   - `backend`, `reachable`, `server` and `postgres` appear on both backends.
+     `postgres` is `null` on Redis.
+   - `redis_url` and `redis_reachable` are **not** omitted on Postgres. They
+     are `null` there and unchanged on Redis.
+   - The shape is documented as a table in `docs/features/harness-integration.md`
+     ("On Postgres").
+3. **Ordering with #816: proceed in parallel.**
+   - The local outage fallback stays: `_record_failure` also treats a
+     `BackendUnavailableError` as an outage.
+   - If #816 (PR #825) merges first, rebase onto it and drop the fallback.
+     When #814 merged, #825 was still open.

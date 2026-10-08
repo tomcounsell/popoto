@@ -244,7 +244,8 @@ def _save(service: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
     if not keys:
         return _error(
             "Nothing was saved. Run `popoto-memory doctor` to see why "
-            "(most often: Redis unreachable, or POPOTO_MEMORY_ENABLED=0)."
+            "(most often: the backend is unreachable, or "
+            "POPOTO_MEMORY_ENABLED=0)."
         )
     return _ok(f"Saved {len(keys)} memory record(s).", {"keys": keys})
 
@@ -266,13 +267,22 @@ def _status(service: Any) -> Dict[str, Any]:
     from .service import NON_FAILURE_COUNTERS
 
     info = service.status()
-    if not info.get("redis_reachable"):
+    if not info.get("reachable"):
+        if info.get("backend", "redis") == "redis":
+            return _error(
+                f"Memory is unavailable: cannot reach {info['redis_url']}. "
+                "Start Redis or Valkey, or set POPOTO_MEMORY_URL."
+            )
+        pg = info.get("postgres") or {}
+        reason = "; ".join(info.get("errors") or []) or "unknown error"
         return _error(
-            f"Memory is unavailable: cannot reach {info['redis_url']}. "
-            "Start Redis or Valkey, or set POPOTO_MEMORY_URL."
+            f"Memory is unavailable on the {info.get('backend')} backend "
+            f"({pg.get('dsn') or 'no DSN configured'}): {reason}. "
+            "Check POPOTO_POSTGRES_URL, or run `popoto-memory doctor`."
         )
     lines = [
         f"agent: {info['agent_id']}",
+        f"backend: {info.get('backend', 'redis')}",
         f"server: {info['server']}",
         f"retrieval: {info['retrieval_mode']}"
         + (" (QUERY-BLIND)" if info.get("query_blind") else ""),
