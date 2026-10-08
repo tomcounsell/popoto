@@ -216,7 +216,10 @@ coroutines and the rules for mixing sync and async calls.
 An unreachable server, or one that refuses the connection, raises
 `BackendUnavailableError` (from `popoto.backends`). The message carries the
 server's own reason, for example `FATAL: database "agents" does not exist`,
-and never the DSN's password. `get_backend(Model).health` counts consecutive
+and never the DSN's password. A DSN that does not parse (an unencoded `%`
+in a URL password, an unquoted space in a keyword value) is refused as
+`invalid connection string` before any connection is attempted, without
+echoing its text. `get_backend(Model).health` counts consecutive
 failures and dropped writes. See [the outage
 contract](../features/postgres-backend.md#topology-and-the-outage-contract).
 

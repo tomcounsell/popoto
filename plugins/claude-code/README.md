@@ -16,7 +16,7 @@ install that first.
 
 ```bash
 pip install 'popoto[mcp]'
-popoto-memory doctor          # confirms Redis, model, retrieval mode
+popoto-memory doctor          # confirms the backend, model, retrieval mode
 claude plugin marketplace add tomcounsell/popoto
 claude plugin install popoto-memory@popoto
 ```
@@ -43,7 +43,7 @@ claude plugin uninstall popoto-memory@popoto
 pip uninstall popoto
 ```
 
-Your memories stay in your Redis until you delete them.
+Your memories stay in your Redis, Valkey or PostgreSQL database until you delete them.
 
 ## Configuration
 

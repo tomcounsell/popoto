@@ -39,10 +39,10 @@ SERVER_NAME = "popoto-memory"
 """Server name as it appears in harness MCP configuration."""
 
 SERVER_INSTRUCTIONS = (
-    "Persistent memory backed by the user's own Redis or Valkey. Recall and "
-    "capture already run automatically on every turn through hooks; use "
-    "these tools only for deliberate acts: searching for something specific "
-    "mid-task, saving a fact worth keeping, correcting a memory that proved "
+    "Persistent memory backed by the user's own Redis, Valkey or PostgreSQL. "
+    "Recall and capture already run automatically on every turn through "
+    "hooks; use these tools only for deliberate acts: searching for "
+    "something specific mid-task, saving a fact worth keeping, correcting a memory that proved "
     "wrong, or checking that memory is healthy."
 )
 

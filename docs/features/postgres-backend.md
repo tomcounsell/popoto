@@ -1662,7 +1662,8 @@ Everything a Redis → Postgres copy loses or changes when it goes through
 | `DataFrameField` | Refused on Postgres. | Keep those models on Redis. |
 | `EventStreamMixin` | The record crosses; the event stream does not (the format carries records, not the stream or its consumer groups). | Out of scope for the copy. |
 | `CoOccurrenceField` | An import truncates each record's edge set to the destination field's `max_edges`, on both backends. Edges beyond it are dropped. | Raise `max_edges` on the destination before the import if the source's sets are larger. |
-| `WriteFilterMixin` priority, Valor's outcome telemetry | Not exercised on Postgres by M5. Unverified. | Verify before relying on it. |
+| `WriteFilterMixin` priority | The priority tier is a no-op on Postgres, so there is nothing to carry (the migration tool counts `$WF` keys as not carried), and `composite_score({"priority": …})` raises `BackendCapabilityError` there (see the divergences below). | Nothing to copy. Rank by another signal on Postgres. |
+| Outcome telemetry (`AssemblyEvent`, `report_outcomes()`, `TelemetryAnalyzer`) | Runs on Postgres and is verified there since #809: every test in `tests/test_memory_telemetry.py` runs on both legs (see **Memory telemetry** above). Its events are `Meta.ttl` records, so the per-record TTL row above applies. | Nothing beyond the TTL row. |
 
 The one-off copy itself is
 [Redis to Postgres Migration](redis-to-postgres-migration.md): it serves the

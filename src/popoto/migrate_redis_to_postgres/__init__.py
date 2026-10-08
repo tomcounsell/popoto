@@ -1528,6 +1528,10 @@ def _qi(name: str) -> str:
 def _connect(dsn: str) -> Any:
     import psycopg
 
+    from ..backends.postgres import _require_parseable_dsn
+
+    # libpq's parse error for a malformed DSN quotes the password fragment.
+    _require_parseable_dsn(dsn)
     return psycopg.connect(dsn, autocommit=False)
 
 
@@ -1689,6 +1693,9 @@ def _release_schema_lock(conn: Any, schema: str) -> None:
 def _connect_autocommit(dsn: str) -> Any:
     import psycopg
 
+    from ..backends.postgres import _require_parseable_dsn
+
+    _require_parseable_dsn(dsn)
     return psycopg.connect(dsn, autocommit=True)
 
 
