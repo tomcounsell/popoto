@@ -1,29 +1,32 @@
 # Postgres Backend (v2)
 
-Popoto v2 keeps one model API with two native storage backends behind it
+Popoto keeps one model API with two native storage backends behind it
 ([#759](https://github.com/tomcounsell/popoto/issues/759)). Redis keeps
 today's hashes, index sets and Lua. Postgres stores each model in a typed
 table with native indexes, and it is where new capabilities land.
 
-This page covers the first Postgres milestones: **plain models** (M1),
-**plain-field breadth** (M1.1), the **ranking and memory-state half of
-Valor's slice** (M2a), **search** (M2b), **`ContextAssembler`** (M2c), the
-**validity axis** (M3), the **co-occurrence graph and the remaining
-recipes** (M4), and M5: **record expiry** (`Meta.ttl`), **`popoto.batch()`**
-and the **long-tail memory fields** (`CyclicDecayField`, `TDValueField` and
-`PredictionLedgerMixin`).
-That means records, queries, `Q` objects, ordering, counting and atomic
-increments for the field types listed below, including indexed, unique, tag,
-relationship and collection fields, plus decay ranking, confidence
+Postgres support ships in popoto 1.10.0. It is opt-in: a model uses Postgres
+only when you select it (below), and every model that does not keeps running
+on Redis exactly as before. Redis behaviour is unchanged unless noted.
+
+On Postgres you get the same model API: records, queries, `Q` objects,
+ordering, counting and atomic increments for every field type listed under
+[Supported fields](#supported-fields-m1-m11-m2a-m2b-m3-m4-m5), including
+indexed, unique, tag, relationship, collection, date/time, bytes and geo
+fields. The agent-memory layer runs there too: decay ranking, confidence
 (partitioned too), read tracking, the write filter, `ObservationProtocol` and
 `composite_score`, BM25 keyword search, pgvector embeddings, exact membership
-filters, fusion and `recall()`, the assembler over all of them,
+filters, fusion and `recall()`, `ContextAssembler` over all of them,
 `ValidityField` with `SupersessionProtocol`, `CoOccurrenceField` with its
-graph expansion, the remaining recipes and mixins on top, records that
-expire, batches that commit as one transaction, and cyclic decay, TD values
-and the prediction ledger. Models that use other fields stay on Redis until
-their milestone. Popoto refuses them when you declare them, so they never
-fail halfway through.
+graph expansion, the recipes and mixins on top, `CyclicDecayField`,
+`TDValueField` and the prediction ledger. So do the operational pieces:
+record expiry (`Meta.ttl`), `transaction()` and `popoto.batch()`, async
+methods, event streams and pub/sub, and index maintenance and transfer.
+
+The one field Postgres does not store is `DataFrameField`. Popoto refuses a
+model that uses it when you declare it, so it never fails halfway through.
+That refusal and the other places where Postgres behaves differently from
+Redis are collected under [Known limitations](#known-limitations).
 
 ## Selecting the backend
 
@@ -75,9 +78,7 @@ grants](#two-roles-an-application-role-and-an-owner-role).
 a `set_backend` instance is the backend its own `name` resolves to, so a
 Postgres-pinned model, `resolve_stream_backend(backend="postgres")` and a
 publish joining a Postgres transaction all use it, and `POPOTO_POSTGRES_URL`
-is not consulted for them. (Before #816 a pinned model ignored the instance
-and built its own backend from `POPOTO_POSTGRES_URL`, raising when it was
-unset or silently using that database when it was set.) A model pinned to a
+is not consulted for them. A model pinned to a
 *different* name still resolves by name, and the rule does not apply to
 Redis: `Meta.backend = "redis"` always resolves to the stock Redis backend,
 even under a Redis-named `set_backend` instance, exactly as before.
@@ -91,6 +92,132 @@ spec, so an outage at that first call is charged to the call that hit it: a
 first save against an unreachable server counts as a dropped write, and a
 first query does not.
 
+**`Meta.backend` is not inherited.** Like every popoto `Meta` option, it is
+read from the class's own `Meta`: a subclass that declares no `Meta` of its
+own takes the process default, not its parent's backend. Repeat
+`backend = "postgres"` on each concrete model that needs it.
+
+## Known limitations
+
+This section collects what Postgres does not do, or does differently, in
+1.10.0. Each item links to the section with the details.
+
+**Server requirements.** Popoto checks these on a model's first query or
+save, not at import or class creation, and raises `BackendCapabilityError`
+when one fails:
+
+- **PostgreSQL 18 or newer** (`server_version_num >= 180000`).
+- **`server_encoding` UTF8.** Ties are ordered bytewise, as on Redis.
+- **pgvector, for `EmbeddingField` only.** A model with an `EmbeddingField`
+  needs the `vector` extension installed in its database, in a schema on the
+  connection's `search_path` (the default, `public`, is). Popoto never runs
+  `CREATE EXTENSION`; an operator with that privilege does. Models without an
+  `EmbeddingField` do not need pgvector. PostGIS is not used: geo fields run
+  on plain columns (see [Geo](#geo-m5)).
+
+**Refused when you declare the model.** With `Meta.backend = "postgres"`,
+class creation raises `BackendCapabilityError` (with the process default,
+the model's first use does) for:
+
+- `DataFrameField`. Store the frame's JSON in a `DictField` or a
+  `BytesField` instead.
+- An `IndexedField` or `UniqueField` whose type is not `int`, `float`, `str`,
+  `bool`, `Decimal`, `datetime`, `date` or `time` (a collection type, for
+  example), and a `SortedField` whose type is not numeric or a date/time.
+- A custom field that overrides a storage hook, and any field kind the
+  backend does not know.
+
+**Refused at the call.** These raise `BackendCapabilityError` on a Postgres
+model, before anything is written:
+
+- `save(migrate_key=True)` that changes a key field. Create the new record and
+  delete the old one. For the same reason, `MemoryLifecycle` with a
+  `KeyField` tier is refused when you build it; declare the tier as an
+  `IndexedField`.
+- `_ttl` / `_expire_at` on a model without `Meta.ttl`
+  ([Record expiry](#record-expiry-m5)).
+- `order_by` on a collection field (divergence (xvii) below).
+- A `GeoField` radius filter used to scope a ranking or a search (`recall`,
+  `top_by_decay`, and the like). It scopes `filter()` and `count()`.
+- `rebuild_indexes()` while a `transaction()` or `popoto.batch()` is open in
+  the same thread or task
+  ([Index maintenance](#index-maintenance-and-transfer-m5)).
+- A write that would wait on a record lock that an enclosing transaction in
+  the same thread or task holds, which could never be granted
+  ([`popoto.batch()`](#popotobatch-m5)).
+- One `popoto.batch()` that writes to both Redis and Postgres, or to two
+  Postgres backends.
+- `raw_update()` naming a field that has no stored column.
+- `auditable_extraction` when the model, the decision log and the journal
+  would land in different stores. Under a Redis default, bind the default with
+  `set_backend("postgres")` or `POPOTO_BACKEND=postgres`, or remove the one
+  pin; under a Postgres default, remove the journal entry model's
+  `Meta.backend` pin. A Redis default with a Postgres-pinned journal is
+  refused too.
+
+**Redis-only APIs.** These inspect Redis structures and raise
+`BackendCapabilityError` on a Postgres model: `load_raw_hash`,
+`Query.keys(clean=…)` / `Query.keys(catchall=…)`,
+`DecayingSortedField.rank_decayed(zset_key, …)` and
+`CyclicDecayField.rank_decayed(zset_key, …)` (use `Model.query.top_by_decay()`,
+which works on both), and `ConfidenceField.get_confidence_filtered` /
+`ConfidenceField.migrate_to_partitioned`.
+
+**Postgres-only APIs.** `Model.query.recall()` and
+`Model.query.top_by_relevance()` raise `BackendCapabilityError` on Redis. On
+Redis, use `keyword_search` / `semantic_search` with `fuse()`, and
+`top_by_decay()`.
+
+**Not stored on Postgres.** The `WriteFilterMixin` priority tier is a no-op:
+the gate still runs, but no priority is kept, so
+`composite_score({"priority": …})` raises `BackendCapabilityError`. The
+confirmed access log (a list of read timestamps) is not kept either; the
+access counters are.
+
+**Results that differ from Redis.** Redis behaviour is unchanged in 1.10.0,
+so the two backends disagree in places. They fall into a few groups, each row
+pinned by a test on both backends (see
+[Documented divergences](#documented-divergences)):
+
+- **Queries where Redis's answer is wrong.** Composed `Q` objects that drop
+  an unindexed leaf, ignored lookups and bounds, unimplemented `KeyField`
+  lookups, and similar. Postgres returns the correct rows. The Redis bugs are
+  tracked in [#771](https://github.com/tomcounsell/popoto/issues/771) (open);
+  until it is fixed, code that relied on the Redis result will see different
+  rows on Postgres.
+- **Typed comparison.** Postgres compares numbers, decimals and instants by
+  value where Redis compares key strings.
+- **Atomicity.** A failed statement rolls back the whole `transaction()` or
+  batch, where Redis `MULTI`/`EXEC` applies the other commands.
+- **Ordering and edge values.** With no ordering requested, Postgres returns
+  rows in bytewise `_pk` order; NaN, `\x00`, out-of-range integers and aware
+  `time` values are refused or normalised rather than stored as Redis
+  stores them.
+- **Exact structures.** `ExistenceFilter` and `FrequencySketch` are exact on
+  Postgres (no false positives, no over-counting).
+
+**Not carried by the Redis to Postgres migration.** The tombstone archive
+(`$TOMB:<Model>:data` and `:index`, the deleted-record payloads
+`MemoryLifecycle.restore()` reads) has no carry path, so the tool stops the run
+before writing anything (exit code 3, #829); clear the archive first or accept
+losing the restore window. See the
+[migration guide](redis-to-postgres-migration.md).
+
+**Decision-log summary drift on Redis.** `DecisionLog.turn_summary` is exact on
+Postgres. On Redis, a `pending` write over a row that is already terminal
+leaves the summary over-counting until `rebuild_turn_summary` runs; the
+Postgres answer is the right one. A fix for the Redis side is open (#831), and
+until it lands the divergence below stands.
+
+**Harness session state does not migrate.** The
+[harness integration](harness-integration.md) runs on Postgres with no Redis
+commands (see its [On Postgres](harness-integration.md#on-postgres) section).
+Its between-turn bookkeeping (pending captures, injected-key sets, counters)
+lives in its own tables, and the
+[Redis to Postgres migration](redis-to-postgres-migration.md) does not copy
+it: after a switch, those counters start at zero and the first turn of each
+session may inject a memory the Redis side had already injected.
+
 ## Supported fields (M1, M1.1, M2a, M2b, M3, M4, M5)
 
 | popoto field | Column | Index |
@@ -101,29 +228,29 @@ first query does not.
 | `StringField` | `text` | — |
 | `DatetimeField` | `timestamptz` plus `<f>__utcoff integer` (offset in seconds; `NULL` = naive) | — |
 | `Field(type=int/float/str/bool/Decimal/datetime)` | as above | — |
-| `IndexedField(type=T)` / `UniqueField(type=T)` (M1.1) | `T` (a scalar type) | B-tree on the column; `UNIQUE` for a unique field |
-| `TagField` (M1.1) | `text[]`, normalised (sorted, unique, `str(tag)`; untagged is `{}`) | GIN: `__contains` and `__all` are `@>`, `__any` is `&&` |
-| `Relationship(model=M)` (M1.1) | `text` holding the target's `_pk` | B-tree (no foreign key: Redis enforces none, and references may be circular) |
-| `ListField` / `DictField` / `SetField` / `TupleField`, `Field(type=list/dict/set/tuple)` (M1.1) | `jsonb` | — |
-| `ListField(max_length=N)` (M1.1) | `jsonb`, each element type-tagged as `push()` writes it on Redis | — |
-| `BytesField` / `DateField` / `TimeField` (M1.1) | `bytea` / `date` / `time` | — |
-| `Meta.indexes` (M1.1) | — | a composite B-tree per entry; `UNIQUE` when `is_unique` |
-| `DecayingSortedField(partition_by=…, base_score_field=…)` (M2a) | `double precision`: the decay clock, in epoch seconds | B-tree `(partition cols…, f, _pk COLLATE "C")` |
-| `ConfidenceField` (M2a; `partition_by=` M3) | `double precision` for the attribute, plus the state `<f>__conf` (`double precision`), `<f>__n`, `<f>__corr`, `<f>__contra` (`bigint`) | — |
-| `BM25Field(source=…)` (M2b) | no column of its own: postings `<table>__<f>__post (scope, term, _pk, tf)` and lengths `<table>__<f>__dl (_pk, scope, len)` | postings `PRIMARY KEY (scope, term, _pk)` plus a B-tree on `_pk`; lengths `(scope) INCLUDE (len)` |
-| `EmbeddingField(source=…)` (M2b) | `<f> bigint` (the dimension count Redis stores), `<f>__vec vector(d)`, `<f>__model text`, `<f>__hash text`, plus the narrow vector table `<table>__<f>__vec (_pk, scope, v vector(d))`, `v` stored `PLAIN` | HNSW `vector_cosine_ops` on `<f>__vec`; a partial B-tree on rows with no vector, and a B-tree on `<f>__model` (the backfill's probe); `(scope)` on the narrow table |
-| `ExistenceFilter` / `FrequencySketch` (M2b) | no column: `<table>__<f>__tok (token, _pk)` / `<table>__<f>__cnt (token, count)` | `PRIMARY KEY (token, _pk)` / `PRIMARY KEY (token)` |
-| `ContentField` (M2b, pulled forward from M5) | `text` holding the content itself (no `$CF:` reference, no file) | — |
-| `ValidityField` (M3) | `double precision` for the declared value, plus `<f>__valid_from`, `<f>__invalid_at`, `<f>__ingested_at` (`double precision`; `'Infinity'` = open) and `<f>__supersedes`, `<f>__superseded_by` (`text`); companion `<table>__<f>__open (digest, member)` | B-tree on `<f>__valid_from` and on `<f>__invalid_at`; the companion's `member` references `_pk` `ON DELETE CASCADE` |
-| `CoOccurrenceField(symmetric=…, max_edges=…)` (M4) | no column: the edge table `<table>__<f>__edge (src, dst, weight)` | `PRIMARY KEY (src, dst)` |
-| `CyclicDecayField(cycles=…, pressure_rate=…)` (M5) | `double precision`: the decay clock, as for `DecayingSortedField`; the cycles as four parallel `double precision[]` columns `<f>__cycle_period`, `<f>__cycle_amp`, `<f>__cycle_phase`, `<f>__cycle_base` (the #698 declared baseline, a `NULL` element = unknown); the pressure as `<f>__pressure_rate` and `<f>__pressure_at` (`last_resolved`). `NULL` = no companion-hash entry | B-tree `(partition cols…, f, _pk COLLATE "C")` |
-| `TDValueField` (M5) | `numeric`, as `DecimalField` | — |
-| `GeoField` (M5) | `jsonb` for the coordinates as given, plus `<f>__geohash bigint` (the score `GEOADD` stores; `NULL` = not in the geo index) and `<f>__geolon` / `<f>__geolat` (`double precision`, the position decoded from that score) | partial B-tree on `<f>__geohash` (no PostGIS, no GiST) |
+| `IndexedField(type=T)` / `UniqueField(type=T)` | `T` (a scalar type) | B-tree on the column; `UNIQUE` for a unique field |
+| `TagField` | `text[]`, normalised (sorted, unique, `str(tag)`; untagged is `{}`) | GIN: `__contains` and `__all` are `@>`, `__any` is `&&` |
+| `Relationship(model=M)` | `text` holding the target's `_pk` | B-tree (no foreign key: Redis enforces none, and references may be circular) |
+| `ListField` / `DictField` / `SetField` / `TupleField`, `Field(type=list/dict/set/tuple)` | `jsonb` | — |
+| `ListField(max_length=N)` | `jsonb`, each element type-tagged as `push()` writes it on Redis | — |
+| `BytesField` / `DateField` / `TimeField` | `bytea` / `date` / `time` | — |
+| `Meta.indexes` | — | a composite B-tree per entry; `UNIQUE` when `is_unique` |
+| `DecayingSortedField(partition_by=…, base_score_field=…)` | `double precision`: the decay clock, in epoch seconds | B-tree `(partition cols…, f, _pk COLLATE "C")` |
+| `ConfidenceField` (`partition_by=` too) | `double precision` for the attribute, plus the state `<f>__conf` (`double precision`), `<f>__n`, `<f>__corr`, `<f>__contra` (`bigint`) | — |
+| `BM25Field(source=…)` | no column of its own: postings `<table>__<f>__post (scope, term, _pk, tf)` and lengths `<table>__<f>__dl (_pk, scope, len)` | postings `PRIMARY KEY (scope, term, _pk)` plus a B-tree on `_pk`; lengths `(scope) INCLUDE (len)` |
+| `EmbeddingField(source=…)` | `<f> bigint` (the dimension count Redis stores), `<f>__vec vector(d)`, `<f>__model text`, `<f>__hash text`, plus the narrow vector table `<table>__<f>__vec (_pk, scope, v vector(d))`, `v` stored `PLAIN` | HNSW `vector_cosine_ops` on `<f>__vec`; a partial B-tree on rows with no vector, and a B-tree on `<f>__model` (the backfill's probe); `(scope)` on the narrow table |
+| `ExistenceFilter` / `FrequencySketch` | no column: `<table>__<f>__tok (token, _pk)` / `<table>__<f>__cnt (token, count)` | `PRIMARY KEY (token, _pk)` / `PRIMARY KEY (token)` |
+| `ContentField` | `text` holding the content itself (no `$CF:` reference, no file) | — |
+| `ValidityField` | `double precision` for the declared value, plus `<f>__valid_from`, `<f>__invalid_at`, `<f>__ingested_at` (`double precision`; `'Infinity'` = open) and `<f>__supersedes`, `<f>__superseded_by` (`text`); companion `<table>__<f>__open (digest, member)` | B-tree on `<f>__valid_from` and on `<f>__invalid_at`; the companion's `member` references `_pk` `ON DELETE CASCADE` |
+| `CoOccurrenceField(symmetric=…, max_edges=…)` | no column: the edge table `<table>__<f>__edge (src, dst, weight)` | `PRIMARY KEY (src, dst)` |
+| `CyclicDecayField(cycles=…, pressure_rate=…)` | `double precision`: the decay clock, as for `DecayingSortedField`; the cycles as four parallel `double precision[]` columns `<f>__cycle_period`, `<f>__cycle_amp`, `<f>__cycle_phase`, `<f>__cycle_base` (the #698 declared baseline, a `NULL` element = unknown); the pressure as `<f>__pressure_rate` and `<f>__pressure_at` (`last_resolved`). `NULL` = no companion-hash entry | B-tree `(partition cols…, f, _pk COLLATE "C")` |
+| `TDValueField` | `numeric`, as `DecimalField` | — |
+| `GeoField` | `jsonb` for the coordinates as given, plus `<f>__geohash bigint` (the score `GEOADD` stores; `NULL` = not in the geo index) and `<f>__geolon` / `<f>__geolat` (`double precision`, the position decoded from that score) | partial B-tree on `<f>__geohash` (no PostGIS, no GiST) |
 
-`PredictionLedgerMixin` (M5) adds no column: its ledger is two engine tables
+`PredictionLedgerMixin` adds no column: its ledger is two engine tables
 (see [Long-tail fields](#long-tail-fields-m5)). `DataFrameField` is refused
 at declaration with its reason: a pandas `DataFrame` is not stored on Postgres
-in v2 (the field needs the optional `dataframe` extra, which no CI job
+in 1.10.0 (the field needs the optional `dataframe` extra, which no CI job
 installs, so a column for it would ship untested); store the frame's JSON in a
 `DictField` or a `BytesField`.
 
@@ -134,7 +261,7 @@ Every table also has:
   identical on both backends.
 - `_created_at` and `_updated_at` (`timestamptz`), which the engine maintains.
   They are Postgres-only.
-- `_migrated_from jsonb` and `_estimated_fields text[]` (M2b), the import
+- `_migrated_from jsonb` and `_estimated_fields text[]`, the import
   contract for the one-off Redis-to-Postgres copy (#756). An importer records
   where a row came from and which values it inferred. Every native write
   (`save`, `atomic_increment`, `push`, and the embedding backfill) sets
@@ -188,8 +315,8 @@ be served, and every contender failed with `BackendBusyError`.
 
 Two units that claim the same values in **opposite orders** can deadlock on
 those index entries: Postgres breaks it and one unit raises
-`BackendRetryableError`, as for any cross-record deadlock (lock order, §6 of
-the plan). Measured with 4 threads × 40 transactions, each claiming two
+`BackendRetryableError`, as for any cross-record deadlock (see "One lock
+order for every writer" under [Search](#search-m2b)). Measured with 4 threads × 40 transactions, each claiming two
 values shared by every thread, half in each order (PostgreSQL 18.6,
 localhost): 80-90 of 160 were deadlock victims at pool size 4 or 16, against
 95 on `main` at pool size 16 (at pool size 4, `main` failed 136 with
@@ -198,7 +325,7 @@ order (sorted) to avoid them. No advisory lock is taken on the value: a
 unit's later statement cannot be ordered before its earlier ones, so a value
 lock would deadlock in the same shapes and remove none.
 
-**Memory state (M2a).** A `ConfidenceField` keeps two things, as it does on
+**Memory state.** A `ConfidenceField` keeps two things, as it does on
 Redis: the model attribute (the hash value there, its own column here) and
 the evidence state (the companion hash entry there, the four `__` columns
 here). State that is `NULL` is the seed Redis writes on save with `HSETNX`
@@ -207,27 +334,30 @@ re-save never resets it. A model with `AccessTrackerMixin` gains
 `_access_count`, `_last_accessed`, `_staged_reads` and `_staged_at`; staged
 reads count only while `_staged_at` is within `_staged_ttl_seconds`, which is
 what the Redis list's refreshed `EXPIRE` means. `WriteFilterMixin`'s gate runs
-above the seam as before; its priority tier is not stored (plan §5 M2).
+above the seam as before; its priority tier is not stored.
 `RecallProposal` keeps its pending proposals in one engine table per schema,
 `popoto_recall_proposal`, created on first use like `popoto_schema`. No state
 column is indexed: each index would make every `update_confidence` or
 `confirm_access` a non-HOT update, and nothing filters or orders by one alone.
-A partitioned `ConfidenceField` (M3) needs nothing more: its state is the
+A partitioned `ConfidenceField` needs nothing more: its state is the
 record's own columns, so its partition is the row's partition columns, and a
 partition change that keeps the key keeps the state.
-`PredictionLedgerMixin` keeps its ledger in Redis until M5 and is refused on a
-Postgres model too, rather than issuing Redis commands for a record Redis does
-not hold. `EventStreamMixin` writes its stream to the backend's events tables
-(M5, [Event streams and pub/sub](#event-streams-and-pubsub-m5)), in the
+`PredictionLedgerMixin` keeps its ledger in two engine tables (see
+[Long-tail fields](#long-tail-fields-m5)). `EventStreamMixin` writes its
+stream to the backend's events tables
+([Event streams and pub/sub](#event-streams-and-pubsub-m5)), in the
 save's own transaction.
 
-`Meta.ttl` (M5) adds an engine column, `_expires_at`; see
+`Meta.ttl` adds an engine column, `_expires_at`; see
 [Record expiry](#record-expiry-m5).
 
-`GeoField` (M5) is stored without PostGIS; see [Geo](#geo-m5).
+`GeoField` is stored without PostGIS; see [Geo](#geo-m5).
 
 An `IndexedField` on a collection type is refused, as is a custom field that
-overrides a storage hook. A model that uses one of them raises
+overrides a storage hook: `on_save`, `on_delete`, `filter_query`,
+`format_value_pre_save` or `pre_save_validate`. A subclass of a built-in field
+that overrides none of the five is accepted and stored as its base field. A
+model that uses one of them raises
 `BackendCapabilityError` when you declare it with `Meta.backend =
 "postgres"`, or on first use when it takes the process default.
 
@@ -352,7 +482,7 @@ row takes that record's advisory lock first, not only a save: `delete`,
 `atomic_increment`, a capped-list push, `touch`, `update_confidence`, the
 access tracker's writes, `on_context_used`'s `FOR UPDATE` and an
 `ExistenceFilter` row. The order is any `(model, field)` lock (a
-`ValidityField`'s, M3), then the record-key locks sorted by `_pk`, then the row locks in `_pk`
+`ValidityField`'s), then the record-key locks sorted by `_pk`, then the row locks in `_pk`
 order. A record's key lock is always the first lock taken on it, so a
 transaction that runs `update_confidence(x, pipeline=tx)` and then
 `x.save(pipeline=tx)` queues a concurrent `x.save()` behind it instead of
@@ -360,7 +490,7 @@ deadlocking with it. Transactions that each take several records in
 different orders can still deadlock; that surfaces as
 `BackendRetryableError`. Pinned by
 `test_a_confidence_update_then_save_cannot_deadlock_a_save` and its control.
-A record delete on a model with a symmetric `CoOccurrenceField` (M4) writes
+A record delete on a model with a symmetric `CoOccurrenceField` writes
 rows in its *partners'* edge sets too (the reverse edges), so it takes the
 partners' record-key locks with the deleted keys', in one sorted sequence,
 before it touches a row. The lock statement runs twice: the first takes the
@@ -495,7 +625,7 @@ agent's corpus must not skew another's IDF. `bm25_stats="corpus"` uses the
 corpus-wide statistics `BM25Field.search` uses.
 
 A model with one `DecayingSortedField` adds a third arm, `weights["decay"]`
-(default 1.0): `top_by_decay`'s ranking (`DECAY_SCORE_LUA` over the M2a
+(default 1.0): `top_by_decay`'s ranking (`DECAY_SCORE_LUA` over the decay
 columns: the field's clock, its `base_score_field`, and `<f>__conf`
 modulation when the field resolves a `ConfidenceField`), computed in the
 fused statement itself over the same scope and filters. It adds no round
@@ -508,7 +638,7 @@ returns `[(instance, score)]` ranked by decay × confidence in SQL, the score
 every partition together. On a Redis-bound model it raises
 `BackendCapabilityError`; use `top_by_decay` there.
 
-**Both read through the validity gate (M3).** On a model with a
+**Both read through the validity gate.** On a model with a
 `ValidityField`, `top_by_relevance` and `recall` leave out a record closed at
 or before `as_of` and one that starts after it, as `top_by_decay`,
 `composite_score` and the assembler do. `as_of` is epoch seconds and defaults
@@ -519,14 +649,14 @@ decay), so a superseded record cannot enter through the lexical arm either.
 `Defaults.VALIDITY_GATING_ENABLED = False` turns it off, and a model without a
 `ValidityField` is unaffected.
 
-**`composite_score(similarity_boost=…)`** works on Postgres too (M2b). The
+**`composite_score(similarity_boost=…)`** works on Postgres too. The
 mapping is one more arm, weight 1.0 and last, as its temporary set is in the
 Redis `ZUNIONSTORE`. `semantic_search(indexes=…)` uses it, and on a model
-with a `ValidityField` the validity mask applies to it as to every arm (M3;
-pinned two-leg by `tests/test_semantic_search.py::TestSemanticSearchWithIndexes`). The order is the
+with a `ValidityField` the validity mask applies to it as to every arm
+(pinned two-leg by `tests/test_semantic_search.py::TestSemanticSearchWithIndexes`). The order is the
 same on both backends; with three or more summed arms a score can differ by
 up to 2 ulp, because `ZUNIONSTORE` adds the smallest input set first while
-Postgres adds the arms in order. `co_occurrence_boost=` is an arm too (M4):
+Postgres adds the arms in order. `co_occurrence_boost=` is an arm too:
 weight 1.0, after the indexes and before `similarity_boost`, the position its
 temporary set takes in the `ZUNIONSTORE`.
 
@@ -544,11 +674,11 @@ What each stage runs on Postgres:
 
 | Stage | Postgres |
 |---|---|
-| ExistenceFilter short-circuit | `might_exist` on the exact token table (M2b) |
+| ExistenceFilter short-circuit | `might_exist` on the exact token table |
 | Hybrid / lexical pull | the same body as on Redis: `BM25Field.search` (`keyword_search` with **corpus-wide** statistics), the vector arm (`vector_search`), and `fuse` with `_fusion_weights`. The BM25 window is narrowed by the scope's indexed filters from one id-only `SELECT`, as `filter_for_keys_set` narrows it on Redis |
-| Zero-signal fallback, composite pull, `assess` probe | `composite_score`: `rank_composite`, one `SELECT` (M2a) |
+| Zero-signal fallback, composite pull, `assess` probe | `composite_score`: `rank_composite`, one `SELECT` |
 | Tag scoping | one id-only `SELECT` with `&&` (any) / `@>` (all) |
-| Score proxy (`assess_quality`, `emit_trace`, `assess`) | the partition's `rank_decayed` for a decay field, with the model's validity gate at now (M3: a record closed now or not yet started scores `None` and counts as stale, as on Redis, which runs `DECAY_SCORE_LUA` with the gate; pinned two-leg by `test_the_score_proxy_gates_on_validity_at_now`), the column for a plain sorted field |
+| Score proxy (`assess_quality`, `emit_trace`, `assess`) | the partition's `rank_decayed` for a decay field, with the model's validity gate at now (a record closed now or not yet started scores `None` and counts as stale, as on Redis, which runs `DECAY_SCORE_LUA` with the gate; pinned two-leg by `test_the_score_proxy_gates_on_validity_at_now`), the column for a plain sorted field |
 | Post-effects | one transaction: the rows of the selected and the suppressed records locked in `_pk` order behind their record-key locks, one staged-read `UPDATE`, one confidence `UPDATE` for every suppressed candidate |
 
 **Why the hybrid path does not call `recall()`.** `recall()` ranks each arm
@@ -568,8 +698,8 @@ fixture's texts as written, several records share a text and so a vector, and
 the hybrid path's parity then holds only up to the vector-arm tie row below. `scripts/probe_assembler_parity.py` builds
 random corpora on both legs and compares `assemble()` (keys, formatted output
 and token count, metadata, trace, quality, and the post-effects' confidence and
-staged-read state), `on_context_used()` and `assess()`; its classes are in the
-PR that introduced M2c, and `test_postgres_assembler.py` runs a 12-shape slice
+staged-read state), `on_context_used()` and `assess()`; its classes are in
+the probe's docstring, and `test_postgres_assembler.py` runs a 12-shape slice
 of it in CI.
 
 ```bash
@@ -679,7 +809,7 @@ SELECT pk, max(w) FROM "_walk"
  GROUP BY pk ORDER BY max(w) DESC, pk COLLATE "C"
 ```
 
-`safe_mul` is the saturating product of the decay SQL (M2a).
+`safe_mul` is the saturating product of the decay SQL.
 
 That statement only runs while it expands at most
 `Defaults.PG_GRAPH_RECURSIVE_MAX_LAYERS` (2) layers, i.e. `ceil(depth) <= 2`
@@ -732,8 +862,8 @@ depth 1), with `(` for an exclusive minimum, `limit=0` empty and a negative
 limit everything.
 
 `recipes/graph_traversal.traverse` runs unchanged on top: `propagate`, the
-relationship walk (M1.1's `sample_related_keys`), and the confidence and
-decay modulation (M2a/M2c). `ContextAssembler`'s graph arm and
+relationship walk (`sample_related_keys`), and the confidence and
+decay modulation. `ContextAssembler`'s graph arm and
 `composite_score(co_occurrence_boost=)` work on a Postgres model as on Redis.
 
 **The seeded probe.** `scripts/probe_graph_parity.py` replays the same random
@@ -743,8 +873,8 @@ deletes and `import_state` (NaN weights included) -- comparing every return,
 then each key's full edge set, `get_linked` (`limit=None` and a NaN bound
 included), `propagate` (depths up to `1e9` and `inf`, decays up to `0.999999`)
 on all three Postgres paths, `export_state`, `composite_score` with the boost
-and `traverse()`. Its classes are in its docstring and the PR that introduced
-M4; the documented ones are the M4 rows of the table above.
+and `traverse()`. Its classes are in its docstring; the documented ones are the
+co-occurrence rows of the [divergence table](#records-and-other-behaviour).
 `tests/postgres/test_postgres_graph.py` runs a 25-shape slice in CI.
 
 ```bash
@@ -763,7 +893,7 @@ tables created on first use, like `popoto_recall_proposal`:
 
 | Method | Redis | Postgres |
 |---|---|---|
-| `Model.idle_seconds` | `OBJECT IDLETIME`: whole seconds since the key was last read or written | whole seconds since the later of the row's last write (`_updated_at`) and, with `AccessTrackerMixin`, its last *confirmed* read (`_last_accessed`); `None` with no row, or an expired one (M5) |
+| `Model.idle_seconds` | `OBJECT IDLETIME`: whole seconds since the key was last read or written | whole seconds since the later of the row's last write (`_updated_at`) and, with `AccessTrackerMixin`, its last *confirmed* read (`_last_accessed`); `None` with no row, or an expired one |
 | `SortedFieldMixin.count` / `members` / `score` | `ZCARD` / `ZRANGE` / `ZSCORE` on the partition's sorted set | the partition's rows, in `(value, _pk COLLATE "C")` order, with `ZRANGE`'s inclusive and negative ranks; `score` converts the stored value as the sorted set scores it |
 | `counters.increment` / `read` (`model=`) | `INCRBY` / `GET` on a string | `popoto_counter (key, value)`: `INSERT … ON CONFLICT DO UPDATE … RETURNING` |
 | `TombstoneStore` (`MemoryLifecycle`'s archive) | `$TOMB:{Model}:data` hash + `:index` sorted set | `popoto_tombstone (model, member, entry, ts)` |
@@ -856,13 +986,14 @@ two saves of one key in one transaction refuse the second (on Redis the
 
 **`ProvenanceJournal`** runs its pre-flight unchanged and then appends --
 and, for a closing kind, closes the target's interval -- in **one
-transaction** (`SupersessionProtocol.save_and_invalidate`, M3): its own, or
+transaction** (`SupersessionProtocol.save_and_invalidate`): its own, or
 the caller's when the backend's unit of work is passed as `pipeline=`. The
 close's outcome is known at the call, so `AnnotationResult.target_closed` is
 the truth (on Redis a caller pipeline reports `None`, "unknown until you
 execute", with a `close_index` to read after `EXEC`), and a close that fails
 rolls the annotation back with it (on Redis the queued annotation is kept:
-the M3 row below). Any other `pipeline=` object, a Redis pipeline included, is
+the `ProvenanceJournal` row of the
+[divergence table](#records-and-other-behaviour)). Any other `pipeline=` object, a Redis pipeline included, is
 refused with `ValueError` before anything is written.
 `AppendOnlyMixin.hard_delete` removes the row (its open-claim pointer
 cascades) and clears the `<f>__supersedes` / `<f>__superseded_by` columns of
@@ -870,7 +1001,7 @@ the records that named it, the value side of the Redis chain hashes. The
 reconciler's statement-vector cache is `popoto_embedding_cache (model,
 member, vector)`, beside the entries, and `erase_entry` drops it there.
 `JournalEntry` composes `EventStreamMixin`: on Postgres its mutation log is
-the backend's events table (M5), appended in the journal write's own
+the backend's events table, appended in the journal write's own
 transaction (a caller's `transaction()` or `popoto.batch()` included), and the reconciler's `StreamConsumer` trigger
 (`reconciliation_consumer`, which names `JournalEntry` as its model) reads it
 there. A rolled-back write leaves no entry, and a Postgres-bound journal and
@@ -878,7 +1009,7 @@ its reconciler send Redis no command at all. Pinned by
 `tests/postgres/test_postgres_journal.py` and
 `tests/postgres/test_postgres_events.py::test_a_postgres_journal_and_its_reconciler_send_redis_nothing`.
 
-**Memory telemetry** runs on Postgres since M5's record expiry:
+**Memory telemetry** runs on Postgres, on top of record expiry:
 `AssemblyEvent` declares `Meta.ttl`, so its events expire there as on Redis,
 and `report_outcomes()` and `TelemetryAnalyzer` read them back. Pinned by
 `tests/test_memory_telemetry.py`, whose every test runs on both legs.
@@ -886,7 +1017,7 @@ and `report_outcomes()` and `TelemetryAnalyzer` read them back. Pinned by
 **Decision log** (#811). `SubconsciousMemory(auditable_extraction=...)`
 constructs and runs on a Postgres-bound process with no Redis command at all.
 `DecisionLog` follows `DecisionRecord`'s backend (the process default, as the
-journal does): the per-candidate row is a `decisionrecord` row under a unique
+journal does): the per-candidate row is a `decision_record` row under a unique
 key, the guarded terminal write (refuse a terminal write over an assembled
 `accept`) is one statement run under the row's advisory lock, the assembly
 claim is a `popoto_lease` row (`INSERT ... ON CONFLICT ... WHERE expires_at <=
@@ -1031,7 +1162,7 @@ streams), else the process default; `reconciliation_consumer` names
   notification arrives when the entry is visible. `LISTEN` needs a session,
   so the wait rides the process's **one shared `LISTEN` session** (below),
   never a pooled connection -- PgBouncer in transaction mode would hand a
-  pooled connection to another client between statements (§3 Topology). Its
+  pooled connection to another client between statements ([Topology](#topology-and-the-outage-contract)). Its
   DSN is `POPOTO_POSTGRES_LISTEN_URL` when set (point it past a
   transaction-mode pooler at the server), else the
   [maintenance DSN](#a-maintenance-dsn-for-pgbouncer-transaction-mode) when
@@ -1250,7 +1381,7 @@ Three Redis features that each owned a Lua script are stored natively
 (`popoto/backends/postgres/longtail.py`). Every number a script computes is
 computed in SQL operation for operation, in `double precision` and in the
 script's order of evaluation; `cos` and `power` are the platform `libm` on
-both servers, as for M2a's decay expression. Numbers a script *replies* went
+both servers, as for the decay expression. Numbers a script *replies* went
 through Lua's `tostring` (`%.14g`) and numbers it *stores* through
 `cmsgpack`, which packs an integral number as an integer; Postgres applies the
 same rules on the way out. The seeded probe compares both legs bit for bit:
@@ -1263,7 +1394,7 @@ POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
 
 **`CyclicDecayField`.** The clock is the field's column; the cycles and the
 pressure are columns beside it (the table above). Why parallel arrays and not
-the `jsonb` the plan first proposed: an amplitude is a `double` the score
+a single `jsonb` column: an amplitude is a `double` the score
 multiplies, it can be `NaN` or `±inf` (a declared `float("inf")` passes the
 field's validation), and a `jsonb` number is `numeric`, which holds neither
 and adds a text round trip to every row a ranking scans.
@@ -1274,7 +1405,7 @@ and adds a text round trip to every row a ranking scans.
 
   ```sql
   (SELECT y.dc + y.p FROM (SELECT z.d + z.c AS dc, z.p FROM (SELECT
-      <DECAY_SCORE_LUA's expression, M2a> AS d,
+      <DECAY_SCORE_LUA's expression> AS d,
       (SELECT 0 + coalesce(sum(u.a * cos(6.283185307179586 * (<now> - coalesce(u.h, 0)) / u.p)
                               ORDER BY u.o), 0)
          FROM unnest(t.f__cycle_period, t.f__cycle_amp, t.f__cycle_phase)
@@ -1289,12 +1420,12 @@ and adds a text round trip to every row a ranking scans.
 
   shown in its plain form. A row whose cycles or pressure lie outside the box
   where no step can leave the double range takes a clamped form instead:
-  each step through M2a's saturating helpers (plus a saturating divide, and
+  each step through the decay SQL's saturating helpers (plus a saturating divide, and
   `cos(±inf)` = `NaN` where Postgres would raise "input is out of range"),
   and the terms folded left to right by a recursive CTE with a saturating
   add. The script's unsplit `base * pow` equals `DECAY_SCORE_LUA`'s
   `sign * |base| * pow` once `+ cyclic` (at least `0`) has turned a `-0`
-  into `+0`, so the decay half is M2a's expression unchanged. The script has
+  into `+0`, so the decay half is the decay expression unchanged. The script has
   no validity gate (its `KEYS` are all taken), so a cyclic ranking ignores
   the gate on Postgres too (`TestCyclicDecayGatingGap`, and the "Known
   limitations" of [validity and supersession](validity-and-supersession.md)).
@@ -1360,7 +1491,7 @@ where a plain `::float8` cast raises "value out of range"
 **`PredictionLedgerMixin`.** The `$PL:{Class}:meta:{pk}` entry is a row of
 `popoto_prediction_ledger (model, member, entry jsonb, lua_packed)` and the
 `$PL:{Class}:errors:{part}` sorted set is `popoto_prediction_error (model,
-part, member, error)`, engine tables created on first use like the M4 ones.
+part, member, error)`, engine tables created on first use like the recipes' ones.
 `RESOLVE_PREDICTION_LUA` is one statement:
 
 ```sql
@@ -1387,7 +1518,7 @@ and that refusal is reproduced. `get_highest_errors` is `ZREVRANGE`'s order
 (`limit <= 0` counts from the end). Like the Redis keys, the ledger is not
 removed when the record is deleted. The entry is `jsonb` with this module's
 tags for what JSON lacks (`bytes`, a non-finite or exponent-form float, a
-`-0.0`, a non-`str` key), never msgpack (plan §8).
+`-0.0`, a non-`str` key), never msgpack.
 
 **`ObservationProtocol`** applies the whole effects matrix on Postgres now,
 in the order the Redis functions apply it and inside the batch's one
@@ -1397,7 +1528,7 @@ outcome but `deferred` (with its confidence feedback on the batch's
 connection, so it never waits on the batch's own row lock), and the
 pressure auto-discharge on `contradicted`, reading the confidence the batch
 just updated. Every ledger and cycle write takes the record-key lock the
-batch already holds, so the plan's one lock order is kept; a rolled-back
+batch already holds, so the one lock order is kept; a rolled-back
 batch resolves nothing.
 
 **Expiry and `popoto.batch()`.** On a `Meta.ttl` model every long-tail
@@ -1649,7 +1780,8 @@ Everything a Redis → Postgres copy loses or changes when it goes through
 | `DataFrameField` | Refused on Postgres. | Keep those models on Redis. |
 | `EventStreamMixin` | The record crosses; the event stream does not (the format carries records, not the stream or its consumer groups). | Out of scope for the copy. |
 | `CoOccurrenceField` | An import truncates each record's edge set to the destination field's `max_edges`, on both backends. Edges beyond it are dropped. | Raise `max_edges` on the destination before the import if the source's sets are larger. |
-| `WriteFilterMixin` priority, Valor's outcome telemetry | Not exercised on Postgres by M5. Unverified. | Verify before relying on it. |
+| `WriteFilterMixin` priority tier | Not stored on Postgres: the gate still decides whether a record is saved, but no priority set is kept, and `composite_score({"priority": …})` raises `BackendCapabilityError`. | Priority sets do not carry over. Re-derive priority from the records if you need it. |
+| Memory telemetry (`AssemblyEvent`, outcomes included) | Runs on Postgres; pinned on both legs by `tests/test_memory_telemetry.py`. A copy re-saves each event, so its `Meta.ttl` expiry restarts at the import. | Name the model to copy it (`--model popoto.recipes.memory_telemetry:AssemblyEvent`); otherwise its keys are out of scope and Postgres starts empty. |
 
 The one-off copy itself is
 [Redis to Postgres Migration](redis-to-postgres-migration.md): it serves the
@@ -2151,8 +2283,8 @@ and grants nothing. A `REVOKE` you run stays revoked across restarts, and the
 next save fails with `MainRolePermissionError` instead of quietly regaining
 access. If the schema already existed when popoto first ran (you made it, or
 an earlier deploy without the flag did), grant `app` `USAGE` on it yourself.
-Tables created before the flag was turned on are never granted either: use
-the statements above.
+Tables created before the flag was turned on are not granted: use the
+statements above.
 
 The Redis-to-Postgres migration tool follows the same setting. It reads
 `MigrationConfig(grant_main_role=...)`, falling back to
@@ -2163,8 +2295,9 @@ DDL and so grants nothing, whatever the flag says. Run the grants above.
 
 The reverse case is an existing deployment whose tables were created by
 `app`, before the maintenance DSN was set. There `REINDEX` and additive
-`ALTER TABLE` need the maintenance role to own the tables. On PostgreSQL 17
-and later, the `MAINTAIN` privilege is enough for `REINDEX`. Move the
+`ALTER TABLE` need the maintenance role to own the tables. The `MAINTAIN`
+privilege (PostgreSQL 17 added it; popoto needs 18 anyway) is enough for
+`REINDEX`. Move the
 ownership once, as a superuser (or a role with the privileges of both):
 
 ```sql
@@ -2242,19 +2375,19 @@ it runs immediately. Pinned by
 `test_after_commit_callbacks_run_only_after_commit` and
 `tests/postgres/test_postgres_recipes.py::test_post_save_redis_side_effects_wait_for_commit`.
 
-**Before-commit hook (M5).** `uow.before_commit(fn)` runs `fn` *inside* the
+**Before-commit hook.** `uow.before_commit(fn)` runs `fn` *inside* the
 transaction, just before its `COMMIT`, in registration order; an exception
 from it rolls the whole unit back and propagates. A save's or delete's
 `EventStreamMixin` entry is queued beside them with
 `uow.defer_stream_append(stream, fn)` inside a caller's `transaction()` or a
 `popoto.batch()`; those run after the `before_commit` callbacks, sorted by
 stream key, so the stream row locks are the last locks the transaction takes
-(after every record-key and row lock, the one lock order of §6), always in
+(after every record-key and row lock, the one lock order), always in
 the same order, and the entry commits or rolls back with the record. Pinned by
 `tests/postgres/test_postgres_journal.py::test_the_mutation_stream_is_written_only_after_commit`.
 
-Before #759 M2a's patch these reached the caller as raw psycopg
-`DeadlockDetected` / `SerializationFailure`. A statement whose completion is
+Popoto maps psycopg's `DeadlockDetected` and `SerializationFailure` to
+`BackendRetryableError`; neither reaches the caller raw. A statement whose completion is
 unknown (SQLSTATE 40003) is not retryable -- it may have committed -- and is
 reported as `BackendUnavailableError`.
 
@@ -2287,7 +2420,7 @@ one batch sees the first and is refused, as in a `transaction()`.
 
 **Stream entries and side effects follow the batch.** A save's
 `EventStreamMixin` entry, a custom `_xadd_event` and a `Publisher`'s message
-join the batch's transaction (M5, [Event streams and pub/sub](#event-streams-and-pubsub-m5)):
+join the batch's transaction ([Event streams and pub/sub](#event-streams-and-pubsub-m5)):
 the entries are appended just before `execute()` commits, one per save, in
 save order, and the message is delivered at that `COMMIT`; a batch that
 `reset()`, a `with` block or a failed `execute()` rolled back appends and
@@ -2483,8 +2616,8 @@ On a Postgres-bound model every `async_*` method -- `async_save`,
 `async_update_or_create`, the bulk twins, `async_delete_all`, and
 `Query.async_get`/`async_get_many`/`async_filter`/`async_all`/`async_count`/
 `async_keys` -- runs on the model's **async backend**, with its I/O on
-`psycopg.AsyncConnection` on the running event loop. Before M5 they ran the
-sync call in a worker thread. A Redis-bound model's `async_*` methods are
+`psycopg.AsyncConnection` on the running event loop, not in a worker
+thread. A Redis-bound model's `async_*` methods are
 unchanged, command for command (`scripts/trace_async_redis_wire.py`).
 
 ```python
@@ -2524,7 +2657,7 @@ it from the coroutine:
 pipe = popoto.batch()
 await Note(owner="a", slug="1").async_save(pipeline=pipe)
 await Note(owner="a", slug="2").async_save(pipeline=pipe)
-await pipe.async_execute()     # COMMIT on the loop; then the XADDs, in order
+await pipe.async_execute()     # COMMIT on the loop, stream entries included
 ```
 
 `pipe.execute()` on such a batch raises `BridgeMisuseError` naming
@@ -2532,7 +2665,7 @@ await pipe.async_execute()     # COMMIT on the loop; then the XADDs, in order
 `reset()` or leaving a `with` block schedules the rollback on the running
 loop as a task. If that rollback fails (its connection broke), the failure
 is logged once at WARNING; the server rolls back a transaction whose
-connection is gone. The Redis side effects wait for the commit exactly as in a
+connection is gone. After-commit hooks wait for the commit exactly as in a
 sync batch. `async_execute()` on any other batch (Redis commands, or a
 transaction a sync call opened) runs `execute()` in a worker thread.
 Pinned by `test_postgres_async.py::test_an_async_save_joins_a_batch_on_the_loop`.
@@ -2558,21 +2691,21 @@ raises `BackendBusyError`, not an outage ([Topology](#topology-and-the-outage-co
 
 **What still leaves the loop.** An embedding provider is a sync API: its call,
 and the backfill's wait on it, run in a worker thread so they never block the
-loop. Redis I/O that a Postgres model's sync path makes (an
-`EventStreamMixin`'s `XADD`) is a blocking call on the loop thread.
-`async_check_indexes`/`async_clean_indexes`/`async_rebuild_indexes` stay on a
-worker thread on every backend: their bodies scan Redis index keys.
+loop. A Postgres model's stream entries are rows written in the save's own
+transaction, so they make no Redis call. `async_check_indexes`,
+`async_clean_indexes` and `async_rebuild_indexes` run on the async backend on
+Postgres, and in a worker thread on Redis
+([Index maintenance](#index-maintenance-and-transfer-m5)).
 
 **Model hooks run on the event-loop thread.** The bridge runs the whole sync
 method, so a model's overrides of `save()`, `pre_save()` and `delete()`, and
 its fields' `pre_save_validate`/`on_save`/`on_delete` hooks, run inside it, on
-the loop thread, with the loop running. Before M5 they ran in a worker thread.
-Two consequences:
+the loop thread, with the loop running, not in a worker thread. Two
+consequences:
 
 - A hook that calls `asyncio.run()` (or `loop.run_until_complete()`) now
   raises `RuntimeError: asyncio.run() cannot be called from a running event
-  loop`. It worked under the thread shim. `asyncio.get_running_loop()` now
-  succeeds inside a hook, so a hook that branches on it sees a loop.
+  loop`. `asyncio.get_running_loop()` succeeds inside a hook, so a hook that branches on it sees a loop.
 - A hook that blocks (`time.sleep`, `requests`, a sync client of another
   service) blocks the whole loop for that long, not one worker thread.
 
@@ -2691,8 +2824,9 @@ corpus on both backends -- ages from fresh to centuries, the future, shared
 timestamps and pathological clocks; base scores of every type the script reads,
 from `5e-324` to `1e305`; signal sequences; partitions; staged and confirmed
 reads -- and compares `rank_decayed`, `top_by_decay`, confidence,
-read tracking and `composite_score` between the legs. Its classes and the
-two documented NaN rows are in the PR that introduced M2a;
+read tracking and `composite_score` between the legs. Its classes are in its
+docstring; the two documented NaN rows are the NaN decay-score rows of the
+[divergence table](#records-and-other-behaviour);
 `tests/postgres/test_memory_probe.py` runs a 40-shape slice of it in CI.
 
 ```bash
@@ -2703,7 +2837,7 @@ POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
 
 **`ObservationProtocol.on_context_used`** applies all five outcomes for a
 batch in one transaction: the batch's rows are locked `FOR UPDATE` in `_pk`
-order first (the plan's §6 lock order), then each instance's effects run in
+order first (the one lock order), then each instance's effects run in
 that order -- `touch` for `acted`, staged reads confirmed (`acted`, `used`) or
 discarded (the rest), the confidence signal (`acted`, `contradicted`), and its
 proposal resolved. A deadlock or serialization failure retries the whole
@@ -2713,19 +2847,19 @@ raises that error at once, for you to retry.
 
 ## Documented divergences
 
-Redis behaviour does not change to match Postgres in v2 M1 (plan gate (a)).
+Redis behaviour does not change to match Postgres in 1.10.0.
 Where a test pins one of these, it pins both behaviours explicitly or carries a
 `redis_only(reason=...)` mark.
 
 ### Query results
 
 Each row is pinned on both conformance legs: rows (i)–(xi) by a test in
-`tests/test_backend_parity_edges.py`, rows (xii)–(xx) (M1.1) in
+`tests/test_backend_parity_edges.py`, rows (xii)–(xx) in
 `tests/test_backend_parity_fields.py`. In rows (i)–(iv), (vi), (vii), (xii),
 (xiv), (xv) and (xviii)–(xx) Redis's result is a bug in its query layer,
 tracked in #771. The examples use `code`/`group` (`KeyField`), `rank`
 (`SortedField`), `note`/`hits` (unindexed) and `at` (an unindexed
-`DatetimeField`); the M1.1 rows use `IndexedField`s named by type (`s` str,
+`DatetimeField`); rows (xii)–(xx) use `IndexedField`s named by type (`s` str,
 `i` int, `f` float, `dec` Decimal, `dte` date), a `DateField` `day`, a
 `ListField` `lst`, a capped `ListField(max_length=3)` `cap`, a
 `TupleField` `pair` and a `Relationship` `author`/`owner`.
@@ -2769,7 +2903,7 @@ A lone unindexed-field `Q` (`filter(Q(hits=5))`), one lower plus one upper
 bound on a sorted field, and `values=` that projects the filtered field all
 agree on both backends.
 
-M1.1 cases that agree on both backends, and are pinned as such: a string
+Field-type cases that agree on both backends, and are pinned as such: a string
 filter on an `IndexedField` of type `bool`, `date` or `datetime` that is the
 stored value's key string (`b="True"`, `dte="2026-01-01"`,
 `dtm="2026-01-01T12:00:00.000000Z"`; `"true"` matches neither); an aware
@@ -2783,11 +2917,11 @@ cast to the column's type.
 
 | Behaviour | Redis (unchanged) | Postgres |
 |---|---|---|
-| `save(migrate_key=True)` that changes a key field | rewrites the key and its index entries | raises `BackendCapabilityError` (v2). Create the new record and delete the old one. |
+| `save(migrate_key=True)` that changes a key field | rewrites the key and its index entries | raises `BackendCapabilityError`. Create the new record and delete the old one. |
 | Unit-of-work / bulk failure | `MULTI`/`EXEC` applies the other queued commands | the whole transaction rolls back |
 | `\x00` in a text value | stored | `ValueError` naming the field |
 | `atomic_increment` past `2**63` on an `IntField` | Lua goes to float | `NumericValueOutOfRange` |
-| A Redis `pipeline=` handed to a Postgres model | queued | the write runs immediately, and the pipeline comes back untouched for the caller to execute. A `popoto.batch()` is the exception since M5: the write joins the batch's Postgres transaction (see [`popoto.batch()`](#popotobatch-m5)) |
+| A Redis `pipeline=` handed to a Postgres model | queued | the write runs immediately, and the pipeline comes back untouched for the caller to execute. A `popoto.batch()` is the exception: the write joins the batch's Postgres transaction (see [`popoto.batch()`](#popotobatch-m5)) |
 | `atomic_increment` of an `IntField` by a non-integral delta (`hits=5`, `+1.5`) | stores the float sum `6.5` and returns it truncated, `6` | stores and returns the sum cast to `bigint`, rounded half away from zero: `7`. Neither is well defined; pass an `int` delta. |
 | Order of results with no `order_by`, no `Meta.order_by` and no sorted-field filter | set order (arbitrary) | `_pk` in bytewise (`COLLATE "C"`) order |
 | An invalid `order_by=` / `values=` on a query that matches nothing | returns `[]` before validating | raises the same `QueryException` either way |
@@ -2797,78 +2931,78 @@ cast to the column's type.
 | A batch or `transaction()` that deletes a unique value's holder and then saves a new record claiming the value | `pre_save`'s read sees the committed holder (the queued `DELETE` has not run), so the second save raises `ModelException` and the batch never reaches `EXEC`: the holder stays | the read runs on the unit's connection and sees the delete, so the claim succeeds and the unit commits both (#776). Pinned: `tests/postgres/test_postgres_unique_race.py::test_a_unit_sees_its_own_delete_of_the_holder` |
 | The never-record tombstone of a save refused inside a batch or `transaction()`, when the batch is then discarded (`reset()`) or the transaction rolls back | the tombstone goes straight to the client, outside the queued commands: it survives the `reset()` | it is written on the unit's connection and rolls back with the unit, like everything else the unit wrote; it commits when the unit commits (#776). A database error from that write (say, the audit table dropped) raises `BackendError`, never raw psycopg. Pinned: `tests/postgres/test_postgres_unit_connection.py::test_a_refused_save_writes_its_tombstone_in_the_transaction`, `test_a_refused_save_writes_its_tombstone_in_the_batch`, `test_a_database_error_from_the_tombstone_is_a_popoto_error` |
 | A model that needs a schema change (an added field) inside a unit that already read or wrote its table | no schema: the save queues | `SchemaDriftError` at once, naming the lock the unit holds; the DDL would wait on the unit forever. Use the model once outside the unit first. Pinned: `tests/postgres/test_postgres_unit_connection.py::test_a_field_added_after_the_unit_used_its_table_is_refused_at_once`, and, for the auto-key shape #826 closed, `test_an_auto_key_table_bound_before_its_first_instance_needs_no_ddl` |
-| An aware `time` in a `TimeField` / `SortedField(type=time)` (M1.1) | stored with its offset (`isoformat()`) | `ValueError` naming the field: a `time` column holds wall-clock time only. Use a `DatetimeField` when the offset matters. Pinned: `tests/postgres/test_postgres_fields.py::test_an_aware_time_is_refused` |
-| `push()` on a capped `ListField` whose record was deleted (M1.1) | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
+| An aware `time` in a `TimeField` / `SortedField(type=time)` | stored with its offset (`isoformat()`) | `ValueError` naming the field: a `time` column holds wall-clock time only. Use a `DatetimeField` when the offset matters. Pinned: `tests/postgres/test_postgres_fields.py::test_an_aware_time_is_refused` |
+| `push()` on a capped `ListField` whose record was deleted | `LPUSH` recreates an orphan list key | raises `ModelException` (`UPDATE` finds no row). After a successful `push()` the in-memory list is the stored list, not a local prepend. Pinned: `test_push_on_a_record_that_no_longer_exists_raises` |
 | `load_raw_hash`, `Query.keys(catchall=/clean=)` | Redis debug and inspection APIs | raise `BackendCapabilityError` |
-| `Model.idle_seconds` (M4) | `OBJECT IDLETIME`: any read or write resets it (an `HGETALL` included) | whole seconds since the row's last write or, with `AccessTrackerMixin`, its last confirmed read; an unconfirmed read does not reset it. Pinned: `tests/postgres/test_postgres_recipes.py::test_idle_seconds_counts_a_confirmed_read` |
-| `MemoryLifecycle` with a `KeyField` tier (M4) | promotion is a key migration (`save(migrate_key=True)`) | refused when you build it: `MemoryLifecycle(...)` raises `BackendCapabilityError` naming `IndexedField`, because every promotion would be a key migration, which v2 refuses. Declare the tier as an `IndexedField` on Postgres; promotion is then a plain save. Pinned: `test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres`, `test_lifecycle_promotes_a_non_key_tier`, and `tests/test_memory_lifecycle.py`, whose Postgres leg runs every test against `IndexedField`-tier twins of its models |
-| A question-queue delivery when another transaction holds a candidate's row (M4) | the script runs after the other write and sees it | `FOR UPDATE SKIP LOCKED`: that candidate is passed over for the next, as one another worker claimed would be. Pinned: `test_postgres_question_queue.py::test_a_candidate_another_writer_holds_is_skipped` |
-| A proposal that duplicates two or more open candidates (M4) | folds into the first in `QuestionCandidate.query.filter(agent_id=…)`'s order: set order | the first in `_pk` order (the "order of results" row above, seen through dedup). Pinned on both legs by `tests/test_question_queue.py::TestPropose::test_a_proposal_duplicating_two_candidates_folds_into_the_first`, and counted as the queue probe's `dedup_order` class |
-| `DefaultMemory`'s eviction counter (M4) | a Redis string `MemoryService.status()` reads | a `popoto_counter` row: a Postgres-bound `DefaultMemory` needs no Redis, and the Redis-only `MemoryService` does not report it |
-| `DecisionLog.turn_summary` after a `pending` write over a terminal row (#822): an unclaimed non-`accept` verdict landing between `assemble`'s row read and its `write_pending` | `write_pending` is a plain save, so it overwrites the terminal row without taking back its `state:`/`reason:` counts, and the next terminal write treats `pending` as new: `reject` then `pending` then `accept` leaves `{state:reject: 1, state:accept: 1, ...}` for one `accept` row. The rows are right; the hash over-counts until `DecisionLog.rebuild_turn_summary(agent_id, turn_id)` recomputes it | derived from the rows with `GROUP BY` on read: `{state:accept: 1, reason:accepted: 1}`, and `rebuild_turn_summary` returns the same. Pinned on both legs: `test_auditable_extraction.py::TestAssemblyAgainstTheRealJournal::test_a_pending_write_over_a_terminal_row_is_a_documented_divergence` |
-| `ProvenanceJournal` with a caller `pipeline=` (M4) | a Redis pipeline: the annotation and close are queued, `target_closed` is `None` and `close_index` names the close in `execute()`'s results | the backend's unit of work only (anything else raises `ValueError`): the annotation and close run inside it, `target_closed` is known at the call, `close_index` is `None`. Pinned: `test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close` |
-| `AppendOnlyMixin`: two saves of one key in one unit of work (M4) | both pass the guard (the documented intra-pipeline shape) | the second is refused (the guard reads inside the transaction). Pinned: `test_postgres_recipes.py::test_append_only_sees_its_own_transaction` |
-| `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` (reads); a worker thread (writes) | the async backend: the sync call's Postgres I/O on `psycopg.AsyncConnection`, on the running loop, no thread (M5, [Async](#async-m5)) |
-| `async_load(db_key=<str>)` (the type its signature names) | raises `AttributeError: 'str' object has no attribute 'redis_key'`: the native path reads `db_key.redis_key` (pre-existing, before M5). The sync `load(db_key=<str>)` works | runs the sync `load`: the record, or `None` when there is none. Pinned on both legs: `tests/test_async_parity.py::test_async_load_with_a_string_db_key_is_a_documented_divergence` |
-| `async_all` on an `AccessTrackerMixin` model | stages a read per record (its native path hydrates through `_async_get_many_objects`), although `all()` is non-tracking by design | does not stage, as `all()` does not (before M5 too) |
-| `ExistenceFilter.might_exist` (M2b) | a bloom filter: false positives are possible, and a deleted record stays "seen" | exact: no false positives, and a deleted record is forgotten (plan §1.1). Pinned on both legs: `test_existence_filter.py::TestMembershipExactness` |
-| `FrequencySketch.get_frequency` (M2b) | a count-min sketch: never under, may be over | the exact count of saves (never decremented, like the sketch). Pinned: same class |
-| `ExistenceFilter.fill_ratio` (M2b) | the fraction of set bits | an estimate, `1 - e^(-k·n/m)` for the `n` distinct tokens stored |
-| `save(update_fields=[…])` naming a `BM25Field`'s or `EmbeddingField`'s **source**, or only a **scope** column (M2b) | only the listed fields' hooks run, so the BM25 index keeps the old text or scope, and the vector (and its hash) the old text | re-indexes and re-embeds on the source; moves the postings and the narrow vector row on a scope change. Pinned: `test_update_fields_naming_the_source_reindexes`, `test_update_fields_naming_the_source_re_embeds` |
-| `save(update_fields=[…])` naming a partitioned sorted field (`DecayingSortedField`, `SortedField(partition_by=…)`) but not its partition column, after an unsaved change to that column (M2b, #774 review) | the field's hook reads the partition from the instance, so the member moves to the instance's partition sorted set while the hash keeps the old value: `filter(agent="B").top_by_decay()` finds a record whose `agent` is `"A"` (#771) | the partition is the stored column, so the record stays where the row says; the BM25 postings, document length and narrow vector row follow the stored row too. Pinned: `test_backend_parity_memory.py::test_a_partial_save_with_an_unsaved_partition_is_a_documented_divergence` |
-| `EmbeddingField` storage (M2b) | a `.npy` file per record plus `_index.json`, and an in-process matrix cache | the `vector(d)` column. No file, no cache, and `garbage_collect` / `sweep_stale_tempfiles` return `0`. The tests that assert files are `redis_only` |
-| Vector-arm ties and precision (M2b) | equal similarities come back in directory-listing order; numpy float32 dot products | ties by key, bytewise; pgvector's `<=>`. Both are float32 accumulations in a different order, so similarities differ by an amount that grows with the dimension. Measured maximum absolute difference over 10,000 vector-query pairs per dimension (clustered Gaussian vectors, PostgreSQL 18.6, pgvector 0.8.7): 2.5e-7 at 2-d, 2.3e-7 at 8-d, 5.3e-7 at 64-d, 8.9e-7 at 256-d, 1.2e-6 at 768-d, 1.4e-6 at 1024-d, 1.7e-6 at 1536-d (the #774 review measured 1.56e-6) and 2.3e-6 at 3072-d. So 1e-6 holds only up to about 256 dimensions; above that, near-ties can order differently |
-| `ContentField` (M2b) | a `$CF:` reference in the hash, with the content in a file store | the content itself in a `text` column |
-| `BM25Field.recompute_stats` (M2b) | corrects the running `avgdl`'s floating drift | a no-op: `N` and `avgdl` are counted live |
-| The `$BM25:` / `$EF:` / `$FS:` keys (M2b) | the index, readable through the raw client | not used: postings, length and token tables. The tests that read the keys are `redis_only` |
-| A reload after `touch()` (M2a) | `touch` moves only the sorted-set score, so the hash, and a reload, keep the save-time value | the clock is the field's column, so a reload sees the touched time. Pinned: `test_a_reload_after_touch_is_a_documented_divergence` |
-| `DecayingSortedField.rank_decayed(zset_key, …)` (M2a, TD-40) | ranks that sorted set | raises `BackendCapabilityError` naming `top_by_decay`, the backend-neutral call |
-| `composite_score({"priority": …})` (M2a) | ranks by the WriteFilter priority set | raises `BackendCapabilityError`: the priority tier is a no-op on Postgres (plan §5 M2) |
-| `composite_score(similarity_boost=…, co_occurrence_boost=…)` (M2b, M4) | injects each boost as an arm | an arm on both. A key with no record cannot take a top-K slot on Postgres, where on Redis it takes one and is then dropped at hydration, so Redis can return fewer records (never in another order). Pinned: `test_backend_parity_memory.py::test_composite_co_occurrence_boost_is_an_arm_on_both_backends`; the graph probe's `composite_orphan_slot` class |
-| A NaN edge weight (`link(…, initial_weight=nan)` on a new edge, a NaN `strengthen` or `weaken_all` result) (M4) | `ZADD` refuses it: `ResponseError: value is not a valid float`. A symmetric write whose *second* script fails keeps the first script's write | `ValueError` with the same text, and the whole write rolls back. Pinned: `test_postgres_graph.py::test_a_nan_weight_raises_value_error` |
-| A NaN weight in `CoOccurrenceField.import_state` (one that survives the `max_edges` truncation) (M4) | `DELETE` runs, then `ZADD` refuses the NaN: `ResponseError: value is not a valid float`, and the record's edge set is left **empty** | refused before any write: `ValueError` with the same text, and the edge set is unchanged. No NaN edge is stored on either (stored, Postgres would rank it above every weight and `least(NaN, cap)` is the cap). Pinned on both legs: `test_co_occurrence_field.py::TestImportStateAndErrorParity::test_a_nan_import_is_refused_a_documented_divergence`; the graph probe's `nan_import_keeps_set` class |
-| `CoOccurrenceField.get_linked(…, limit=None)` (M4) | redis-py refuses it client-side: `DataError: ``start`` and ``num`` must both be specified` (before any NaN-bound check) | `ValueError` with the same text, in the same order. Pinned on both legs: `test_get_linked_limit_none_a_documented_divergence`; the graph probe's `limit_none_error_type` class |
-| A NaN `min_weight` in `CoOccurrenceField.get_linked` (M4) | `ResponseError: min or max is not a float` | `ValueError` with the same text. Pinned on both legs: `test_get_linked_nan_min_weight_a_documented_divergence`; the probe's `nan_error_type` class |
-| The order of `propagate()`'s dict, and so of equal weights in `graph_traversal.traverse()` (M4) | Lua table iteration order | weight descending, then key bytewise. The dict and its weights are equal on both; `traverse()` sorts by weight, so only ties can be listed in another order (the graph probe's `traverse_tie_order` class) |
-| `link()`'s reply for a weight at or past `2**63` in magnitude (M4) | the server's C `(long long)` cast of the Lua number: `-inf` and anything under `-2**63` reply `-2**63` on arm64 and x86-64; above `2**63` (only with a cap past it) arm64 saturates to `2**63 - 1`, x86-64 replies `-2**63` | the arm64 values |
-| Where a NaN decay score ranks (M2a) | NaN (`0 * inf`: a `-inf` clock with above-prior confidence) makes the script's comparator inconsistent (`x > nan` is always false), so `table.sort` places it arbitrarily and can misorder real scores around it | real scores sorted, NaN last; every member's score is the same on both. Pinned: `test_where_a_nan_score_ranks_is_a_documented_divergence` |
-| A NaN decay score in `composite_score` (M2a) | `rank_decayed` replies `nan` (`0 * inf`: a `-inf` clock with above-prior confidence) and the composite's `ZADD` refuses it: `ResponseError: value is not a valid float` | that arm scores 0 for the record, the value `ZUNIONSTORE` gives a NaN product. Pinned: `test_a_nan_decay_score_in_composite_is_a_documented_divergence` |
-| The confirmed access log (M2a) | a capped list of read timestamps (`$AT:…:access_log`) | not kept: `access_count` and `last_accessed` are. `export_state` carries the counters only, and a Redis export's `access_log` is dropped on import (M5). The tests that read the log are `redis_only` |
-| `raw_update()` (M5) | `HSET` on each key, creating a partial hash for a key with no record; every index stays stale until `rebuild_indexes()` | an `UPDATE` of the rows that exist (a missing key is not created; the return value counts updated rows); unknown names and fields with no column (`BM25Field`…) raise `BackendCapabilityError`. B-trees follow the row at once; only companion tables (BM25 postings, narrow vectors, existence tokens) stay stale until `rebuild_indexes()`. Pinned: `tests/postgres/test_postgres_maintain.py` |
-| `check_indexes()` (M5) | counts orphan index entries of five kinds | those five are always `0` (they are the table's own B-trees); the dict adds `side_tables` (the companion-table drift) and `invalid_indexes`, plus `side_tables["graph_edges"]["dangling"]` (informational, not in `total`: Redis keeps such edges) (see [Index maintenance](#index-maintenance-and-transfer-m5)) |
-| `rebuild_indexes()` (M5) | deletes every index key and re-runs each field's `on_save`, so a `FrequencySketch` counts each record again and an `EmbeddingField` may call the provider; runs inside a batch | rewrites only drifted companion rows, never counts a sketch twice and never calls the provider; then `REINDEX TABLE CONCURRENTLY` and `ANALYZE`, bounded by `PG_MAINTAIN_*` timeouts. Refused (`BackendCapabilityError`) inside an open `transaction()`/batch; a `REINDEX` that stops early raises `MaintenanceIncompleteError`, not an outage |
-| `update_confidence(…, pipeline=uow)` with a Postgres `transaction()` (M2a) | (a Redis pipeline queues the update and returns `None`) | the update runs inside the transaction, so its value is returned and the attribute synced |
-| `CyclicDecayField.rank_decayed(zset_key, …)` (M5) | ranks that sorted set with `CYCLIC_DECAY_LUA` | raises `BackendCapabilityError` naming `top_by_decay`, as `DecayingSortedField.rank_decayed` does |
-| A cycles entry written raw (`import_state`) (M5) | Python msgpack keeps the importer's `float` for an integral period or baseline until the next save or adjustment re-packs it through cmsgpack | cmsgpack's `int` at once. Values identical (probe class `cyclic_merge_raw_types`) |
-| A non-numeric cycle slot (a string period, a malformed entry) (M5) | storable; the merge falls back to the declaration with a warning, and the ranking may raise | unrepresentable: `import_state` refuses a non-numeric slot with `ValueError` |
-| `strengthen_cycle` / `weaken_cycle` / `resolve_pressure` / `td_update` on a record that no longer exists, or has expired (M5) | `resolve_pressure` and `td_update` write orphan companion or hash entries (`HSET`) | nothing is written; `td_update` replies what the script replies from `Q = 0` (on an expired record that is the same reply: Redis's `HGET` of the expired key is `nil`) |
-| A non-numeric `strengthen_cycle` / `weaken_cycle` factor (`None`, `"abc"`, `True`) (M5) | the script's multiplication fails: `ResponseError: user_script:15: attempt to perform arithmetic on local 'factor' (a nil value) …`, nothing written | `ValueError` with the same text, before anything is written. Pinned on both legs: `test_backend_parity_longtail.py::test_a_non_numeric_factor_is_refused_before_writing` |
-| `td_update` on a stored `Decimal('-0')` (M5) | `tonumber("-0")` is `-0.0`, so with a target of `-0.0` the TD error is `-0.0 - -0.0` = `0.0` | a `numeric` has no `-0`: the value is stored as `0`, and the reply is `-0.0 - 0.0` = `-0.0`. The stored values compare equal. Pinned on both legs: `test_backend_parity_longtail.py::test_td_update_from_a_negative_zero_is_a_documented_divergence` |
-| A NaN `CyclicDecayField` score (M5) | the script's comparator is inconsistent around it (`x > nan` is false): its sort may misplace real scores, or raise "invalid order function for sorting" | NaN ranks last and every other score keeps its place (M2a's rule; probe class `cyclic_rank_nan`) |
-| `td_update(…, pipeline=uow)` with a Postgres `transaction()` (M5) | (a Redis pipeline queues the script and returns `None`) | the update runs inside the transaction, so the TD error is returned, as `update_confidence` does |
-| A NaN `td_update` value (M5) | stored as `tostring(nan)`, `"nan"` or `"-nan"` by platform | `numeric` `NaN`, unsigned |
-| The key order of a resolved ledger entry (M5) | cmsgpack's Lua-table iteration order | the entry's own order. Dicts compare equal |
-| A NaN prediction error (M5) (`inf` against a number, `inf - inf`) | the script marks the entry resolved, then its `ZADD` refuses the score (`ResponseError: value is not a valid float`), and Redis does not roll the `HSET` back: the entry reads resolved with a NaN error and no error-set member | refused before anything is written: `ValueError` with the same text, and the entry stays unresolved. Pinned on both legs: `test_backend_parity_longtail.py::test_a_nan_prediction_error_is_a_documented_divergence`; the probe's `ledger_nan_error` class |
-| An integer in a ledger entry that rounds to `2**63` or more as a double (M5) | cmsgpack's conversion is undefined behaviour in C: the re-packed value differs by platform (`-2**63`, `-1`) | the double |
-| `execute_supersede(mode="open")` naming a member with no record (M3) | `ZADD NX` indexes the member anyway | writes nothing: the interval is the record's row. Only a direct `execute_supersede` call can ask for it. Pinned: `tests/postgres/test_postgres_validity.py::test_mode_open_on_a_member_with_no_record_writes_nothing` |
-| An open-claim pointer naming a record that does not exist (M3) | storable (a manual `SET`, or a partial `import_state`); `supersede` reads it as "no incumbent" | unrepresentable: the pointer table's foreign key refuses it, and deleting a record cascades to its pointers. `import_state` for a record that is not stored raises `ValidityMemberAbsentError` (a `ValidityError`, so a `ValueError`) chained from the driver's `ForeignKeyViolation`; Redis's `import_state` never raises there. Pinned: `test_a_pointer_cannot_name_a_record_that_does_not_exist` |
-| `save_and_supersede` / `save_and_invalidate` whose close fails (M3) | `MULTI`/`EXEC` keeps the successor's save, and the typed error's text carries redis-py's `Command # N (...) of pipeline caused error:` prefix | the whole unit rolls back, so the successor is not saved either; same exception type, and the text is the bare reply line |
-| A NaN `valid_from` on save (M3) | the script's `ZADD` refuses it: `ResponseError: … value is not a valid float` from the pipelined `EVALSHA`, after `MULTI`/`EXEC` has written the record's hash, so the record exists with no interval | refused before anything is written: `ModelException("value is not a valid float")` -- the same text, popoto's save error (as row (v) of the query table). Stored, a NaN start would sort above every float and hide the record from every gate. Pinned: `tests/test_validity_parity.py::TestNanInstants::test_a_nan_valid_from_on_save_is_refused` |
-| A NaN `valid_from` in a direct `execute_supersede(mode="open")` call (M3) | the script's first `ZADD` refuses it: `ResponseError: value is not a valid float script: …`, nothing written. Every other NaN instant in `supersede` / `invalidate` / `execute_supersede` is refused on both legs alike -- `ValueError("value is not a valid float (<instant> is NaN)")` before the first write (#778, which on Redis used to close and chain the incumbent first); this one is left to the script because it is the save path's own refusal (the row above) | `ValueError` with the same text, nothing written. Pinned: `tests/test_validity_parity.py::TestNanInstants::test_a_nan_valid_from_in_mode_open_is_a_documented_divergence`; the shared refusal by `::test_a_nan_at_is_refused_and_writes_nothing` and `::test_a_nan_instant_in_execute_supersede_writes_nothing` |
-| A NaN `as_of` / `validity__as_of` (M3) | the range reads (`filter`, `resolve_*_keys`, the composite mask) raise `ResponseError: min or max is not a float`; the decay ranking's gate excludes nothing | `QueryException` with the same text (as row (v) of the query table); the decay ranking excludes nothing |
-| `SupersessionProtocol.supersede`/`invalidate` with the backend's `transaction()` as `pipeline` (M3) | (a Redis pipeline queues the script; the closed key is unknown until `execute()`) | runs inside the transaction: the closed key is returned and a typed error raised at the call. A Redis pipeline is refused with `ValueError` by `supersede`, `invalidate` and `save_and_*` alike: it cannot carry a Postgres write. Pinned: `test_a_redis_pipeline_is_refused_by_supersede_and_invalidate` |
-| `_ttl` / `_expire_at` on a model without `Meta.ttl` (M5) | `EXPIRE`/`EXPIREAT` on the hash | `BackendCapabilityError` before anything is written: only a `Meta.ttl` model has `_expires_at` and the read filter, so a model that never expires keeps plans that never check. Declare `Meta.ttl`; an instance can opt out with `_ttl = None`. Pinned on both legs: `test_backend_parity_ttl.py::test_an_instance_ttl_without_meta_ttl_is_a_documented_divergence`, and `tests/postgres/test_postgres_ttl.py::test_an_instance_ttl_needs_meta_ttl` |
-| A `_ttl` that is not a whole number (`1.5`) (M5) | `MULTI`/`EXEC` writes the hash, then `EXPIRE` fails: `ResponseError: value is not an integer or out of range`, and the record stays with its old TTL, or none | `ModelException` with the same text, before anything is written. Pinned: `test_backend_parity_ttl.py::test_a_fractional_ttl_is_a_documented_divergence` |
-| `count()` / `keys()` after a record expires (M5) | count the class or index set, which keeps the expired member until a hydrating read (`get`, `filter`, `all`) purges it or `clean_indexes` runs | count live rows only. Probe class `count_orphans`. Pinned: `test_backend_parity_ttl.py::test_count_after_expiry_is_a_documented_divergence` |
-| Rankings, search and membership after a record expires (M5) | the sorted sets, BM25 postings, vector file and bloom keep the member: `top_by_decay(n=…)` can give a slot to it and return fewer than `n` after hydration drops it, BM25's `N`/`avgdl`/`df` count it, and `might_exist` stays `True` | the record is in none of them from the instant it expires: `n` live records, statistics over live documents, `might_exist` `False` once no live record holds the token. Pinned: `test_backend_parity_ttl.py::test_ranking_after_expiry_is_a_documented_divergence`, and each read in `tests/postgres/test_postgres_ttl.py::test_every_public_read_misses_an_expired_record` |
-| State keyed by an expired record (M5): its confidence entry, validity intervals and open-claim pointers, staged reads, `CyclicDecayField` cycles and pressure | kept in their own keys until something cleans them; `ConfidenceField.update_confidence` refuses (its script checks the hash); `strengthen_cycle` / `weaken_cycle` still adjust the cycles entry, `export_state` returns it, and a save over the key merges with it | gone with the row: reads see the seed / no interval / no pointer, and `chain` stops at it as at a hard delete; an adjustment finds no entry (`[]`), `export_state` returns `None`, and a save starts from the declaration. `update_confidence` refuses on both. Pinned on both legs: `test_backend_parity_ttl.py::test_state_keyed_by_an_expired_record_is_a_documented_divergence` and `test_backend_parity_longtail.py::test_cycle_state_of_an_expired_record_is_a_documented_divergence`; the validity half in `tests/postgres/test_postgres_ttl.py::test_validity_reads_miss_an_expired_record`. The prediction ledger is **not** in this row: its `EXISTS` guard misses an expired record on both legs (`record`/`resolve` raise `TypeError`, `auto_resolve` returns `None`), and its entries outlive the record on both, as they outlive a delete (`test_the_ledger_treats_an_expired_record_as_absent`) |
-| A save over an expired key (M5) | `HSET` creates a new hash, but the expired record's companion state (confidence entry, BM25 postings, interval) is still there for the new one to inherit | the expired row and its side rows are deleted first: a fresh record, confidence at the seed. Pinned on both legs: `test_backend_parity_ttl.py::test_a_save_over_an_expired_key_is_a_documented_divergence`; the postings in `tests/postgres/test_postgres_ttl.py::test_a_save_over_an_expired_key_writes_a_fresh_record` |
-| `atomic_increment` through an instance whose record expired (or was deleted) under it (M5) | the script `HSET`s the field onto a fresh key: a one-field hash with no TTL, outside the class set | `ModelException` (`… no longer exists`), as for any missing row. Probe class `increment_after_expiry`. Pinned: `test_backend_parity_ttl.py::test_increment_after_expiry_is_a_documented_divergence` |
-| The instant of expiry (M5) | a key is expired once the server's millisecond clock is *past* its expiry, so it is still there at that exact millisecond | a row is expired once `_expires_at <= now` (microseconds), so `ttl=0` is gone even under a frozen clock. Observable only with the frozen test clock: two real clocks never land on one instant |
-| Removing `Meta.ttl` from a model whose table has `_expires_at` (M5) | the next save simply stops issuing `EXPIRE`; the key keeps the TTL it had | `SchemaDriftError` (a column the model no longer declares): drop the column by hand, or keep `Meta.ttl` and set `_ttl = None` per instance. Pinned: `test_backend_parity_ttl.py::test_removing_meta_ttl_is_a_documented_divergence` |
-| A failed statement inside `popoto.batch()` (M5) | `MULTI`/`EXEC` applies the other queued commands | the whole batch rolls back; `execute()` raises `BackendError`. Pinned: `test_backend_parity_ttl.py::test_a_failed_batch_is_a_documented_divergence` |
-| A `popoto.batch()` used for both Redis and Postgres writes (M5) | one store: a raw command and a model save share one `MULTI`/`EXEC` | refused with `BackendCapabilityError` before the second backend's first command, in either order. Pinned on both legs: `test_backend_parity_ttl.py::test_a_batch_of_raw_commands_and_model_writes_is_a_documented_divergence`; the reverse order in `tests/postgres/test_postgres_ttl.py::test_a_batch_refuses_to_mix_backends` |
-| A write that waits on a record an open batch or `transaction()` on the same thread holds (M5): a nested batch writing the same record, or a plain save of a record saved in an open batch | a queued command holds no lock: both apply, in execution order | `BackendCapabilityError` before anything is sent (it could never be granted); the holding batch is unharmed. Another thread waits for the commit. Pinned: `tests/postgres/test_postgres_ttl.py::test_nested_batches_writing_one_record_are_refused_at_once`, `::test_a_write_outside_the_batch_to_a_record_in_it_is_refused` |
+| `Model.idle_seconds` | `OBJECT IDLETIME`: any read or write resets it (an `HGETALL` included) | whole seconds since the row's last write or, with `AccessTrackerMixin`, its last confirmed read; an unconfirmed read does not reset it. Pinned: `tests/postgres/test_postgres_recipes.py::test_idle_seconds_counts_a_confirmed_read` |
+| `MemoryLifecycle` with a `KeyField` tier | promotion is a key migration (`save(migrate_key=True)`) | refused when you build it: `MemoryLifecycle(...)` raises `BackendCapabilityError` naming `IndexedField`, because every promotion would be a key migration, which the Postgres backend refuses. Declare the tier as an `IndexedField` on Postgres; promotion is then a plain save. Pinned: `test_a_key_tier_lifecycle_is_refused_at_construction_on_postgres`, `test_lifecycle_promotes_a_non_key_tier`, and `tests/test_memory_lifecycle.py`, whose Postgres leg runs every test against `IndexedField`-tier twins of its models |
+| A question-queue delivery when another transaction holds a candidate's row | the script runs after the other write and sees it | `FOR UPDATE SKIP LOCKED`: that candidate is passed over for the next, as one another worker claimed would be. Pinned: `test_postgres_question_queue.py::test_a_candidate_another_writer_holds_is_skipped` |
+| A proposal that duplicates two or more open candidates | folds into the first in `QuestionCandidate.query.filter(agent_id=…)`'s order: set order | the first in `_pk` order (the "order of results" row above, seen through dedup). Pinned on both legs by `tests/test_question_queue.py::TestPropose::test_a_proposal_duplicating_two_candidates_folds_into_the_first`, and counted as the queue probe's `dedup_order` class |
+| `DefaultMemory`'s eviction counter | a Redis string `MemoryService.status()` reads | a `popoto_counter` row, which `MemoryService.status()` reads on Postgres: a Postgres-bound `DefaultMemory` needs no Redis |
+| `DecisionLog.turn_summary` after a `pending` write over a terminal row: an unclaimed non-`accept` verdict landing between `assemble`'s row read and its `write_pending` | `write_pending` is a plain save, so it overwrites the terminal row without taking back its `state:`/`reason:` counts, and the next terminal write treats `pending` as new: `reject` then `pending` then `accept` leaves `{state:reject: 1, state:accept: 1, ...}` for one `accept` row. The rows are right; the hash over-counts until `DecisionLog.rebuild_turn_summary(agent_id, turn_id)` recomputes it | derived from the rows with `GROUP BY` on read: `{state:accept: 1, reason:accepted: 1}`, and `rebuild_turn_summary` returns the same. Pinned on both legs: `test_auditable_extraction.py::TestAssemblyAgainstTheRealJournal::test_a_pending_write_over_a_terminal_row_is_a_documented_divergence` |
+| `ProvenanceJournal` with a caller `pipeline=` | a Redis pipeline: the annotation and close are queued, `target_closed` is `None` and `close_index` names the close in `execute()`'s results | the backend's unit of work only (anything else raises `ValueError`): the annotation and close run inside it, `target_closed` is known at the call, `close_index` is `None`. Pinned: `test_postgres_journal.py::test_a_caller_unit_of_work_carries_the_annotation_and_the_close` |
+| `AppendOnlyMixin`: two saves of one key in one unit of work | both pass the guard (the documented intra-pipeline shape) | the second is refused (the guard reads inside the transaction). Pinned: `test_postgres_recipes.py::test_append_only_sees_its_own_transaction` |
+| `async_get`/`async_filter`/`async_count`/… | native `redis.asyncio` (reads); a worker thread (writes) | the async backend: the sync call's Postgres I/O on `psycopg.AsyncConnection`, on the running loop, no thread ([Async](#async-m5)) |
+| `async_load(db_key=<str>)` (the type its signature names) | raises `AttributeError: 'str' object has no attribute 'redis_key'`: the native path reads `db_key.redis_key` (a pre-existing Redis-path bug). The sync `load(db_key=<str>)` works | runs the sync `load`: the record, or `None` when there is none. Pinned on both legs: `tests/test_async_parity.py::test_async_load_with_a_string_db_key_is_a_documented_divergence` |
+| `async_all` on an `AccessTrackerMixin` model | stages a read per record (its native path hydrates through `_async_get_many_objects`), although `all()` is non-tracking by design | does not stage, as `all()` does not |
+| `ExistenceFilter.might_exist` | a bloom filter: false positives are possible, and a deleted record stays "seen" | exact: no false positives, and a deleted record is forgotten. Pinned on both legs: `test_existence_filter.py::TestMembershipExactness` |
+| `FrequencySketch.get_frequency` | a count-min sketch: never under, may be over | the exact count of saves (never decremented, like the sketch). Pinned: same class |
+| `ExistenceFilter.fill_ratio` | the fraction of set bits | an estimate, `1 - e^(-k·n/m)` for the `n` distinct tokens stored |
+| `save(update_fields=[…])` naming a `BM25Field`'s or `EmbeddingField`'s **source**, or only a **scope** column | only the listed fields' hooks run, so the BM25 index keeps the old text or scope, and the vector (and its hash) the old text | re-indexes and re-embeds on the source; moves the postings and the narrow vector row on a scope change. Pinned: `test_update_fields_naming_the_source_reindexes`, `test_update_fields_naming_the_source_re_embeds` |
+| `save(update_fields=[…])` naming a partitioned sorted field (`DecayingSortedField`, `SortedField(partition_by=…)`) but not its partition column, after an unsaved change to that column (#774 review) | the field's hook reads the partition from the instance, so the member moves to the instance's partition sorted set while the hash keeps the old value: `filter(agent="B").top_by_decay()` finds a record whose `agent` is `"A"` (#771) | the partition is the stored column, so the record stays where the row says; the BM25 postings, document length and narrow vector row follow the stored row too. Pinned: `test_backend_parity_memory.py::test_a_partial_save_with_an_unsaved_partition_is_a_documented_divergence` |
+| `EmbeddingField` storage | a `.npy` file per record plus `_index.json`, and an in-process matrix cache | the `vector(d)` column. No file, no cache, and `garbage_collect` / `sweep_stale_tempfiles` return `0`. The tests that assert files are `redis_only` |
+| Vector-arm ties and precision | equal similarities come back in directory-listing order; numpy float32 dot products | ties by key, bytewise; pgvector's `<=>`. Both are float32 accumulations in a different order, so similarities differ by an amount that grows with the dimension. Measured maximum absolute difference over 10,000 vector-query pairs per dimension (clustered Gaussian vectors, PostgreSQL 18.6, pgvector 0.8.7): 2.5e-7 at 2-d, 2.3e-7 at 8-d, 5.3e-7 at 64-d, 8.9e-7 at 256-d, 1.2e-6 at 768-d, 1.4e-6 at 1024-d, 1.7e-6 at 1536-d (the #774 review measured 1.56e-6) and 2.3e-6 at 3072-d. So 1e-6 holds only up to about 256 dimensions; above that, near-ties can order differently |
+| `ContentField` | a `$CF:` reference in the hash, with the content in a file store | the content itself in a `text` column |
+| `BM25Field.recompute_stats` | corrects the running `avgdl`'s floating drift | a no-op: `N` and `avgdl` are counted live |
+| The `$BM25:` / `$EF:` / `$FS:` keys | the index, readable through the raw client | not used: postings, length and token tables. The tests that read the keys are `redis_only` |
+| A reload after `touch()` | `touch` moves only the sorted-set score, so the hash, and a reload, keep the save-time value | the clock is the field's column, so a reload sees the touched time. Pinned: `test_a_reload_after_touch_is_a_documented_divergence` |
+| `DecayingSortedField.rank_decayed(zset_key, …)` (TD-40) | ranks that sorted set | raises `BackendCapabilityError` naming `top_by_decay`, the backend-neutral call |
+| `composite_score({"priority": …})` | ranks by the WriteFilter priority set | raises `BackendCapabilityError`: the priority tier is a no-op on Postgres |
+| `composite_score(similarity_boost=…, co_occurrence_boost=…)` | injects each boost as an arm | an arm on both. A key with no record cannot take a top-K slot on Postgres, where on Redis it takes one and is then dropped at hydration, so Redis can return fewer records (never in another order). Pinned: `test_backend_parity_memory.py::test_composite_co_occurrence_boost_is_an_arm_on_both_backends`; the graph probe's `composite_orphan_slot` class |
+| A NaN edge weight (`link(…, initial_weight=nan)` on a new edge, a NaN `strengthen` or `weaken_all` result) | `ZADD` refuses it: `ResponseError: value is not a valid float`. A symmetric write whose *second* script fails keeps the first script's write | `ValueError` with the same text, and the whole write rolls back. Pinned: `test_postgres_graph.py::test_a_nan_weight_raises_value_error` |
+| A NaN weight in `CoOccurrenceField.import_state` (one that survives the `max_edges` truncation) | `DELETE` runs, then `ZADD` refuses the NaN: `ResponseError: value is not a valid float`, and the record's edge set is left **empty** | refused before any write: `ValueError` with the same text, and the edge set is unchanged. No NaN edge is stored on either (stored, Postgres would rank it above every weight and `least(NaN, cap)` is the cap). Pinned on both legs: `test_co_occurrence_field.py::TestImportStateAndErrorParity::test_a_nan_import_is_refused_a_documented_divergence`; the graph probe's `nan_import_keeps_set` class |
+| `CoOccurrenceField.get_linked(…, limit=None)` | redis-py refuses it client-side: `DataError: ``start`` and ``num`` must both be specified` (before any NaN-bound check) | `ValueError` with the same text, in the same order. Pinned on both legs: `test_get_linked_limit_none_a_documented_divergence`; the graph probe's `limit_none_error_type` class |
+| A NaN `min_weight` in `CoOccurrenceField.get_linked` | `ResponseError: min or max is not a float` | `ValueError` with the same text. Pinned on both legs: `test_get_linked_nan_min_weight_a_documented_divergence`; the probe's `nan_error_type` class |
+| The order of `propagate()`'s dict, and so of equal weights in `graph_traversal.traverse()` | Lua table iteration order | weight descending, then key bytewise. The dict and its weights are equal on both; `traverse()` sorts by weight, so only ties can be listed in another order (the graph probe's `traverse_tie_order` class) |
+| `link()`'s reply for a weight at or past `2**63` in magnitude | the server's C `(long long)` cast of the Lua number: `-inf` and anything under `-2**63` reply `-2**63` on arm64 and x86-64; above `2**63` (only with a cap past it) arm64 saturates to `2**63 - 1`, x86-64 replies `-2**63` | the arm64 values |
+| Where a NaN decay score ranks | NaN (`0 * inf`: a `-inf` clock with above-prior confidence) makes the script's comparator inconsistent (`x > nan` is always false), so `table.sort` places it arbitrarily and can misorder real scores around it | real scores sorted, NaN last; every member's score is the same on both. Pinned: `test_where_a_nan_score_ranks_is_a_documented_divergence` |
+| A NaN decay score in `composite_score` | `rank_decayed` replies `nan` (`0 * inf`: a `-inf` clock with above-prior confidence) and the composite's `ZADD` refuses it: `ResponseError: value is not a valid float` | that arm scores 0 for the record, the value `ZUNIONSTORE` gives a NaN product. Pinned: `test_a_nan_decay_score_in_composite_is_a_documented_divergence` |
+| The confirmed access log | a capped list of read timestamps (`$AT:…:access_log`) | not kept: `access_count` and `last_accessed` are. `export_state` carries the counters only, and a Redis export's `access_log` is dropped on import. The tests that read the log are `redis_only` |
+| `raw_update()` | `HSET` on each key, creating a partial hash for a key with no record; every index stays stale until `rebuild_indexes()` | an `UPDATE` of the rows that exist (a missing key is not created; the return value counts updated rows); unknown names and fields with no column (`BM25Field`…) raise `BackendCapabilityError`. B-trees follow the row at once; only companion tables (BM25 postings, narrow vectors, existence tokens) stay stale until `rebuild_indexes()`. Pinned: `tests/postgres/test_postgres_maintain.py` |
+| `check_indexes()` | counts orphan index entries of five kinds | those five are always `0` (they are the table's own B-trees); the dict adds `side_tables` (the companion-table drift) and `invalid_indexes`, plus `side_tables["graph_edges"]["dangling"]` (informational, not in `total`: Redis keeps such edges) (see [Index maintenance](#index-maintenance-and-transfer-m5)) |
+| `rebuild_indexes()` | deletes every index key and re-runs each field's `on_save`, so a `FrequencySketch` counts each record again and an `EmbeddingField` may call the provider; runs inside a batch | rewrites only drifted companion rows, never counts a sketch twice and never calls the provider; then `REINDEX TABLE CONCURRENTLY` and `ANALYZE`, bounded by `PG_MAINTAIN_*` timeouts. Refused (`BackendCapabilityError`) inside an open `transaction()`/batch; a `REINDEX` that stops early raises `MaintenanceIncompleteError`, not an outage |
+| `update_confidence(…, pipeline=uow)` with a Postgres `transaction()` | (a Redis pipeline queues the update and returns `None`) | the update runs inside the transaction, so its value is returned and the attribute synced |
+| `CyclicDecayField.rank_decayed(zset_key, …)` | ranks that sorted set with `CYCLIC_DECAY_LUA` | raises `BackendCapabilityError` naming `top_by_decay`, as `DecayingSortedField.rank_decayed` does |
+| A cycles entry written raw (`import_state`) | Python msgpack keeps the importer's `float` for an integral period or baseline until the next save or adjustment re-packs it through cmsgpack | cmsgpack's `int` at once. Values identical (probe class `cyclic_merge_raw_types`) |
+| A non-numeric cycle slot (a string period, a malformed entry) | storable; the merge falls back to the declaration with a warning, and the ranking may raise | unrepresentable: `import_state` refuses a non-numeric slot with `ValueError` |
+| `strengthen_cycle` / `weaken_cycle` / `resolve_pressure` / `td_update` on a record that no longer exists, or has expired | `resolve_pressure` and `td_update` write orphan companion or hash entries (`HSET`) | nothing is written; `td_update` replies what the script replies from `Q = 0` (on an expired record that is the same reply: Redis's `HGET` of the expired key is `nil`) |
+| A non-numeric `strengthen_cycle` / `weaken_cycle` factor (`None`, `"abc"`, `True`) | the script's multiplication fails: `ResponseError: user_script:15: attempt to perform arithmetic on local 'factor' (a nil value) …`, nothing written | `ValueError` with the same text, before anything is written. Pinned on both legs: `test_backend_parity_longtail.py::test_a_non_numeric_factor_is_refused_before_writing` |
+| `td_update` on a stored `Decimal('-0')` | `tonumber("-0")` is `-0.0`, so with a target of `-0.0` the TD error is `-0.0 - -0.0` = `0.0` | a `numeric` has no `-0`: the value is stored as `0`, and the reply is `-0.0 - 0.0` = `-0.0`. The stored values compare equal. Pinned on both legs: `test_backend_parity_longtail.py::test_td_update_from_a_negative_zero_is_a_documented_divergence` |
+| A NaN `CyclicDecayField` score | the script's comparator is inconsistent around it (`x > nan` is false): its sort may misplace real scores, or raise "invalid order function for sorting" | NaN ranks last and every other score keeps its place (the decay ranking's rule; probe class `cyclic_rank_nan`) |
+| `td_update(…, pipeline=uow)` with a Postgres `transaction()` | (a Redis pipeline queues the script and returns `None`) | the update runs inside the transaction, so the TD error is returned, as `update_confidence` does |
+| A NaN `td_update` value | stored as `tostring(nan)`, `"nan"` or `"-nan"` by platform | `numeric` `NaN`, unsigned |
+| The key order of a resolved ledger entry | cmsgpack's Lua-table iteration order | the entry's own order. Dicts compare equal |
+| A NaN prediction error (`inf` against a number, `inf - inf`) | the script marks the entry resolved, then its `ZADD` refuses the score (`ResponseError: value is not a valid float`), and Redis does not roll the `HSET` back: the entry reads resolved with a NaN error and no error-set member | refused before anything is written: `ValueError` with the same text, and the entry stays unresolved. Pinned on both legs: `test_backend_parity_longtail.py::test_a_nan_prediction_error_is_a_documented_divergence`; the probe's `ledger_nan_error` class |
+| An integer in a ledger entry that rounds to `2**63` or more as a double | cmsgpack's conversion is undefined behaviour in C: the re-packed value differs by platform (`-2**63`, `-1`) | the double |
+| `execute_supersede(mode="open")` naming a member with no record | `ZADD NX` indexes the member anyway | writes nothing: the interval is the record's row. Only a direct `execute_supersede` call can ask for it. Pinned: `tests/postgres/test_postgres_validity.py::test_mode_open_on_a_member_with_no_record_writes_nothing` |
+| An open-claim pointer naming a record that does not exist | storable (a manual `SET`, or a partial `import_state`); `supersede` reads it as "no incumbent" | unrepresentable: the pointer table's foreign key refuses it, and deleting a record cascades to its pointers. `import_state` for a record that is not stored raises `ValidityMemberAbsentError` (a `ValidityError`, so a `ValueError`) chained from the driver's `ForeignKeyViolation`; Redis's `import_state` never raises there. Pinned: `test_a_pointer_cannot_name_a_record_that_does_not_exist` |
+| `save_and_supersede` / `save_and_invalidate` whose close fails | `MULTI`/`EXEC` keeps the successor's save, and the typed error's text carries redis-py's `Command # N (...) of pipeline caused error:` prefix | the whole unit rolls back, so the successor is not saved either; same exception type, and the text is the bare reply line |
+| A NaN `valid_from` on save | the script's `ZADD` refuses it: `ResponseError: … value is not a valid float` from the pipelined `EVALSHA`, after `MULTI`/`EXEC` has written the record's hash, so the record exists with no interval | refused before anything is written: `ModelException("value is not a valid float")` -- the same text, popoto's save error (as row (v) of the query table). Stored, a NaN start would sort above every float and hide the record from every gate. Pinned: `tests/test_validity_parity.py::TestNanInstants::test_a_nan_valid_from_on_save_is_refused` |
+| A NaN `valid_from` in a direct `execute_supersede(mode="open")` call | the script's first `ZADD` refuses it: `ResponseError: value is not a valid float script: …`, nothing written. Every other NaN instant in `supersede` / `invalidate` / `execute_supersede` is refused on both legs alike -- `ValueError("value is not a valid float (<instant> is NaN)")` before the first write (#778, which on Redis used to close and chain the incumbent first); this one is left to the script because it is the save path's own refusal (the row above) | `ValueError` with the same text, nothing written. Pinned: `tests/test_validity_parity.py::TestNanInstants::test_a_nan_valid_from_in_mode_open_is_a_documented_divergence`; the shared refusal by `::test_a_nan_at_is_refused_and_writes_nothing` and `::test_a_nan_instant_in_execute_supersede_writes_nothing` |
+| A NaN `as_of` / `validity__as_of` | the range reads (`filter`, `resolve_*_keys`, the composite mask) raise `ResponseError: min or max is not a float`; the decay ranking's gate excludes nothing | `QueryException` with the same text (as row (v) of the query table); the decay ranking excludes nothing |
+| `SupersessionProtocol.supersede`/`invalidate` with the backend's `transaction()` as `pipeline` | (a Redis pipeline queues the script; the closed key is unknown until `execute()`) | runs inside the transaction: the closed key is returned and a typed error raised at the call. A Redis pipeline is refused with `ValueError` by `supersede`, `invalidate` and `save_and_*` alike: it cannot carry a Postgres write. Pinned: `test_a_redis_pipeline_is_refused_by_supersede_and_invalidate` |
+| `_ttl` / `_expire_at` on a model without `Meta.ttl` | `EXPIRE`/`EXPIREAT` on the hash | `BackendCapabilityError` before anything is written: only a `Meta.ttl` model has `_expires_at` and the read filter, so a model that never expires keeps plans that never check. Declare `Meta.ttl`; an instance can opt out with `_ttl = None`. Pinned on both legs: `test_backend_parity_ttl.py::test_an_instance_ttl_without_meta_ttl_is_a_documented_divergence`, and `tests/postgres/test_postgres_ttl.py::test_an_instance_ttl_needs_meta_ttl` |
+| A `_ttl` that is not a whole number (`1.5`) | `MULTI`/`EXEC` writes the hash, then `EXPIRE` fails: `ResponseError: value is not an integer or out of range`, and the record stays with its old TTL, or none | `ModelException` with the same text, before anything is written. Pinned: `test_backend_parity_ttl.py::test_a_fractional_ttl_is_a_documented_divergence` |
+| `count()` / `keys()` after a record expires | count the class or index set, which keeps the expired member until a hydrating read (`get`, `filter`, `all`) purges it or `clean_indexes` runs | count live rows only. Probe class `count_orphans`. Pinned: `test_backend_parity_ttl.py::test_count_after_expiry_is_a_documented_divergence` |
+| Rankings, search and membership after a record expires | the sorted sets, BM25 postings, vector file and bloom keep the member: `top_by_decay(n=…)` can give a slot to it and return fewer than `n` after hydration drops it, BM25's `N`/`avgdl`/`df` count it, and `might_exist` stays `True` | the record is in none of them from the instant it expires: `n` live records, statistics over live documents, `might_exist` `False` once no live record holds the token. Pinned: `test_backend_parity_ttl.py::test_ranking_after_expiry_is_a_documented_divergence`, and each read in `tests/postgres/test_postgres_ttl.py::test_every_public_read_misses_an_expired_record` |
+| State keyed by an expired record: its confidence entry, validity intervals and open-claim pointers, staged reads, `CyclicDecayField` cycles and pressure | kept in their own keys until something cleans them; `ConfidenceField.update_confidence` refuses (its script checks the hash); `strengthen_cycle` / `weaken_cycle` still adjust the cycles entry, `export_state` returns it, and a save over the key merges with it | gone with the row: reads see the seed / no interval / no pointer, and `chain` stops at it as at a hard delete; an adjustment finds no entry (`[]`), `export_state` returns `None`, and a save starts from the declaration. `update_confidence` refuses on both. Pinned on both legs: `test_backend_parity_ttl.py::test_state_keyed_by_an_expired_record_is_a_documented_divergence` and `test_backend_parity_longtail.py::test_cycle_state_of_an_expired_record_is_a_documented_divergence`; the validity half in `tests/postgres/test_postgres_ttl.py::test_validity_reads_miss_an_expired_record`. The prediction ledger is **not** in this row: its `EXISTS` guard misses an expired record on both legs (`record`/`resolve` raise `TypeError`, `auto_resolve` returns `None`), and its entries outlive the record on both, as they outlive a delete (`test_the_ledger_treats_an_expired_record_as_absent`) |
+| A save over an expired key | `HSET` creates a new hash, but the expired record's companion state (confidence entry, BM25 postings, interval) is still there for the new one to inherit | the expired row and its side rows are deleted first: a fresh record, confidence at the seed. Pinned on both legs: `test_backend_parity_ttl.py::test_a_save_over_an_expired_key_is_a_documented_divergence`; the postings in `tests/postgres/test_postgres_ttl.py::test_a_save_over_an_expired_key_writes_a_fresh_record` |
+| `atomic_increment` through an instance whose record expired (or was deleted) under it | the script `HSET`s the field onto a fresh key: a one-field hash with no TTL, outside the class set | `ModelException` (`… no longer exists`), as for any missing row. Probe class `increment_after_expiry`. Pinned: `test_backend_parity_ttl.py::test_increment_after_expiry_is_a_documented_divergence` |
+| The instant of expiry | a key is expired once the server's millisecond clock is *past* its expiry, so it is still there at that exact millisecond | a row is expired once `_expires_at <= now` (microseconds), so `ttl=0` is gone even under a frozen clock. Observable only with the frozen test clock: two real clocks never land on one instant |
+| Removing `Meta.ttl` from a model whose table has `_expires_at` | the next save simply stops issuing `EXPIRE`; the key keeps the TTL it had | `SchemaDriftError` (a column the model no longer declares): drop the column by hand, or keep `Meta.ttl` and set `_ttl = None` per instance. Pinned: `test_backend_parity_ttl.py::test_removing_meta_ttl_is_a_documented_divergence` |
+| A failed statement inside `popoto.batch()` | `MULTI`/`EXEC` applies the other queued commands | the whole batch rolls back; `execute()` raises `BackendError`. Pinned: `test_backend_parity_ttl.py::test_a_failed_batch_is_a_documented_divergence` |
+| A `popoto.batch()` used for both Redis and Postgres writes | one store: a raw command and a model save share one `MULTI`/`EXEC` | refused with `BackendCapabilityError` before the second backend's first command, in either order. Pinned on both legs: `test_backend_parity_ttl.py::test_a_batch_of_raw_commands_and_model_writes_is_a_documented_divergence`; the reverse order in `tests/postgres/test_postgres_ttl.py::test_a_batch_refuses_to_mix_backends` |
+| A write that waits on a record an open batch or `transaction()` on the same thread holds: a nested batch writing the same record, or a plain save of a record saved in an open batch | a queued command holds no lock: both apply, in execution order | `BackendCapabilityError` before anything is sent (it could never be granted); the holding batch is unharmed. Another thread waits for the commit. Pinned: `tests/postgres/test_postgres_ttl.py::test_nested_batches_writing_one_record_are_refused_at_once`, `::test_a_write_outside_the_batch_to_a_record_in_it_is_refused` |
 
 ## Validity and supersession (M3)
 
@@ -2881,7 +3015,7 @@ one companion table:
 | `…:chain:fwd` / `…:chain:rev` hashes | `<f>__superseded_by` / `<f>__supersedes` on the record |
 | `…:open:{digest}` strings | `<table>__<f>__open (digest PRIMARY KEY, member)`, `member` referencing `_pk` `ON DELETE CASCADE` |
 
-**Why not `tstzrange`.** The plan proposed one `tstzrange` column. A
+**Why not `tstzrange`.** An alternative design is one `tstzrange` column. A
 `timestamptz` keeps microseconds, so the Redis score `1700000000.1234567`
 comes back `1700000000.123457`, two scores one ulp apart become one instant,
 and the gate's `invalid_at <= as_of` flips for a close one ulp after `as_of`
@@ -2893,7 +3027,7 @@ allows (its check is `close < start`): `tstzrange(t, t)` is the canonical
 close are both lost (and `lower > upper` raises). A range *can* tell "no
 `invalid_at` recorded" from "`invalid_at` is `+inf`" (`upper_inf('[t,)')` is
 true, `upper_inf('[t,infinity)')` false), so that is not a reason; the columns
-spell it `NULL` vs `'Infinity'`. So the interval follows M2a's clock decision:
+spell it `NULL` vs `'Infinity'`. So the interval follows the decay clock's representation:
 `double precision` epoch seconds, bit-identical to the score.
 
 **The exclusion rule** every gate applies -- `top_by_decay`'s ranking,
@@ -2964,7 +3098,9 @@ invalidations, direct `execute_supersede` calls in every mode, `save_and_*`
 and deletes on both backends, comparing every return value and exception
 (type and text), the intervals, links, pointers and chains, and every gated
 read at the interval ends, `±inf`, `1e308` and NaN. Its documented classes are
-the M3 rows of the table above; `tests/postgres/test_validity_probe.py` runs a
+the validity rows (`execute_supersede`, open-claim pointers, `save_and_*`,
+NaN `valid_from` and `as_of`, `SupersessionProtocol`) of the
+[divergence table](#records-and-other-behaviour); `tests/postgres/test_validity_probe.py` runs a
 25-shape slice in CI.
 
 ```bash
@@ -2978,13 +3114,13 @@ POPOTO_POSTGRES_URL=postgresql://localhost:5432/postgres \
 `scripts/bench_backend_seam.py` measures the public API on both backends. It
 seeds 2,000 records, runs `ANALYZE`, and then makes three runs of 300
 iterations per operation, with the two backends interleaved within each run.
-The M1 targets are `Model.save()` p50 at most 2x Redis and `filter` +
-hydration p50 at most 1x Redis. M2a adds `rank_decayed` with a base score and
+The targets are `Model.save()` p50 at most 2x Redis and `filter` +
+hydration p50 at most 1x Redis; for `rank_decayed` with a base score and
 confidence modulation over all 2,000 records (top 10): Postgres p50 at most
 1x Redis, `DECAY_SCORE_LUA` against one `SELECT`; `top_by_decay` with
-hydration is measured beside it. M3 adds the same ranking with a validity gate
+hydration is measured beside it; and for the same ranking with a validity gate
 (a tenth of the records superseded, a twentieth not yet started): Postgres
-p50 at most 1x Redis. The PRs that introduced each milestone
+p50 at most 1x Redis. The PRs that introduced each target
 record the measured numbers and the environment they were taken on.
 
 ```bash
