@@ -3409,6 +3409,10 @@ checkout: <code>pip install -e '.[mcp]'</code>. Hooks work on a bare
 (query-sensitive)</code> before you go further. If Redis is not running:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>redis-server<span class="w">        </span><span class="c1"># or: valkey-server</span>
 </code></pre></div>
+<p>On a PostgreSQL 18+ server instead, export <code>POPOTO_BACKEND=postgres</code> and
+<code>POPOTO_POSTGRES_URL</code> where Claude Code's hooks will see them (<code>doctor</code> then
+prints <code>postgres reachable</code> and needs no Redis at all); see
+<a href="../../features/harness-integration/#on-postgres">On Postgres</a>.</p>
 <p>Then either the plugin or the manual block. They do the same thing.</p>
 <h3 id="plugin">Plugin<a class="headerlink" href="#plugin" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>claude<span class="w"> </span>plugin<span class="w"> </span>marketplace<span class="w"> </span>add<span class="w"> </span>tomcounsell/popoto
@@ -3452,7 +3456,8 @@ decided to look something up.</p>
 climbing, and <code>failures</code> reads <code>none</code>. Those three lines are the whole
 health check.</p>
 <h2 id="what-is-stored-and-where">What is stored, and where<a class="headerlink" href="#what-is-stored-and-where" title="Permanent link">&para;</a></h2>
-<p>In your Redis or Valkey, in the <code>DefaultMemory:*</code> keyspace, tagged with an
+<p>In your Redis or Valkey, in the <code>DefaultMemory:*</code> keyspace (on Postgres: the
+<code>default_memory</code> table of <code>POPOTO_POSTGRES_SCHEMA</code>), tagged with an
 <code>agent_id</code> that defaults to the basename of your working directory. Since
 1.9.0 that tag is honored as a read filter on every shipped retrieval path,
 the default lexical/BM25 one included (<a href="https://github.com/tomcounsell/popoto/issues/576">#576</a>).
@@ -3524,6 +3529,10 @@ profile is enough.</p>
 <td>No server, or the wrong <code>POPOTO_MEMORY_URL</code>. It prints the fix.</td>
 </tr>
 <tr>
+<td><code>postgres UNREACHABLE</code> / <code>UNSUPPORTED</code></td>
+<td>On <code>POPOTO_BACKEND=postgres</code>: no server at <code>POPOTO_POSTGRES_URL</code>, or one older than PostgreSQL 18.</td>
+</tr>
+<tr>
 <td><code>last activity never</code></td>
 <td>The hooks are not firing. Check that <code>popoto-memory</code> is on the <code>PATH</code> your harness sees, and that you restarted Claude Code.</td>
 </tr>
@@ -3551,7 +3560,8 @@ Never a traceback, and never a non-zero exit.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>claude<span class="w"> </span>plugin<span class="w"> </span>uninstall<span class="w"> </span>popoto-memory@popoto<span class="w">   </span><span class="c1"># or delete the settings block</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>pip<span class="w"> </span>uninstall<span class="w"> </span>popoto
 </code></pre></div>
-<p>Your memories stay in your Redis until you delete them:</p>
+<p>Your memories stay in your Redis (or Postgres schema) until you delete them.
+On Redis:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>redis-cli<span class="w"> </span>--scan<span class="w"> </span>--pattern<span class="w"> </span><span class="s1">'DefaultMemory:*'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>xargs<span class="w"> </span>redis-cli<span class="w"> </span>del
 </code></pre></div>
 <h2 id="verified-against">Verified against<a class="headerlink" href="#verified-against" title="Permanent link">&para;</a></h2>

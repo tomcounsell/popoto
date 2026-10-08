@@ -3376,7 +3376,9 @@ the same database:</p>
 </code></pre></div>
 <p>For a boundary enforced by Redis rather than by a query filter, point each
 project at its own <code>POPOTO_MEMORY_URL</code> database (any database but 0, which
-is refused — see <a href="../../features/harness-integration/#database-0-is-refused">Harness Integration</a>).</p>
+is refused — see <a href="../../features/harness-integration/#database-0-is-refused">Harness Integration</a>).
+On Postgres the equivalent is a <code>POPOTO_POSTGRES_SCHEMA</code> per project (see
+<a href="../../features/harness-integration/#on-postgres">On Postgres</a>).</p>
 <h2 id="corpus-growth-and-eviction">Corpus growth and eviction<a class="headerlink" href="#corpus-growth-and-eviction" title="Permanent link">&para;</a></h2>
 <div class="admonition danger">
 <p class="admonition-title">Upgrading to 1.9.0+ on an existing corpus can delete records</p>

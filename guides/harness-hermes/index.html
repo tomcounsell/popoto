@@ -3315,8 +3315,10 @@
 
 <h1 id="add-memory-to-hermes">Add Memory to Hermes<a class="headerlink" href="#add-memory-to-hermes" title="Permanent link">&para;</a></h1>
 <p>Hermes is the only harness here whose hooks are Python. The plugin runs
-inside the gateway process, so the read path is a single Redis round trip
-with no interpreter startup at all -- the fastest of the four.</p>
+inside the gateway process, so the read path is a single round trip to the
+memory store (Redis, or Postgres with <code>POPOTO_BACKEND=postgres</code>; see
+<a href="../../features/harness-integration/#on-postgres">On Postgres</a>) with no
+interpreter startup at all -- the fastest of the four.</p>
 <div class="admonition note">
 <p class="admonition-title">Two hook systems, not one</p>
 <p>Hermes 0.19.0 ships two independent mechanisms: gateway <strong>hooks</strong>
@@ -3402,7 +3404,8 @@ plugin error, so no single place shows all of it:</p>
 <li><code>~/.hermes/logs/agent.log</code> -- the only place a <strong>callback exception</strong>
    surfaces.</li>
 <li><code>popoto-memory doctor</code> / <code>~/.popoto/memory.log</code> -- popoto's own
-   failures (a misconfigured <code>POPOTO_MEMORY_URL</code>, an unreachable Redis).</li>
+   failures (a misconfigured <code>POPOTO_MEMORY_URL</code> or <code>POPOTO_POSTGRES_URL</code>,
+   an unreachable server).</li>
 </ol>
 <p>You can also test the adapter directly, bypassing Hermes entirely:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">'{"hook_event_name":"pre_llm_call","session_id":"t","user_message":"how do deploys work?"}'</span><span class="w"> </span><span class="se">\</span>

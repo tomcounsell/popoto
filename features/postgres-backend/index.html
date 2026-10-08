@@ -4897,8 +4897,55 @@ tables created on first use, like <code>popoto_recall_proposal</code>:</p>
 </table>
 <p><code>DefaultMemory</code>'s eviction counts and pages its partition through the sorted
 reads above and records the eviction in <code>popoto_counter</code>, so a
-Postgres-bound <code>DefaultMemory</code> issues no Redis command; <code>MemoryService</code>
-(the Redis-only integration) does not see that counter.
+Postgres-bound <code>DefaultMemory</code> issues no Redis command, and <code>MemoryService</code>
+reads that counter back with its own (below).</p>
+<p><strong>The harness integration</strong> (#814). <code>MemoryService</code> -- the <code>popoto-memory</code>
+hook, the MCP server and <code>doctor</code> -- follows <code>DefaultMemory</code>'s backend. On
+Postgres its session state is the <code>_harness</code> adapter's tables and its
+counters are <code>popoto_counter</code> rows under the same key strings the Redis
+counters use, so a Postgres-bound hook process binds no Redis connection and
+sends Redis no command:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Redis</th>
+<th>Postgres</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Read-to-write handoff</td>
+<td><code>$popoto_memory:pending:{agent}:{session}</code> list: <code>RPUSH</code>/<code>LTRIM</code>/<code>EXPIRE</code>, claimed by <code>LRANGE</code> + <code>LREM</code>, else <code>LPOP</code></td>
+<td><code>popoto_harness_pending (agent, session, seq, turn, keys, expires_at)</code>: one message under the session's advisory lock; the claim is one <code>DELETE … RETURNING</code></td>
+</tr>
+<tr>
+<td>Injection suppression</td>
+<td><code>$popoto_memory:injected:{agent}:{session}</code> set: <code>SADD</code>/<code>EXPIRE</code>, <code>SMEMBERS</code></td>
+<td><code>popoto_harness_injected (agent, session, member, expires_at)</code></td>
+</tr>
+<tr>
+<td>Last-success timestamps</td>
+<td><code>$popoto_memory:last:{agent}:{op}</code> strings</td>
+<td><code>popoto_harness_event (agent, name, stamp)</code></td>
+</tr>
+<tr>
+<td>Counters</td>
+<td><code>$popoto_memory:counter:{agent}:{op}</code> strings, <code>INCR</code>, read by <code>SCAN</code></td>
+<td><code>popoto_counter</code> rows, read by key prefix (<code>_counter</code> <code>scan</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Each session's rows share one expiry, refreshed on every write as <code>EXPIRE</code>
+refreshes the Redis key, and every read filters expired rows; a write also
+deletes up to 20 expired rows of any session in passing, so abandoned
+sessions do not accumulate. <code>PostgresBackend.describe()</code> is the one
+read-only round trip <code>doctor</code> makes for the server facts (version and
+support, schema, pgvector, the DSN summary). Pinned by
+<code>tests/test_integrations_backends.py</code> (both legs) and
+<code>tests/postgres/test_postgres_harness.py</code>, which runs the real hook and
+<code>doctor</code> subprocesses with Redis unreachable and a connect guard that
+records any Redis dial.
 <code>MemoryLifecycle.tombstone()</code> archives the record as <code>restore()</code> will decode
 it: on Redis the raw hash bytes, on Postgres the stored row encoded the way a
 Redis save would write it, so <code>decode_popoto_model_hashmap</code> restores it

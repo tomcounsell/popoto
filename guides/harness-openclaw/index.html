@@ -3519,7 +3519,7 @@ store is simply empty; <code>popoto-memory doctor</code> will confirm the record
 <p>Removing the plugin leaves the MCP tools in place; the model can still call
 <code>memory_search</code> and <code>memory_save</code>. To remove those too, delete the
 <code>mcp.servers.popoto-memory</code> entry from <code>openclaw.json</code>. Nothing stored in Redis
-is touched by either — uninstalling stops new memories being written, it does not
+(or Postgres) is touched by either — uninstalling stops new memories being written, it does not
 delete the ones you have.</p>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <p>Identical to every other harness, all environment-driven. See

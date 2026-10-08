@@ -908,6 +908,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-one-deliberate-divergence-from-the-benchmarked-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3424,6 +3435,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#on-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Postgres
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-one-deliberate-divergence-from-the-benchmarked-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3549,7 +3571,8 @@
 
 <h1 id="harness-integration">Harness Integration<a class="headerlink" href="#harness-integration" title="Permanent link">&para;</a></h1>
 <p>Subconscious memory for Claude Code, Codex, Hermes, and OpenClaw, backed by
-your own Redis or Valkey. No API keys, no hosted service, no schema to write.</p>
+your own Redis, Valkey or PostgreSQL 18+ (<a href="#on-postgres">On Postgres</a>). No
+API keys, no hosted service, no schema to write.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[mcp]'</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>popoto-memory<span class="w"> </span>doctor
 </code></pre></div>
@@ -3749,7 +3772,7 @@ that measured cost the first time it is used.</p>
 <p>"Stored verbatim" is the point of raw ingestion and also its hazard: a hook
 fires on every turn, and terminal turns contain pasted API keys. The
 <a href="../never-record-firewall/">never-record firewall</a> runs ahead of the write
-path so that class of content never reaches Redis.</p>
+path so that class of content never reaches storage, on either backend.</p>
 <p>It is deterministic — regex and entropy, no model — and it runs at two
 points. At the turn level, inside <code>SubconsciousMemory.extract_memories()</code>,
 <em>before</em> the extraction provider is called: an off-the-record marker voids
@@ -3856,6 +3879,146 @@ survives. If database 0 really is where this corpus belongs,
 <p><code>POPOTO_MEMORY_ENABLED=0</code> short-circuits the check entirely. A disabled
 memory layer writes to no database, so there is nothing to refuse — the kill
 switch stays a clean no-op on a database-0 host, with no log line per turn.</p>
+<h3 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h3>
+<p>The hook, the MCP server, <code>doctor</code> and <code>demo</code> run on the
+<a href="../postgres-backend/">Postgres backend</a> with no Redis at all
+(<a href="https://github.com/tomcounsell/popoto/issues/814">#814</a>). Select it the way
+any Popoto process does; the <code>POPOTO_MEMORY_*</code> variables above keep their
+meaning, except the two that only describe a Redis connection:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_BACKEND</span><span class="o">=</span>postgres
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://db.internal:5432/agents
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_POSTGRES_SCHEMA</span><span class="o">=</span>popoto<span class="w">      </span><span class="c1"># optional; default "popoto"</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>On Postgres</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POPOTO_BACKEND</code></td>
+<td><code>postgres</code> selects it for the hook process, the MCP server and <code>doctor</code>. Without it the integration stays on Redis, exactly as before</td>
+</tr>
+<tr>
+<td><code>POPOTO_POSTGRES_URL</code></td>
+<td>The DSN. Required: selecting Postgres without it fails every operation (logged, counted, and reported by <code>doctor</code>) rather than falling back to Redis</td>
+</tr>
+<tr>
+<td><code>POPOTO_POSTGRES_SCHEMA</code></td>
+<td>Where the tables live. Created on first write</td>
+</tr>
+<tr>
+<td><code>POPOTO_MEMORY_URL</code>, <code>REDIS_URL</code></td>
+<td><strong>Not read.</strong> No Redis connection is bound, probed or dialled, so a <code>REDIS_URL</code> your harness happens to export (even one naming database 0, or a server that is down) changes nothing</td>
+</tr>
+<tr>
+<td><code>POPOTO_MEMORY_ALLOW_DB0</code></td>
+<td>Not applicable. <a href="#database-0-is-refused">Database 0 is refused</a> is a Redis rule</td>
+</tr>
+</tbody>
+</table>
+<p>Everything the integration keeps between turns moves with the backend. The
+memories are <code>DefaultMemory</code> rows; the read-to-write handoff, the per-session
+injection suppression and the last-success timestamps are typed tables
+(<code>popoto_harness_pending</code>, <code>popoto_harness_injected</code>, <code>popoto_harness_event</code>)
+that expire with the session, as the Redis keys do; and the counters <code>doctor</code>
+reads are rows of <code>popoto_counter</code>, alongside <code>DefaultMemory</code>'s eviction
+counter. The behavior is the same on both backends, including the turn-keyed
+claim (two writers racing on one turn: exactly one reports it) and the
+32-entry cap. One difference is stricter: a redelivered read hook is
+deduplicated under a lock on Postgres, where Redis only checks before
+writing. Session state is not migrated by <code>migrate_redis_to_postgres</code> (an
+hour of handoff is not worth carrying over), and counters start from zero on
+the new backend.</p>
+<p><code>doctor</code> reports the Postgres server instead of Redis:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>$ popoto-memory doctor
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>popoto-memory doctor
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  status         enabled
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  backend        postgres
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  postgres dsn   host=db.internal port=5432 dbname=agents
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  url source     POPOTO_POSTGRES_URL
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  postgres       reachable, postgresql 18.6, ping 1.37 ms
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>  schema         popoto (10 tables)
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>  pgvector       0.8.7 (public)
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>  health         ok, dropped_writes=0
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>  agent id       my-project
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>  model          DefaultMemory
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>  retrieval      lexical (query-sensitive)
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>  ...
+</code></pre></div>
+<p>The DSN line shows host, port, database and user only, never the password.
+<code>postgres</code> is <code>UNREACHABLE</code> (with the error and the backend's health record)
+when the server does not answer, and <code>UNSUPPORTED</code> when it is older than
+PostgreSQL 18 or not UTF8; both exit 1, as an unreachable Redis does.
+<code>schema</code> says <code>not created yet</code> before the first write. <code>pgvector</code> is
+informational: <code>DefaultMemory</code> does not need it, only models with an
+<code>EmbeddingField</code> do.</p>
+<p><code>doctor --json</code> has the same keys on both backends, so a script written
+against one shape never meets a <code>KeyError</code> on the other:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>On Redis</th>
+<th>On Postgres</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend</code></td>
+<td><code>"redis"</code></td>
+<td><code>"postgres"</code></td>
+</tr>
+<tr>
+<td><code>reachable</code></td>
+<td>server answered</td>
+<td>server answered and is PostgreSQL 18+ / UTF8</td>
+</tr>
+<tr>
+<td><code>server</code></td>
+<td><code>"redis 8.2.1"</code> or <code>"valkey 8.1.0"</code></td>
+<td><code>"postgresql 18.6"</code></td>
+</tr>
+<tr>
+<td><code>postgres</code></td>
+<td><code>null</code></td>
+<td><code>dsn</code>, <code>schema</code>, <code>schema_exists</code>, <code>schema_tables</code>, <code>server_version</code>, <code>supported</code>, <code>pgvector</code>, <code>database</code>, <code>health</code></td>
+</tr>
+<tr>
+<td><code>redis_url</code></td>
+<td>the redacted URL, as before</td>
+<td><code>null</code></td>
+</tr>
+<tr>
+<td><code>redis_reachable</code></td>
+<td>as before</td>
+<td><code>null</code> (not applicable, never <code>false</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>On Redis every key that existed before keeps its value and position;
+<code>backend</code>, <code>reachable</code> and <code>postgres</code> are appended.</p>
+<p>A hook on an unreachable Postgres behaves as one on an unreachable Redis
+(see <a href="#failure-behavior">Failure behavior</a>): exit 0, no output, one log line,
+and a stderr warning that names the backend, such as
+<code>popoto memory injected_read failed (backend: postgres): ...</code>. The hook
+caps both of its Postgres waits at the same 1 second it gives Redis: the
+connect timeout, so an outage costs the prompt about a second once per hook
+process, and the statement timeout, so a held lock (a migration, <code>maintain</code>,
+a stuck writer) costs about a second per statement instead of the library's
+30. Only the hook subcommand lowers them; the MCP server and an in-process
+caller such as the Hermes plugin keep the library defaults.</p>
+<p><code>doctor</code> creates nothing. Pointed at a schema that does not exist yet, it
+reports the schema as <code>not created yet</code> with a record count of 0 and skips its
+latency probe, because on Postgres the first read creates the schema and its
+tables.</p>
+<p>To remove a scratch agent's bookkeeping (handoffs, suppression sets,
+counters, last-success stamps) on either backend, call
+<code>MemoryService.purge_integration_state()</code>. It never deletes memory records;
+delete those through the model.</p>
 <h3 id="the-one-deliberate-divergence-from-the-benchmarked-configuration">The one deliberate divergence from the benchmarked configuration<a class="headerlink" href="#the-one-deliberate-divergence-from-the-benchmarked-configuration" title="Permanent link">&para;</a></h3>
 <p>Scoring is unchanged: <code>score_weights={"relevance": 1.0}</code> and the
 lexical/BM25 retrieval path that <code>DefaultMemory</code> selects, exactly as
@@ -3869,25 +4032,25 @@ are 5 items and 800 tokens. Raise them with the environment variables if
 your turns are long and infrequent.</p>
 <h2 id="diagnosing">Diagnosing<a class="headerlink" href="#diagnosing" title="Permanent link">&para;</a></h2>
 <p>A hook has no console, so <code>popoto-memory doctor</code> is the error surface.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>$ popoto-memory doctor
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>popoto-memory doctor
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  status         enabled
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  redis url      redis://localhost:6379/1
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  url source     POPOTO_MEMORY_URL
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  redis          reachable, valkey 9.1.0, ping 4.91 ms
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  agent id       my-project
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  model          DefaultMemory
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>  retrieval      lexical (query-sensitive)
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>  ingest         raw
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>  budget         5 items / 800 tokens
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>  records        142
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>  hook read      1.71 ms (in-process)
-<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>  successes      assemble=88, capture=142
-<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>  failures       none
-<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>  last assemble  2026-08-07T18:41:03+00:00
-<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>  last capture   2026-08-07T18:41:07+00:00
-<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>  log            /Users/dev/.popoto/memory.log
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>$ popoto-memory doctor
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>popoto-memory doctor
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  status         enabled
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  redis url      redis://localhost:6379/1
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  url source     POPOTO_MEMORY_URL
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  redis          reachable, valkey 9.1.0, ping 4.91 ms
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>  agent id       my-project
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>  model          DefaultMemory
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>  retrieval      lexical (query-sensitive)
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>  ingest         raw
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>  budget         5 items / 800 tokens
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>  records        142
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>  hook read      1.71 ms (in-process)
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>  successes      assemble=88, capture=142
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>  failures       none
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>  last assemble  2026-08-07T18:41:03+00:00
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>  last capture   2026-08-07T18:41:07+00:00
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>  log            /Users/dev/.popoto/memory.log
 </code></pre></div>
 <p>What to read:</p>
 <ul>
@@ -3910,17 +4073,23 @@ your turns are long and infrequent.</p>
   into transcripts.</li>
 <li><strong>Redis unreachable</strong> exits 1 and prints the command to fix it.</li>
 <li><strong>Database 0</strong> exits 1 before connecting, with the refusal message.</li>
+<li><strong>On Postgres</strong> the connection block is the Postgres one; see
+  <a href="#on-postgres">On Postgres</a>.</li>
 </ul>
 <p><code>popoto-memory doctor --json</code> emits the same data machine-readably.</p>
 <h2 id="failure-behavior">Failure behavior<a class="headerlink" href="#failure-behavior" title="Permanent link">&para;</a></h2>
 <p>A memory failure must never break a user's turn, so every path swallows and
 continues. Swallowing silently is the failure mode that makes users conclude
 memory does not work, so each swallowed exception always appends a line to
-<code>POPOTO_MEMORY_LOG</code> -- that's the reliable channel. It also tries to
-increment a Redis counter that <code>doctor</code> reads back, but that write is
-best-effort against the same client that just failed: when the failure is
-Redis being unreachable, the counter does not get incremented, which is
-exactly when <code>doctor</code> has nothing to read back anyway.</p>
+<code>POPOTO_MEMORY_LOG</code> -- that's the reliable channel -- and logs a warning to
+stderr that names the backend in use (<code>... failed (backend: redis): ...</code>).
+It also tries to increment a counter that <code>doctor</code> reads back, but that
+write is best-effort against the same store that just failed: when the
+failure is the server being unreachable, the counter does not get
+incremented, which is exactly when <code>doctor</code> has nothing to read back anyway.
+The same holds on Postgres, where an outage (<code>BackendUnavailableError</code>)
+short-circuits the rest of the hook process as a Redis connection error
+does.</p>
 <p><strong>An outage costs one attempt, not five.</strong> The integration binds its
 connection with a 1-second connect and socket timeout and no redis-py
 retries (the default is 10), and once a <code>ConnectionError</code>/<code>TimeoutError</code> has
@@ -4057,8 +4226,8 @@ prefix.</p>
 <code>render_context()</code> in <code>hooks.py</code> emits into the user turn on all four
 harnesses — <code>additionalContext</code> for Claude Code and Codex, <code>context</code> for
 Hermes, <code>appendContext</code> for OpenClaw — precisely so the cached system prefix
-survives across turns. The write path touches Redis only, so capture never
-mutates anything the harness is reading.</p>
+survives across turns. The write path touches only the memory store (Redis
+or Postgres), so capture never mutates anything the harness is reading.</p>
 <p>The residual cost is that injected blocks accumulate: they cannot be removed
 without invalidating everything behind them. Tuning <code>POPOTO_MEMORY_MAX_TOKENS</code>
 and suppressing already-injected records are the two levers, and both stay
@@ -4115,23 +4284,23 @@ not a failure</strong> — <code>evicted</code> (and <code>heuristic_notice</cod
 requires a <code>tier</code> KeyField that <code>DefaultMemory</code> does not declare, so it is
 not wired into the harness path; running it needs a model of your own.</p>
 <h2 id="try-it-without-a-harness">Try it without a harness<a class="headerlink" href="#try-it-without-a-harness" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>popoto-memory<span class="w"> </span>demo<span class="w">                          </span><span class="c1"># narrated tour of the loop</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>python<span class="w"> </span>examples/harness_memory/verify.py<span class="w">    </span><span class="c1"># the same loop as assertions</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>popoto-memory<span class="w"> </span>demo<span class="w">                          </span><span class="c1"># narrated tour of the loop</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>python<span class="w"> </span>examples/harness_memory/verify.py<span class="w">    </span><span class="c1"># the same loop as assertions</span>
 </code></pre></div>
-<p>Both run against local Redis or Valkey with no API keys and clean up after
-themselves. See <code>examples/harness_memory/README.md</code>.</p>
+<p>Both run against local Redis or Valkey (or Postgres, with
+<code>POPOTO_BACKEND=postgres</code>) with no API keys and clean up after themselves. See <code>examples/harness_memory/README.md</code>.</p>
 <h2 id="where-the-code-lives">Where the code lives<a class="headerlink" href="#where-the-code-lives" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>src/popoto/integrations/
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    service.py      MemoryService: assemble, capture, feedback, search, correct, status
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    config.py       environment and cwd resolution
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    hooks.py        harness payload in, harness payload out
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    mcp_server.py   stdio MCP server, four frozen tool names
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    cli.py          popoto-memory: hook | mcp | doctor | demo
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    demo.py         the zero-key loop
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>plugins/            one directory per harness -- declarative (Claude Code,
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>                    Codex) or an executable plugin with a register() entry
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>                    point (Hermes, OpenClaw)
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>.claude-plugin/     marketplace manifest for the Claude Code plugin
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>src/popoto/integrations/
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    service.py      MemoryService: assemble, capture, feedback, search, correct, status
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    config.py       environment and cwd resolution
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    hooks.py        harness payload in, harness payload out
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    mcp_server.py   stdio MCP server, four frozen tool names
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    cli.py          popoto-memory: hook | mcp | doctor | demo
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    demo.py         the zero-key loop
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>plugins/            one directory per harness -- declarative (Claude Code,
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>                    Codex) or an executable plugin with a register() entry
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>                    point (Hermes, OpenClaw)
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>.claude-plugin/     marketplace manifest for the Claude Code plugin
 </code></pre></div>
 <p><code>popoto.integrations</code> depends on <code>popoto.recipes</code> and <code>popoto.extraction</code>;
 nothing in core depends on it. The core install is unchanged, and the hook
