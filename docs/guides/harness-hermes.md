@@ -143,3 +143,7 @@ Identical to every other harness, and all environment-driven. See
 [Harness Integration](../features/harness-integration.md) for the table. The
 gateway must have these in its environment, not just your interactive shell,
 since the plugin runs in the gateway process.
+
+The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in the gateway's environment; see
+[On Postgres](../features/harness-integration.md#on-postgres).

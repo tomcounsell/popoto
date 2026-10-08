@@ -5,7 +5,9 @@ example, a memory system where project A's episodes live separately from project
 using the same model class.
 
 Redis has no built-in schema or table concept — isolation comes from key structure.
-Popoto's `KeyField` already provides this naturally.
+Popoto's `KeyField` already provides this naturally. The same pattern works on the
+Postgres backend, where the key field is a column; see [On Postgres](#on-postgres).
+The key and hash names on this page are the Redis backend's.
 
 ## The Pattern: Use a KeyField
 
@@ -269,6 +271,8 @@ results = ConfidenceField.get_confidence_filtered(Memory, "certainty", pattern="
 
 ## When to use separate Redis databases instead
 
+This section applies to Redis. For Postgres, see [On Postgres](#on-postgres).
+
 For stronger isolation (e.g., compliance requirements, independent TTL policies,
 or different Redis instances per tenant), use separate Redis connections rather
 than key prefixing:
@@ -291,3 +295,35 @@ This is heavier but provides complete data separation at the connection level.
 | ConfidenceField partition_by | Per-tenant companion hashes | One parameter | Large confidence hashes with tenant-scoped reads |
 | ContextVar helper | Same as KeyField, less boilerplate | Minimal application code | Web apps with per-request tenancy |
 | Separate Redis databases | Full connection isolation | Configuration management | Compliance, independent scaling |
+
+## On Postgres
+
+The KeyField pattern works unchanged on a model with `Meta.backend = "postgres"`.
+`Episode.query.filter(project_id="project-a")` returns only that project's rows.
+
+**How it maps.** A model is one table and each field a column. The key fields form one
+`UNIQUE` index, and each key field after the first gets its own B-tree, so a filter on
+`project_id` is an index lookup. A `SortedField` with `partition_by` is a B-tree on
+`(partition columns, field)`, which keeps a partitioned range query inside one tenant.
+A `ConfidenceField`'s state is four columns of the record's own row, so it is always
+stored per record and per tenant: there is no companion hash to partition, and moving a
+record to another partition moves nothing else.
+
+**Differences from Redis:**
+
+- `ConfidenceField.migrate_to_partitioned()` and `ConfidenceField.get_confidence_filtered()`
+  raise `BackendCapabilityError`. Neither is needed: partitioning is the row's own columns,
+  and a filtered read is an ordinary `filter()`.
+- `get_data_hash_key()` and `get_data_hash_key_from_values()` build Redis key names. On a
+  Postgres model they name no stored data, so do not use them to audit isolation there;
+  query the rows instead.
+- Instead of separate Redis databases, give a tenant its own Postgres database or schema.
+  Pass a backend instance to `popoto.backends.set_backend()`, for example
+  `set_backend(PostgresBackend(dsn=..., schema="tenant_a"))`, with `PostgresBackend` from
+  `popoto.backends.postgres`. It serves models on the process default and models that
+  name `Meta.backend = "postgres"`, ahead of `POPOTO_POSTGRES_URL` and
+  `POPOTO_POSTGRES_SCHEMA`. Like `set_REDIS_DB_settings()`, this is process-wide;
+  without an instance, those variables set the isolation.
+
+See [Selecting the backend](features/postgres-backend.md#selecting-the-backend) and
+[Ranking and memory state](features/postgres-backend.md#ranking-and-memory-state-m2a).

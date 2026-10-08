@@ -1479,7 +1479,8 @@ def _require_journal_shape(model: Any) -> None:
 
     Popoto's ``ModelBase`` metaclass does **not** inherit ``Field`` attributes
     from a base model class, so ``class SubEntry(JournalEntry): pass`` yields a
-    model whose ``_meta.fields`` is *empty*. Without this guard the journal
+    model whose ``_meta.fields`` holds none of them (only the implicit
+    ``_auto_key`` a key-less model is given, #826). Without this guard the journal
     would accept it and write records carrying no ``statement``, no
     ``verbatim``, no ``kind``, no ``target`` and no validity interval -- data
     loss with no error anywhere.

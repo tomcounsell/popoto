@@ -1,7 +1,7 @@
 # Models and Fields
 
-Models are the foundation of Popoto. They define the structure of your Redis-stored
-data using Python classes with field declarations. If you are familiar with Django or
+Models are the foundation of Popoto. They define the structure of your stored data
+using Python classes with field declarations. If you are familiar with Django or
 SQLAlchemy, the pattern will feel natural: inherit from `Model`, declare fields as
 class attributes, and Popoto handles persistence, indexing, and querying.
 
@@ -18,9 +18,13 @@ class Restaurant(Model):
     active = Field(type=bool, default=True)
 ```
 
-Each field type controls how data is validated, stored, and indexed in Redis. This
-guide covers every field type and its configuration options, working through a food
-delivery system as a running example.
+Each field type controls how data is validated, stored, and indexed. A model is
+stored in Redis unless it selects the Postgres backend (`Meta.backend = "postgres"`,
+see [Model Meta Options](meta.md#backend)). The storage details on this page, such as
+key patterns, sets, and Redis commands, describe the Redis backend. Which fields a
+Postgres model may use is listed in [On Postgres](#on-postgres). This guide covers
+every field type and its configuration options, working through a food delivery
+system as a running example.
 
 If you need a field type Popoto does not provide, see
 [Writing Custom Fields](field-authoring.md) for the `Field` subclassing contract,
@@ -55,18 +59,21 @@ retrieve instances.
 
 ### Changing a KeyField Value
 
-When you change a `KeyField` value and call `save()`, the Redis key itself changes.
-Popoto handles the transition automatically: it deletes the old hash, removes the old
-key from the class set, migrates all field indexes (sorted sets, geo sets, unique
-constraints) from the old key to the new one, and adds the new key to the class set.
-Both full saves and partial saves (`save(update_fields=[...])`) handle this correctly.
+Changing a `KeyField` value changes the record's key, so Popoto makes you ask for
+it. A plain `save()` after the change raises `KeyMutationError` (see
+[Immutable Keys and Key Migration](indexed_fields.md#immutable-keys-and-key-migration)).
+Pass `migrate_key=True` to move the record. On Redis, Popoto then deletes the old
+hash, removes the old key from the class set, migrates all field indexes (sorted
+sets, geo sets, unique constraints) from the old key to the new one, and adds the
+new key to the class set. Both full saves and partial saves
+(`save(update_fields=[...])`) handle this correctly.
 
 ```python
 restaurant = Restaurant.create(name="Taco Shack", cuisine="Mexican", rating=4.0)
 
 # Change the KeyField value
 restaurant.name = "Taco Palace"
-restaurant.save()
+restaurant.save(migrate_key=True)
 
 # Old key is cleaned up, new key is active
 loaded = Restaurant.load(name="Taco Palace")
@@ -706,9 +713,9 @@ print(len(early_week))
 
 ## IndexedField
 
-`IndexedField` provides Set-based secondary indexing on non-key fields. Unlike
-`KeyField`, an `IndexedField` does not become part of the Redis key -- it only
-enables efficient exact-match queries via `filter()`.
+`IndexedField` provides Set-based secondary indexing on non-key fields (a B-tree on
+its column on Postgres). Unlike `KeyField`, an `IndexedField` does not become part of
+the record's key -- it only enables efficient exact-match queries via `filter()`.
 
 This decouples querying from identity: you can filter on `status`, `category`, or
 `region` without those fields affecting the Redis storage key.
@@ -1000,8 +1007,10 @@ See [Agent Memory](features/agent-memory.md) for the broader agent memory primit
 "have I ever stored anything about X?" without touching any sorted set or hash. False
 positives are possible; false negatives are impossible.
 
-Implemented entirely with Redis strings (`SETBIT`/`GETBIT`) and Lua scripts. No Redis
-modules required -- works on both Redis and Valkey.
+On Redis it is implemented entirely with strings (`SETBIT`/`GETBIT`) and Lua
+scripts. No Redis modules required -- works on both Redis and Valkey. On Postgres
+the filter is exact: no false positives, and a deleted record is forgotten (see
+[Membership](features/postgres-backend.md#membership)).
 
 `ExistenceFilter` is a "side-effect field" -- it does not store a value on the model
 instance. It maintains a Bloom filter index via `on_save()` hooks.
@@ -1057,8 +1066,10 @@ full agent memory context.
 
 ## BM25Field
 
-`BM25Field` provides ranked keyword search using BM25 scoring, backed entirely by Redis
-sorted sets and Lua scripts. No Redis modules required -- works on both Redis and Valkey.
+`BM25Field` provides ranked keyword search using BM25 scoring. On Redis it is backed
+entirely by sorted sets and Lua scripts, with no Redis modules required, so it works on
+both Redis and Valkey. On Postgres the index is a postings table with the same scoring
+formula, and `recompute_stats` is a no-op (see [BM25](features/postgres-backend.md#bm25)).
 
 Like `ExistenceFilter`, `BM25Field` is a "side-effect field" -- it does not store a value
 on the model instance. It maintains an inverted index and corpus statistics via
@@ -1115,8 +1126,10 @@ including RRF fusion and the hybrid retrieval recipe.
 `FrequencySketch` is a Count-Min Sketch for approximate frequency counting. Tracks how
 many times a fingerprint has been saved, with possible overcounting but never undercounting.
 
-Implemented entirely with Redis hashes (`HINCRBY`/`HGET`) and Lua scripts. No Redis
-modules required -- works on both Redis and Valkey.
+On Redis it is implemented entirely with hashes (`HINCRBY`/`HGET`) and Lua scripts.
+No Redis modules required -- works on both Redis and Valkey. On Postgres the count is
+exact: the true number of saves, never decremented (see
+[Membership](features/postgres-backend.md#membership)).
 
 ```python
 from popoto import Model, KeyField, Field
@@ -1352,7 +1365,8 @@ class Restaurant(Timestampable, Model):
 `WriteFilterMixin` gates `save()` calls based on a scoring function you define. Records
 scoring below a minimum threshold are silently discarded (never persisted). Records
 scoring above a priority threshold are persisted *and* tagged in a Redis sorted set for
-preferential retrieval.
+preferential retrieval. On Postgres the gate runs the same way, but the priority tier
+is not stored: `composite_score({"priority": ...})` raises `BackendCapabilityError`.
 
 ```python
 from popoto import Model, KeyField, Field
@@ -1487,7 +1501,8 @@ variable, or by setting `Defaults.NEVER_RECORD_ENABLED = False` at runtime — s
 `ContentField` routes large content values (documents, text, binary data) to filesystem
 storage, keeping Redis memory usage minimal. Redis stores only a compact reference string
 (`$CF:{hash}:{path}`), and the content is lazy-loaded from the filesystem when the
-attribute is accessed.
+attribute is accessed. This section describes the Redis backend. On Postgres the content
+is stored inline in a `text` column, and no file or content store is used.
 
 This is ideal for storing long-form text, HTML, markdown, or any content too large to
 keep in Redis comfortably.
@@ -1673,7 +1688,11 @@ full feature reference including storage layout, cache management, and provider 
 
 ### Multi-Worker Deployments
 
-`EmbeddingField` caches a pre-normalized embedding matrix in a **process-local**
+This section applies to the Redis backend only. On Postgres the vector lives in a
+pgvector column and there is no in-process cache, so there is nothing to invalidate
+(see [Embeddings](features/postgres-backend.md#embeddings)).
+
+On Redis, `EmbeddingField` caches a pre-normalized embedding matrix in a **process-local**
 dict for fast similarity search. In a multi-worker deployment (gunicorn with
 several workers, multiple containers, multiple pods) a write on one worker must
 invalidate the caches held by its peers — otherwise the peers keep serving
@@ -1736,7 +1755,8 @@ pool; the next `semantic_search()` lazily respawns a fresh listener if needed.
 
 ## GeoField
 
-`GeoField` uses Redis geospatial indexes for location-based queries. This is perfect
+`GeoField` uses Redis geospatial indexes for location-based queries (on Postgres, plain
+columns that reproduce the same radius search; see [Geo](features/postgres-backend.md#geo-m5)). This is perfect
 for finding nearby restaurants, tracking driver positions, or searching by delivery
 address.
 
@@ -1834,6 +1854,10 @@ for r in results:
 `DataFrameField` stores [Pandas DataFrame](https://pandas.pydata.org/docs/reference/frame.html)
 objects directly in Redis. This is useful for analytics or caching computed datasets.
 Because it depends on Pandas, it uses a separate model outside the canonical set.
+
+`DataFrameField` is Redis-only. A Postgres model that declares one is refused with
+`BackendCapabilityError`; store the frame's JSON in a `DictField` or a `BytesField`
+instead (see [On Postgres](#on-postgres)).
 
 ```python
 import pandas as pd
@@ -1959,6 +1983,9 @@ When a tracked model instance is deleted, all three AccessTracker Redis keys (st
 
 ### Redis key patterns
 
+On Postgres these are columns on the record's row instead, and the confirmed access
+log is not kept: `access_count` and `last_accessed` are.
+
 | Key | Type | Purpose |
 |-----|------|---------|
 | `$AT:{ClassName}:staged:{pk}` | List | Pending read timestamps |
@@ -2079,7 +2106,7 @@ When `WriteFilterMixin` discards a record (score below threshold), the `save()` 
 - `stream:{stream_name}` — default stream key
 - `stream:{stream_name}:{partition_value}` — partitioned stream key
 
-### On Postgres
+### EventStreamMixin on Postgres
 
 A Postgres-bound model's stream is kept in the backend's events tables, not in Redis. The stream keys, ids (`<ms>-<seq>`) and entry fields stay the same. The entry is appended in the save's or delete's own transaction, so the record and its entry commit or roll back together. Because of that, an append that fails at the server fails the save. Read the stream with `Model.stream_range()` / `Model.stream_len()`, or with `popoto.streams.stream_client(Model)`, which has the same redis-py methods on both backends. See [Postgres Backend: event streams and pub/sub](features/postgres-backend.md#event-streams-and-pubsub-m5).
 
@@ -2303,3 +2330,72 @@ print(reservation.db_key.redis_key)
 
 The `db_key` is useful for debugging, logging, or performing custom Redis operations
 outside of Popoto's query API.
+
+## On Postgres
+
+A model with `Meta.backend = "postgres"` (see [Model Meta Options](meta.md#backend))
+stores each record as one row in a table. You declare fields and use them the same
+way. What changes is how each field is stored and a few behaviours. The column and
+index each field compiles to is listed in
+[Supported fields](features/postgres-backend.md#supported-fields-m1-m11-m2a-m2b-m3-m4-m5).
+
+**Supported fields.** `Field`, `KeyField`, `UniqueKeyField`, `AutoKeyField`,
+`SortedKeyField`, `IntField`, `FloatField`, `DecimalField`, `BooleanField`,
+`StringField`, `BytesField`, `DatetimeField`, `DateField`, `TimeField`, `ListField`
+(capped or not), `DictField`, `SetField`, `TupleField`, `SortedField`, `IndexedField`,
+`UniqueField`, `TagField`, `Relationship`, `GeoField`, `DecayingSortedField`,
+`CyclicDecayField`, `ConfidenceField`, `ValidityField`, `CoOccurrenceField`,
+`TDValueField`, `BM25Field`, `EmbeddingField`, `ExistenceFilter`, `FrequencySketch`,
+and `ContentField`. Every popoto mixin is supported, including `PredictionLedgerMixin`,
+`AccessTrackerMixin`, `EventStreamMixin`, `WriteFilterMixin` (no priority tier on
+Postgres), and `NeverRecordMixin`.
+
+**Refused fields and types.** A model that breaks one of these rules raises
+`BackendCapabilityError` (from `popoto.backends`), listing every problem at once:
+
+- `DataFrameField` is refused. Store the frame's JSON in a `DictField` or a
+  `BytesField` instead.
+- A plain `Field(type=...)` must use `int`, `float`, `str`, `bool`, `Decimal`,
+  `datetime`, `date`, `time`, `bytes`, `list`, `dict`, `set`, or `tuple`.
+- An `IndexedField` or `UniqueField` must use a scalar type: `int`, `float`, `str`,
+  `bool`, `Decimal`, `datetime`, `date`, or `time`. A collection type is refused.
+- A `SortedField` must use `int`, `float`, `Decimal`, `datetime`, `date`, or `time`.
+- A custom field subclass that overrides a storage hook is refused (see
+  [Writing Custom Fields](field-authoring.md#on-postgres)).
+
+A model that sets `Meta.backend = "postgres"` is checked when the class is defined.
+A model that takes Postgres from `POPOTO_BACKEND` is checked on its first query or
+save. Without pandas installed, `DataFrameField()` raises `ImportError` when the
+field is constructed, before the backend check runs.
+
+**How the field families map:**
+
+- Key fields: the record's key string (`ClassName:value`) is the row's `_pk`, so
+  `Model.pk` and `db_key.redis_key` are the same on both backends.
+- Indexed, unique, sorted, and key fields: B-tree indexes on their columns.
+  Uniqueness is checked before the write and enforced by a `UNIQUE` index.
+- Collections: `jsonb` columns that read back as the field's own type.
+- `Relationship`: a `text` column holding the related record's key. It stays lazy,
+  as on Redis.
+- `ContentField`: the content itself, in a `text` column. No file or content store
+  is used.
+- `EmbeddingField`: a pgvector column, which needs `CREATE EXTENSION vector` in the
+  database. There are no `.npy` files and no in-process cache, so
+  `POPOTO_EMBEDDING_INVALIDATION` and `invalidate_cache()` do not apply.
+- `BM25Field`, `ExistenceFilter`, `FrequencySketch`, `CoOccurrenceField`: side
+  tables written in the same transaction as the record. `ExistenceFilter` and
+  `FrequencySketch` are exact on Postgres.
+- `GeoField`: plain columns, no PostGIS. Radius filters behave as on Redis.
+
+**Behaviour differences that affect field use:**
+
+- Changing a key field raises `BackendCapabilityError`, even with
+  `save(migrate_key=True)`. Create the new record and delete the old one.
+- `Meta.ttl` adds an expiry column; see [TTL](ttl.md#on-postgres).
+- `AccessTrackerMixin` keeps `access_count` and `last_accessed`, but not the
+  confirmed access log.
+- `WriteFilterMixin`'s priority tier is not stored.
+- A text value containing `\x00` raises `ValueError`.
+
+The full list is in
+[Records and other behaviour](features/postgres-backend.md#records-and-other-behaviour).

@@ -134,6 +134,21 @@ immediately without restarting the process — including via
 [Configuration](../configuration.md#environment-variables) for the full
 environment variable reference.
 
+## On Postgres
+
+This page describes reads from the Redis backend, which stores each field as msgpack
+bytes in a hash. A model with `Meta.backend = "postgres"` stores each field in a typed
+column (`bigint`, `text`, `jsonb`, `bytea` and so on), and its reads do not go through the
+msgpack decode path, so a Postgres read never quarantines a field and never raises
+`CorruptFieldError`.
+
+The `save()` guard is also called on the Postgres write path, before the row is written,
+but because a Postgres read creates no quarantine it has nothing to refuse there.
+`POPOTO_DECODE_QUARANTINE_DISABLE` has no effect on a Postgres model. The `redis-cli` inspection steps above apply to Redis only; on
+Postgres, read the row with SQL. See
+[Postgres backend](postgres-backend.md#supported-fields-m1-m11-m2a-m2b-m3-m4-m5) for the
+column types.
+
 ## See also
 
 - [`CorruptFieldError`](../reference/index.md) — the exception raised for a

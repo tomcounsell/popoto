@@ -352,7 +352,9 @@ of the backend page describes.
 Both were checked end to end against a snapshot written through
 `DecisionLog` and `AssemblyEvent.create` (Redis 8.10, PostgreSQL 18.6): the
 dry run and the load were `clean` with no `--accept-unclassified`, and
-`turn_summary` on Postgres matched the Redis result.
+`turn_summary` on Postgres matched the Redis result. On a Redis store whose
+summary has drifted (a `pending` write over a terminal row, #822; the Redis fix
+is open as #831), the two differ and Postgres, which counts the rows, is right.
 
 ## What the report counts
 

@@ -2447,13 +2447,15 @@ class TestEntryModelGuard:
         """Pins the ORM limitation this guard exists for.
 
         Popoto's ``ModelBase`` metaclass does not inherit ``Field`` attributes
-        from a base model class, so a subclass has an *empty* field set. This
+        from a base model class, so a subclass declares no field at all: its
+        only field is the implicit ``_auto_key`` every key-less model gets at
+        class creation (#826; it was empty only until the first instance). This
         is the fact that makes a subclass extension seam impossible, and it is
         asserted here so a future ORM change makes this test fail loudly rather
         than leaving a now-unnecessary guard unexplained.
         """
         assert "statement" in JournalEntry._meta.fields
-        assert dict(SubclassedEntry._meta.fields) == {}
+        assert set(SubclassedEntry._meta.fields) == {"_auto_key"}
 
     @pytest.mark.redis_only(
         reason=(

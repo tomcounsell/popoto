@@ -109,16 +109,19 @@ def test_spec_shape():
     assert VsPlain._meta.spec is spec  # memoised
 
 
-def test_spec_rebuilds_after_auto_key_is_added():
+def test_auto_key_is_in_the_spec_from_class_creation():
+    """#826: the implicit AutoKeyField is registered when the class is
+    created, so the first spec already has it and an instance changes
+    nothing (it used to be added by the first ``__init__``)."""
+
     class VsAuto(popoto.Model):
         label = popoto.Field(type=str, null=True)
 
     before = VsAuto._meta.spec
-    assert "_auto_key" not in before.fields
-    VsAuto(label="x")  # first instantiation adds the AutoKeyField
-    after = VsAuto._meta.spec
-    assert after.fields["_auto_key"].kind == "AutoKeyField"
-    assert after.key_fields == ("_auto_key",)
+    assert before.fields["_auto_key"].kind == "AutoKeyField"
+    assert before.key_fields == ("_auto_key",)
+    VsAuto(label="x")
+    assert VsAuto._meta.spec is before  # not rebuilt: nothing was added
 
 
 def test_redis_accepts_everything():
