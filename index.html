@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Agent memory on Redis and Valkey, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full Redis/Valkey ORM.">
+        <meta name="description" content="Agent memory on Redis, Valkey or PostgreSQL, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full ORM for Redis, Valkey and Postgres.">
       
       
         <meta name="author" content="Tom Counsell">
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#popoto-agent-memory-on-redis-and-valkey" class="md-skip">
+        <a href="#popoto-agent-memory-on-postgres-redis-and-valkey" class="md-skip">
           Skip to content
         </a>
       
@@ -351,7 +351,7 @@
           
   
   
-  Redis ORM
+  ORM
 
         </a>
       </li>
@@ -367,36 +367,18 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="features/postgres-backend/" class="md-tabs__link">
-        
-  
-  
     
-  
-  Postgres Backend (v2)
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="features/redis-to-postgres-migration/" class="md-tabs__link">
-        
-  
-  
     
+      <li class="md-tabs__item">
+        <a href="features/postgres-backend/" class="md-tabs__link">
+          
   
-  Redis to Postgres Migration
+  
+  Backends
 
-      </a>
-    </li>
+        </a>
+      </li>
+    
   
 
       
@@ -550,6 +532,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#choosing-a-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a backend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#memory-around-an-llm-turn" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -572,10 +565,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#built-on-a-full-redis-and-valkey-orm" class="md-nav__link">
+  <a href="#built-on-a-full-orm-for-redis-valkey-and-postgres" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Built on a full Redis and Valkey ORM
+        Built on a full ORM for Redis, Valkey, and Postgres
       
     </span>
   </a>
@@ -2462,7 +2455,7 @@
   <span class="md-ellipsis">
     
   
-    Redis ORM
+    ORM
   
 
     
@@ -2478,7 +2471,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Redis ORM
+    ORM
   
 
           </label>
@@ -3037,6 +3030,58 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="features/postgres-backend/" class="md-nav__link">
         
@@ -3045,7 +3090,7 @@
   <span class="md-ellipsis">
     
   
-    Postgres Backend (v2)
+    Postgres Backend
   
 
     
@@ -3057,9 +3102,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -3081,6 +3127,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -3166,6 +3220,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#choosing-a-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a backend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#memory-around-an-llm-turn" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3188,10 +3253,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#built-on-a-full-redis-and-valkey-orm" class="md-nav__link">
+  <a href="#built-on-a-full-orm-for-redis-valkey-and-postgres" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Built on a full Redis and Valkey ORM
+        Built on a full ORM for Redis, Valkey, and Postgres
       
     </span>
   </a>
@@ -3240,26 +3305,46 @@
   
 
 
-<h1 id="popoto-agent-memory-on-redis-and-valkey">Popoto: Agent Memory on Redis and Valkey<a class="headerlink" href="#popoto-agent-memory-on-redis-and-valkey" title="Permanent link">&para;</a></h1>
+<h1 id="popoto-agent-memory-on-postgres-redis-and-valkey">Popoto: Agent Memory on Postgres, Redis, and Valkey<a class="headerlink" href="#popoto-agent-memory-on-postgres-redis-and-valkey" title="Permanent link">&para;</a></h1>
 <p>Memory for LLM agents, as primitives you program rather than a service you call.
 Records decay over time, confidence moves with evidence, associations form
 between things mentioned together, and a context assembler packs the result into
 a token budget before each turn.</p>
-<p>It runs in your process against a Redis or Valkey server you already operate.
-Your memory data stays in your database.</p>
+<p>It runs in your process against a database you already operate. Underneath is
+one model API with two storage backends: Redis/Valkey, the default, and
+Postgres, opt-in since 1.10. You choose the backend per model or per process,
+and the model code does not change. Your memory data stays in your database.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>popoto
 </code></pre></div>
 <p>Three packages, 9.0 MB of site-packages in a clean Python 3.12 venv (redis-py 8.1.0, measured 2026-09-04), no API key.
 Point it at Redis or Valkey on <code>localhost:6379</code> and you are running.</p>
+<h2 id="choosing-a-backend">Choosing a backend<a class="headerlink" href="#choosing-a-backend" title="Permanent link">&para;</a></h2>
+<p>For agent memory, <strong>Postgres is the recommended substrate</strong>. Every
+agent-memory feature runs on it, its deployment model is one central database
+shared by every agent and machine, and new capabilities land there first. Redis and
+Valkey remain fully supported, for agent memory and for the rest of the ORM,
+and nothing changes for an existing Redis deployment.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[postgres]'</span><span class="w">      </span><span class="c1"># adds psycopg, pgvector, greenlet</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_BACKEND</span><span class="o">=</span>postgres<span class="w">      </span><span class="c1"># or per model: class Meta: backend = "postgres"</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_POSTGRES_URL</span><span class="o">=</span>postgresql://localhost:5432/agents
+</code></pre></div>
+<p>Postgres needs PostgreSQL 18 or newer; <code>EmbeddingField</code> also needs the
+pgvector extension. Popoto never reads <code>DATABASE_URL</code>, and it creates its
+tables on first use. The two backends differ in a few documented places, and
+<code>DataFrameField</code> stays Redis-only: see
+<a href="features/postgres-backend/">Postgres Backend</a> and its
+<a href="features/postgres-backend/#documented-divergences">documented divergences</a>.
+An existing Redis memory store moves across with a one-off copy from an RDB
+snapshot: <a href="features/redis-to-postgres-migration/">Redis to Postgres Migration</a>.</p>
 <h2 id="memory-around-an-llm-turn">Memory around an LLM turn<a class="headerlink" href="#memory-around-an-llm-turn" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubconsciousMemory</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">messages</span><span class="p">,</span> <span class="n">assembly</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">inject_context</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>   <span class="c1"># pre-turn: retrieve + inject</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">answer</span> <span class="o">=</span> <span class="n">call_your_llm</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>                   <span class="c1"># your LLM call</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">sm</span><span class="o">.</span><span class="n">extract_memories</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>        <span class="c1"># post-turn: save what was learned</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">sm</span><span class="o">.</span><span class="n">report_outcomes</span><span class="p">(</span><span class="n">assembly</span><span class="p">,</span> <span class="n">outcome</span><span class="o">=</span><span class="s2">"acted"</span><span class="p">)</span>      <span class="c1"># feedback: reinforce what was used</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubconsciousMemory</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">"agent-1"</span><span class="p">)</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">messages</span><span class="p">,</span> <span class="n">assembly</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">inject_context</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>   <span class="c1"># pre-turn: retrieve + inject</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">answer</span> <span class="o">=</span> <span class="n">call_your_llm</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>                   <span class="c1"># your LLM call</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">sm</span><span class="o">.</span><span class="n">extract_memories</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>        <span class="c1"># post-turn: save what was learned</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">sm</span><span class="o">.</span><span class="n">report_outcomes</span><span class="p">(</span><span class="n">assembly</span><span class="p">,</span> <span class="n">outcome</span><span class="o">=</span><span class="s2">"acted"</span><span class="p">)</span>      <span class="c1"># feedback: reinforce what was used</span>
 </code></pre></div>
 <p><code>agent_id</code> is the only required argument. It partitions every index, and both
 an explicit <code>.filter(agent_id=...)</code> query and <code>inject_context</code>'s default
@@ -3269,15 +3354,19 @@ that, two agents sharing one Redis via the default loop could retrieve each
 other's memories). Leaving <code>model_class</code>
 unset selects <code>DefaultMemory</code>, which ships the benchmarked configuration: decay,
 confidence, a keyword index that makes retrieval respond to the query text, and
-an association graph.</p>
+an association graph. The loop is the same on either backend; with
+<code>POPOTO_BACKEND=postgres</code> set, <code>DefaultMemory</code> is a Postgres table.</p>
 <p><a href="guides/agent-memory-quickstart/">Add memory to your agent</a> walks the same
 loop up level by level, from a single decaying field to the full assembly.
 Running inside Claude Code, Codex, Hermes, or OpenClaw instead of your own
 loop? <a href="features/harness-integration/">Add memory to your harness</a> wires the
-same primitives into hooks and MCP, no glue code required.</p>
+same primitives into hooks and MCP, no glue code required. It runs on Redis,
+Valkey or Postgres.</p>
 <h2 id="what-is-measured">What is measured<a class="headerlink" href="#what-is-measured" title="Permanent link">&para;</a></h2>
 <p>Every number here comes from a harness in this repository, with its result JSON
-committed alongside. Method, per-category tables, and the runs that came out
+committed alongside, and was measured on the Redis backend (Postgres numbers are
+in the <a href="features/postgres-backend/#performance-m1-m2a-and-m3-exit-criteria">Postgres Backend</a>
+reference). Method, per-category tables, and the runs that came out
 badly are in <a href="benchmarks/">Benchmarks</a>.</p>
 <ul>
 <li><strong>Retrieval quality.</strong> LongMemEval-S, all 500 questions, hybrid BM25 + vector:
@@ -3295,37 +3384,38 @@ badly are in <a href="benchmarks/">Benchmarks</a>.</p>
 Finding the right evidence is far more reliable than answering from it, and the
 number, its interval, and its protocol are published in
 <a href="benchmarks/">Benchmarks</a>.</p>
-<h2 id="built-on-a-full-redis-and-valkey-orm">Built on a full Redis and Valkey ORM<a class="headerlink" href="#built-on-a-full-redis-and-valkey-orm" title="Permanent link">&para;</a></h2>
+<h2 id="built-on-a-full-orm-for-redis-valkey-and-postgres">Built on a full ORM for Redis, Valkey, and Postgres<a class="headerlink" href="#built-on-a-full-orm-for-redis-valkey-and-postgres" title="Permanent link">&para;</a></h2>
 <p>Every memory primitive is a field on an ordinary model, so the same Django-like
 query syntax, indexes, TTLs, relationships, and pub/sub apply to memory records
-and to everything else in your keyspace.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">SortedField</span><span class="p">,</span> <span class="n">GeoField</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Restaurant</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">name</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">cuisine</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">rating</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">location</span> <span class="o">=</span> <span class="n">GeoField</span><span class="p">()</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">,</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">"American"</span><span class="p">,</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7128</span><span class="p">,</span> <span class="o">-</span><span class="mf">74.0060</span><span class="p">),</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="p">)</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">)</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> serves </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="si">}</span><span class="s2"> food."</span><span class="p">)</span>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="c1"># =&gt; 'Burger Palace serves American food.'</span>
+and to everything else you store, on either backend.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">SortedField</span><span class="p">,</span> <span class="n">GeoField</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Restaurant</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">name</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">cuisine</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">rating</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">location</span> <span class="o">=</span> <span class="n">GeoField</span><span class="p">()</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">,</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">"American"</span><span class="p">,</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7128</span><span class="p">,</span> <span class="o">-</span><span class="mf">74.0060</span><span class="p">),</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="p">)</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Burger Palace"</span><span class="p">)</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> serves </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="si">}</span><span class="s2"> food."</span><span class="p">)</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="c1"># =&gt; 'Burger Palace serves American food.'</span>
 </code></pre></div>
-<p>Reading and writing happen at RAM speed. Popoto adds
+<p>On Redis, reading and writing happen at RAM speed; on Postgres, each model is a
+typed table with native indexes. Popoto adds
 <a href="async/">async operations</a>, <a href="multi-tenancy/">multi-tenancy</a> via KeyField
 namespacing, geometric distance search, timeseries for streaming data, Pandas
 and Xarray interoperation, <a href="pubsub/">pub/sub</a> for message queues,
 <a href="features/content-and-embedding-fields/">content and embedding fields</a> for
 large content storage and semantic search, and
 <a href="guides/export-import/">generic export/import</a> with per-field round-trip
-fidelity for moving records between Redis instances.</p>
+fidelity for moving records between stores, in one format on both backends.</p>
 <p>Start at <a href="configuration/">Configuration</a> and
 <a href="fields/">Models and Fields</a> for the ORM half of the library.</p>
 <h2 id="valkey-is-a-first-class-target">Valkey is a first-class target<a class="headerlink" href="#valkey-is-a-first-class-target" title="Permanent link">&para;</a></h2>
@@ -3333,7 +3423,7 @@ fidelity for moving records between Redis instances.</p>
 dependency, and the suite carries explicit Valkey-safety tests asserting that
 indexes stay on plain types. Point <code>REDIS_URL</code> at a
 <a href="https://valkey.io">Valkey</a> server and the same code runs.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">REDIS_URL</span> <span class="o">=</span> <span class="s2">"redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">REDIS_URL</span> <span class="o">=</span> <span class="s2">"redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"</span>
 </code></pre></div>
 <p><code>REDIS_URL</code> is optional in local development. See
 <a href="configuration/">Configuration</a> for the full connection options.</p>
@@ -3350,9 +3440,9 @@ runs.</p>
 <p>Library-specific exceptions can be reported to the maintainers through an
 isolated Sentry client that never touches your own Sentry setup. It is off
 until you turn it on.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">popoto</span><span class="o">.</span><span class="n">enable_error_reporting</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">popoto</span><span class="o">.</span><span class="n">enable_error_reporting</span><span class="p">()</span>
 </code></pre></div>
 <p>Install <code>popoto[monitoring]</code> for the <code>sentry-sdk</code> dependency, or skip this
 entirely. Popoto works the same either way.</p>

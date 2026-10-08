@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Agent memory on Redis and Valkey, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full Redis/Valkey ORM.">
+        <meta name="description" content="Agent memory on Redis, Valkey or PostgreSQL, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full ORM for Redis, Valkey and Postgres.">
       
       
         <meta name="author" content="Tom Counsell">
@@ -353,7 +353,7 @@
           
   
   
-  Redis ORM
+  ORM
 
         </a>
       </li>
@@ -369,36 +369,18 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../postgres-backend/" class="md-tabs__link">
-        
-  
-  
     
-  
-  Postgres Backend (v2)
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../redis-to-postgres-migration/" class="md-tabs__link">
-        
-  
-  
     
+      <li class="md-tabs__item">
+        <a href="../postgres-backend/" class="md-tabs__link">
+          
   
-  Redis to Postgres Migration
+  
+  Backends
 
-      </a>
-    </li>
+        </a>
+      </li>
+    
   
 
       
@@ -1038,6 +1020,17 @@
     <span class="md-ellipsis">
       
         What LLMs cannot do for themselves
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-memory-is-stored" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where memory is stored
       
     </span>
   </a>
@@ -2489,7 +2482,7 @@
   <span class="md-ellipsis">
     
   
-    Redis ORM
+    ORM
   
 
     
@@ -2505,7 +2498,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Redis ORM
+    ORM
   
 
           </label>
@@ -3064,6 +3057,58 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../postgres-backend/" class="md-nav__link">
         
@@ -3072,7 +3117,7 @@
   <span class="md-ellipsis">
     
   
-    Postgres Backend (v2)
+    Postgres Backend
   
 
     
@@ -3084,9 +3129,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -3108,6 +3154,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -3204,6 +3258,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#where-memory-is-stored" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where memory is stored
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-17-primitives" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3285,8 +3350,8 @@ is a progressive 6-level adoption guide. This page is the map: what each piece
 is for, how the pieces compose, and where the full reference for each one
 lives.</p>
 </blockquote>
-<p>Popoto Agent Memory is a set of Redis-backed ORM primitives for programmable
-memory. Records decay over time, strengthen through use, carry confidence that
+<p>Popoto Agent Memory is a set of ORM primitives for programmable memory, stored
+in Postgres or in Redis/Valkey. Records decay over time, strengthen through use, carry confidence that
 moves with evidence, form associations, and get assembled into LLM context
 within a token budget.</p>
 <p>They are generic field types, mixins, and query methods. They encode no
@@ -3303,6 +3368,22 @@ cannot do unaided is decide what belongs there:</p>
 <li><strong>Filter noise.</strong> Keep low-value observations out of storage entirely.</li>
 </ul>
 <p>Each primitive below covers one of those. Each is independently useful.</p>
+<h2 id="where-memory-is-stored">Where memory is stored<a class="headerlink" href="#where-memory-is-stored" title="Permanent link">&para;</a></h2>
+<p>Every primitive and layer on this page runs on both backends behind the same
+model API. <strong>Postgres is the recommended substrate for agent memory</strong>: since
+1.10 every agent-memory feature runs on it except the WriteFilter priority
+tier (see the <a href="../postgres-backend/#documented-divergences">divergences</a>), its deployment model is one central
+database for every agent and machine, and new capabilities land there first.
+Redis and Valkey remain fully supported.</p>
+<p>Select Postgres with <code>POPOTO_BACKEND=postgres</code> and <code>POPOTO_POSTGRES_URL</code>, or
+per model with <code>class Meta: backend = "postgres"</code> (see
+<a href="../../configuration/#postgres-backend">Configuration</a>). Where this page says
+"Redis" below, it describes the Redis backend; the Postgres equivalent of each
+structure is in the <a href="../postgres-backend/">Postgres Backend</a> reference, and the
+places where results differ are its
+<a href="../postgres-backend/#documented-divergences">documented divergences</a>. The
+<a href="../harness-integration/">harness integration</a> runs on all three
+(<a href="../harness-integration/#on-postgres">On Postgres</a>).</p>
 <h2 id="the-17-primitives">The 17 primitives<a class="headerlink" href="#the-17-primitives" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -3517,10 +3598,11 @@ the right choice for some workloads and quietly wrong for others.</p>
    on top.</p>
 </li>
 <li>
-<p><strong>Redis-native everything.</strong> No external brokers, job queues, or Redis
-   modules. Lua scripts, sorted sets, streams, and Bloom filters over
-   <code>SETBIT</code>/<code>GETBIT</code> all run inside the Redis process, so the same code runs
-   identically on Redis and Valkey.</p>
+<p><strong>Native to the store.</strong> No external brokers, job queues, or Redis
+   modules. On Redis, Lua scripts, sorted sets, streams, and Bloom filters
+   over <code>SETBIT</code>/<code>GETBIT</code> all run inside the Redis process, so the same code
+   runs identically on Redis and Valkey. On Postgres, the same operations are
+   SQL statements over typed tables and native indexes.</p>
 </li>
 <li>
 <p><strong>Composable, degrading gracefully.</strong> Each primitive is independently

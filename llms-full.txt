@@ -5,15 +5,17 @@
 
 ## Home
 
-# Popoto: Agent Memory on Redis and Valkey
+# Popoto: Agent Memory on Postgres, Redis, and Valkey
 
 Memory for LLM agents, as primitives you program rather than a service you call.
 Records decay over time, confidence moves with evidence, associations form
 between things mentioned together, and a context assembler packs the result into
 a token budget before each turn.
 
-It runs in your process against a Redis or Valkey server you already operate.
-Your memory data stays in your database.
+It runs in your process against a database you already operate. Underneath is
+one model API with two storage backends: Redis/Valkey, the default, and
+Postgres, opt-in since 1.10. You choose the backend per model or per process,
+and the model code does not change. Your memory data stays in your database.
 
 ```bash
 pip install popoto
@@ -21,6 +23,29 @@ pip install popoto
 
 Three packages, 9.0 MB of site-packages in a clean Python 3.12 venv (redis-py 8.1.0, measured 2026-09-04), no API key.
 Point it at Redis or Valkey on `localhost:6379` and you are running.
+
+## Choosing a backend
+
+For agent memory, **Postgres is the recommended substrate**. Every
+agent-memory feature runs on it, its deployment model is one central database
+shared by every agent and machine, and new capabilities land there first. Redis and
+Valkey remain fully supported, for agent memory and for the rest of the ORM,
+and nothing changes for an existing Redis deployment.
+
+```bash
+pip install 'popoto[postgres]'      # adds psycopg, pgvector, greenlet
+export POPOTO_BACKEND=postgres      # or per model: class Meta: backend = "postgres"
+export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents
+```
+
+Postgres needs PostgreSQL 18 or newer; `EmbeddingField` also needs the
+pgvector extension. Popoto never reads `DATABASE_URL`, and it creates its
+tables on first use. The two backends differ in a few documented places, and
+`DataFrameField` stays Redis-only: see
+[Postgres Backend](features/postgres-backend.md) and its
+[documented divergences](features/postgres-backend.md#documented-divergences).
+An existing Redis memory store moves across with a one-off copy from an RDB
+snapshot: [Redis to Postgres Migration](features/redis-to-postgres-migration.md).
 
 ## Memory around an LLM turn
 
@@ -43,18 +68,22 @@ that, two agents sharing one Redis via the default loop could retrieve each
 other's memories). Leaving `model_class`
 unset selects `DefaultMemory`, which ships the benchmarked configuration: decay,
 confidence, a keyword index that makes retrieval respond to the query text, and
-an association graph.
+an association graph. The loop is the same on either backend; with
+`POPOTO_BACKEND=postgres` set, `DefaultMemory` is a Postgres table.
 
 [Add memory to your agent](guides/agent-memory-quickstart.md) walks the same
 loop up level by level, from a single decaying field to the full assembly.
 Running inside Claude Code, Codex, Hermes, or OpenClaw instead of your own
 loop? [Add memory to your harness](features/harness-integration.md) wires the
-same primitives into hooks and MCP, no glue code required.
+same primitives into hooks and MCP, no glue code required. It runs on Redis,
+Valkey or Postgres.
 
 ## What is measured
 
 Every number here comes from a harness in this repository, with its result JSON
-committed alongside. Method, per-category tables, and the runs that came out
+committed alongside, and was measured on the Redis backend (Postgres numbers are
+in the [Postgres Backend](features/postgres-backend.md#performance-m1-m2a-and-m3-exit-criteria)
+reference). Method, per-category tables, and the runs that came out
 badly are in [Benchmarks](benchmarks.md).
 
 - **Retrieval quality.** LongMemEval-S, all 500 questions, hybrid BM25 + vector:
@@ -73,11 +102,11 @@ Finding the right evidence is far more reliable than answering from it, and the
 number, its interval, and its protocol are published in
 [Benchmarks](benchmarks.md).
 
-## Built on a full Redis and Valkey ORM
+## Built on a full ORM for Redis, Valkey, and Postgres
 
 Every memory primitive is a field on an ordinary model, so the same Django-like
 query syntax, indexes, TTLs, relationships, and pub/sub apply to memory records
-and to everything else in your keyspace.
+and to everything else you store, on either backend.
 
 ```python
 from popoto import Model, KeyField, Field, SortedField, GeoField
@@ -100,14 +129,15 @@ print(f"{restaurant.name} serves {restaurant.cuisine} food.")
 # => 'Burger Palace serves American food.'
 ```
 
-Reading and writing happen at RAM speed. Popoto adds
+On Redis, reading and writing happen at RAM speed; on Postgres, each model is a
+typed table with native indexes. Popoto adds
 [async operations](async.md), [multi-tenancy](multi-tenancy.md) via KeyField
 namespacing, geometric distance search, timeseries for streaming data, Pandas
 and Xarray interoperation, [pub/sub](pubsub.md) for message queues,
 [content and embedding fields](features/content-and-embedding-fields.md) for
 large content storage and semantic search, and
 [generic export/import](guides/export-import.md) with per-field round-trip
-fidelity for moving records between Redis instances.
+fidelity for moving records between stores, in one format on both backends.
 
 Start at [Configuration](configuration.md) and
 [Models and Fields](fields.md) for the ORM half of the library.
@@ -173,7 +203,8 @@ Add programmable memory to your AI agent. Level 0 is the whole loop in six
 lines. Levels 1 through 6 build the same thing up one field at a time, so you
 understand what each piece buys before you keep or drop it.
 
-> **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`.
+> **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`,
+> or Postgres instead (see [Running on Postgres](#running-on-postgres)).
 >
 > **Full reference:** [Agent Memory](../features/agent-memory.md) maps all 17
 > primitives and the layers composed on them.
@@ -212,6 +243,28 @@ secret-shaped content is blocked before it reaches Redis with no extra setup
 — see [NeverRecordFirewall](../features/never-record-firewall.md). If you
 hand-build the schema at Levels 1-4 below, that protection is not there for
 free; add `NeverRecordMixin` to your own model class if you want it.
+
+### Running on Postgres
+
+Every level on this page runs unchanged on Postgres. Install the extra and
+point the process at a PostgreSQL 18+ database:
+
+```bash
+pip install 'popoto[postgres]'
+export POPOTO_BACKEND=postgres
+export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents
+```
+
+Every model in the process, `DefaultMemory` included, is then a table in the
+`popoto` schema (override with `POPOTO_POSTGRES_SCHEMA`), created on first
+use. To move only some models, set `class Meta: backend = "postgres"` on
+those instead. Level 6's `EmbeddingField` also needs the pgvector extension
+(`CREATE EXTENSION vector`), and on Postgres its `ContentField` keeps the text
+in the table rather than on the filesystem. Popoto never reads `DATABASE_URL`. The
+[Postgres Backend](../features/postgres-backend.md) reference covers
+connection settings, the outage contract, and the
+[documented divergences](../features/postgres-backend.md#documented-divergences)
+from Redis.
 
 The levels below exist for when you want to shape the schema yourself. See the
 [SubconsciousMemory recipe](subconscious-memory-recipe.md) for the default
@@ -739,6 +792,20 @@ class ProjectMemory(DefaultMemory):
     pass  # keys become ProjectMemory:* instead of DefaultMemory:*
 ```
 
+### Running on Postgres
+
+Postgres is the recommended store for agent memory, and the loop runs on it unchanged. Install the extra and select the backend for the process:
+
+```bash
+pip install 'popoto[postgres]'
+export POPOTO_BACKEND=postgres
+export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents   # PostgreSQL 18+
+```
+
+`DefaultMemory` then lives in a table in the `popoto` schema (override with `POPOTO_POSTGRES_SCHEMA`), created on first use, and the loop issues no Redis commands, including its eviction counter and, with `auditable_extraction`, its decision log. To move only your own model, set `class Meta: backend = "postgres"` on it instead of the process variable. Configuration options are in [Configuration](../configuration.md#postgres-backend); behaviour that differs from Redis is listed under [documented divergences](../features/postgres-backend.md#documented-divergences). An existing Redis store moves across once, from an RDB snapshot: [Redis to Postgres Migration](../features/redis-to-postgres-migration.md).
+
+The [harness integration](../features/harness-integration.md) runs on Postgres the same way: see its [On Postgres](../features/harness-integration.md#on-postgres) section.
+
 ### Injected context format
 
 The injected block carries the memory text and nothing else:
@@ -944,6 +1011,23 @@ except OUTAGE_ERRORS:
 `popoto.backends.OUTAGE_ERRORS` is the tuple the recipe tests against. `popoto.redis_db.OUTAGE_ERRORS` is the Redis pair only and misses a Postgres outage; prefer the backend-neutral one even on Redis, so the handler keeps working if the model moves.
 
 Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index. So does contention: `popoto.backends.BackendRetryableError` (a deadlock, a serialization failure, an exhausted pool) is not an outage and is not in the tuple.
+
+#### Monitoring the backend
+
+Outages raise on both backends, so the handler above is all a loop needs. On
+Postgres you can also alert on a store that is failing between turns by
+reading the backend's health record (the Redis backend keeps none):
+
+```python
+from popoto.backends import get_backend
+from popoto.recipes import DefaultMemory
+
+health = get_backend(DefaultMemory).health.as_dict()
+if not health["ok"]:
+    ...  # alert: memory is not being read or written
+```
+
+See [Topology and the outage contract](../features/postgres-backend.md#topology-and-the-outage-contract).
 
 ## Tuning
 
@@ -2474,6 +2558,10 @@ projects on one Redis could retrieve each other's memories; a distinct
 stronger boundary if you want one enforced by Redis rather than by a query
 filter.
 
+The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in Claude Code's environment; see
+[On Postgres](../features/harness-integration.md#on-postgres).
+
 One turn becomes one record, verbatim. Issue #489 measured
 sentence-splitting extraction at 0.2078 judged accuracy against 0.3636 for
 raw ingestion on the same slice, so raw is the default here.
@@ -2676,8 +2764,10 @@ export POPOTO_MEMORY_AGENT_ID=my-project
 For a boundary enforced by Redis rather than by a query filter, point each
 project at its own `POPOTO_MEMORY_URL` database (any database but 0, which
 is refused — see [Harness Integration](../features/harness-integration.md#database-0-is-refused)).
-On Postgres the equivalent is a `POPOTO_POSTGRES_SCHEMA` per project (see
-[On Postgres](../features/harness-integration.md#on-postgres)).
+The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in the Codex hook
+environment, and use a `POPOTO_POSTGRES_SCHEMA` per project as the equivalent
+boundary; see [On Postgres](../features/harness-integration.md#on-postgres).
 
 ## Corpus growth and eviction
 
@@ -2900,6 +2990,10 @@ Identical to every other harness, and all environment-driven. See
 gateway must have these in its environment, not just your interactive shell,
 since the plugin runs in the gateway process.
 
+The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in the gateway's environment; see
+[On Postgres](../features/harness-integration.md#on-postgres).
+
 ---
 
 ## OpenClaw
@@ -3075,6 +3169,10 @@ delete the ones you have.
 Identical to every other harness, all environment-driven. See
 [Harness Integration](../features/harness-integration.md).
 
+The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in the environment OpenClaw runs the plugin and MCP server in; see
+[On Postgres](../features/harness-integration.md#on-postgres).
+
 ---
 
 ## Agent Memory Overview
@@ -3086,8 +3184,8 @@ Identical to every other harness, all environment-driven. See
 > is for, how the pieces compose, and where the full reference for each one
 > lives.
 
-Popoto Agent Memory is a set of Redis-backed ORM primitives for programmable
-memory. Records decay over time, strengthen through use, carry confidence that
+Popoto Agent Memory is a set of ORM primitives for programmable memory, stored
+in Postgres or in Redis/Valkey. Records decay over time, strengthen through use, carry confidence that
 moves with evidence, form associations, and get assembled into LLM context
 within a token budget.
 
@@ -3107,6 +3205,25 @@ cannot do unaided is decide what belongs there:
 - **Filter noise.** Keep low-value observations out of storage entirely.
 
 Each primitive below covers one of those. Each is independently useful.
+
+## Where memory is stored
+
+Every primitive and layer on this page runs on both backends behind the same
+model API. **Postgres is the recommended substrate for agent memory**: since
+1.10 every agent-memory feature runs on it except the WriteFilter priority
+tier (see the [divergences](postgres-backend.md#documented-divergences)), its deployment model is one central
+database for every agent and machine, and new capabilities land there first.
+Redis and Valkey remain fully supported.
+
+Select Postgres with `POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL`, or
+per model with `class Meta: backend = "postgres"` (see
+[Configuration](../configuration.md#postgres-backend)). Where this page says
+"Redis" below, it describes the Redis backend; the Postgres equivalent of each
+structure is in the [Postgres Backend](postgres-backend.md) reference, and the
+places where results differ are its
+[documented divergences](postgres-backend.md#documented-divergences). The
+[harness integration](harness-integration.md) runs on all three
+([On Postgres](harness-integration.md#on-postgres)).
 
 ## The 17 primitives
 
@@ -3196,10 +3313,11 @@ the right choice for some workloads and quietly wrong for others.
    hooks, and query methods. Domain-specific memory models are yours to build
    on top.
 
-2. **Redis-native everything.** No external brokers, job queues, or Redis
-   modules. Lua scripts, sorted sets, streams, and Bloom filters over
-   `SETBIT`/`GETBIT` all run inside the Redis process, so the same code runs
-   identically on Redis and Valkey.
+2. **Native to the store.** No external brokers, job queues, or Redis
+   modules. On Redis, Lua scripts, sorted sets, streams, and Bloom filters
+   over `SETBIT`/`GETBIT` all run inside the Redis process, so the same code
+   runs identically on Redis and Valkey. On Postgres, the same operations are
+   SQL statements over typed tables and native indexes.
 
 3. **Composable, degrading gracefully.** Each primitive is independently
    useful, and every layer adapts to whichever fields are present rather than
@@ -14274,6 +14392,8 @@ recall-vs-p99 Pareto frontier this harness computes the machinery for.
 
 Popoto connects to Redis or Valkey automatically when imported. By default it connects to `localhost:6379`, which works for local development. For production, set the `REDIS_URL` environment variable.
 
+Since 1.10, models can run on Postgres instead, per model or for the whole process. Postgres is opt-in and configured separately: see [Postgres Backend](#postgres-backend) below. Without it, nothing on this page changes.
+
 ## Redis/Valkey Connection
 
 Popoto works with both Redis and [Valkey](https://valkey.io) (the open-source Redis fork). The same configuration works for either - just point `REDIS_URL` at your server.
@@ -14411,6 +14531,77 @@ it is equivalent to calling `popoto.get_redis()`.
 Prefer this over building your own client. A hand-built `redis.from_url(...)`
 opens a *different* connection, and unless its URL names the same database, reads
 and writes land somewhere Popoto never touched — with no error to say so.
+
+## Postgres Backend
+
+Postgres is the second storage backend ([reference](features/postgres-backend.md)). It needs the `postgres` extra and PostgreSQL 18 or newer:
+
+```bash
+pip install 'popoto[postgres]'      # psycopg[binary,pool], pgvector, greenlet
+```
+
+### Selecting it
+
+A backend is chosen per model, or once for the whole process. A model's own `Meta.backend` wins over the process default.
+
+```python
+import popoto
+
+class Note(popoto.Model):
+    slug = popoto.KeyField()
+    body = popoto.StringField(default="")
+
+    class Meta:
+        backend = "postgres"        # this model only
+```
+
+```bash
+export POPOTO_BACKEND=postgres      # every model without its own Meta.backend
+```
+
+Without either, every model stays on Redis. `import popoto` never imports `psycopg`, and nothing connects to Postgres until a Postgres model's first query or save. Selecting Postgres without `POPOTO_POSTGRES_URL`, or without the extra installed, raises `BackendUnavailableError` naming what is missing.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POPOTO_BACKEND` | `redis` | Process default backend: `redis` or `postgres`. Read on each call, so `set_backend()` or a model's `Meta.backend` overrides it. |
+| `POPOTO_POSTGRES_URL` | *(required for Postgres)* | The DSN, e.g. `postgresql://db.internal:5432/agents`. The only place popoto reads a Postgres URL from: it never reads `DATABASE_URL` or `POSTGRES_URL`. |
+| `POPOTO_POSTGRES_SCHEMA` | `popoto` | Schema that holds popoto's tables. |
+| `POPOTO_POSTGRES_MAINTENANCE_URL` | unset (the main DSN) | Optional second DSN to the same database, for work that needs a real session: `REINDEX`/`DROP INDEX CONCURRENTLY`, first-use DDL, and the shared `LISTEN` session. Set it when `POPOTO_POSTGRES_URL` goes through PgBouncer in transaction mode. See [A maintenance DSN](features/postgres-backend.md#a-maintenance-dsn-for-pgbouncer-transaction-mode). |
+| `POPOTO_POSTGRES_GRANT_MAIN_ROLE` | unset (falsy) | `1`/`true`/`yes`/`on` makes popoto grant the main DSN's role access to the tables its own DDL creates on the maintenance DSN, when the two DSNs run as different roles. Off, popoto grants nothing. See [Two roles](features/postgres-backend.md#two-roles-an-application-role-and-an-owner-role). |
+| `POPOTO_POSTGRES_LISTEN_URL` | unset | DSN for the process's one shared `LISTEN` session (blocking stream reads, `Subscriber`). Unset, the maintenance DSN is used, else the main DSN. |
+| `POPOTO_SCHEMA_AUTO` | `1` | `0`/`false`/`no`/`off` turns off the automatic first-use `CREATE TABLE` and additive migrations, for deployments that run the DDL themselves. |
+
+The variables that pick the connection (`POPOTO_POSTGRES_URL`, `POPOTO_POSTGRES_SCHEMA`, `POPOTO_POSTGRES_MAINTENANCE_URL`, `POPOTO_POSTGRES_GRANT_MAIN_ROLE`) are read when the process's Postgres backend is first built, at the first Postgres model's first use.
+
+### Configuring in code
+
+Pass the settings directly instead of through the environment:
+
+```python
+from popoto.backends import set_backend
+from popoto.backends.postgres import PostgresBackend
+
+set_backend(PostgresBackend(
+    dsn="postgresql://app@pgbouncer:6432/agents",
+    schema="popoto",                                          # default "popoto"
+    maintenance_dsn="postgresql://owner@db.internal:5432/agents",  # optional
+    grant_main_role=False,                                    # optional, default False
+))
+```
+
+`set_backend()` sets the process default and returns the previous one; `set_backend(None)` returns to `POPOTO_BACKEND`. It also accepts a name (`set_backend("postgres")`), which builds the backend from the environment variables above.
+
+A Postgres instance passed to `set_backend()` also serves every model that declares `Meta.backend = "postgres"`, ahead of `POPOTO_POSTGRES_URL`, so you can configure Postgres in code and keep `Meta.backend` on those models. A model that declares `Meta.backend = "redis"` always gets the stock Redis backend. See [Selecting the backend](features/postgres-backend.md#selecting-the-backend).
+
+`popoto.backends.get_backend(Model)` returns the backend a model is bound to. For a Postgres-bound model, `get_backend(Model).health.as_dict()` reports outages and dropped writes; the Redis backend keeps no health record.
+
+### What to read next
+
+- [Postgres Backend](features/postgres-backend.md): the full reference, including the outage contract, transactions, schema management, and the [documented divergences](features/postgres-backend.md#documented-divergences) from Redis. `DataFrameField` is refused on Postgres; keep those models on Redis.
+- [Redis to Postgres Migration](features/redis-to-postgres-migration.md): a one-off copy of an existing store from an RDB snapshot.
+- [Testing](testing.md): the Postgres conformance suite, which reads its own `POSTGRES_URL`.
 
 ## Debugging
 
@@ -14707,6 +14898,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 | `POPOTO_SENTRY_DSN` | *(built-in)* | Override the Sentry DSN used by `enable_error_reporting()`. |
 | `POPOTO_TEST_DB` | unset | Redis DB number used by the pytest plugin for test isolation, and one of the two ways to activate the plugin at all (the other is the `popoto_test_db` ini option, which this overrides). Unset with no ini option, the plugin does nothing. DB 0 is rejected to prevent accidental production data loss. See [Testing](testing.md). |
+| `POPOTO_BACKEND`, `POPOTO_POSTGRES_*`, `POPOTO_SCHEMA_AUTO` | see above | Postgres backend selection and connection. See [Postgres Backend](#postgres-backend). |
 | `POPOTO_ASYNC_MAX_CONNECTIONS` | `128` | Maximum async Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_SYNC_MAX_CONNECTIONS` | `128` | Maximum sync Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_DATETIME_KEY_LEGACY` | unset (falsy) | Kill switch that restores 1.8.2 `str(value)` key bytes for datetime values on the write path, so a fleet can roll readers forward before moving key bytes. It covers two things, and lifting it commits to both: `KeyField(type=datetime)` row identity, and `partition_by` partition segments for `SortedField`, `ConfidenceField` and `EventStreamMixin` (a datetime partition value canonicalizes to UTC, so aware, offset and naive forms of one instant share a single partition). Non-datetime partition values are byte-identical either way. Migration cookbook recipe 19 covers only the KeyField half; partition keys have no automatic migration, so do not lift the switch fleet-wide on the strength of a finished KeyField migration alone. Does not affect `audit_datetime_keys()`, which always reports the truth. See [Datetime KeyFields](fields.md#datetime-keyfields), [partition_by](fields.md#partition_by) and migration cookbook recipe 19. |
@@ -22699,7 +22891,7 @@ demonstrates a targeted scan-and-delete instead of a blanket flush. See
 
 ---
 
-## Postgres Backend (v2)
+## Postgres Backend
 
 # Postgres Backend (v2)
 

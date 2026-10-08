@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Agent memory on Redis and Valkey, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full Redis/Valkey ORM.">
+        <meta name="description" content="Agent memory on Redis, Valkey or PostgreSQL, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full ORM for Redis, Valkey and Postgres.">
       
       
         <meta name="author" content="Tom Counsell">
@@ -353,7 +353,7 @@
           
   
   
-  Redis ORM
+  ORM
 
         </a>
       </li>
@@ -369,36 +369,18 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../../features/postgres-backend/" class="md-tabs__link">
-        
-  
-  
     
-  
-  Postgres Backend (v2)
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../../features/redis-to-postgres-migration/" class="md-tabs__link">
-        
-  
-  
     
+      <li class="md-tabs__item">
+        <a href="../../features/postgres-backend/" class="md-tabs__link">
+          
   
-  Redis to Postgres Migration
+  
+  Backends
 
-      </a>
-    </li>
+        </a>
+      </li>
+    
   
 
       
@@ -2536,7 +2518,7 @@
   <span class="md-ellipsis">
     
   
-    Redis ORM
+    ORM
   
 
     
@@ -2552,7 +2534,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Redis ORM
+    ORM
   
 
           </label>
@@ -3111,6 +3093,58 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../../features/postgres-backend/" class="md-nav__link">
         
@@ -3119,7 +3153,7 @@
   <span class="md-ellipsis">
     
   
-    Postgres Backend (v2)
+    Postgres Backend
   
 
     
@@ -3131,9 +3165,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -3155,6 +3190,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -3524,6 +3567,9 @@ delete the ones you have.</p>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <p>Identical to every other harness, all environment-driven. See
 <a href="../../features/harness-integration/">Harness Integration</a>.</p>
+<p>The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+<code>POPOTO_BACKEND=postgres</code> and <code>POPOTO_POSTGRES_URL</code> in the environment OpenClaw runs the plugin and MCP server in; see
+<a href="../../features/harness-integration/#on-postgres">On Postgres</a>.</p>
 
 
 

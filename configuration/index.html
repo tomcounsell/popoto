@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Agent memory on Redis and Valkey, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full Redis/Valkey ORM.">
+        <meta name="description" content="Agent memory on Redis, Valkey or PostgreSQL, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full ORM for Redis, Valkey and Postgres.">
       
       
         <meta name="author" content="Tom Counsell">
@@ -355,7 +355,7 @@
           
   
   
-  Redis ORM
+  ORM
 
         </a>
       </li>
@@ -371,36 +371,18 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../features/postgres-backend/" class="md-tabs__link">
-        
-  
-  
     
-  
-  Postgres Backend (v2)
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../features/redis-to-postgres-migration/" class="md-tabs__link">
-        
-  
-  
     
+      <li class="md-tabs__item">
+        <a href="../features/postgres-backend/" class="md-tabs__link">
+          
   
-  Redis to Postgres Migration
+  
+  Backends
 
-      </a>
-    </li>
+        </a>
+      </li>
+    
   
 
       
@@ -2369,7 +2351,7 @@
   <span class="md-ellipsis">
     
   
-    Redis ORM
+    ORM
   
 
     
@@ -2385,7 +2367,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Redis ORM
+    ORM
   
 
           </label>
@@ -2572,6 +2554,67 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postgres-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Postgres Backend
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Postgres Backend">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#selecting-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuring-in-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuring in code
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-to-read-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to read next
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2776,7 +2819,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#environment-variables_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Environment Variables
@@ -3382,6 +3425,58 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../features/postgres-backend/" class="md-nav__link">
         
@@ -3390,7 +3485,7 @@
   <span class="md-ellipsis">
     
   
-    Postgres Backend (v2)
+    Postgres Backend
   
 
     
@@ -3402,9 +3497,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -3426,6 +3522,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -3568,6 +3672,67 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postgres-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Postgres Backend
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Postgres Backend">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#selecting-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuring-in-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuring in code
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-to-read-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to read next
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3772,7 +3937,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#environment-variables_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Environment Variables
@@ -3915,6 +4080,7 @@
 
 <h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
 <p>Popoto connects to Redis or Valkey automatically when imported. By default it connects to <code>localhost:6379</code>, which works for local development. For production, set the <code>REDIS_URL</code> environment variable.</p>
+<p>Since 1.10, models can run on Postgres instead, per model or for the whole process. Postgres is opt-in and configured separately: see <a href="#postgres-backend">Postgres Backend</a> below. Without it, nothing on this page changes.</p>
 <h2 id="redisvalkey-connection">Redis/Valkey Connection<a class="headerlink" href="#redisvalkey-connection" title="Permanent link">&para;</a></h2>
 <p>Popoto works with both Redis and <a href="https://valkey.io">Valkey</a> (the open-source Redis fork). The same configuration works for either - just point <code>REDIS_URL</code> at your server.</p>
 <h3 id="using-redis_url-recommended">Using REDIS_URL (Recommended)<a class="headerlink" href="#using-redis_url-recommended" title="Permanent link">&para;</a></h3>
@@ -4021,45 +4187,132 @@ by a hook rather than bound by an import.)</p>
 <p>Prefer this over building your own client. A hand-built <code>redis.from_url(...)</code>
 opens a <em>different</em> connection, and unless its URL names the same database, reads
 and writes land somewhere Popoto never touched — with no error to say so.</p>
+<h2 id="postgres-backend">Postgres Backend<a class="headerlink" href="#postgres-backend" title="Permanent link">&para;</a></h2>
+<p>Postgres is the second storage backend (<a href="../features/postgres-backend/">reference</a>). It needs the <code>postgres</code> extra and PostgreSQL 18 or newer:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'popoto[postgres]'</span><span class="w">      </span><span class="c1"># psycopg[binary,pool], pgvector, greenlet</span>
+</code></pre></div>
+<h3 id="selecting-it">Selecting it<a class="headerlink" href="#selecting-it" title="Permanent link">&para;</a></h3>
+<p>A backend is chosen per model, or once for the whole process. A model's own <code>Meta.backend</code> wins over the process default.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Note</span><span class="p">(</span><span class="n">popoto</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">slug</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">body</span> <span class="o">=</span> <span class="n">popoto</span><span class="o">.</span><span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>        <span class="n">backend</span> <span class="o">=</span> <span class="s2">"postgres"</span>        <span class="c1"># this model only</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_BACKEND</span><span class="o">=</span>postgres<span class="w">      </span><span class="c1"># every model without its own Meta.backend</span>
+</code></pre></div>
+<p>Without either, every model stays on Redis. <code>import popoto</code> never imports <code>psycopg</code>, and nothing connects to Postgres until a Postgres model's first query or save. Selecting Postgres without <code>POPOTO_POSTGRES_URL</code>, or without the extra installed, raises <code>BackendUnavailableError</code> naming what is missing.</p>
+<h3 id="environment-variables">Environment variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POPOTO_BACKEND</code></td>
+<td><code>redis</code></td>
+<td>Process default backend: <code>redis</code> or <code>postgres</code>. Read on each call, so <code>set_backend()</code> or a model's <code>Meta.backend</code> overrides it.</td>
+</tr>
+<tr>
+<td><code>POPOTO_POSTGRES_URL</code></td>
+<td><em>(required for Postgres)</em></td>
+<td>The DSN, e.g. <code>postgresql://db.internal:5432/agents</code>. The only place popoto reads a Postgres URL from: it never reads <code>DATABASE_URL</code> or <code>POSTGRES_URL</code>.</td>
+</tr>
+<tr>
+<td><code>POPOTO_POSTGRES_SCHEMA</code></td>
+<td><code>popoto</code></td>
+<td>Schema that holds popoto's tables.</td>
+</tr>
+<tr>
+<td><code>POPOTO_POSTGRES_MAINTENANCE_URL</code></td>
+<td>unset (the main DSN)</td>
+<td>Optional second DSN to the same database, for work that needs a real session: <code>REINDEX</code>/<code>DROP INDEX CONCURRENTLY</code>, first-use DDL, and the shared <code>LISTEN</code> session. Set it when <code>POPOTO_POSTGRES_URL</code> goes through PgBouncer in transaction mode. See <a href="../features/postgres-backend/#a-maintenance-dsn-for-pgbouncer-transaction-mode">A maintenance DSN</a>.</td>
+</tr>
+<tr>
+<td><code>POPOTO_POSTGRES_GRANT_MAIN_ROLE</code></td>
+<td>unset (falsy)</td>
+<td><code>1</code>/<code>true</code>/<code>yes</code>/<code>on</code> makes popoto grant the main DSN's role access to the tables its own DDL creates on the maintenance DSN, when the two DSNs run as different roles. Off, popoto grants nothing. See <a href="../features/postgres-backend/#two-roles-an-application-role-and-an-owner-role">Two roles</a>.</td>
+</tr>
+<tr>
+<td><code>POPOTO_POSTGRES_LISTEN_URL</code></td>
+<td>unset</td>
+<td>DSN for the process's one shared <code>LISTEN</code> session (blocking stream reads, <code>Subscriber</code>). Unset, the maintenance DSN is used, else the main DSN.</td>
+</tr>
+<tr>
+<td><code>POPOTO_SCHEMA_AUTO</code></td>
+<td><code>1</code></td>
+<td><code>0</code>/<code>false</code>/<code>no</code>/<code>off</code> turns off the automatic first-use <code>CREATE TABLE</code> and additive migrations, for deployments that run the DDL themselves.</td>
+</tr>
+</tbody>
+</table>
+<p>The variables that pick the connection (<code>POPOTO_POSTGRES_URL</code>, <code>POPOTO_POSTGRES_SCHEMA</code>, <code>POPOTO_POSTGRES_MAINTENANCE_URL</code>, <code>POPOTO_POSTGRES_GRANT_MAIN_ROLE</code>) are read when the process's Postgres backend is first built, at the first Postgres model's first use.</p>
+<h3 id="configuring-in-code">Configuring in code<a class="headerlink" href="#configuring-in-code" title="Permanent link">&para;</a></h3>
+<p>Pass the settings directly instead of through the environment:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_backend</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.backends.postgres</span><span class="w"> </span><span class="kn">import</span> <span class="n">PostgresBackend</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">set_backend</span><span class="p">(</span><span class="n">PostgresBackend</span><span class="p">(</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">dsn</span><span class="o">=</span><span class="s2">"postgresql://app@pgbouncer:6432/agents"</span><span class="p">,</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">schema</span><span class="o">=</span><span class="s2">"popoto"</span><span class="p">,</span>                                          <span class="c1"># default "popoto"</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="n">maintenance_dsn</span><span class="o">=</span><span class="s2">"postgresql://owner@db.internal:5432/agents"</span><span class="p">,</span>  <span class="c1"># optional</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="n">grant_main_role</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>                                    <span class="c1"># optional, default False</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="p">))</span>
+</code></pre></div>
+<p><code>set_backend()</code> sets the process default and returns the previous one; <code>set_backend(None)</code> returns to <code>POPOTO_BACKEND</code>. It also accepts a name (<code>set_backend("postgres")</code>), which builds the backend from the environment variables above.</p>
+<p>A Postgres instance passed to <code>set_backend()</code> also serves every model that declares <code>Meta.backend = "postgres"</code>, ahead of <code>POPOTO_POSTGRES_URL</code>, so you can configure Postgres in code and keep <code>Meta.backend</code> on those models. A model that declares <code>Meta.backend = "redis"</code> always gets the stock Redis backend. See <a href="../features/postgres-backend/#selecting-the-backend">Selecting the backend</a>.</p>
+<p><code>popoto.backends.get_backend(Model)</code> returns the backend a model is bound to. For a Postgres-bound model, <code>get_backend(Model).health.as_dict()</code> reports outages and dropped writes; the Redis backend keeps no health record.</p>
+<h3 id="what-to-read-next">What to read next<a class="headerlink" href="#what-to-read-next" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="../features/postgres-backend/">Postgres Backend</a>: the full reference, including the outage contract, transactions, schema management, and the <a href="../features/postgres-backend/#documented-divergences">documented divergences</a> from Redis. <code>DataFrameField</code> is refused on Postgres; keep those models on Redis.</li>
+<li><a href="../features/redis-to-postgres-migration/">Redis to Postgres Migration</a>: a one-off copy of an existing store from an RDB snapshot.</li>
+<li><a href="../testing/">Testing</a>: the Postgres conformance suite, which reads its own <code>POSTGRES_URL</code>.</li>
+</ul>
 <h2 id="debugging">Debugging<a class="headerlink" href="#debugging" title="Permanent link">&para;</a></h2>
 <h3 id="print-redis-info">Print Redis Info<a class="headerlink" href="#print-redis-info" title="Permanent link">&para;</a></h3>
 <p>Use <code>print_redis_info()</code> to log memory usage and server info:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">print_redis_info</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">print_redis_info</span><span class="p">()</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Logs memory usage percentage and server info to the POPOTO-REDIS_DB logger</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">print_redis_info</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">print_redis_info</span><span class="p">()</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># Logs memory usage percentage and server info to the POPOTO-REDIS_DB logger</span>
 </code></pre></div>
 <h3 id="redisvalkey-cli">Redis/Valkey CLI<a class="headerlink" href="#redisvalkey-cli" title="Permanent link">&para;</a></h3>
 <p>You can inspect Popoto's data directly using <code>redis-cli</code> (or <code>valkey-cli</code> for Valkey - commands are identical):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>redis-cli
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1"># List all keys for a model</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>KEYS<span class="w"> </span>Restaurant:*
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1"># Inspect a specific instance (stored as a hash)</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>HGETALL<span class="w"> </span>Restaurant:Burger<span class="o">{</span><span class="p">&amp;</span><span class="c1">#58;}Palace</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># Check sorted set indexes</span>
-<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>ZRANGE<span class="w"> </span><span class="s2">"</span><span class="nv">$SortedF</span><span class="s2">:Restaurant:rating"</span><span class="w"> </span><span class="m">0</span><span class="w"> </span>-1<span class="w"> </span>WITHSCORES
-<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
-<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="c1"># Check geo indexes</span>
-<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>GEOPOS<span class="w"> </span><span class="s2">"</span><span class="nv">$GeoF</span><span class="s2">:Restaurant:location"</span><span class="w"> </span><span class="s2">"Restaurant:Burger Palace"</span>
-<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>
-<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="c1"># Watch all Redis commands in real time</span>
-<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>MONITOR
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>redis-cli
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># List all keys for a model</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>KEYS<span class="w"> </span>Restaurant:*
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="c1"># Inspect a specific instance (stored as a hash)</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>HGETALL<span class="w"> </span>Restaurant:Burger<span class="o">{</span><span class="p">&amp;</span><span class="c1">#58;}Palace</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="c1"># Check sorted set indexes</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>ZRANGE<span class="w"> </span><span class="s2">"</span><span class="nv">$SortedF</span><span class="s2">:Restaurant:rating"</span><span class="w"> </span><span class="m">0</span><span class="w"> </span>-1<span class="w"> </span>WITHSCORES
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="c1"># Check geo indexes</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>GEOPOS<span class="w"> </span><span class="s2">"</span><span class="nv">$GeoF</span><span class="s2">:Restaurant:location"</span><span class="w"> </span><span class="s2">"Restaurant:Burger Palace"</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="c1"># Watch all Redis commands in real time</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>MONITOR
 </code></pre></div>
 <p>See the <a href="https://github.com/tomcounsell/popoto">CLAUDE.md</a> debugging section for more Redis CLI patterns.</p>
 <h2 id="content-and-embedding-configuration">Content and Embedding Configuration<a class="headerlink" href="#content-and-embedding-configuration" title="Permanent link">&para;</a></h2>
 <p>Use <code>popoto.configure()</code> to set global defaults for <code>ContentField</code> and <code>EmbeddingField</code>.
 Call this once at application startup, before creating or querying any models that use
 these field types.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">),</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">"/data/popoto-content"</span><span class="p">,</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">"your-key"</span><span class="p">),</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">"/data/popoto-content"</span><span class="p">,</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="p">)</span>
 </code></pre></div>
 <table>
 <thead>
@@ -4130,31 +4383,31 @@ full staleness-window table and the cost of the default mode.</p>
 <code>AbstractEmbeddingProvider</code> interface from <code>popoto.embeddings</code>.</p>
 <h4 id="voyage-ai">Voyage AI<a class="headerlink" href="#voyage-ai" title="Permanent link">&para;</a></h4>
 <p>Install the optional dependency and configure:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>pip<span class="w"> </span>install<span class="w"> </span>popoto<span class="o">[</span>voyage<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>pip<span class="w"> </span>install<span class="w"> </span>popoto<span class="o">[</span>voyage<span class="o">]</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">VoyageProvider</span><span class="p">(</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-voyage-key"</span><span class="p">,</span>  <span class="c1"># or set VOYAGE_API_KEY env var</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"voyage-3"</span><span class="p">,</span>           <span class="c1"># default model, 1024 dimensions</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="p">)</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">embedding_provider</span><span class="o">=</span><span class="n">provider</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">VoyageProvider</span><span class="p">(</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-voyage-key"</span><span class="p">,</span>  <span class="c1"># or set VOYAGE_API_KEY env var</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"voyage-3"</span><span class="p">,</span>           <span class="c1"># default model, 1024 dimensions</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="p">)</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">embedding_provider</span><span class="o">=</span><span class="n">provider</span><span class="p">)</span>
 </code></pre></div>
 <p>Voyage AI supports <code>input_type</code> hints (<code>"document"</code> for indexing, <code>"query"</code> for
 search) to optimize embeddings for retrieval. Popoto passes these automatically
 when saving vs searching. Batch size limit is 128 texts per API call.</p>
 <h4 id="openai">OpenAI<a class="headerlink" href="#openai" title="Permanent link">&para;</a></h4>
 <p>Install the optional dependency and configure:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>pip<span class="w"> </span>install<span class="w"> </span>popoto<span class="o">[</span>openai<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>pip<span class="w"> </span>install<span class="w"> </span>popoto<span class="o">[</span>openai<span class="o">]</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAIProvider</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OpenAIProvider</span><span class="p">(</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-openai-key"</span><span class="p">,</span>       <span class="c1"># or set OPENAI_API_KEY env var</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"text-embedding-3-small"</span><span class="p">,</span>  <span class="c1"># default model</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="n">dim</span><span class="o">=</span><span class="mi">1536</span><span class="p">,</span>                        <span class="c1"># default dimensions</span>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="p">)</span>
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">embedding_provider</span><span class="o">=</span><span class="n">provider</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAIProvider</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OpenAIProvider</span><span class="p">(</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="n">api_key</span><span class="o">=</span><span class="s2">"your-openai-key"</span><span class="p">,</span>       <span class="c1"># or set OPENAI_API_KEY env var</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"text-embedding-3-small"</span><span class="p">,</span>  <span class="c1"># default model</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>    <span class="n">dim</span><span class="o">=</span><span class="mi">1536</span><span class="p">,</span>                        <span class="c1"># default dimensions</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="p">)</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">embedding_provider</span><span class="o">=</span><span class="n">provider</span><span class="p">)</span>
 </code></pre></div>
 <p>OpenAI embeddings ignore the <code>input_type</code> parameter. Batch size limit is 2048
 texts per API call.</p>
@@ -4163,18 +4416,18 @@ texts per API call.</p>
 round-trip, no per-token cost. Uses stdlib only (no extras to install).</p>
 <p>Prerequisites: install Ollama from <a href="https://ollama.com">https://ollama.com</a>, pull an
 embedding model, and start the server:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>ollama<span class="w"> </span>pull<span class="w"> </span>nomic-embed-text
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>ollama<span class="w"> </span>serve
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>ollama<span class="w"> </span>pull<span class="w"> </span>nomic-embed-text
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>ollama<span class="w"> </span>serve
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.ollama</span><span class="w"> </span><span class="kn">import</span> <span class="n">OllamaProvider</span>
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OllamaProvider</span><span class="p">(</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">base_url</span><span class="o">=</span><span class="s2">"http://localhost:11434"</span><span class="p">,</span>  <span class="c1"># default</span>
-<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"nomic-embed-text"</span><span class="p">,</span>           <span class="c1"># default (768-dim)</span>
-<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>    <span class="n">dim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                           <span class="c1"># auto-detect on first embed()</span>
-<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="p">)</span>
-<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">embedding_provider</span><span class="o">=</span><span class="n">provider</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.ollama</span><span class="w"> </span><span class="kn">import</span> <span class="n">OllamaProvider</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="n">provider</span> <span class="o">=</span> <span class="n">OllamaProvider</span><span class="p">(</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="n">base_url</span><span class="o">=</span><span class="s2">"http://localhost:11434"</span><span class="p">,</span>  <span class="c1"># default</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">"nomic-embed-text"</span><span class="p">,</span>           <span class="c1"># default (768-dim)</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>    <span class="n">dim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                           <span class="c1"># auto-detect on first embed()</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="p">)</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">embedding_provider</span><span class="o">=</span><span class="n">provider</span><span class="p">)</span>
 </code></pre></div>
 <p>Ollama ignores the <code>input_type</code> parameter. Default batch size limit is
 32 texts per call (conservative for local inference; subclass to raise
@@ -4183,20 +4436,20 @@ points at <code>ollama serve</code>; if the model is missing, the error points a
 <code>ollama pull &lt;model&gt;</code>.</p>
 <h4 id="custom-providers">Custom Providers<a class="headerlink" href="#custom-providers" title="Permanent link">&para;</a></h4>
 <p>Implement <code>AbstractEmbeddingProvider</code> to use any embedding service:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractEmbeddingProvider</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyProvider</span><span class="p">(</span><span class="n">AbstractEmbeddingProvider</span><span class="p">):</span>
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">texts</span><span class="p">,</span> <span class="n">input_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>        <span class="c1"># Call your embedding API here</span>
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">vector_for</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">texts</span><span class="p">]</span>
-<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>
-<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    <span class="nd">@property</span>
-<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dimensions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>        <span class="k">return</span> <span class="mi">768</span>  <span class="c1"># your vector size</span>
-<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>
-<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>    <span class="nd">@property</span>
-<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">max_batch_size</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>        <span class="k">return</span> <span class="mi">100</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractEmbeddingProvider</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyProvider</span><span class="p">(</span><span class="n">AbstractEmbeddingProvider</span><span class="p">):</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">texts</span><span class="p">,</span> <span class="n">input_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>        <span class="c1"># Call your embedding API here</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>        <span class="k">return</span> <span class="p">[</span><span class="n">vector_for</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">texts</span><span class="p">]</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>    <span class="nd">@property</span>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dimensions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>        <span class="k">return</span> <span class="mi">768</span>  <span class="c1"># your vector size</span>
+<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a>
+<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a>    <span class="nd">@property</span>
+<a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">max_batch_size</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a>        <span class="k">return</span> <span class="mi">100</span>
 </code></pre></div>
 <h3 id="content-storage-path">Content Storage Path<a class="headerlink" href="#content-storage-path" title="Permanent link">&para;</a></h3>
 <p>ContentField stores large values on the filesystem instead of in Redis.
@@ -4206,31 +4459,31 @@ The storage location is resolved in this order:</p>
 <li><code>POPOTO_CONTENT_PATH</code> environment variable</li>
 <li>Default: <code>~/.popoto/content</code></li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Set via environment variable</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_CONTENT_PATH</span><span class="o">=</span><span class="s2">"/data/popoto-content"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Set via environment variable</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_CONTENT_PATH</span><span class="o">=</span><span class="s2">"/data/popoto-content"</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Or set via configure()</span>
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">content_path</span><span class="o">=</span><span class="s2">"/data/popoto-content"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="c1"># Or set via configure()</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">content_path</span><span class="o">=</span><span class="s2">"/data/popoto-content"</span><span class="p">)</span>
 </code></pre></div>
 <p>Files are organized by model class name under the base path, using
 content-addressable storage (SHA-256) for versioning. You can also supply a
 custom <code>AbstractContentStore</code> implementation (e.g., for S3 or GCS) via the
 <code>content_store</code> parameter:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.stores</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractContentStore</span>
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">S3Store</span><span class="p">(</span><span class="n">AbstractContentStore</span><span class="p">):</span>
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">content</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">model_class_name</span><span class="p">):</span>
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>        <span class="c1"># upload to S3, return reference string</span>
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>        <span class="o">...</span>
-<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">):</span>
-<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>        <span class="c1"># download from S3</span>
-<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>        <span class="o">...</span>
-<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">):</span>
-<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>        <span class="o">...</span>
-<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">):</span>
-<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>        <span class="o">...</span>
-<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>
-<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">content_store</span><span class="o">=</span><span class="n">S3Store</span><span class="p">())</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.stores</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractContentStore</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">S3Store</span><span class="p">(</span><span class="n">AbstractContentStore</span><span class="p">):</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">content</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">model_class_name</span><span class="p">):</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>        <span class="c1"># upload to S3, return reference string</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>        <span class="o">...</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">):</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>        <span class="c1"># download from S3</span>
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a>        <span class="o">...</span>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">):</span>
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a>        <span class="o">...</span>
+<a id="__codelineno-23-12" name="__codelineno-23-12" href="#__codelineno-23-12"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">):</span>
+<a id="__codelineno-23-13" name="__codelineno-23-13" href="#__codelineno-23-13"></a>        <span class="o">...</span>
+<a id="__codelineno-23-14" name="__codelineno-23-14" href="#__codelineno-23-14"></a>
+<a id="__codelineno-23-15" name="__codelineno-23-15" href="#__codelineno-23-15"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">content_store</span><span class="o">=</span><span class="n">S3Store</span><span class="p">())</span>
 </code></pre></div>
 <h2 id="error-reporting-opt-in">Error Reporting (Opt-In)<a class="headerlink" href="#error-reporting-opt-in" title="Permanent link">&para;</a></h2>
 <p>Popoto includes optional, opt-in error reporting that sends library-specific
@@ -4240,13 +4493,13 @@ helps the maintainers discover and fix bugs that users encounter in the wild.</p
 explicitly enable it.</p>
 <h3 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h3>
 <p>Install Popoto with the <code>monitoring</code> extra to include <code>sentry-sdk</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>pip<span class="w"> </span>install<span class="w"> </span>popoto<span class="o">[</span>monitoring<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>pip<span class="w"> </span>install<span class="w"> </span>popoto<span class="o">[</span>monitoring<span class="o">]</span>
 </code></pre></div>
 <h3 id="enabling">Enabling<a class="headerlink" href="#enabling" title="Permanent link">&para;</a></h3>
 <p>Call <code>enable_error_reporting()</code> once at application startup:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="n">popoto</span><span class="o">.</span><span class="n">enable_error_reporting</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="n">popoto</span><span class="o">.</span><span class="n">enable_error_reporting</span><span class="p">()</span>
 </code></pre></div>
 <p>When enabled, Popoto-specific exceptions (such as <code>ModelException</code> and
 <code>QueryException</code>) are automatically reported in the background. The reporter:</p>
@@ -4261,10 +4514,10 @@ explicitly enable it.</p>
 <h3 id="custom-dsn">Custom DSN<a class="headerlink" href="#custom-dsn" title="Permanent link">&para;</a></h3>
 <p>To send reports to your own Sentry project instead of the Popoto maintainers,
 set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_SENTRY_DSN</span><span class="o">=</span><span class="s2">"https://your-key@your-org.ingest.sentry.io/your-project"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_SENTRY_DSN</span><span class="o">=</span><span class="s2">"https://your-key@your-org.ingest.sentry.io/your-project"</span>
 </code></pre></div>
 <p>Or pass the DSN directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">popoto</span><span class="o">.</span><span class="n">enable_error_reporting</span><span class="p">(</span><span class="n">dsn</span><span class="o">=</span><span class="s2">"https://your-key@your-org.ingest.sentry.io/your-project"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="n">popoto</span><span class="o">.</span><span class="n">enable_error_reporting</span><span class="p">(</span><span class="n">dsn</span><span class="o">=</span><span class="s2">"https://your-key@your-org.ingest.sentry.io/your-project"</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="what-gets-sent">What Gets Sent<a class="headerlink" href="#what-gets-sent" title="Permanent link">&para;</a></h3>
 <ul>
@@ -4272,7 +4525,7 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <li>Popoto version and Python version</li>
 <li>No personally identifiable information beyond Sentry's default PII scrubbing</li>
 </ul>
-<h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
+<h2 id="environment-variables_1">Environment Variables<a class="headerlink" href="#environment-variables_1" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -4316,6 +4569,11 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <td><code>POPOTO_TEST_DB</code></td>
 <td>unset</td>
 <td>Redis DB number used by the pytest plugin for test isolation, and one of the two ways to activate the plugin at all (the other is the <code>popoto_test_db</code> ini option, which this overrides). Unset with no ini option, the plugin does nothing. DB 0 is rejected to prevent accidental production data loss. See <a href="../testing/">Testing</a>.</td>
+</tr>
+<tr>
+<td><code>POPOTO_BACKEND</code>, <code>POPOTO_POSTGRES_*</code>, <code>POPOTO_SCHEMA_AUTO</code></td>
+<td>see above</td>
+<td>Postgres backend selection and connection. See <a href="#postgres-backend">Postgres Backend</a>.</td>
 </tr>
 <tr>
 <td><code>POPOTO_ASYNC_MAX_CONNECTIONS</code></td>
@@ -4363,21 +4621,21 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <h3 id="what-is-thread-safe">What IS Thread-Safe<a class="headerlink" href="#what-is-thread-safe" title="Permanent link">&para;</a></h3>
 <p>Redis connections in Popoto use a connection pool, which is thread-safe. Multiple
 threads can safely execute Redis operations concurrently:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadPoolExecutor</span>
-<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span>
-<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>
-<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Counter</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>    <span class="n">name</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>    <span class="n">value</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a>
-<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">increment</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
-<a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a>    <span class="n">counter</span> <span class="o">=</span> <span class="n">Counter</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a>    <span class="n">counter</span><span class="o">.</span><span class="n">value</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a>    <span class="n">counter</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>
-<a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a><span class="c1"># Safe: each thread gets its own connection from the pool</span>
-<a id="__codelineno-24-14" name="__codelineno-24-14" href="#__codelineno-24-14"></a><span class="k">with</span> <span class="n">ThreadPoolExecutor</span><span class="p">(</span><span class="n">max_workers</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span> <span class="k">as</span> <span class="n">pool</span><span class="p">:</span>
-<a id="__codelineno-24-15" name="__codelineno-24-15" href="#__codelineno-24-15"></a>    <span class="n">pool</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">increment</span><span class="p">,</span> <span class="p">[</span><span class="s2">"counter1"</span><span class="p">]</span> <span class="o">*</span> <span class="mi">10</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadPoolExecutor</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Counter</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>    <span class="n">name</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>    <span class="n">value</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">increment</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>    <span class="n">counter</span> <span class="o">=</span> <span class="n">Counter</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a>    <span class="n">counter</span><span class="o">.</span><span class="n">value</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a>    <span class="n">counter</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a>
+<a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a><span class="c1"># Safe: each thread gets its own connection from the pool</span>
+<a id="__codelineno-28-14" name="__codelineno-28-14" href="#__codelineno-28-14"></a><span class="k">with</span> <span class="n">ThreadPoolExecutor</span><span class="p">(</span><span class="n">max_workers</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span> <span class="k">as</span> <span class="n">pool</span><span class="p">:</span>
+<a id="__codelineno-28-15" name="__codelineno-28-15" href="#__codelineno-28-15"></a>    <span class="n">pool</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">increment</span><span class="p">,</span> <span class="p">[</span><span class="s2">"counter1"</span><span class="p">]</span> <span class="o">*</span> <span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
@@ -4412,14 +4670,14 @@ A different thread sees that attribute's default, not the querying thread's valu
 <h3 id="what-is-not-thread-safe">What is NOT Thread-Safe<a class="headerlink" href="#what-is-not-thread-safe" title="Permanent link">&para;</a></h3>
 <p>Model instances should not be shared across threads. Each thread should create
 or load its own instances:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># UNSAFE: sharing instance across threads</span>
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="n">user</span> <span class="o">=</span> <span class="n">User</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="s2">"alice"</span><span class="p">)</span>
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="c1"># Don't pass `user` to another thread</span>
-<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>
-<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="c1"># SAFE: each thread loads its own instance</span>
-<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">process_user</span><span class="p">(</span><span class="n">username</span><span class="p">):</span>
-<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a>    <span class="n">user</span> <span class="o">=</span> <span class="n">User</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="n">username</span><span class="p">)</span>
-<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a>    <span class="c1"># work with user</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="c1"># UNSAFE: sharing instance across threads</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="n">user</span> <span class="o">=</span> <span class="n">User</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="s2">"alice"</span><span class="p">)</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="c1"># Don't pass `user` to another thread</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="c1"># SAFE: each thread loads its own instance</span>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">process_user</span><span class="p">(</span><span class="n">username</span><span class="p">):</span>
+<a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a>    <span class="n">user</span> <span class="o">=</span> <span class="n">User</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">username</span><span class="o">=</span><span class="n">username</span><span class="p">)</span>
+<a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a>    <span class="c1"># work with user</span>
 </code></pre></div>
 <h3 id="best-practices">Best Practices<a class="headerlink" href="#best-practices" title="Permanent link">&para;</a></h3>
 <ol>
@@ -4439,32 +4697,32 @@ globally or per-logger.</p>
 <h3 id="environment-variable">Environment Variable<a class="headerlink" href="#environment-variable" title="Permanent link">&para;</a></h3>
 <p>Set <code>POPOTO_LOG_LEVEL</code> to control the default log level for Popoto's Redis
 connection logger:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w">  </span><span class="c1"># Show all connection details</span>
-<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_LOG_LEVEL</span><span class="o">=</span>INFO<span class="w">   </span><span class="c1"># Show connection events</span>
-<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_LOG_LEVEL</span><span class="o">=</span>WARNING<span class="w">  </span><span class="c1"># Default - only warnings and errors</span>
-<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_LOG_LEVEL</span><span class="o">=</span>ERROR<span class="w">  </span><span class="c1"># Only errors</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w">  </span><span class="c1"># Show all connection details</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_LOG_LEVEL</span><span class="o">=</span>INFO<span class="w">   </span><span class="c1"># Show connection events</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_LOG_LEVEL</span><span class="o">=</span>WARNING<span class="w">  </span><span class="c1"># Default - only warnings and errors</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">POPOTO_LOG_LEVEL</span><span class="o">=</span>ERROR<span class="w">  </span><span class="c1"># Only errors</span>
 </code></pre></div>
 <h3 id="programmatic-configuration">Programmatic Configuration<a class="headerlink" href="#programmatic-configuration" title="Permanent link">&para;</a></h3>
 <p>For finer control, configure individual loggers:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
-<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>
-<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="c1"># Set all Popoto loggers to DEBUG</span>
-<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">[</span>
-<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>    <span class="s2">"POPOTO-REDIS_DB"</span><span class="p">,</span>
-<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>    <span class="s2">"POPOTO.model_base"</span><span class="p">,</span>
-<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>    <span class="s2">"POPOTO.Query"</span><span class="p">,</span>
-<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>    <span class="s2">"POPOTO.field"</span><span class="p">,</span>
-<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>    <span class="s2">"POPOTO.KeyFieldMixin"</span><span class="p">,</span>
-<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a>    <span class="s2">"POPOTO.SortedFieldMixin"</span><span class="p">,</span>
-<a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a>    <span class="s2">"POPOTO.GeoField"</span><span class="p">,</span>
-<a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a>    <span class="s2">"POPOTO.Relationship"</span><span class="p">,</span>
-<a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a>    <span class="s2">"POPOTO-publisher"</span><span class="p">,</span>
-<a id="__codelineno-27-14" name="__codelineno-27-14" href="#__codelineno-27-14"></a>    <span class="s2">"POPOTO-subscriber"</span><span class="p">,</span>
-<a id="__codelineno-27-15" name="__codelineno-27-15" href="#__codelineno-27-15"></a><span class="p">]:</span>
-<a id="__codelineno-27-16" name="__codelineno-27-16" href="#__codelineno-27-16"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
-<a id="__codelineno-27-17" name="__codelineno-27-17" href="#__codelineno-27-17"></a>
-<a id="__codelineno-27-18" name="__codelineno-27-18" href="#__codelineno-27-18"></a><span class="c1"># Or configure a specific logger</span>
-<a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"POPOTO.Query"</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="c1"># Set all Popoto loggers to DEBUG</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">[</span>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>    <span class="s2">"POPOTO-REDIS_DB"</span><span class="p">,</span>
+<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>    <span class="s2">"POPOTO.model_base"</span><span class="p">,</span>
+<a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a>    <span class="s2">"POPOTO.Query"</span><span class="p">,</span>
+<a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a>    <span class="s2">"POPOTO.field"</span><span class="p">,</span>
+<a id="__codelineno-31-9" name="__codelineno-31-9" href="#__codelineno-31-9"></a>    <span class="s2">"POPOTO.KeyFieldMixin"</span><span class="p">,</span>
+<a id="__codelineno-31-10" name="__codelineno-31-10" href="#__codelineno-31-10"></a>    <span class="s2">"POPOTO.SortedFieldMixin"</span><span class="p">,</span>
+<a id="__codelineno-31-11" name="__codelineno-31-11" href="#__codelineno-31-11"></a>    <span class="s2">"POPOTO.GeoField"</span><span class="p">,</span>
+<a id="__codelineno-31-12" name="__codelineno-31-12" href="#__codelineno-31-12"></a>    <span class="s2">"POPOTO.Relationship"</span><span class="p">,</span>
+<a id="__codelineno-31-13" name="__codelineno-31-13" href="#__codelineno-31-13"></a>    <span class="s2">"POPOTO-publisher"</span><span class="p">,</span>
+<a id="__codelineno-31-14" name="__codelineno-31-14" href="#__codelineno-31-14"></a>    <span class="s2">"POPOTO-subscriber"</span><span class="p">,</span>
+<a id="__codelineno-31-15" name="__codelineno-31-15" href="#__codelineno-31-15"></a><span class="p">]:</span>
+<a id="__codelineno-31-16" name="__codelineno-31-16" href="#__codelineno-31-16"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+<a id="__codelineno-31-17" name="__codelineno-31-17" href="#__codelineno-31-17"></a>
+<a id="__codelineno-31-18" name="__codelineno-31-18" href="#__codelineno-31-18"></a><span class="c1"># Or configure a specific logger</span>
+<a id="__codelineno-31-19" name="__codelineno-31-19" href="#__codelineno-31-19"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"POPOTO.Query"</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="logger-reference">Logger Reference<a class="headerlink" href="#logger-reference" title="Permanent link">&para;</a></h3>
 <table>
@@ -4527,24 +4785,24 @@ connection logger:</p>
 </table>
 <h3 id="integration-with-frameworks">Integration with Frameworks<a class="headerlink" href="#integration-with-frameworks" title="Permanent link">&para;</a></h3>
 <p><strong>Django:</strong>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="c1"># settings.py</span>
-<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="n">LOGGING</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>    <span class="s1">'version'</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>    <span class="s1">'handlers'</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>        <span class="s1">'console'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'class'</span><span class="p">:</span> <span class="s1">'logging.StreamHandler'</span><span class="p">},</span>
-<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>    <span class="p">},</span>
-<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>    <span class="s1">'loggers'</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>        <span class="s1">'POPOTO-REDIS_DB'</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>            <span class="s1">'handlers'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'console'</span><span class="p">],</span>
-<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a>            <span class="s1">'level'</span><span class="p">:</span> <span class="s1">'INFO'</span><span class="p">,</span>
-<a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a>        <span class="p">},</span>
-<a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a>    <span class="p">},</span>
-<a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="c1"># settings.py</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="n">LOGGING</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>    <span class="s1">'version'</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a>    <span class="s1">'handlers'</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a>        <span class="s1">'console'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'class'</span><span class="p">:</span> <span class="s1">'logging.StreamHandler'</span><span class="p">},</span>
+<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a>    <span class="p">},</span>
+<a id="__codelineno-32-7" name="__codelineno-32-7" href="#__codelineno-32-7"></a>    <span class="s1">'loggers'</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-32-8" name="__codelineno-32-8" href="#__codelineno-32-8"></a>        <span class="s1">'POPOTO-REDIS_DB'</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-32-9" name="__codelineno-32-9" href="#__codelineno-32-9"></a>            <span class="s1">'handlers'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'console'</span><span class="p">],</span>
+<a id="__codelineno-32-10" name="__codelineno-32-10" href="#__codelineno-32-10"></a>            <span class="s1">'level'</span><span class="p">:</span> <span class="s1">'INFO'</span><span class="p">,</span>
+<a id="__codelineno-32-11" name="__codelineno-32-11" href="#__codelineno-32-11"></a>        <span class="p">},</span>
+<a id="__codelineno-32-12" name="__codelineno-32-12" href="#__codelineno-32-12"></a>    <span class="p">},</span>
+<a id="__codelineno-32-13" name="__codelineno-32-13" href="#__codelineno-32-13"></a><span class="p">}</span>
 </code></pre></div></p>
 <p><strong>Flask:</strong>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
-<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"POPOTO-REDIS_DB"</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
-<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="n">app</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"Popoto logging configured"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"POPOTO-REDIS_DB"</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a><span class="n">app</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"Popoto logging configured"</span><span class="p">)</span>
 </code></pre></div></p>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
