@@ -24,7 +24,7 @@ import pytest
 
 import popoto
 from popoto.fields.write_filter import WriteFilterMixin
-from popoto.redis_db import POPOTO_REDIS_DB, sibling_client_kwargs
+from popoto.redis_db import get_REDIS_DB, sibling_client_kwargs
 from popoto.transfer.cli import main
 from popoto.transfer.format import build_manifest, dump_line
 
@@ -603,7 +603,7 @@ def test_failed_export_preserves_pre_existing_destination(tmp_path, capsys):
 
 def _child_env(db: int) -> dict:
     kwargs = sibling_client_kwargs(
-        POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=db
+        get_REDIS_DB().connection_pool.connection_kwargs, db=db
     )
     host = kwargs.get("host", "localhost")
     port = kwargs.get("port", 6379)
@@ -618,11 +618,11 @@ def _child_env(db: int) -> dict:
 
 
 def test_db0_refusal_via_subprocess_does_not_touch_db0():
-    live_db = POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db", 0)
+    live_db = get_REDIS_DB().connection_pool.connection_kwargs.get("db", 0)
     assert live_db != 0, "test lane must run on a non-zero database"
 
     db0_kwargs = sibling_client_kwargs(
-        POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=0
+        get_REDIS_DB().connection_pool.connection_kwargs, db=0
     )
     import redis as _redis
 
@@ -657,7 +657,7 @@ def test_db0_refusal_via_subprocess_does_not_touch_db0():
 
 
 def test_help_via_subprocess_module_invocation():
-    live_db = POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db", 0)
+    live_db = get_REDIS_DB().connection_pool.connection_kwargs.get("db", 0)
     assert live_db != 0, "test lane must run on a non-zero database"
 
     env = _child_env(db=live_db)
@@ -741,25 +741,26 @@ def test_db0_fence_refuses_commands_and_pipelines_and_restores_the_pool():
 
     fence = _Db0Fence(allow_db0=False, verb="read from")
     fence.active = True
-    pool = POPOTO_REDIS_DB.connection_pool
+    pool = get_REDIS_DB().connection_pool
     with fence:
         with pytest.raises(CLIError, match="--allow-db0"):
-            POPOTO_REDIS_DB.ping()
+            get_REDIS_DB().ping()
         assert fence.tripped
-        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe = get_REDIS_DB().pipeline()
         pipe.get("x")
         with pytest.raises(CLIError):
             pipe.execute()
     assert "get_connection" not in vars(pool)
-    assert POPOTO_REDIS_DB.ping()
+    assert get_REDIS_DB().ping()
 
 
 def test_postgres_only_process_on_db0_transfers_without_allow_db0(backend, tmp_path):
     """End to end, no test fence: a child process whose Redis binding is
     database 0 (``REDIS_URL=…/0``) and whose default backend is Postgres
     exports and imports without ``--allow-db0``. The real fence is armed in
-    the child, so exit 0 means no Redis connection was checked out, and
-    database 0's key count is unchanged."""
+    the child. The binding names a port nothing listens on, so exit 0 also
+    proves the transfer never dialed Redis -- and this test never touches a
+    real database 0, which on a developer machine may be a live store."""
     if backend.name != "postgres":
         pytest.skip("the Postgres-only deployment shape")
     from popoto.backends import get_backend
@@ -767,13 +768,9 @@ def test_postgres_only_process_on_db0_transfers_without_allow_db0(backend, tmp_p
     pg = get_backend(TransferCliItem)
     TransferCliItem.create(name="a", payload="x")
 
-    db0_client = __import__("redis").Redis(
-        **sibling_client_kwargs(POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=0)
-    )
-    size_before = db0_client.dbsize()
-
     env = _child_env(db=0)
     env.update(
+        REDIS_URL="redis://127.0.0.1:1/0",
         POPOTO_BACKEND="postgres",
         POPOTO_POSTGRES_URL=pg.dsn,
         POPOTO_POSTGRES_SCHEMA=pg.schema,
@@ -795,4 +792,3 @@ def test_postgres_only_process_on_db0_transfers_without_allow_db0(backend, tmp_p
         assert "refusing" not in result.stderr
 
     assert out.read_text().count("\n") >= 2
-    assert db0_client.dbsize() == size_before
