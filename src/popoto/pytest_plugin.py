@@ -1097,6 +1097,12 @@ class _ConformanceFixtures:
         instance.forget_tables()
         from popoto.backends import _swap_instance, set_backend
 
+        # set_backend(instance) alone already makes Meta.backend = "postgres"
+        # models resolve to this instance (#816: a non-Redis set_backend
+        # instance serves the models pinned to its name). The _swap_instance
+        # call is now redundant for that, but harmless -- both name the same
+        # instance -- and other tests call _swap_instance directly; removing
+        # the pairing waits until after 1.10.0 to keep that diff minimal.
         previous = set_backend(instance)
         previous_instance = _swap_instance("postgres", instance)
 

@@ -63,7 +63,7 @@ from ..fields.confidence_field import ConfidenceField
 from ..fields.constants import Defaults
 from ..fields.observation import ObservationProtocol
 from ..privacy.never_record import scan_never_record, write_tombstone
-from ..redis_db import OUTAGE_ERRORS
+from ..backends.types import OUTAGE_ERRORS
 
 if TYPE_CHECKING:
     from ..extraction.candidates import Candidate

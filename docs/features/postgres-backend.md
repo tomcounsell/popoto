@@ -70,6 +70,18 @@ the DSN directly:
 `grant_main_role=True` to opt in to [per-object
 grants](#two-roles-an-application-role-and-an-owner-role).
 
+**The instance rule.** That instance serves every model without
+`Meta.backend` *and* every model with `Meta.backend = "postgres"`: since #816
+a `set_backend` instance is the backend its own `name` resolves to, so a
+Postgres-pinned model, `resolve_stream_backend(backend="postgres")` and a
+publish joining a Postgres transaction all use it, and `POPOTO_POSTGRES_URL`
+is not consulted for them. (Before #816 a pinned model ignored the instance
+and built its own backend from `POPOTO_POSTGRES_URL`, raising when it was
+unset or silently using that database when it was set.) A model pinned to a
+*different* name still resolves by name, and the rule does not apply to
+Redis: `Meta.backend = "redis"` always resolves to the stock Redis backend,
+even under a Redis-named `set_backend` instance, exactly as before.
+
 **Laziness.** `import popoto` never imports `psycopg`. Defining a
 `Meta.backend = "postgres"` model never touches the network either: class
 creation only checks the model's fields against a static capability table.
@@ -575,8 +587,9 @@ arm's tie order (records with the same text have the same vector, which Redis
 returns in file-listing order and Postgres by key).
 
 An outage raises `BackendUnavailableError` from `assemble()`, as a Redis
-outage raises `ConnectionError`; it is in
-`popoto.recipes.context_assembler.OUTAGE_ERRORS`. That is the retrieval
+outage raises `ConnectionError`; catch `popoto.backends.OUTAGE_ERRORS`, which
+holds both (`popoto.recipes.context_assembler.OUTAGE_ERRORS` is the same
+object since #816). That is the retrieval
 path's rule, not every helper's: the quality helpers behind
 `assess_quality` and `assess()` (score spread, feeling-of-knowing,
 staleness) catch every exception and degrade, on both backends (unchanged
@@ -1909,7 +1922,14 @@ though the row is there. Check the row before replaying such a write. Statements
 
 When Postgres is unreachable, or a connect or statement timeout fires
 (`Defaults.PG_CONNECT_TIMEOUT_SECONDS`, `Defaults.PG_STATEMENT_TIMEOUT_MS`),
-the call raises **`BackendUnavailableError`**. The backend's health record
+the call raises **`BackendUnavailableError`**. To catch an outage on either
+backend, catch `popoto.backends.OUTAGE_ERRORS` (the redis-py
+`ConnectionError`/`TimeoutError` pair plus `BackendUnavailableError`), not
+`popoto.redis_db.OUTAGE_ERRORS`, which is the Redis pair only. It is the
+tuple `SubconsciousMemory`, `ContextAssembler`, the harness integration's
+one-attempt breaker and `popoto-transfer` all test against (#816), so a
+Postgres outage re-raises from the recipes instead of reading as "no
+memories". `BackendRetryableError` is not in it. The backend's health record
 tracks the outage:
 
 ```python

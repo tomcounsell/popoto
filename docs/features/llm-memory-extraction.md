@@ -119,7 +119,7 @@ The model and prompt are pinned module constants (`EXTRACTION_MODEL`, `EXTRACTIO
 
 **Fail-open on API/parse errors.** If the API call or response parsing fails for any reason, `extract()` logs a warning and returns an empty list rather than raising -- a flaky extraction call never crashes the caller's turn loop.
 
-This is the *extraction provider's* contract and it is unchanged. Do not read it as the whole recipe's contract: since 1.9.0 `SubconsciousMemory.extract_memories` re-raises `redis.exceptions.ConnectionError`/`TimeoutError` on Redis (see [On Postgres](#on-postgres) for the other backend), because a dead Redis returning "no memories" is a lie, while a flaky LLM call returning no facts is the truth. Two different failure domains, two deliberate answers -- see [Redis outages raise](../guides/subconscious-memory-recipe.md#redis-outages-raise).
+This is the *extraction provider's* contract and it is unchanged. Do not read it as the whole recipe's contract: since 1.9.0 `SubconsciousMemory.extract_memories` re-raises `redis.exceptions.ConnectionError`/`TimeoutError` -- and, since #816, a Postgres-bound model's `popoto.backends.BackendUnavailableError` (all three are `popoto.backends.OUTAGE_ERRORS`) -- because a dead store returning "no memories" is a lie, while a flaky LLM call returning no facts is the truth. Two different failure domains, two deliberate answers -- see [Backend outages raise](../guides/subconscious-memory-recipe.md#backend-outages-raise).
 
 ## Seeding `confidence_field` and `co_occurrence_field`
 
@@ -291,11 +291,11 @@ Extraction is storage-independent: providers return `ExtractedFact`s and
 `SubconsciousMemory` saves them through the model, so a Postgres-bound model
 stores the facts, seeds `confidence_field` (the same `(0.5 + s) / 2` blend, on
 the record's state columns) and links `co_occurrence_field` pairs in the edge
-table with the same results. One difference in failure handling: the outage
-re-raise above names the Redis exceptions only. A Postgres outage raises
-`popoto.backends.BackendUnavailableError`, which `extract_memories` currently
-catches as an ordinary per-fact save failure, logs, and skips, so an
-unreachable database returns fewer (or no) memories rather than raising. See
+table with the same results. Failure handling matches too: a Postgres outage
+raises `popoto.backends.BackendUnavailableError`, which is in
+`popoto.backends.OUTAGE_ERRORS`, so `extract_memories` re-raises it instead of
+logging it as a per-fact save failure (#816). An unreachable database raises
+rather than returning fewer (or no) memories. See
 [Topology and the outage contract](postgres-backend.md#topology-and-the-outage-contract)
 and, for the auditable path,
 [Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
