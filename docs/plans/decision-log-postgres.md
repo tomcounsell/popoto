@@ -34,10 +34,10 @@ Everything else on the auditable path already runs on Postgres: candidates, verd
   - `EXISTS`, `SCAN` and `HGETALL` back the readers.
 
 **turn_summary drift on Redis (found while resolving Open Question 2):**
-- **Contract.** M3 defines the per-turn summary as "a convenience index" over the detail rows "holding terminal-state counts and reason-code distribution", with "the detail rows ... the sole source of truth" (`docs/plans/auditable_extraction_m3.md:713-722`; also `:257`, `:1342-1344`). The shipped docstring repeats it: "A convenience index over the detail rows, aggregating terminal states only ... if it ever disagrees with the detail rows, the detail rows are right" (`src/popoto/extraction/decision_log.py:1019-1025`), as does `docs/features/auditable-extraction.md:187-190`. M3's Race 1 states the prerequisite outright: "The summary reflects every candidate written for the turn" (`auditable_extraction_m3.md:962-963`). So the summary is meant to equal a count over the rows' current states, never a log of first decisions.
-- **Implementation.** `TERMINAL_WRITE_LUA` bumps the summary only "when the row is new or still non-terminal 'pending'" (`decision_log.py:275-282`). A terminal-to-terminal write that the guard lets through (anything except overwriting an `accept` with an `entry_id`) rewrites the row and leaves the summary alone.
+- **Contract.** M3 defines the per-turn summary as "a convenience index" over the detail rows "holding terminal-state counts and reason-code distribution", with "the detail rows ... the sole source of truth" (`docs/plans/auditable_extraction_m3.md:713-722`; also `:257`, `:1342-1344`). The shipped docstring repeats it: "A convenience index over the detail rows, aggregating terminal states only ... if it ever disagrees with the detail rows, the detail rows are right" (`src/popoto/extraction/decision_log.py:1019-1024`), as does `docs/features/auditable-extraction.md:187-190`. M3's Race 1 states the prerequisite outright: "The summary reflects every candidate written for the turn" (`auditable_extraction_m3.md:962-963`). So the summary is meant to equal a count over the rows' current states, never a log of first decisions.
+- **Implementation.** `TERMINAL_WRITE_LUA` bumps the summary only "when the row is new or still non-terminal 'pending'" (`decision_log.py:267-274`). A terminal-to-terminal write that the guard lets through (anything except overwriting an `accept` with an `entry_id`) rewrites the row and leaves the summary alone.
 - **Reproduced on Redis DB 15 at `44afd0f7`:** `write_terminal(reject, not_a_fact)`, then `write_terminal(reject, not_memorable)`, then `write_terminal(accept, accepted, entry_id="E1")` on one candidate leaves the detail row at `accept`/`accepted`, while `turn_summary` returns `{'state:reject': 1, 'reason:not_a_fact': 1}`. The summary disagrees with the row on both keys.
-- **Consumers.** The one in-tree consumer is `SubconsciousMemory._extract_memories_auditable`, which reads `state:firewall_drop` to set `_last_extraction_privacy_dropped` (`recipes/subconscious_memory.py:822-825`). It asks "did this turn drop anything for privacy", a question about current row states. `compute_metrics` reads detail rows only. No consumer needs first-decision counts, and none could tell them apart from current counts in the existing tests, because `test_summary_counts_terminal_states_only` and `test_summary_counts_a_transitioned_candidate_once` (`tests/test_auditable_extraction.py:835-879`) never move a row between two terminal states.
+- **Consumers.** The one in-tree consumer is `SubconsciousMemory._extract_memories_auditable`, which reads `state:firewall_drop` to set `_last_extraction_privacy_dropped` (`recipes/subconscious_memory.py:822-825`). It asks "did this turn drop anything for privacy", a question about current row states. `compute_metrics` reads detail rows only. No consumer needs first-decision counts, and none could tell them apart from current counts in the existing tests, because `test_summary_counts_terminal_states_only` and `test_summary_counts_a_transitioned_candidate_once` (`tests/test_auditable_extraction.py:836-879`) never move a row between two terminal states.
 - **Conclusion.** First-write-only counting is drift from the contract, not the contract. The plan fixes it on Redis and implements the same semantics on Postgres.
 
 **Desired outcome:**
@@ -170,8 +170,9 @@ All spikes ran against local Postgres (`postgresql://localhost:5432/postgres`) t
    5. `_append_and_transition` calls `ProvenanceJournal.append()`, which is already Postgres-routed. It then writes the terminal row through `write_terminal`, and the `ResolutionLog().write()` sidecar through the ORM, which never raises.
    6. `release_claim` releases the claim with a token check.
 5. **Turn summary**: at the end of the turn, `turn_summary(agent_id, turn_id)` sets `_last_extraction_privacy_dropped`.
-   - On Redis this is `HGETALL` of the summary hash.
-   - On Postgres it is derived from the detail rows through `DecisionRecord.query.filter(agent_id=, turn_id=)`.
+   - On Redis this is `HGETALL` of the summary hash, which `TERMINAL_WRITE_LUA` now keeps equal to the rollup of current terminal states (decrement-old / increment-new on a terminal-to-terminal write).
+   - On Postgres it is one aggregate statement over the detail rows: `GROUP BY state, reason_code` for `(agent_id, turn_id)`, terminal states only.
+   - Both legs return the same `dict[str, int]` for the same sequence of writes.
 6. **Output**: the host receives the `ExtractedFact` list. Offline, `compute_metrics` reads through `list_for_agent`, which is SCAN on Redis and an ORM `filter(agent_id=)` on Postgres.
 
 ## Architectural Impact
@@ -191,7 +192,7 @@ All spikes ran against local Postgres (`postgresql://localhost:5432/postgres`) t
 **Team:** Solo dev (builder), validator, documentarian
 
 **Interactions:**
-- PM check-ins: 1, to confirm the `turn_summary` divergence and the `Meta.backend`-only gap in Open Questions.
+- PM check-ins: done. All three Open Questions were answered by the maintainer on 2026-10-08 (see Open Questions).
 - Review rounds: 1
 
 ## Prerequisites
@@ -199,9 +200,10 @@ All spikes ran against local Postgres (`postgresql://localhost:5432/postgres`) t
 | Requirement | Check Command | Purpose |
 |-------------|---------------|---------|
 | Redis on localhost:6379 | `redis-cli -n 15 ping` | Redis leg of the suite (DB 15 via `popoto_test_db`) |
-| Postgres reachable | `pg_isready -h localhost -p 5432` | Postgres conformance leg and `tests/postgres` |
-| `POSTGRES_URL` exported for test runs | `test -n "$POSTGRES_URL"` (e.g. `postgresql://localhost:5432/postgres`) | Enables the Postgres leg; without it the leg skips |
-| Postgres driver installed | `python -c "import psycopg"` | Postgres backend import |
+| Postgres 18 reachable | `psql postgresql://localhost:5432/postgres -Atc 'show server_version'` | Postgres conformance leg and `tests/postgres` (expect `18.x`) |
+| `POSTGRES_URL` exported for test runs | `test "$POSTGRES_URL" = postgresql://localhost:5432/postgres` | Enables the Postgres leg. Without it the leg skips, which counts as a failed run |
+| Worktree venv with all extras | `pip install -e ".[dev,embeddings,benchmark,mcp,postgres]"` then `python -c "import popoto, psycopg; print(popoto.__file__)"` | Postgres driver present; `popoto.__file__` must resolve inside the worktree |
+| Redis bound to DB 15 for ad-hoc scripts | `export REDIS_URL=redis://localhost:6379/15` before any `python -c "import popoto ..."` | Keeps repro scripts off DB 0 |
 
 ## Solution
 
@@ -218,7 +220,17 @@ All spikes ran against local Postgres (`postgresql://localhost:5432/postgres`) t
   - `list_for_agent` uses `query.filter(agent_id=...)`.
   - `list_pending` keeps its existing Python state filter, `older_than` filter and `written_at`-ascending sort over `list_for_agent`.
   - `compute_metrics` is untouched.
-- **Postgres `turn_summary`**: derived from the detail rows. `filter(agent_id=, turn_id=)` selects the rows, then each terminal row adds one to `state:<state>` and one to `reason:<reason_code or "">`. The reason key is counted **unconditionally**, even when the reason is empty, because the Redis Lua always increments `reason:{reason}` (`decision_log.py:513-516`, `summary_fields`). Pending rows are not counted. The result is returned as the same `dict[str, int]` shape.
+- **One `turn_summary` contract, both backends.** `turn_summary(agent_id, turn_id)` returns, for the turn's detail rows whose **current** state is terminal (`accept`, `reject`, `withhold`, `firewall_drop`):
+  - `state:<s>` = the number of those rows whose state is `s`;
+  - `reason:<r>` = the number of those rows whose `reason_code` is `r`, counted **unconditionally**, so an empty reason yields the key `reason:` (matching `summary_fields`, `decision_log.py:514-517`);
+  - no key with a zero count, and never a `state:pending` key.
+
+  Each candidate contributes exactly one `state:` and one `reason:` count, reflecting its row as it stands now. A refused write (`terminal_conflict_refused`) changes only `detail_code`, so it changes no count.
+- **Redis fix: keep the summary hash equal to the rollup, atomically.** `TERMINAL_WRITE_LUA` already reads the prior `state`. When the write proceeds and the prior state is terminal, the script also reads the prior `reason_code`, decodes both with `cmsgpack.unpack`, decrements `state:<old>` and `reason:<old>` (removing a field that reaches zero or below with `HDEL`), and increments the new fields. A rewrite with the same state and reason is a net no-op. Everything stays inside the one `EVAL`, so the row and the summary still change together, as M3's Race 1 requires. See Technical Approach.
+- **Redis repair for already-drifted hashes.** Summary hashes written before the fix may disagree with their rows. A new `DecisionLog.rebuild_turn_summary(agent_id, turn_id) -> Dict[str, int]` recomputes the hash from the detail rows in one Lua script and returns the result. On Postgres the summary is derived on read and cannot drift, so the method returns `turn_summary(...)` unchanged.
+- **Postgres `turn_summary`**: one aggregate statement through a new `_m3` / `turn_summary` op:
+  `SELECT state, reason_code, count(*) FROM decision_record WHERE agent_id = %s AND turn_id = %s AND state IN (<terminal states>) GROUP BY state, reason_code`.
+  Python folds the rows into the same `state:` / `reason:` dict (a `NULL` reason folds to `reason:`). It is a single snapshot-consistent read, as `HGETALL` is on Redis.
 - **Refusal narrowed to the split-trail case**:
   - Today the `BackendCapabilityError` branch in `SubconsciousMemory.__init__` fires for any non-Redis memory model.
   - After this change it fires only inside the existing `non_redis_backend(model_class) is not None` branch, and only when the decision log would land in Redis or would land in a different store from the journal. Concretely: the memory model is non-Redis **and** either `non_redis_backend(DecisionRecord)` is `None`, or `DecisionRecord`'s store and the configured journal entry model's store disagree (see Technical Approach, "Refusal guard").
