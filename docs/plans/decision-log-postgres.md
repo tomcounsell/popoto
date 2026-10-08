@@ -248,7 +248,7 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
   - Only when `self._backend` is `None`, assign `self._redis = redis_client or get_REDIS_DB()`, exactly as today.
   - On the Postgres path, set `self._redis = None` and never call `get_REDIS_DB()`.
 
-  Each Redis-touching method (`write_terminal`, `acquire_claim`, `release_claim`, `get`, `list_for_agent`, `turn_summary`) gets a single early branch, `if self._backend is not None: return self._pg_<name>(...)`. The Redis bodies below the branch stay textually unchanged, so the Redis command sequence is identical. Private `_pg_*` helpers live in `decision_log.py` and call `self._backend.field_call(DecisionRecord._meta.spec, ...)` for SQL work, or the ORM for reads. That matches how `question_queue` and `provenance_journal` route.
+  Each Redis-touching method (`write_terminal`, `acquire_claim`, `release_claim`, `get`, `list_for_agent`, `turn_summary`, and the new `rebuild_turn_summary`) gets a single early branch, `if self._backend is not None: return self._pg_<name>(...)`. The Python Redis bodies below the branch stay textually unchanged, so the Redis command sequence is identical. The one deliberate Redis change is inside the `TERMINAL_WRITE_LUA` string (next bullets); `write_terminal`'s `run_lua` call, its `numkeys` of 6, its KEYS and its ARGV layout do not change. Private `_pg_*` helpers live in `decision_log.py` and call `self._backend.field_call(DecisionRecord._meta.spec, ...)` for SQL work, or the ORM for reads. That matches how `question_queue` and `provenance_journal` route.
 - **Why `DecisionRecord`'s backend and not the memory model's**: this answers the issue's open question.
   - `DecisionRecord`, `ResolutionRecord` and `JournalEntry` have no `Meta.backend`, so all three follow the process default (`set_backend()` → `POPOTO_BACKEND` → `"redis"`).
   - Keying the decision log on that same rule guarantees the audit trail and the journal it reconciles against are always in one store. That was the refusal's whole purpose.
@@ -278,11 +278,53 @@ Host on Postgres → `SubconsciousMemory(auditable_extraction=cfg)` constructs (
   - The tuple at the tail of `_recipe_field_call` (`recipes.py:228-234`: `COUNTER_FIELD`, `TOMB_FIELD`, ...) is **not** a record-lock list. It decides whether `field` is passed to the handler: members are model-level stores called as `handler(spec, *args, ...)`, and everything else is called as `handler(spec, field, *args, ...)`. `_qq` is not in it, so `_m3` and `_lease` stay out too and receive `(spec, field, ...)` exactly as `_qq_lock` does.
   - The `_lease` alias is optional. The builder may instead have `DecisionLog` call the existing `_qq` `lock` / `release` ops directly and skip the rename. If the alias is added, `_qq` keeps delegating to the same functions.
   - `acquire_claim` on Postgres passes `Defaults.M3_ASSEMBLY_CLAIM_TTL_MS`. The magic number stays in `Defaults`.
-- **`turn_summary` divergence, documented and pinned by a Postgres-only test**:
-  - The Redis summary counts a candidate's **first** terminal write only. A later `accept`-over-`reject` transition does not re-count, and the docstring calls the summary a convenience index while the detail rows are the source of truth.
-  - Postgres derives the summary from the detail rows, so it always equals the current terminal states.
-  - The two legs agree in every case the existing suite exercises: `test_summary_counts_terminal_states_only` and `test_summary_counts_a_transitioned_candidate_once` both pass under derivation. They differ only for a candidate whose terminal state changed after its first terminal write, and Postgres reports the truer number there.
-  - The rejected alternative is a `popoto_*` counter engine table incremented in the guarded statement. It reproduces a Redis convenience structure the doctrine asks us not to emulate, and it imports Redis's summary-versus-detail drift.
+- **`turn_summary` semantics: current terminal states, identical on both legs.** The contract and the evidence that Redis drifts from it are in Problem ("turn_summary drift on Redis"). Two alternatives were considered and rejected:
+  - *First-terminal-write counts on both legs.* That would mean building a counter engine table on Postgres to reproduce a number that no consumer wants and that contradicts M3's "detail rows are right" rule. It would make the two backends agree by making both wrong.
+  - *Derive on read on Redis too* (SINTER the `agent_id` and `turn_id` index sets, then read each row). It is correct, but it turns an O(1) `HGETALL` into a per-turn row scan, and avoiding that scan is the only reason M3 kept the summary (`auditable_extraction_m3.md:713-720`).
+
+  The chosen fix keeps Redis O(1) by maintaining the hash correctly at write time, and Postgres derives on read, where an indexed `GROUP BY` is the natural shape and cannot drift. The two implementations satisfy one stated contract, and one conformance test checks it on both legs (Test Impact).
+- **Redis: `TERMINAL_WRITE_LUA` summary block (exact shape).** Only the block after the refusal branch changes (today `decision_log.py:267-274`). The refusal branch, the `SADD`s, the row `HSET` and the return values stay as they are.
+  ```lua
+  -- The summary is a rollup of the rows' CURRENT terminal states: each
+  -- candidate contributes one state:<s> and one reason:<r>. A write that
+  -- moves a row off a terminal state takes back that state's counts first.
+  local n = tonumber(ARGV[5])
+  local is_new = (prev_state == false or prev_state == nil or prev_state == ARGV[4])
+  if not is_new then
+      local prev_reason = redis.call('HGET', KEYS[1], 'reason_code')
+      local old_fields = {
+          'state:' .. cmsgpack.unpack(prev_state),
+          'reason:' .. (prev_reason and cmsgpack.unpack(prev_reason) or ''),
+      }
+      -- ARGV[6] / ARGV[7] are the new state:/reason: fields, in that order.
+      if old_fields[1] ~= ARGV[6] or old_fields[2] ~= ARGV[7] then
+          for _, f in ipairs(old_fields) do
+              if redis.call('HINCRBY', KEYS[2], f, -1) <= 0 then
+                  redis.call('HDEL', KEYS[2], f)
+              end
+          end
+          is_new = true
+      end
+  end
+  if is_new then
+      for i = 1, n do
+          redis.call('HINCRBY', KEYS[2], ARGV[5 + i], 1)
+      end
+  end
+  ```
+  Notes for the builder:
+  - The decrement compares the two fields as a pair. When only the reason changes, decrementing and re-incrementing the unchanged `state:` field nets to zero, which is correct. Comparing both avoids two wasted round-trips inside the script when nothing changed (a same-verdict retry, M3 Race 2).
+  - `cmsgpack.unpack` is already used by in-repo Lua (`backends/redis.py:840`). It is a Lua library bundled with both Redis and Valkey, not a module, so it is Valkey-safe. Popoto packs `str` values as msgpack `str` (`_packb` → `msgpack.packb`), which `cmsgpack` decodes; it cannot read the `bin` type, which never occurs for these two fields.
+  - `HDEL` at `<= 0` keeps the stored hash equal to the rollup, so `"state:reject" not in summary` keeps holding after a row leaves `reject`. The `<= 0` (not `== 0`) also clamps a hash that drifted before this fix: decrementing a field that was never counted removes it rather than storing `-1`.
+  - The `state:` / `reason:` prefixes are now spelled in two places, Python (`summary_fields`) and Lua. Add a comment at each pointing to the other, and a test that pins the agreement (the conformance test does).
+  - `ARGV` order is unchanged: Python already passes `state:` first and `reason:` second (`decision_log.py:514-517`). The script relies on that order; add a comment saying so.
+- **Redis: `rebuild_turn_summary` (repair).** A second script, `TURN_SUMMARY_REBUILD_LUA`, runs as one `EVAL`, so concurrent `TERMINAL_WRITE_LUA` calls serialize around it:
+  - `KEYS[1]` = the summary hash, `KEYS[2]` / `KEYS[3]` = the `agent_id` and `turn_id` KeyField index Sets (from `key_field_index_keys`).
+  - `SINTER KEYS[2] KEYS[3]` gives the turn's row keys. For each row it `HGET`s `state` and `reason_code`, decodes them with `cmsgpack.unpack`, and counts terminal ones. The terminal-state names come in as `ARGV`, so the script does not hard-code the vocabulary.
+  - It then `DEL`s the hash, writes the counts with `HINCRBY` (or `HSET`), and returns the flat field/count list.
+
+  The row keys are read from a set rather than declared in `KEYS`. That is fine on standalone Redis and Valkey, and there is in-repo precedent for computed key access inside a script (`fields/bm25_field.py:291`). It is not Redis Cluster-safe, and neither is the existing decision log, whose summary and row keys already share no hash tag. `rebuild_turn_summary` is an operator repair, called by nothing on the hot path.
+- **Postgres: `_m3` / `turn_summary` op.** It runs the aggregate from Key Elements in its own unit of work, with no advisory lock: a plain `SELECT` reads one snapshot, and the guarded write's `_record_locked` already serializes writers per row. `rebuild_turn_summary` on Postgres returns `self.turn_summary(...)`, because there is no stored summary to repair.
 - **Docstrings**: `list_for_agent` and `list_pending` docstrings say the key-pattern `SCAN` and its "ORM bypass" rationale apply to Redis only, and that Postgres uses an indexed `WHERE agent_id = ...` query.
 - **Test conversion**: `tests/test_auditable_extraction.py`'s storage classes join the conformance harness. See Test Impact.
 - **Stale snapshot (tests only)**: the module-level `from popoto.redis_db import POPOTO_REDIS_DB` is in `tests/test_auditable_extraction.py:41`, not in `decision_log.py`, which already imports `get_REDIS_DB` (line 92). The test file's import is converted to `get_REDIS_DB()` at its call sites (lines 533, 924 and 1202-1203), per CLAUDE.md.
