@@ -146,9 +146,23 @@ are two engine tables, `popoto_prediction_ledger` and
 `popoto_prediction_error`; `RESOLVE_PREDICTION_LUA` is one statement, and a
 resolved entry reads back exactly as the script's `cmsgpack` re-pack left it
 on Redis. `ObservationProtocol`'s auto-resolve runs inside its batch
-transaction. See [Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+transaction. Like the Redis keys, the ledger is not removed when the record
+is deleted. See [Long-tail fields](postgres-backend.md#long-tail-fields-m5).
+
+Differences, from
+[Documented divergences](postgres-backend.md#records-and-other-behaviour):
+
+- A NaN prediction error (`inf` against a number, `inf - inf`) is refused
+  with `ValueError` before anything is written, and the entry stays
+  unresolved. On Redis the entry reads resolved with a NaN error and no
+  error-set member.
+- The keys of a resolved entry keep the entry's own order (the dicts compare
+  equal), and an integer that rounds to `2**63` or more reads back as the
+  double rather than a platform-dependent value.
 
 ## Architecture
+
+The Redis implementation:
 
 - **Meta hash**: `$PL:{ClassName}:meta:{pk}` — msgpack prediction metadata per instance
 - **Error sorted set**: `$PL:{ClassName}:errors:{partition}` — PKs scored by |error|

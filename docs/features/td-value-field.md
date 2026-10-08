@@ -1,6 +1,6 @@
 # TDValueField
 
-A `DecimalField` subclass that adds one operation the ordinary save path cannot express: an **atomic temporal-difference update** of a single hash field, performed server-side in one Lua script.
+A `DecimalField` subclass that adds one operation the ordinary save path cannot express: an **atomic temporal-difference update** of a single hash field, performed server-side in one step (a Lua script on Redis, one `UPDATE` on Postgres).
 
 ## Overview
 
@@ -64,7 +64,7 @@ Raises `ValueError` if the instance is unsaved, or if `field_name` is not a `TDV
 
 ## Storage and encoding
 
-The value is written as the `__Decimal__` tagged dict that every `DecimalField` uses, encoded with `cmsgpack` inside the script so it is byte-interchangeable with what Python's msgpack encoder produces.
+On Redis, the value is written as the `__Decimal__` tagged dict that every `DecimalField` uses, encoded with `cmsgpack` inside the script so it is byte-interchangeable with what Python's msgpack encoder produces.
 
 This matters beyond tidiness. `DecayingSortedField` reads a `base_score_field` straight out of the member's hash in its own Lua and falls back to `1.0` for any encoding it does not recognize. A `PolicyEntry` declares `expected_value = DecayingSortedField(base_score_field="q_value")`, so if `TDValueField` wrote any other encoding, the decay clock would silently fall back to a magnitude of 1.0 rather than error. Keeping `TDValueField` a `DecimalField` subclass — `type is Decimal` — is what keeps that contract.
 
@@ -73,7 +73,20 @@ This matters beyond tidiness. `DecayingSortedField` reads a `base_score_field` s
 On a Postgres-bound model (#759 M5) the field is a `numeric` column and
 `td_update` is one `UPDATE` with the script's arithmetic in the same order,
 storing the script's `tostring` of the new value and replying its `tostring`
-of the TD error. See [Postgres Backend](postgres-backend.md#long-tail-fields-m5).
+of the TD error. A `DecayingSortedField` that names the field as its
+`base_score_field` reads the column. See
+[Long-tail fields](postgres-backend.md#long-tail-fields-m5).
+
+Differences, from
+[Documented divergences](postgres-backend.md#records-and-other-behaviour):
+
+- `td_update(…, pipeline=uow)` with a Postgres `transaction()` or
+  `popoto.batch()` runs inside it and returns the TD error; a Redis pipeline
+  queues the script and returns `None`.
+- On a record that no longer exists (or has expired) nothing is written, and
+  the reply is computed from `Q = 0`; Redis writes an orphan hash entry.
+- A NaN value is stored as `numeric` `NaN`, and a stored `Decimal('-0')`
+  reads as `0` (the stored values compare equal).
 
 ## Valkey compatibility
 

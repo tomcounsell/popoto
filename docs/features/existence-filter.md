@@ -1,6 +1,6 @@
 # ExistenceFilter and FrequencySketch
 
-Probabilistic data structures for O(1) membership checks and approximate frequency counting — implemented as Lua-backed Redis operations.
+Probabilistic data structures for O(1) membership checks and approximate frequency counting — implemented as Lua-backed operations on Redis, and as exact token tables on Postgres (see [On Postgres](#on-postgres)).
 
 ## Overview
 
@@ -9,7 +9,7 @@ Two complementary primitives for fast pre-filtering:
 - **ExistenceFilter** — Bloom filter for "do I know anything about X?" checks. False positives possible, false negatives impossible.
 - **FrequencySketch** — Count-Min Sketch for approximate frequency counting. Overestimates possible, underestimates impossible.
 
-Both operate entirely in Redis via Lua scripts, requiring no client-side state.
+On Redis both operate entirely server-side via Lua scripts, requiring no client-side state. The descriptions of false positives, overestimates, bit arrays and hash versions below are the Redis implementation.
 
 ## ExistenceFilter
 
@@ -74,7 +74,7 @@ For example, saving a model with fingerprint `"kubernetes deployment guide"` add
 
 **Query normalization:** Queries are tokenized using the same rules. For multi-token queries, `might_exist()` returns `True` if ANY token matches. For `get_frequency()`, the minimum frequency across tokens is returned.
 
-### Architecture
+### Architecture (Redis)
 
 - **Redis key pattern**: `$EF:{ClassName}:{field_name}` (string used as bit array, followed by a 4-byte version marker on v2 filters)
 - **Lua script**: Computes k hash positions, sets/checks bits atomically
@@ -185,7 +185,7 @@ reason for the rolling-upgrade rule.
 Tokens from deleted records drop out of a converted filter, as in any rebuild
 from records. Export/import never carries the bits: importing into a
 destination with no filter creates one in the field's `hash_version`.
-Postgres keeps an exact token table and has no hash to version.
+Postgres keeps an exact token table and has no hash to version (see [On Postgres](#on-postgres)).
 
 Every script declares the filter, the lock and the staging key in `KEYS`.
 
@@ -226,7 +226,7 @@ memory.save()  # Increments again
 count = Memory.freq.get_frequency(Memory, "kubernetes")  # ~2
 ```
 
-### Architecture
+### Architecture (Redis)
 
 - **Redis key pattern**: `$FS:{ClassName}:{field_name}` (hash with counter rows)
 - **Lua script**: Each of the 7 rows uses an independent per-row polynomial hash (distinct prime multiplier and modulus per row), restoring the standard CMS error bound: `estimate ≤ true + (e/width)·N` with probability `≥ 1 − e^(−depth)`.
@@ -237,11 +237,11 @@ count = Memory.freq.get_frequency(Memory, "kubernetes")  # ~2
 
 ## Batch Operations
 
-When checking multiple keywords at once, use the batch methods to avoid per-keyword round-trips to Redis.
+When checking multiple keywords at once, use the batch methods to avoid per-keyword round-trips to the server.
 
 ### might_exist_batch()
 
-Checks multiple fingerprints in a single Redis round-trip via a single Lua EVAL call. Returns a dict mapping each fingerprint to its boolean result.
+Checks multiple fingerprints in one round-trip (a single Lua `EVAL` on Redis, one `SELECT` on Postgres). Returns a dict mapping each fingerprint to its boolean result.
 
 ```python
 # Instead of N separate might_exist() calls:
@@ -268,7 +268,7 @@ if hit_count == 0:
 
 ### Performance
 
-Both batch methods execute a single `EVAL` command regardless of input size, so latency is constant (one round-trip) rather than linear in the number of keywords. This matters most for hook/subprocess callers where import time and connection setup dominate -- batching amortizes that cost across all keywords.
+Both batch methods execute a single `EVAL` command (on Postgres, a single `SELECT`) regardless of input size, so latency is constant (one round-trip) rather than linear in the number of keywords. This matters most for hook/subprocess callers where import time and connection setup dominate -- batching amortizes that cost across all keywords.
 
 ### Integration Pattern: Subprocess Callers
 
@@ -289,7 +289,7 @@ print(json.dumps(results))
     capture_output=True, text=True
 )
 hits = json.loads(result.stdout)
-# One process spawn + one Redis round-trip for all keywords
+# One process spawn + one round-trip for all keywords
 ```
 
 Compare this to calling `might_exist()` in a loop -- each call would either require its own subprocess (paying import cost each time) or a single subprocess with a loop (one import but N round-trips). The batch API gives you one import and one round-trip.
@@ -305,6 +305,31 @@ Compare this to calling `might_exist()` in a loop -- each call would either requ
 | Count known keywords without details | `might_exist_count()` |
 | Rank query terms by selectivity (IDF) | `BM25Field.get_idf()` |
 | Frequency-based write filtering | FrequencySketch |
+
+## On Postgres
+
+On a Postgres-bound model neither primitive is probabilistic. An
+`ExistenceFilter` is a token table, `<table>__<f>__tok (token, _pk)`, holding
+each live record's tokens; a `FrequencySketch` is a count table,
+`<table>__<f>__cnt (token, count)`. Saves keep both in step; a delete
+cascades to the token rows, while the count table, like the sketch, is never
+decremented. See
+[Membership](postgres-backend.md#membership). The differences are rows in
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour):
+
+- `might_exist` (and the batch and count forms) is exact: no false
+  positives, and a deleted record is forgotten. On a `Meta.ttl` model an
+  expired record's tokens stop counting at once.
+- `get_frequency` is the exact number of saves, never decremented, as the
+  sketch never is.
+- `fill_ratio` is an estimate, `1 - e^(-k·n/m)` for the `n` distinct tokens
+  stored, the fill a bloom of the field's parameters would have.
+
+The Redis-only parts do not apply: `capacity`, `error_rate` and the sketch's
+width and depth only size the `fill_ratio` estimate, `hash_version` and
+`rebuild_indexes(bloom_hash_version=2)` are accepted and ignored (there is no
+bit array to version), `field.hash_version(Model)` returns `None`, and
+`check_indexes()` reports no `legacy_hash` or `stale_bloom_staging` entries.
 
 ## See Also
 

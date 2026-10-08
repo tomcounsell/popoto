@@ -23,7 +23,7 @@ Each now has a repair path: propose a question, let the queue ration it, and fee
 | `question_text` | The question, phrased by the producer |
 | `kind` | One of `disjunction`, `confirmation`, `referent` |
 | `ambiguity_signal` | One of `disjunction`, `gate_refusal`, `evidence_gap` |
-| `target_keys` | Redis keys of the facts the answer would resolve |
+| `target_keys` | Record keys of the facts the answer would resolve (the same key strings on either backend) |
 | `options` | `[{"label": str, "acted": [keys], "contradicted": [keys]}]` |
 | `status` | `pending`, `delivered`, `answered`, `cooled`, `expired` |
 | `ask_count`, `delivered_turn` | Delivery history, written by the delivery script |
@@ -69,14 +69,14 @@ A key listed as both `acted` and `contradicted` in one option is a producer bug,
 
 ## The budget
 
-At most one delivery per `QUESTION_BUDGET_TURNS` (K) turns, per agent. A Lua script grants the token **and** claims a candidate in one step:
+At most one delivery per `QUESTION_BUDGET_TURNS` (K) turns, per agent. A Lua script (on Postgres, one statement behind the agent's bucket advisory lock) grants the token **and** claims a candidate in one step:
 
 - It grants only when there is no prior ask or `turn >= last_ask_turn + K`.
 - A regressed turn (`turn < last_ask_turn`) never grants, and `last_ask_turn` is never rewound.
 - `last_ask_turn` is written only when a candidate is actually claimed, so budget is never spent when nothing is delivered.
 - The bucket key carries a wall-clock TTL backstop (`QUESTION_BUCKET_TTL_SECONDS`, 7 days). A host whose turn counter reset after a restart is locked out for at most that long, never forever.
 
-The counter lives in Redis, not in process memory, so a restart does not refill the budget.
+The counter lives in the store (Redis, or a Postgres table), not in process memory, so a restart does not refill the budget.
 
 ## Relevance timing
 
@@ -120,7 +120,7 @@ Deflections are checked first so a non-answer is never scored as an answer. An L
 
 An `answered` reply never overwrites anything. It is applied as defeasible evidence through the existing observation machinery:
 
-1. **Claim.** A Lua compare-and-set flips `status` from `delivered` (or `pending`) to `answered` and writes `answer_option`. If the status was anything else, the call returns `AnswerResult(applied=False, reason="not_open")` and changes nothing. That includes a reply that arrives after an ignored question was already moved to `cooled`: the late reply is not applied, and the question can be asked again after its cooldown.
+1. **Claim.** A compare-and-set (a Lua script on Redis, a conditional `UPDATE` on Postgres) flips `status` from `delivered` (or `pending`) to `answered` and writes `answer_option`. If the status was anything else, the call returns `AnswerResult(applied=False, reason="not_open")` and changes nothing. That includes a reply that arrives after an ignored question was already moved to `cooled`: the late reply is not applied, and the question can be asked again after its cooldown.
 2. **Apply.** The chosen option's `acted` keys map to the `acted` outcome and its `contradicted` keys to `contradicted`, applied through `ObservationProtocol.on_context_used`. Each target that declares a `ConfidenceField` then gets `QUESTION_ANSWER_WEIGHT - 1` further `update_confidence` observations at the same signal.
 
 The total is `QUESTION_ANSWER_WEIGHT` observations. `update_confidence` has no weight argument, so this stands in for one. Past `evidence_cap` each observation has gain `1/(cap+1)`, so the evidence count stays capped and a later contradiction keeps its full gain. The claim is "W strong observations", never "dominates".
@@ -135,7 +135,7 @@ See [ConfidenceField](confidence-field.md) for the update rule and [ObservationP
 
 ## Fail-closed behavior
 
-`propose*`, `next_question`, `record_answer` and `note_use` log and return `None`, `0` or a non-applied `AnswerResult` on any Redis error. They never raise into the caller. Invalid input is the exception: an unknown `kind` or `ambiguity_signal`, an empty question, or an option whose `acted` and `contradicted` lists overlap raises `ValueError`, because that is a producer bug. `assemble()`'s own outage contract is untouched.
+`propose*`, `next_question`, `record_answer` and `note_use` log and return `None`, `0` or a non-applied `AnswerResult` on any storage error, Redis or Postgres. They never raise into the caller. Invalid input is the exception: an unknown `kind` or `ambiguity_signal`, an empty question, or an option whose `acted` and `contradicted` lists overlap raises `ValueError`, because that is a producer bug. `assemble()`'s own outage contract is untouched.
 
 `AnswerResult.reason` is one of `applied`, `cooled`, `not_open`, `apply_failed`, `disabled`, `error`.
 
@@ -205,6 +205,21 @@ if q is not None:
     print(outcome.applied, outcome.reason, outcome.option_index)
     # True applied 0
 ```
+
+## On Postgres
+
+A Postgres-bound queue keeps candidates as `question_candidate` rows, the
+token bucket in `popoto_question_bucket (agent, last_turn, expires_at)` and
+the propose lock in `popoto_lease`, where an expired row reads as absent, as
+the Redis TTL makes the key vanish. Delivery is one statement behind the
+agent's advisory lock, so the budget is exact under concurrency as on Redis.
+Two behaviors differ (both rows of
+[Records and other behaviour](postgres-backend.md#records-and-other-behaviour)):
+a candidate whose row another transaction holds is skipped for the next
+(`FOR UPDATE SKIP LOCKED`), where Redis's script waits and sees the write;
+and a proposal that duplicates two or more open candidates folds into the
+first in `_pk` order, where Redis uses set order. See
+[Recipes, mixins and the queue](postgres-backend.md#recipes-mixins-and-the-queue-m4).
 
 ## See Also
 

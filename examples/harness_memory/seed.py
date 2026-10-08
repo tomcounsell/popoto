@@ -62,10 +62,13 @@ def main(argv=None) -> int:
     service = MemoryService(config)
 
     try:
-        service.redis.ping()
+        service.ping()
     except Exception as exc:
-        print(f"Redis is not reachable at {config.url}: {exc}")
-        print("Start one with `redis-server` or `valkey-server`, then retry.")
+        if service.backend_name == "redis":
+            print(f"Redis is not reachable at {config.url}: {exc}")
+            print("Start one with `redis-server` or `valkey-server`, then retry.")
+        else:
+            print(f"The {service.backend_name} backend is not reachable: {exc}")
         return 1
 
     if args.file:

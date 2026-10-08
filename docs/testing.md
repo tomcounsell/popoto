@@ -145,7 +145,12 @@ and `instance` (the bound `PostgresBackend`) on the Postgres leg. It also
 **binds** that leg's backend as the process default for the test, and as the
 instance `Meta.backend = "postgres"` resolves to, restoring the previous
 binding on teardown (since #759 M1b). Module-level models therefore run on
-the active leg with no re-declaration. A plugin autouse fixture resolves
+the active leg with no re-declaration. Since #816 the first binding implies the
+second: a Postgres-named `set_backend` instance serves `Meta.backend =
+"postgres"` models on its own. The fixture still also installs it with the
+private `_swap_instance("postgres", ...)`, a harmless redundancy (both name the
+same instance) kept until after the 1.10.0 release; tests that pair the two
+calls need no change. A plugin autouse fixture resolves
 `backend` before a test module's own autouse fixtures, so a module fixture
 that seeds rows already writes to the leg's backend.
 
