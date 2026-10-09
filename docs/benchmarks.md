@@ -170,8 +170,12 @@ Committing a `_latest` artifact (any mode) auto-publishes it to the
 [Benchmarks results pages](benchmarks/results/index.md) on the docs site on the
 next deploy — the `lexical`, `hybrid`, and `vector` pages per dataset are generated
 from these artifacts by `docs/scripts/gen_benchmark_pages.py`, with no
-hand-edited prose tables. An artifact for a mode nobody wired a page for is
-reported as a loud build-time warning rather than silently dropped.
+hand-edited prose tables. An artifact for a mode nobody wired a page for,
+anywhere under `external/` including subdirectories, is reported as a loud
+build-time warning rather than silently dropped. A subdirectory that is
+deliberately not a page (a study archive such as `external/validity_586/`,
+cited from prose) is listed with its reason in `UNPUBLISHED_DIRS` in that
+script, and the warning skips it.
 
 Each JSON report includes:
 - `summary` — aggregate Recall@1/5/10, MRR, p50/p95 latency
