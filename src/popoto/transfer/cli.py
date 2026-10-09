@@ -18,13 +18,20 @@ catches the unset-``REDIS_URL`` fallback as well as an explicit ``…/0`` URL.
 
 The refusal applies to transfers that use Redis. A model bound to another
 backend (``Meta.backend = "postgres"``, or ``POPOTO_BACKEND=postgres``) is
-transferred without ``--allow-db0`` when Redis is on database 0, because the
-transfer never contacts Redis. That is enforced rather than assumed: from
-before the ``--model`` module is imported until the run ends, the Redis
-connection pool refuses to hand out a connection (a pipeline included), so
-any Redis command the model module or the transfer would issue is refused
-before it reaches database 0. A Redis-bound model is refused once it is
-resolved, before its first command.
+transferred without ``--allow-db0``, because the transfer never contacts
+Redis. That is enforced rather than assumed: on every run without
+``--allow-db0``, whatever database the process started on, from before the
+``--model`` module is imported until the run ends, the Redis connection pool
+refuses to hand out a connection to database 0 (a pipeline included), so any
+Redis command the model module or the transfer would issue against database 0
+is refused before it reaches the server. A Redis-bound model is refused once
+it is resolved, before its first command, if the global client is bound to
+database 0 *at that moment* -- so a ``--model`` module that rebinds the client
+to database 0 is refused, and one that rebinds it away from database 0 is not.
+Known residual: a model module that builds its own database-0 client while
+the global client stays elsewhere is refused only at that client's first
+checkout; if that happens mid-transfer the refusal carries the "partway"
+warning.
 
 The human-readable summary always goes to **stderr**, never stdout, so that
 ``--out -`` can stream JSON Lines on stdout without the summary corrupting
@@ -277,6 +284,11 @@ def resolve_model(spec: str) -> Any:
 class _Db0Fence:
     """Refuse every Redis command on database 0 unless opted in.
 
+    Armed on every run without ``--allow-db0``, regardless of the startup
+    binding. The refusal is keyed on the pool's own database, so a run on
+    another database, or one that never checks out a connection, is
+    unaffected.
+
     Reads the database off the live connection pool rather than an
     environment variable, so this catches both an explicit
     ``REDIS_URL=…/0`` and the unset-``REDIS_URL`` fallback (which also binds
@@ -295,13 +307,13 @@ class _Db0Fence:
     """
 
     def __init__(self, allow_db0: bool, verb: str) -> None:
-        from popoto.redis_db import get_REDIS_DB
-
         self.verb = verb
-        self.db = _pool_db(get_REDIS_DB().connection_pool)
+        #: The database the global client is bound to at startup. Informational
+        #: only: arming no longer depends on it.
+        self.db = _bound_db()
         #: The database no pool may hand out a connection to while armed.
         self.fenced_db = 0
-        self.active = self.db == 0 and not allow_db0
+        self.active = not allow_db0
         #: Set when something asked a fenced pool for a connection.
         self.tripped = False
         #: Set once the transfer itself begins, after the model resolved.
@@ -334,7 +346,7 @@ class _Db0Fence:
 
     def message(self) -> str:
         return (
-            f"refusing to {self.verb} Redis database {self.db} -- this is "
+            f"refusing to {self.verb} Redis database {self.fenced_db} -- this is "
             "often a live store, not a test database.\n"
             "  Pass --allow-db0 to proceed anyway, or point at a different "
             f"database, e.g. {DB0_ALTERNATIVE}"
@@ -354,6 +366,17 @@ class _Db0Fence:
 
 def _pool_db(pool: Any) -> int:
     return int(getattr(pool, "connection_kwargs", {}).get("db", 0) or 0)
+
+
+def _bound_db() -> int:
+    """The database the global client is bound to right now.
+
+    Read at call time, so a rebind by the ``--model`` module is seen. A client
+    with no ``connection_pool`` (``RedisCluster``) counts as database 0.
+    """
+    from popoto.redis_db import get_REDIS_DB
+
+    return _pool_db(getattr(get_REDIS_DB(), "connection_pool", None))
 
 
 def _pool_classes() -> "list[type]":
@@ -473,7 +496,9 @@ def _run_export(args: Any, fence: _Db0Fence) -> int:
         return 1
     # A trip the model module caught while importing still refuses the run,
     # before any record is read or written.
-    if fence.tripped or (fence.active and _uses_redis(model_class)):
+    if fence.tripped or (
+        fence.active and _uses_redis(model_class) and _bound_db() == fence.fenced_db
+    ):
         fence.tripped = True
         return 1
     fence.started = True
@@ -565,7 +590,9 @@ def _run_import(args: Any, fence: _Db0Fence) -> int:
         return 1
     # A trip the model module caught while importing still refuses the run,
     # before any record is read or written.
-    if fence.tripped or (fence.active and _uses_redis(model_class)):
+    if fence.tripped or (
+        fence.active and _uses_redis(model_class) and _bound_db() == fence.fenced_db
+    ):
         fence.tripped = True
         return 1
     fence.started = True
