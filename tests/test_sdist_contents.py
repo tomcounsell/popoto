@@ -166,6 +166,22 @@ def test_release_workflow_invokes_the_check_before_publishing():
     )
 
 
+def test_release_workflow_smoke_installs_the_wheel_before_publishing():
+    """1.10.0: a clean ``pip install popoto[postgres]`` lacked numpy, so the
+    first ``EmbeddingField`` raised ImportError. The release job now installs
+    the built wheel, bare and with the extra, and imports it before publish."""
+    text = WORKFLOW.read_text()
+    smoke_at = text.index("name: Smoke-test the wheel")
+    assert '"${wheel}[postgres]"' in text
+    assert "from popoto.fields.embedding_field import EmbeddingField" in text
+    assert "popoto-migrate-redis-to-postgres" in text
+    assert (
+        text.index("python -m build")
+        < smoke_at
+        < text.index("pypa/gh-action-pypi-publish")
+    )
+
+
 def test_build_system_floor_is_at_least_83():
     """setuptools>=83 is the first release with the MANIFEST.in bypass fix."""
     text = (REPO_ROOT / "pyproject.toml").read_text()

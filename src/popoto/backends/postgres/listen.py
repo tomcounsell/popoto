@@ -449,10 +449,13 @@ class ListenHub:
     # -- the hub's thread ------------------------------------------------------------
 
     def _connect(self) -> None:
-        from . import _import_psycopg
+        from . import _import_psycopg, _require_parseable_dsn
         from ...fields.constants import Defaults
 
         psycopg = _import_psycopg()
+        # Never hand libpq a DSN it cannot parse: its parse error quotes the
+        # fragment, which may be the password, into the warning logged below.
+        _require_parseable_dsn(self.dsn)
         from psycopg.conninfo import conninfo_to_dict
 
         try:

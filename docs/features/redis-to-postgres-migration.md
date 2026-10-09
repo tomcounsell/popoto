@@ -1,13 +1,14 @@
 # Redis to Postgres Migration (#756)
 
 A one-off tool that copies agent memory from a Redis store into the
-[Postgres backend](postgres-backend.md). It is built for Valor's `Memory`,
-but works on any popoto model the Postgres backend accepts. Run it once per
-machine: each machine's Redis store merges into the one central Postgres
-database.
+[Postgres backend](postgres-backend.md). It works on any popoto model the
+Postgres backend accepts. Run it once per machine: each machine's Redis store
+merges into the one central Postgres database. The examples on this page use
+an agent-memory model shaped like the one its first adopter, Valor, migrated
+with it; substitute your own model and mapping.
 
 ```bash
-python -m popoto.migrate_redis_to_postgres \
+popoto-migrate-redis-to-postgres \
     --rdb /archive/laptop-1/dump.rdb \
     --content-dir /archive/laptop-1/content \
     --run-dir /archive/laptop-1/migration \
@@ -15,9 +16,43 @@ python -m popoto.migrate_redis_to_postgres \
     --mapping myapp.memory_migration:MAPPINGS
 ```
 
+`python -m popoto.migrate_redis_to_postgres` with the same arguments is the
+same tool.
+
+## Prerequisites
+
+Check these before the rehearsal. A missing `redis-server` or an
+unimportable model module is refused (exit `2`) before anything is read:
+
+- **`popoto[postgres]` on the machine that runs the tool**, at the version
+  the application will run after the cutover.
+- **`redis-server` on `PATH`**, at the **same major version** as the server
+  that wrote the snapshot, or passed with `--redis-server /path/to/redis-server`.
+  The tool reads the RDB file through a private `redis-server` it starts
+  itself. An older major version cannot load a newer RDB.
+- **The model module is importable.** `--mapping myapp.memory_migration:MAPPINGS`
+  and `--model myapp.models:Memory` import your code. Run the tool from the
+  directory that holds `myapp`, or add that directory to `PYTHONPATH`. An
+  unimportable module is refused with a message naming `PYTHONPATH`.
+- **A Postgres database the backend accepts**: PostgreSQL 18 or newer, a
+  UTF8 database, and `CREATE EXTENSION vector` already run if the model has
+  an `EmbeddingField` (see [Use Postgres](../guides/postgres-quickstart.md)).
+- **The snapshot**: a copy of `dump.rdb` and of `$POPOTO_CONTENT_PATH`, taken
+  as the [runbook](#runbook) describes. The tool never connects to a live
+  Redis.
+
 The target is the library's own setting: `POPOTO_POSTGRES_URL` and
 `POPOTO_POSTGRES_SCHEMA`. The source is the RDB file. The tool has no Redis
 URL, host or port option.
+
+Other options, from `--help`: `--model module.path:Model` (repeatable) names
+a model without a mapping; `--source-db` is the database index inside the
+snapshot (default `0`); `--batch-size` (default `200`, see *Resume and
+idempotency*); `--verify-sample` is how many partitions and queries the
+ranking checks sample (default `25`); `--operator` is the name in the
+report's sign-off (default: the OS user); `--accept-unclassified`,
+`--allow-empty`, `--merge`, `--resume`, `--dry-run`, `--report-key` and
+`--redis-server` are covered below.
 
 If `POPOTO_POSTGRES_URL` points at PgBouncer in transaction mode, also set
 `POPOTO_POSTGRES_MAINTENANCE_URL` to a direct (or session-mode) DSN to the
@@ -132,10 +167,12 @@ into a scratch Postgres database, without freezing anything. Read the report
 
 1. **Drain.** Let pending memory-extraction jobs and session sidecars drain,
    so nothing writes memory after the snapshot.
-2. **Freeze.** Stop every memory writer on the machine: close the Claude
-   Code sessions (their hooks write memory), then stop the bridge, the
-   worker (all memory reflections) and the memory MCP server.
-   *Rollback: restart them.*
+2. **Freeze.** Stop every memory writer on the machine: every process
+   that saves to the models you are migrating. In an agent deployment that
+   is usually the harness sessions whose hooks write memory, the background
+   workers that extract or reflect on memory, and any memory MCP server. (In
+   Valor's deployment: the Claude Code sessions, the bridge, the worker and
+   the memory MCP server.) *Rollback: restart them.*
 3. **Snapshot.** On the live server, run `BGSAVE` and poll `LASTSAVE` until
    it advances. Record `INFO persistence`'s `rdb_changes_since_last_save`.
    Copy `dump.rdb` and `$POPOTO_CONTENT_PATH` (default `~/.popoto/content`,
@@ -229,7 +266,8 @@ recorded as the owner and later ones as duplicates.
 
 A model crosses field for field. The target is the same popoto class bound
 to Postgres, so its table is the one the backend compiles, with the column
-names and types M2a and M2b shipped. A mapping (`ModelMapping`) adds only
+names and types listed under
+[Supported fields](postgres-backend.md#supported-fields-m1-m11-m2a-m2b-m3-m4-m5). A mapping (`ModelMapping`) adds only
 the evidence Redis never stored:
 
 ```python
@@ -246,7 +284,7 @@ MAPPINGS = [
                 "dismissal-prune", "decay-prune-tier2", "cleanup-junk-extraction",
             ),
         },
-        # Valor's ids are uuid4 hex; anything else is rejected and counted.
+        # This model's ids are uuid4 hex; anything else is rejected and counted.
         id_patterns={"memory_id": r"^[0-9a-f]{32}$"},
     ),
 ]
@@ -257,8 +295,10 @@ post-cutover declaration already says `Meta.backend = "postgres"` works too:
 the tool binds it to Redis to export and to its own Postgres backend to
 import.
 
-For Valor's `Memory`, as surveyed by #757 and #758 and mirrored by the test
-fixture `tests/postgres/migrate_fixtures.py::MigMemory`:
+For an example agent-memory model (Valor's `Memory`, as surveyed by #757
+and #758 and mirrored by the test fixture
+`tests/postgres/migrate_fixtures.py::MigMemory`), the mapping looks like
+this. A model with other fields maps the same way, field for field:
 
 | Redis | Postgres (`<schema>.memory`) | Notes |
 |---|---|---|
@@ -302,6 +342,51 @@ is handled as follows:
   event per record to the Postgres stream, so start consumers after the
   migration. A resume does not append a second one for a row it adopts
   (see *Resume and idempotency*), and verification checks the count.
+
+### The decision log and memory telemetry
+
+The tool copies only the models you name, and both of these are ordinary
+popoto models, so each crosses only when you list it:
+
+```bash
+python -m popoto.migrate_redis_to_postgres ... \
+    --model popoto.extraction.decision_log:DecisionRecord \
+    --model popoto.recipes.provenance_journal:JournalEntry \
+    --model popoto.recipes.memory_telemetry:AssemblyEvent
+```
+
+Without them, their keys are counted under `out_of_scope`, and a process that
+moves to Postgres starts with an empty decision log and no telemetry, as the
+[decision log section](postgres-backend.md#recipes-mixins-and-the-queue-m4)
+of the backend page describes.
+
+- **`DecisionRecord`** (the decision log, #811) lands in
+  `<schema>.decision_record`, `pending` rows included. The per-turn summary
+  hashes (`popoto:m3:summary:*`) and the assembly claims
+  (`popoto:m3:claim:*`) are not models, so they are counted under
+  `out_of_scope` and left in Redis; neither stops the run. Nothing is lost:
+  on Postgres `turn_summary` is computed from the rows on every read, and a
+  claim is a short-lived lease. You do not need to run
+  `DecisionLog.rebuild_turn_summary` before migrating, because the summary
+  hashes are not copied; on Postgres that method returns `turn_summary`
+  unchanged. A terminal `accept` row's `entry_id` names a journal entry, so
+  copy the journal's entry model in the same run, as the command above
+  does with `popoto.recipes.provenance_journal:JournalEntry` (or your own
+  entry model if you pass one to `ProvenanceJournal`), if those references
+  need to resolve on Postgres.
+- **`AssemblyEvent`** (memory telemetry, outcomes included) lands in
+  `<schema>.assembly_event`. It declares `Meta.ttl` (seven days by default),
+  so each event's expiry restarts at the import and is counted under
+  `meta_ttl_restarted`.
+
+Both were checked end to end against a snapshot written through
+`DecisionLog` and `AssemblyEvent.create` (Redis 8.10, PostgreSQL 18.6): the
+dry run and the load were `clean` with no `--accept-unclassified`, and
+`turn_summary` on Postgres matched the Redis result. On a Redis store whose
+summary was written by a version before #811 or #822 (a terminal-to-terminal
+write, or a `pending` write over a terminal row), the two can differ and
+Postgres, which counts the rows, is right; `rebuild_turn_summary` repairs the
+Redis side.
 
 ## What the report counts
 
@@ -397,7 +482,7 @@ data and more detail). This run had no `--report-key`:
 
 ```text
 popoto Redis -> Postgres migration (#756): CLEAN
-run b0d49d3e461c4fbdbdad54543dc4f96e  source valor-laptop  snapshot sha256 07301e66eb8e8038
+run 1d34c4731c754a5993aa5d380bba086e  source laptop-a  snapshot sha256 28241a49aa6c17f0
 target popoto  mode load
 
 Records:
@@ -415,8 +500,8 @@ Lossy and estimated (every non-zero count):
   embedding_file_missing_reembed: 1
   event_stream_entries_not_carried: 3
   frequency_sketch_keys_reset: 1
-  orphan_hashes_recovered: 1
   meta_ttl_restarted: 1
+  orphan_hashes_recovered: 1
   per_record_ttl_not_carried: 1
   staged_reads_carried: 2
   updated_at_estimated: 15
@@ -427,20 +512,23 @@ Verification:
   MigMemory records: ok {"compared": 11, "expected": 11, "mismatched": 0}
   MigMemory check_indexes: ok {"total": 0}
   MigMemory tool_columns: ok {"compared": 11, "mismatched": 0}
+  MigMemory carried_state: ok {"compared": 11, "mismatched": 0}
   MigMemory staged_reads: ok {"mismatched": 0}
   MigMemory decay_order:relevance: ok {"partitions": 2, "mismatched": 0}
   MigMemory bm25:bm25: ok {"queries": 11, "mode": "strict", "mismatched": 0, "mean_top_k_overlap": null}
   MigLongTail records: ok {"compared": 2, "expected": 2, "mismatched": 0}
   MigLongTail check_indexes: ok {"total": 0}
   MigLongTail tool_columns: ok {"compared": 2, "mismatched": 0}
+  MigLongTail carried_state: ok {"compared": 2, "mismatched": 0}
   MigLongTail event_stream: ok {"written": 2, "save_events": 2, "keys_with_more_than_one": 0, "keys_without_one": 0, "stream_trimmed": false}
   MigLongTail decay_order:rhythm: ok {"partitions": 1, "mismatched": 0}
   MigTtl records: ok {"compared": 2, "expected": 2, "mismatched": 0}
   MigTtl check_indexes: ok {"total": 0}
   MigTtl tool_columns: ok {"compared": 2, "mismatched": 0}
+  MigTtl carried_state: ok {"compared": 2, "mismatched": 0}
 
-Signed off by maintainer at 2026-10-06T00:18:39+00:00.
-Checksum sha256 f81df632d6180c15... (catches accidental change only: anyone can recompute it).
+Signed off by pytest at 2026-10-08T05:18:32.383411+00:00.
+Checksum sha256 e292ed6ffeede8776829102afdf5fdbf505ef5d37ee3322f159c05d9a00510dd (catches accidental change only: anyone can recompute it).
 No HMAC: the run had no --report-key.
 ```
 
@@ -485,8 +573,8 @@ snapshot. Each key family of a migrated model has a disposition, recorded in
 
 A key family the tool does not recognize also stops the run, unless you pass
 `--accept-unclassified` after reading `inventory.json`. Keys of other models
-are counted under `out_of_scope` and left alone. That includes Valor's
-memory-gate counters, which stay in Redis.
+are counted under `out_of_scope` and left alone, such as an
+application's own counters that are not popoto models.
 
 ## Resume and idempotency
 
@@ -598,19 +686,19 @@ row per run, with its status, progress and final report) and
 |---|---|
 | `0` | `clean`, or a finished `--dry-run`. |
 | `1` | The load finished but verification found a mismatch. Read `report.txt`. |
-| `2` | Refused before reading. The causes are: a bad RDB; a missing `redis-server`; a model Postgres cannot store (`DataFrameField`); a target schema that already holds rows (pass `--merge` or `--resume`, or `--resume --merge` when a resumed run's table also holds rows it did not write); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing `--report-key`; or an empty snapshot (`--allow-empty`). |
+| `2` | Refused; nothing is written to Postgres. The causes are: no `POPOTO_POSTGRES_URL` (outside `--dry-run`); a `--source-id` that is not 1-100 characters of `[A-Za-z0-9_.@-]`; no `--model` or `--mapping`, or a model named twice; a `--content-dir` that is not a directory; a bad RDB; a missing `redis-server`; a model Postgres cannot store (`DataFrameField`); a target schema that already holds rows (pass `--merge` or `--resume`, or `--resume --merge` when a resumed run's table also holds rows it did not write); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing `--report-key`; a `--resume` whose run directory has no `run.json`; a maintenance DSN that reaches a different database from the main one; a throwaway server or watchdog that fails to start; or an empty snapshot (`--allow-empty`). |
 | `3` | The inventory stopped the run. Nothing was written. |
 | `130` | Interrupted by `SIGTERM`, `SIGHUP` or `SIGINT`. The throwaway server is stopped and its copies are removed. Continue with `--resume` and the same `--run-dir`. |
 
-`redis-server` must be on `PATH` (or passed with `--redis-server`), at the
-same major version as the server that wrote the snapshot.
+See [Prerequisites](#prerequisites) for what the tool needs before it
+reads anything.
 
 ## Where this departs from the #757 plan
 
 The #757 plan was written before the schema existed. The build follows its
 safety model and adapts to what shipped:
 
-- **Target.** Each model gets its own typed table (v2), not a hand-written
+- **Target.** Each model gets its own typed table, not a hand-written
   `popoto.memory` table. Records land through `import_records`, not through
   binary `COPY` into staging. The engine owns the DDL and builds every
   derived table, so no separate `reindex` step is needed.

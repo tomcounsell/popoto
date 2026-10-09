@@ -14,8 +14,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "popoto"
-version = "1.9.0"
-description = "Agent memory for LLM apps on Redis or Valkey: decay, confidence, associations, and context assembly, built on a full Python ORM"
+version = "1.10.0"
+description = "Agent memory for LLM apps on Redis, Valkey or PostgreSQL: decay, confidence, associations, and context assembly, built on a full Python ORM"
 readme = "README.md"
 authors = [{ name = "Tom Counsell", email = "other@tomcounsell.com" }]
 license = { file = "LICENSE" }
@@ -49,6 +49,9 @@ keywords = [
     "semantic-search",
     "redis",
     "valkey",
+    "postgres",
+    "postgresql",
+    "pgvector",
     "ORM",
     "database",
 ]
@@ -95,18 +98,33 @@ mcp = [
 ]
 # The v2 Postgres backend (#759). Imported only when a model is bound to
 # Postgres (Meta.backend = "postgres" or POPOTO_BACKEND=postgres): `import
-# popoto` never imports psycopg. psycopg 3.2 is the first release with
-# server-side pipeline/prepare controls the pool relies on; pgvector arrives
-# with EmbeddingField in M2 but is part of the extra so one install covers it.
-# greenlet (M5) runs the sync backend's code for the async_* methods with its
-# I/O on psycopg.AsyncConnection (popoto/backends/postgres/aio.py); without it
-# those methods fall back to a worker thread. 3.1.0 is the first greenlet
-# release with CPython 3.13 wheels (3.0.x ships cp37-cp312 only, so 3.13
-# would build from source); 3.1.0 has wheels for cp310-cp313 on macOS,
-# manylinux, musllinux and Windows, covering every Python popoto supports.
+# popoto` never imports psycopg. One install covers every field the backend
+# stores, so each package below is one a Postgres-bound memory model needs:
+#   psycopg[binary,pool] -- the driver. 3.2 is the first release with the
+#     server-side pipeline/prepare controls the pool relies on, and 3.2.0 is
+#     uninstallable with [binary] (it pins psycopg-binary==3.2.0.dev1, which
+#     was never published), so the measured floor is 3.2.1.
+#   psycopg-pool -- named on its own because the [pool] extra does not floor
+#     it: psycopg 3.2.1 resolves with psycopg-pool 3.1.0, which has no
+#     ConnectionPool.check_connection (the pool passes it as check=), so the
+#     first connection fails. 3.2.0 is the first release that has it.
+#     Measured for the 1.10.0 release.
+#   pgvector -- EmbeddingField's vector type adapter.
+#   numpy -- EmbeddingField imports it at module load; without it a clean
+#     `pip install popoto[postgres]` raised ImportError on the first
+#     EmbeddingField. 1.23.1 is the floor the embeddings extra already uses,
+#     verified working with pgvector on Postgres.
+#   greenlet -- runs the sync backend's code for the async_* methods with its
+#     I/O on psycopg.AsyncConnection (popoto/backends/postgres/aio.py); without
+#     it those methods fall back to a worker thread. 3.1.0 is the first
+#     greenlet release with CPython 3.13 wheels (3.0.x ships cp37-cp312 only);
+#     it has wheels for cp310-cp313 on macOS, manylinux, musllinux and
+#     Windows, covering every Python popoto supports.
 postgres = [
-    "psycopg[binary,pool]>=3.2",
+    "psycopg[binary,pool]>=3.2.1",
+    "psycopg-pool>=3.2",
     "pgvector>=0.3",
+    "numpy>=1.23.1",
     "greenlet>=3.1",
 ]
 benchmark = [
@@ -144,6 +162,7 @@ Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
 [project.scripts]
 popoto-memory = "popoto.integrations.cli:main"
 popoto-transfer = "popoto.transfer.cli:main"
+popoto-migrate-redis-to-postgres = "popoto.migrate_redis_to_postgres:console_main"
 
 [project.entry-points.pytest11]
 popoto = "popoto.pytest_plugin"

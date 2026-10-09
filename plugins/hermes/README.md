@@ -82,4 +82,4 @@ alike), so diagnosis has to walk three places in this order:
 2. `~/.hermes/logs/agent.log` -- the only place a **callback exception**
    surfaces.
 3. `popoto-memory doctor` / `~/.popoto/memory.log` -- popoto's own failures
-   (a misconfigured `POPOTO_MEMORY_URL`, an unreachable Redis).
+   (a misconfigured `POPOTO_MEMORY_URL`, an unreachable Redis or Postgres).

@@ -338,6 +338,104 @@ def _close_pools_at_exit() -> None:
         pass
 
 
+# The last failed connection attempt per DSN, as "<type>: <message>" with any
+# password redacted, and cleared by the next attempt that succeeds. The sync
+# pool connects in its own worker threads, so a server that refuses every
+# connection (a database that does not exist, a wrong password) surfaces to
+# the caller only as ``PoolTimeout: couldn't get a connection after 5.00
+# sec``. :func:`_checkout` attaches this to that timeout and
+# :meth:`PostgresBackend._fail` puts it in the ``BackendUnavailableError``, so
+# the error names the cause (``FATAL: database "x" does not exist``).
+_last_connect_error: dict[str, str] = {}
+
+
+INVALID_DSN_MESSAGE = (
+    "invalid connection string: the Postgres DSN could not be parsed, and "
+    "its text is not shown because it may contain the password. In a URL, "
+    "percent-encode reserved characters in the password (a literal % is "
+    "%25, @ is %40); in the keyword form, single-quote a value that "
+    "contains a space"
+)
+
+# DSNs that libpq has parsed once in this process, so the check below costs
+# one set lookup per call after the first.
+_parseable_dsns: set[str] = set()
+
+
+def _require_parseable_dsn(dsn: str) -> None:
+    """Refuse a DSN libpq cannot parse before any connection is attempted.
+
+    libpq's parse errors quote the fragment they choke on, and for a DSN
+    that does not parse that fragment is usually the password (an unencoded
+    ``%`` in a URL, an unquoted space in a keyword value): ``invalid
+    percent-encoded token: "Pa%zzSekr1t"``. A pool handed such a DSN would
+    put that text in ``psycopg.pool``'s own warning log on every retry, and
+    popoto in its error, ``health.last_error`` and its logs. So the DSN is
+    parsed first, and a failure raises an ``OperationalError`` carrying
+    :data:`INVALID_DSN_MESSAGE` only, with the parse error suppressed
+    (``from None``): the caller's outage path turns it into
+    :class:`BackendUnavailableError` without any of the DSN's text."""
+    if dsn in _parseable_dsns:
+        return
+    psycopg = _import_psycopg()
+    from psycopg.conninfo import conninfo_to_dict
+
+    try:
+        conninfo_to_dict(dsn)
+    except Exception:  # noqa: BLE001 - any parse failure: say nothing of it
+        raise psycopg.OperationalError(INVALID_DSN_MESSAGE) from None
+    _parseable_dsns.add(dsn)
+
+
+_PASSWORD_KEYWORD = re.compile(r"(password\s*=\s*)('(?:[^'\\]|\\.)*'?|\S+)", re.I)
+_URL_USERINFO = re.compile(r"(\b[a-z][a-z0-9+.\-]*://[^:/?#@\s]*:)[^@\s]*@", re.I)
+
+
+def _redact(message: str, dsn: str) -> str:
+    """``message`` with anything that could be the DSN's password replaced
+    by ``***``: the parsed password itself and its percent-encoded spellings,
+    any ``password=...`` keyword and any URL userinfo password. libpq does
+    not echo the password of a DSN it parsed; this makes sure of it. A DSN
+    that does not parse (which :func:`_require_parseable_dsn` refuses before
+    connecting) gets the message withheld outright, since nothing says which
+    part of its text is the secret."""
+    from urllib.parse import quote, quote_plus
+
+    try:
+        from psycopg.conninfo import conninfo_to_dict
+
+        value = conninfo_to_dict(dsn).get("password")
+    except Exception:  # noqa: BLE001 - unparseable, or no driver
+        return INVALID_DSN_MESSAGE
+    password = str(value) if value else None
+    if password:
+        for spelling in {password, quote(password, safe=""), quote_plus(password)}:
+            message = message.replace(spelling, "***")
+    message = _PASSWORD_KEYWORD.sub(r"\1***", message)
+    return _URL_USERINFO.sub(r"\1***@", message)
+
+
+def _recording_connection_class(psycopg: Any, dsn: str) -> Any:
+    """A ``psycopg.Connection`` subclass that records each failed connect for
+    ``dsn`` in ``_last_connect_error`` (and clears it on success). Passed to
+    the pool as ``connection_class``, which is the pool's public hook for the
+    class whose ``connect()`` it calls."""
+
+    class _RecordingConnection(psycopg.Connection):
+        @classmethod
+        def connect(cls, *args: Any, **kwargs: Any) -> Any:
+            try:
+                conn = super().connect(*args, **kwargs)
+            except Exception as exc:
+                text = " ".join(str(exc).split())
+                _last_connect_error[dsn] = _redact(f"{type(exc).__name__}: {text}", dsn)
+                raise
+            _last_connect_error.pop(dsn, None)
+            return conn
+
+    return _RecordingConnection
+
+
 def _import_psycopg() -> Any:
     try:
         import psycopg
@@ -428,6 +526,7 @@ def _pool_for(dsn: str) -> Any:
     fork: a child never reuses the parent's sockets). Inside the async
     bridge, the running loop's pool instead (:mod:`.aio`)."""
     global _atexit_registered
+    _require_parseable_dsn(dsn)
     bridge = _bridged()
     if bridge is not None:
         return bridge.pool(dsn)
@@ -452,6 +551,7 @@ def _pool_for(dsn: str) -> Any:
                 # pool holding dead sockets, and without this every one of
                 # them would fail one call on a healthy server.
                 check=ConnectionPool.check_connection,
+                connection_class=_recording_connection_class(psycopg, dsn),
                 open=True,
                 kwargs={
                     "autocommit": True,
@@ -519,6 +619,10 @@ def _checkout(pool: Any, timeout: Optional[float] = None) -> Iterator[Any]:
                     out = _checked_out.get(key, 0)
                 if out >= int(getattr(pool, "max_size", out + 1)):
                     exc.popoto_busy = True  # type: ignore[attr-defined]
+                else:
+                    cause = _last_connect_error.get(getattr(pool, "conninfo", ""))
+                    if cause:
+                        exc.popoto_connect_error = cause  # type: ignore[attr-defined]
             raise
         with _checked_out_lock:
             _checked_out[key] = _checked_out.get(key, 0) + 1
@@ -853,7 +957,15 @@ class PostgresBackend(
         h = self.health
         h.ok = False
         h.consecutive_failures += 1
-        h.last_error = f"{type(exc).__name__}: {exc}"
+        last_error = f"{type(exc).__name__}: {exc}"
+        cause = getattr(exc, "popoto_connect_error", None)
+        if cause:
+            last_error += f" (last connection attempt: {cause})"
+        # Scrubbed against every DSN this backend connects with: the text is
+        # the error, health.last_error and the ERROR log line below.
+        for dsn in {self.dsn, self.maintenance_dsn or self.dsn}:
+            last_error = _redact(last_error, dsn)
+        h.last_error = last_error
         if write or getattr(self._intent, "write", False):
             h.dropped_writes += 1
         now = time.monotonic()
@@ -1152,6 +1264,7 @@ class PostgresBackend(
         psycopg = _import_psycopg()
         bridge = _bridged()
         try:
+            _require_parseable_dsn(dsn)
             if bridge is not None:
                 conn = bridge.connect(dsn, **kwargs)
             else:
@@ -1163,7 +1276,8 @@ class PostgresBackend(
                 raise MaintenanceConnectionError(
                     f"could not connect to the Postgres maintenance DSN "
                     f"({_describe_dsn(dsn)}; {MAINTENANCE_URL_ENV} or "
-                    f"maintenance_dsn=): {type(exc).__name__}: {exc}. First-use "
+                    f"maintenance_dsn=): "
+                    f"{_redact(f'{type(exc).__name__}: {exc}', dsn)}. First-use "
                     "DDL, REINDEX and LISTEN need it; the main DSN is not "
                     "affected"
                 ) from exc
@@ -1593,8 +1707,9 @@ class PostgresBackend(
 
     def _table(self, spec: ModelSpec, *, write: bool = False) -> TableSpec:
         """The model's table, created or checked on first use and again
-        whenever its spec object changes (``_auto_key`` is added to a model
-        at its first instantiation, after a query may already have bound it).
+        whenever its spec object changes (a field added to the model after a
+        query bound it; the implicit ``_auto_key`` is no longer such a field,
+        as it is registered at class creation, #826).
 
         ``write`` names the operation that needs the table: when the server
         is unreachable at this first check, a write counts as dropped."""
@@ -1669,12 +1784,13 @@ class PostgresBackend(
         the unit's (:meth:`_ddl_connection`); an ``ALTER TABLE`` there waits
         for every lock on the table, including the one this unit took when
         it read or wrote it -- and this unit cannot commit while this task or
-        thread waits. Two shapes reach it: a model redefined with an added
-        field after the unit already used its table, and an auto-key model
-        whose table was bound before its first instance existed (the first
-        instance adds ``_auto_key``) after the unit read it. Without this the
-        wait lasts until ``PG_DDL_LOCK_TIMEOUT_MS``, with the first-use lock
-        held; with it, the caller gets :class:`SchemaDriftError` at once.
+        thread waits. The shape that reaches it is a model redefined with an
+        added field after the unit already used its table. (Before #826 an
+        auto-key model whose table a query bound before its first instance
+        reached it too, when that instance added ``_auto_key``; the field is
+        now registered at class creation, so the first bind already has it.)
+        Without this the wait lasts until ``PG_DDL_LOCK_TIMEOUT_MS``, with
+        the first-use lock held; with it, the caller gets :class:`SchemaDriftError` at once.
 
         ``pg_locks`` is a cluster-wide view, so it is read on ``conn`` (the
         DDL connection itself) for the units' backend pids: no statement runs
@@ -1715,9 +1831,8 @@ class PostgresBackend(
             f"thread already holds a lock on it ({modes}). The change must "
             "commit on its own connection, which would wait for this unit "
             "forever. Let the schema change happen outside the unit: use the "
-            "model once -- a save, or a query after its first instance exists "
-            "-- before opening the transaction, or commit the unit first "
-            "(#776)."
+            "model once -- a save or a query -- before opening the "
+            "transaction, or commit the unit first (#776)."
         )
 
     def _table_if_current(

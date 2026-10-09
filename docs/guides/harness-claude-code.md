@@ -103,6 +103,10 @@ projects on one Redis could retrieve each other's memories; a distinct
 stronger boundary if you want one enforced by Redis rather than by a query
 filter.
 
+The store can be Redis, Valkey or PostgreSQL 18+. For Postgres, set
+`POPOTO_BACKEND=postgres` and `POPOTO_POSTGRES_URL` in Claude Code's environment; see
+[On Postgres](../features/harness-integration.md#on-postgres).
+
 One turn becomes one record, verbatim. Issue #489 measured
 sentence-splitting extraction at 0.2078 judged accuracy against 0.3636 for
 raw ingestion on the same slice, so raw is the default here.

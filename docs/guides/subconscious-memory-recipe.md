@@ -96,6 +96,20 @@ class ProjectMemory(DefaultMemory):
     pass  # keys become ProjectMemory:* instead of DefaultMemory:*
 ```
 
+### Running on Postgres
+
+Postgres is the recommended store for agent memory, and the loop runs on it unchanged. Install the extra and select the backend for the process:
+
+```bash
+pip install 'popoto[postgres]'
+export POPOTO_BACKEND=postgres
+export POPOTO_POSTGRES_URL=postgresql://localhost:5432/agents   # PostgreSQL 18+
+```
+
+`DefaultMemory` then lives in a table in the `popoto` schema (override with `POPOTO_POSTGRES_SCHEMA`), created on first use, and the loop issues no Redis commands, including its eviction counter and, with `auditable_extraction`, its decision log. To move only your own model, set `class Meta: backend = "postgres"` on it instead of the process variable. Configuration options are in [Configuration](../configuration.md#postgres-backend); behaviour that differs from Redis is listed under [documented divergences](../features/postgres-backend.md#documented-divergences). An existing Redis store moves across once, from an RDB snapshot: [Redis to Postgres Migration](../features/redis-to-postgres-migration.md).
+
+The [harness integration](../features/harness-integration.md) runs on Postgres the same way: see its [On Postgres](../features/harness-integration.md#on-postgres) section.
+
 ### Injected context format
 
 The injected block carries the memory text and nothing else:
@@ -301,6 +315,23 @@ except OUTAGE_ERRORS:
 `popoto.backends.OUTAGE_ERRORS` is the tuple the recipe tests against. `popoto.redis_db.OUTAGE_ERRORS` is the Redis pair only and misses a Postgres outage; prefer the backend-neutral one even on Redis, so the handler keeps working if the model moves.
 
 Everything else still degrades quietly: extraction that drops a candidate, a zero-hit BM25 query, a missing index. So does contention: `popoto.backends.BackendRetryableError` (a deadlock, a serialization failure, an exhausted pool) is not an outage and is not in the tuple.
+
+#### Monitoring the backend
+
+Outages raise on both backends, so the handler above is all a loop needs. On
+Postgres you can also alert on a store that is failing between turns by
+reading the backend's health record (the Redis backend keeps none):
+
+```python
+from popoto.backends import get_backend
+from popoto.recipes import DefaultMemory
+
+health = get_backend(DefaultMemory).health.as_dict()
+if not health["ok"]:
+    ...  # alert: memory is not being read or written
+```
+
+See [Topology and the outage contract](../features/postgres-backend.md#topology-and-the-outage-contract).
 
 ## Tuning
 

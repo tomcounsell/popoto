@@ -349,8 +349,9 @@ class ModelOptions:
         self.filter_query_params_by_field[field_name] = field.get_filter_query_params(
             field_name
         )
-        # A field added after class creation (the _auto_key at first
-        # instantiation) changes the spec: rebuild it on next use.
+        # A field added after the spec was built changes it: rebuild it on
+        # next use. (The implicit _auto_key is registered at class creation
+        # now, #826, so ordinary models never take this path after import.)
         self._spec = None
 
     @property
@@ -535,6 +536,20 @@ class ModelBase(type):
                     f"Try using a private var (eg. _{obj_name})_"
                 )
 
+        # A model without a KeyField is keyed by a hidden AutoKeyField. It is
+        # registered here, at class creation, so ``key_field_names`` is right
+        # from import time. It used to be added by the first ``__init__``,
+        # which left a process that only *loaded* records (``filter``/``all``
+        # decode without ``__init__``) with no key field: an edited record
+        # saved under the bare class name and its original was deleted
+        # (#826). Registered after every declared field, as ``__init__`` did,
+        # so field order, the spec and the wire are what they always were;
+        # like there, it is metadata only (no class attribute).
+        if not options.key_field_names:
+            from ..fields.shortcuts import AutoKeyField
+
+            options.add_field("_auto_key", AutoKeyField())
+
         # todo: handle multiple inheritance
         # for base in parents:
         #     for field_name, field in base.auto_fields.items():
@@ -647,7 +662,8 @@ class Model(metaclass=ModelBase):
            enabling natural multi-column primary keys.
 
         2. **Auto-Key Fallback**: Models without explicit KeyFields get an
-           automatic UUID-based `_auto_key` field.
+           automatic UUID-based `_auto_key` field, registered when the class
+           is created.
 
         3. **Pipeline Support**: All operations accept an optional Redis
            pipeline for batching multiple operations atomically.
@@ -690,12 +706,12 @@ class Model(metaclass=ModelBase):
 
         Handles the complete initialization sequence:
             1. Apply any base parameters from kwargs
-            2. Add auto-generated KeyField if no KeyFields defined
-            3. Generate values for AutoFields (e.g., UUIDs)
-            4. Set field defaults for unspecified fields
-            5. Apply kwargs values over defaults
-            6. Load related models (with cycle detection)
-            7. Validate all field values
+            2. Generate values for AutoFields (e.g., UUIDs); a model with
+               no KeyField has its ``_auto_key`` from class creation (#826)
+            3. Set field defaults for unspecified fields
+            4. Apply kwargs values over defaults
+            5. Load related models (with cycle detection)
+            6. Validate all field values
 
         Args:
             **kwargs: Field values to set on the instance. Keys should
@@ -721,11 +737,8 @@ class Model(metaclass=ModelBase):
         # allow init kwargs to set any base parameters
         self.__dict__.update(kwargs)
 
-        # add auto KeyField if needed
-        if not len(self._meta.key_field_names):
-            from ..fields.shortcuts import AutoKeyField
-
-            self._meta.add_field("_auto_key", AutoKeyField())
+        # A model without a KeyField already has its _auto_key: ModelBase
+        # registers it at class creation (#826).
 
         # prep AutoKeys with new default ids
         for field in self._meta.fields.values():
@@ -3682,40 +3695,21 @@ class Model(metaclass=ModelBase):
         - Models with zero AutoKeyFields (composite KeyField models).
         - Models with multiple AutoKeyFields (ambiguous primary key).
 
-        For models defined without any explicit KeyField, popoto adds an
-        implicit `_auto_key` AutoKeyField at instance __init__ time
-        (see Model.__init__). That field is not registered on `_meta` until
-        the first instance is created. To make the helper robust for
-        classmethod use before any instance exists, this method instantiates
-        the class once if it sees zero key fields registered AND no auto
-        field — this triggers the implicit `_auto_key` registration.
+        A model defined without any explicit KeyField has its implicit
+        `_auto_key` AutoKeyField from class creation (#826), so this reads
+        `_meta` alone and never instantiates the class. (It used to build an
+        instance to trigger a registration that only ``__init__`` did, and
+        returned None when that instance could not be built.)
 
         Returns:
             The name of the lone AutoKeyField, or None if the model is
             ineligible for partial-write detection.
         """
-        # Try to find an auto field already registered on the metaclass.
         auto_names = [
             name
             for name, field in cls._meta.fields.items()
             if getattr(field, "auto", False)
         ]
-
-        # If no auto field is registered AND no explicit key fields exist,
-        # an implicit `_auto_key` would be added on instance init. Trigger
-        # that registration once so the introspection works classmethod-side.
-        if not auto_names and not cls._meta.key_field_names:
-            try:
-                cls()
-            except Exception:
-                # If instantiation fails (e.g., required fields), we cannot
-                # introspect further — treat as ineligible.
-                return None
-            auto_names = [
-                name
-                for name, field in cls._meta.fields.items()
-                if getattr(field, "auto", False)
-            ]
 
         if len(auto_names) == 1:
             return auto_names[0]

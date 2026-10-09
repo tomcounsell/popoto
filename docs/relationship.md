@@ -1,9 +1,9 @@
 # Relationship Field
 
 The `Relationship` field creates references between model instances, similar
-to foreign keys in SQL databases. Unlike SQL, Redis has no JOIN operation.
-Popoto stores a reference (the related instance's Redis key) and lazy-loads
-the full object on access. This keeps writes fast and avoids loading data you
+to foreign keys in SQL databases. Popoto stores a reference (the related
+instance's key) and lazy-loads the full object on access, on both the Redis
+and Postgres backends; it never joins. This keeps writes fast and avoids loading data you
 never use, but multi-model queries work differently than in Django or
 SQLAlchemy.
 
@@ -131,6 +131,14 @@ print(len(alice_orders))
 
 Use double-underscore notation to query by fields on the related model.
 
+!!! warning "Redis: currently broken"
+    On the Redis backend this lookup raises today (a `KeyError` or a
+    `QueryException`, depending on the related field) instead of returning
+    matches. The bug is tracked in #771 and is row (xii) of
+    [Query results](features/postgres-backend.md#query-results). On Postgres
+    the lookup works as shown. On Redis, query the related model first and
+    filter by instance: `Order.query.filter(restaurant=burger_palace)`.
+
 ```python
 orders = Order.query.filter(restaurant__name="Burger Palace")
 for order in orders:
@@ -155,7 +163,7 @@ See [Making Queries](query.md) for the full list of filter operators.
 
 ## Traversing Relationships
 
-Because Redis has no JOINs, you traverse relationships with Python loops.
+Popoto has no JOINs on either backend, so you traverse relationships with Python loops.
 
 ```python
 alice = Customer.query.get(username="alice")
@@ -167,7 +175,7 @@ for r in restaurants:
 ```
 
 !!! warning "N+1 Query Problem"
-    Each `order.restaurant` access triggers a separate Redis call. With 100
+    Each `order.restaurant` access triggers a separate database call. With 100
     orders, that is 100 additional round trips on top of the initial query.
 
     ```python
@@ -181,6 +189,9 @@ for r in restaurants:
     (e.g., storing `restaurant_name` directly on `Order`).
 
 ## How Relationships Work Internally
+
+This section describes the Redis backend. See [On Postgres](#on-postgres) for
+how the same field is stored there.
 
 ### Storage as Redis Key
 
@@ -372,8 +383,34 @@ Deleting a model does **not** cascade to related instances. If you delete a
 
 ### Keep Relationship Depth Shallow
 
-Each relationship traversal costs a Redis round trip. Design your models so
+Each relationship traversal costs a database round trip. Design your models so
 the most common access patterns require at most one or two hops.
 
 See [Making Queries](query.md) for filter operators and
 [Model Meta Options](meta.md) for `order_by` and `ttl` configuration.
+
+## On Postgres
+
+`Relationship` works on a model with `Meta.backend = "postgres"`: assignment,
+lazy loading, `filter(restaurant=instance)`, null relationships, self-references
+and `Relationship.sample_related_keys()` behave as described above. A nested
+lookup runs the related model's own query, through that model's backend.
+
+**How it maps.** The field is a `text` column holding the related record's key,
+with a B-tree index on it. There is no `$RelationshipF:` set and no foreign key:
+references may be circular, and Redis enforces none either. `filter()` and
+`all()` return the field as that key string, while `get()` resolves it, as on
+Redis. `sample_related_keys()` selects up to `count` keys with
+`ORDER BY random() LIMIT count`, keeping `SRANDMEMBER`'s count contract.
+
+**Differences from Redis:**
+
+- Nested lookups such as `filter(restaurant__name=...)` work on Postgres; on
+  Redis they currently raise (see [Nested Field Access](#nested-field-access)).
+- Deleting a record still does not cascade. A dependent row keeps the stale key,
+  as on Redis.
+- `order_by` on a relationship field, and other query edge cases, are rows in
+  [Query results](features/postgres-backend.md#query-results).
+
+The column and index are listed under
+[Supported fields](features/postgres-backend.md#supported-fields-m1-m11-m2a-m2b-m3-m4-m5).

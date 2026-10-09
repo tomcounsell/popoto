@@ -7,6 +7,9 @@ Run it as a module::
         --run-dir /archive/run1/migration --source-id laptop-1 \\
         --mapping myapp.memory_migration:MAPPINGS
 
+or, from an installed popoto, as the console script
+``popoto-migrate-redis-to-postgres`` with the same arguments.
+
 The runbook is ``docs/features/redis-to-postgres-migration.md``. This
 docstring is the safety model, because it is the part a later editor must not
 erode.
@@ -1525,6 +1528,10 @@ def _qi(name: str) -> str:
 def _connect(dsn: str) -> Any:
     import psycopg
 
+    from ..backends.postgres import _require_parseable_dsn
+
+    # libpq's parse error for a malformed DSN quotes the password fragment.
+    _require_parseable_dsn(dsn)
     return psycopg.connect(dsn, autocommit=False)
 
 
@@ -1686,6 +1693,9 @@ def _release_schema_lock(conn: Any, schema: str) -> None:
 def _connect_autocommit(dsn: str) -> Any:
     import psycopg
 
+    from ..backends.postgres import _require_parseable_dsn
+
+    _require_parseable_dsn(dsn)
     return psycopg.connect(dsn, autocommit=True)
 
 
@@ -3641,7 +3651,14 @@ def _import_object(spec: str) -> Any:
     module_name, _, attribute = spec.partition(":")
     if not attribute:
         raise MigrationRefused(f"{spec!r}: expected module.path:Name")
-    module = importlib.import_module(module_name)
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        raise MigrationRefused(
+            f"{spec!r}: cannot import {module_name!r} ({exc}). The module that "
+            "defines the model or mapping must be importable: run from the "
+            "directory that holds it, or add that directory to PYTHONPATH"
+        ) from exc
     obj: Any = module
     for part in attribute.split("."):
         obj = getattr(obj, part)
@@ -3666,9 +3683,22 @@ def _mappings_from_args(
     return out
 
 
+#: The ``[project.scripts]`` console script that runs :func:`main`; the same
+#: tool as ``python -m popoto.migrate_redis_to_postgres``.
+CONSOLE_SCRIPT = "popoto-migrate-redis-to-postgres"
+
+
+def _prog() -> str:
+    """The name ``--help`` shows: the console script when that is how the
+    tool was started, else the ``-m`` form the runbook uses."""
+    if os.path.basename(sys.argv[0] if sys.argv else "").startswith(CONSOLE_SCRIPT):
+        return CONSOLE_SCRIPT
+    return "python -m popoto.migrate_redis_to_postgres"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m popoto.migrate_redis_to_postgres",
+        prog=_prog(),
         description=(
             "One-off copy of popoto models from a Redis RDB snapshot into Postgres "
             "(#756). Reads only from a private redis-server it starts on the "
@@ -3760,6 +3790,18 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     return parser
+
+
+def console_main(argv: Optional[Sequence[str]] = None) -> int:
+    """The ``popoto-migrate-redis-to-postgres`` console script. ``python -m``
+    puts the working directory on ``sys.path``, which is how ``--mapping
+    myapp.memory_migration:MAPPINGS`` finds the operator's module; a console
+    script starts with its own ``bin`` directory there instead. Add the
+    working directory, so both forms import the same modules."""
+    cwd = os.getcwd()
+    if cwd not in sys.path and "" not in sys.path:
+        sys.path.insert(0, cwd)
+    return main(argv)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

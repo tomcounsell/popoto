@@ -117,9 +117,10 @@ comes only from `POPOTO_POSTGRES_URL` or an explicit `PostgresBackend(dsn=...)`
 
 `[PG-only]` tests (capabilities with no Redis counterpart, such as the outage
 contract and the schema record) live in `tests/postgres/` and run with plain
-`pytest tests/postgres`; the ones that need a server take the `pg` fixture,
-which binds the session schema's backend and skips when `POSTGRES_URL` is
-unset.
+`pytest tests/postgres`; the ones that need a server take this repository's
+`pg` fixture (defined in `tests/postgres/conftest.py`, not shipped by the
+plugin), which binds the session schema's backend and skips when
+`POSTGRES_URL` is unset.
 
 **Projects that do not opt in see no change.** A session opts in by setting
 `popoto_test_db` / `POPOTO_TEST_DB` or `popoto_conformance_backends` /
@@ -160,9 +161,6 @@ the tests need not request `backend` themselves:
 pytestmark = [pytest.mark.conformance, pytest.mark.usefixtures("backend")]
 ```
 
-M0's `conformance(harness=True)` flag and its "Postgres backend arrives in
-M1" skip are gone: every leg has a backend to run against.
-
 **The Postgres leg skips when it cannot run.** If `psycopg` is not installed or
 `POSTGRES_URL` is unset, each `[postgres]` parameter reports `SKIPPED` with a
 reason naming what is missing (`pytest -rs` shows it). `psycopg` is imported
@@ -194,9 +192,11 @@ references a test table loses that constraint, while its table and rows remain.
 Objects that do not depend on a test table are untouched. The descriptor's
 `dsn` is `POSTGRES_URL` with
 `options=-c search_path=<schema>` appended, so a connection opened from it
-resolves unqualified names inside the schema. The plugin still needs Redis
-bound (`popoto_test_db` / `REDIS_URL`), because its autouse flush runs before
-every test, including Postgres-leg tests.
+resolves unqualified names inside the schema. In a session that sets
+`popoto_test_db` / `POPOTO_TEST_DB`, Redis must still be reachable, because the
+plugin's autouse flush runs before every test, including Postgres-leg tests. A
+session that opts in only through `popoto_conformance_backends` does not flush
+Redis.
 
 **Assertions that only hold on Redis.** Mark them
 `@pytest.mark.redis_only(reason="...")`, which skips every non-Redis leg. The
@@ -210,6 +210,28 @@ the `backend_is_redis` fixture returns `True` on the Redis leg. The
 
 In this repository the harness's own tests live in
 `tests/conformance/test_harness.py`.
+
+## On Postgres
+
+Testing Postgres models goes through the conformance harness above. In short:
+
+- Set `popoto_conformance_backends = "redis,postgres"` and point `POSTGRES_URL`
+  (the harness's variable, with a database name) at a server. Mark tests
+  `conformance` to run them on both legs, and `redis_only(reason=...)` for
+  assertions that hold only on Redis.
+- Each session gets a throwaway `popoto_test_<hex>` schema. Tables are dropped
+  before each Postgres-leg test and the schema at session end.
+- In a session that sets `popoto_test_db`, the plugin pins the process default
+  backend to Redis before collection, so an unmarked test and a module-level
+  `save()` run on Redis even when `POPOTO_BACKEND=postgres`. Only the `backend`
+  fixture moves a test onto Postgres.
+- A model that declares `Meta.backend = "postgres"` runs on the harness's schema
+  only inside the `backend` fixture's Postgres leg. Anywhere else it resolves as
+  in production code: a Postgres instance passed to `set_backend()`, else the
+  library's own `POPOTO_POSTGRES_URL`. Leave
+  `POPOTO_POSTGRES_URL` unset in test environments so such a test fails with
+  `BackendUnavailableError` instead of writing to a real database.
+- `use_test_db()` and `flush_test_db()` below act on Redis only.
 
 ## Manual Test Helpers
 
