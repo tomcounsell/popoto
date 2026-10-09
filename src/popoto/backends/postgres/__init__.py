@@ -391,10 +391,6 @@ _PASSWORD_KEYWORD = re.compile(r"(password\s*=\s*)('(?:[^'\\]|\\.)*'?|\S+)", re.
 _URL_USERINFO = re.compile(r"(\b[a-z][a-z0-9+.\-]*://[^:/?#@\s]*:)[^@\s]*@", re.I)
 
 
-# The hook's ``_quiet_outage_duplicates`` matches on this prefix; ``_fail``'s
-# ERROR format string starts with it.
-OUTAGE_LOG_PREFIX = "popoto Postgres backend unavailable ("
-
 _URL_SPAN = re.compile(r"\b[a-z][a-z0-9+.\-]*://\S+", re.I)
 
 
@@ -885,6 +881,11 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 
 
 # -- the backend --------------------------------------------------------------
+
+
+# The hook's ``_quiet_outage_duplicates`` matches on this prefix;
+# ``PostgresBackend._fail``'s ERROR format string starts with it.
+OUTAGE_LOG_PREFIX = "popoto Postgres backend unavailable ("
 
 
 class PostgresBackend(

@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `popoto-migrate-redis-to-postgres` exit codes (#832): an unreachable or
   unusable Postgres now exits `4` with one `UNREACHABLE:` line (was `1` with a
   traceback), and an unparseable Postgres DSN exits `2` with `REFUSED:` (was
-  `1` with a traceback). `1` is again only a verification mismatch.
+  `1` with a traceback).
 - `popoto-transfer`: a transfer started on DB 0 whose `--model` module rebinds
   the global client to DB N≠0 is no longer refused -- it no longer touches
   database 0; any remaining DB-0 command is still refused by the pool guard.
