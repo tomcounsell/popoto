@@ -7,7 +7,7 @@ created: 2026-10-09
 tracking: https://github.com/tomcounsell/popoto/issues/832
 last_comment_id:
 revision_applied: true
-revision_applied_at: 2026-10-09T09:32:43Z
+revision_applied_at: 2026-10-09T09:41:42Z
 ---
 
 # Post-1.10.0 polish: short-password redaction, migration exit code, hook stderr
@@ -262,6 +262,8 @@ Migration on dead Postgres -> `_connect*` raises `PostgresUnreachable` (or the b
 - [ ] `tests/postgres/test_postgres_outage.py::test_error_is_logged_once_per_window`: UPDATE. Today it filters `r.name == "POPOTO.postgres"`, which hides the `POPOTO-REDIS_DB` duplicate (spike-3). Widen it to `caplog.at_level(logging.ERROR)` with no logger argument, and count records at any logger whose `getMessage()` contains `"unavailable"`. Expect 1 after three failing calls, and 2 after one more with the window at 0.
 - [ ] `tests/postgres/test_postgres_harness.py::test_the_hook_survives_postgres_down_and_says_which_backend`: UPDATE. Add `lines = run.stderr.splitlines()`, `assert len(lines) == 1, run.stderr`, and `assert lines[0].startswith("popoto memory injected_read failed (backend: postgres): ")`. Also assert that `h.memory_log` has exactly one line, containing `last connection attempt`. Before adding the memory-log assertion, read `harness_e2e.Harness` to confirm the attribute name.
 - [ ] `tests/postgres/test_postgres_harness.py::test_the_hook_fails_open_within_its_budget_on_a_silent_postgres` and `::test_the_hook_fails_open_within_its_budget_on_a_locked_table`: UPDATE. Add the same one-line-stderr assertion. The locked-table case goes through `_fail` with a statement timeout and no pool retry, so it pins the library half (`log=False`) independently of the psycopg.pool half.
+  - **Before adding the assertion, list each case's actual stderr** (second critique, nit a). The spikes only measured the refused-port case. For the silent server (connect timeout and `PoolTimeout`) and the locked table (statement timeout), the stderr records have not been observed. Run each test once on `main` with `print(run.stderr)` and once with the fix. Record every line and its logger in the PR description, in the shape of spike-3's table. If a line other than the documented warning survives the fix (for example a `psycopg.pool` `couldn't stop thread` record at pool close, which is a WARNING and so is covered by (a)), decide explicitly: either the fix covers it, or the test asserts the documented warning is the *last* line and the PR says why. Never weaken the assertion silently.
+  - The validator runs SC8's three reverts against these two tests as well as the refused-port one. It records which reverts turn each test red. A revert that leaves one of them green is expected only where the PR's stderr listing explains why (for example, the locked-table case has no pool retry, so the `psycopg.pool` revert may leave it green).
 - All other `_LEAK_CASES` tests: unchanged, and they must stay green. That is the "keep the leak tests green" acceptance item.
 
 
@@ -306,7 +308,7 @@ No agent integration required. The hook and the migration CLI are existing entry
 
 ## Documentation
 
-- [ ] `docs/features/redis-to-postgres-migration.md`, "Exit codes and refusals": add a row `4`, "Postgres could not be used (connect, auth or missing-database failure, or an outage mid-load). One `UNREACHABLE:` line. Any rows already loaded are kept; fix the connection and rerun with `--resume` and the same `--run-dir`." Add "a Postgres DSN that cannot be parsed" to the row `2` cause list, saying to fix the DSN and rerun with `--resume` and the same `--run-dir` (the failed run already claimed it; critique nit 5).
+- [ ] `docs/features/redis-to-postgres-migration.md`, "Exit codes and refusals": add a row `4`, "Postgres could not be used (connect, auth or missing-database failure, an outage mid-load, or the Postgres driver is not installed). One `UNREACHABLE:` line. Any rows already loaded are kept; fix the connection and rerun with `--resume` and the same `--run-dir`." Add "a Postgres DSN that cannot be parsed" to the row `2` cause list, saying to fix the DSN and rerun with `--resume` and the same `--run-dir` (the failed run already claimed it; critique nit 5). "Backend not configured" belongs in row `2`, not row `4`, and the doc should not list it under `4`: the tool reads `POPOTO_POSTGRES_URL` itself and refuses an unset one with `MigrationRefused` (`migrate_redis_to_postgres/__init__.py:3316-3317`), and it never calls `backend_from_env()`, so the backend's "not set" `BackendUnavailableError` (`backends/postgres/__init__.py:251`) cannot reach exit 4 (verified at revision time; second critique, nit c).
 - [ ] `docs/features/postgres-backend.md` (~line 2080, "The outage is logged at ERROR once per ..."): add that the raised `BackendUnavailableError` does not log again, so a host app's logs carry one outage line per window.
 - [ ] `docs/features/harness-integration.md` (~line 338): the contract text is already right. Add one sentence saying the hook process does not print `psycopg.pool`'s retry warnings or the backend's own outage line, because the hook's warning carries the same error.
 - [ ] `CHANGELOG.md` `[Unreleased]`: under `### Fixed`, redaction scope and one-line hook stderr plus the once-per-window outage log. Under `### Changed` (critique nit 4), the exit-code contract change naming old and new codes: unreachable/unusable Postgres 1 (traceback) -> 4 (`UNREACHABLE:`), and unparseable DSN 1 (traceback) -> 2 (`REFUSED:`). Each entry links #832.
@@ -324,6 +326,11 @@ Each criterion names the test that proves it and the revert that turns that test
 
   *Ablation:* restoring the bare `message.replace` loop turns it red (spike-1 outputs).
 - [ ] **SC2, DSN-shaped spellings are still redacted, including multi-`@`.** The updated `test_redact_removes_the_dsn_password_from_a_message`. *Ablation:* dropping the URL-span spelling pass (leaving only `_URL_USERINFO`) leaves `ss:w/rd@db/agents` in the output, and the test goes red.
+- [ ] **SC2b, a quoted DSN keeps its host, database and username with a short password.** In `test_redact_leaves_prose_alone_for_a_short_password` (or a sibling test), assert:
+  - `_redact("x postgresql://u:a@data.example/a y", "postgresql://u:a@h/d") == "x postgresql://u:***@data.example/a y"`
+  - `_redact("x postgresql://app:a@data:5432/app y", "postgresql://app:a@h/d") == "x postgresql://app:***@data:5432/app y"`
+
+  *Ablations:* replacing the spellings across the whole span (no `rpartition("@")`) gives `x postgresql://u:***@d***t***.ex***mple/*** y`, and the test goes red. Replacing in everything before the last `@` (no `partition(":")` of the userinfo) gives `x postgresql://***pp:***@data:5432/app y`, and the second assertion goes red. Both outputs were prototyped at revision time.
 - [ ] **SC3, no leak regresses.** All `test_a_connection_error_never_contains_the_password[*]` and `test_an_async_connection_error_never_contains_the_password[*]` cases are green.
 - [ ] **SC4, exit 4 on an unreachable Postgres.** New `tests/postgres/test_migrate_redis_to_postgres.py::test_an_unreachable_postgres_exits_4_with_one_line`. It uses a fake RDB (a file starting `REDIS0011`), a fixture model, and `POPOTO_POSTGRES_URL=postgresql://app:a@127.0.0.1:1/agents`, then calls `mig.main([...])`. It asserts:
   - the return value is 4;
@@ -332,6 +339,12 @@ Each criterion names the test that proves it and the revert that turns that test
   - `Oper***` does not appear.
 
   It then reruns with `--resume` and the same `--run-dir`, and asserts the return value is 4 again (not 2), which proves the hint is actionable. *Ablation:* deleting the `except (PostgresUnreachable, BackendUnavailableError)` clause makes `main` raise, and the test goes red. Deleting only the `_connect_autocommit` wrap lets a raw `psycopg.OperationalError` escape, and the test also goes red.
+- [ ] **SC4b, a multi-line connect error becomes one line, on any platform.** New unit test `tests/postgres/test_migrate_redis_to_postgres.py::test_a_multi_line_connect_error_is_one_line`. It monkeypatches `psycopg.connect` to raise `psycopg.OperationalError("a\n\tb")` and calls `_connect` and `_connect_autocommit` with a parseable DSN. For each one it asserts that `PostgresUnreachable` is raised, its `str()` contains no `\n` or `\t`, and it ends with `OperationalError: a b`. This pins concern 1 without depending on which libpq wording the CI host prints. *Ablation:* building the message from `str(exc)` instead of the collapsed text turns it red.
+- [ ] **SC4c, a missing driver exits 4, with or without a maintenance DSN.** New unit test `test_a_missing_driver_is_unreachable`. It does two things, and both are needed:
+  - It hides the driver with `monkeypatch.setitem(sys.modules, "psycopg", None)`.
+  - It monkeypatches `popoto.backends.postgres._import_psycopg` to raise the real `BackendUnavailableError` install-hint message.
+
+  With only the patch, a bare `import psycopg` still succeeds and `_require_parseable_dsn` then raises the patched error, so the test cannot tell the two import styles apart. The wraps must look `_import_psycopg` up at call time (function-local import, as `_require_parseable_dsn` is today), so the patch reaches them. Call `mig.main([...])` without a maintenance DSN. Assert the return value is 4, and that stderr starts `UNREACHABLE:` and contains `pip install`. *Ablation:* restoring the bare `import psycopg` in `_connect_autocommit` gives an `ImportError` traceback, and the test goes red.
 - [ ] **SC5, the maintenance-DSN path also exits 4.** Same test file, `test_an_unreachable_main_dsn_with_a_maintenance_dsn_exits_4`, with `POPOTO_POSTGRES_MAINTENANCE_URL` on port 2. *Ablation:* removing `BackendUnavailableError` from the `except` tuple turns it red (spike-2's traceback).
 - [ ] **SC6, an unparseable DSN is `REFUSED`.** `test_an_unparseable_postgres_dsn_is_refused` (`postgresql://app:Pa%zz@127.0.0.1:1/agents`): returns 2, stderr has `REFUSED: invalid connection string`, and `Pa%zz` does not appear. *Ablation:* removing the `_require_parseable_dsn` -> `MigrationRefused` mapping turns it red.
 - [ ] **SC6b, an unparseable main DSN is `REFUSED` even with a maintenance DSN set.** `test_an_unparseable_postgres_dsn_with_a_maintenance_dsn_is_refused`: same `Pa%zz` main DSN plus `POPOTO_POSTGRES_MAINTENANCE_URL=postgresql://app:b@127.0.0.1:2/agents`. Asserts return 2 (not 4), stderr starts `REFUSED: invalid connection string`, and `Pa%zz` does not appear. *Ablation:* removing the new `_require_parseable_dsn` calls at the top of `_check_maintenance_dsn` routes the parse failure through `_open_dedicated` -> `_fail`, returns 4, and the test goes red.
@@ -379,7 +392,7 @@ Each criterion names the test that proves it and the revert that turns that test
 - **Assigned To**: polish-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Implement Technical Approach 1, update `test_redact_removes_the_dsn_password_from_a_message`, and add `test_redact_leaves_prose_alone_for_a_short_password`.
+- Implement Technical Approach 1 (spelling pass limited to the userinfo password part: last `@`, first `:` after `://`). Update `test_redact_removes_the_dsn_password_from_a_message`, and add `test_redact_leaves_prose_alone_for_a_short_password` with the SC1 and SC2b assertions.
 
 ### 2. Migration exit code 4
 - **Task ID**: build-migrate-exit
@@ -389,7 +402,7 @@ Each criterion names the test that proves it and the revert that turns that test
 - **Assigned To**: polish-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Implement Technical Approach 2, including the parse check at the top of `_check_maintenance_dsn`, and add the SC4-SC6b tests. Pick a model from `tests/postgres/migrate_fixtures.py` and put each `--run-dir` under `tmp_path`.
+- Implement Technical Approach 2, including the parse check at the top of `_check_maintenance_dsn`, the shared whitespace-collapsing helper, and `_import_psycopg()` in both connect wraps. Add the SC4-SC6b tests, including SC4b and SC4c. Pick a model from `tests/postgres/migrate_fixtures.py` and put each `--run-dir` under `tmp_path`.
 
 ### 3. Hook stderr and the once-per-window log
 - **Task ID**: build-hook-stderr
@@ -399,7 +412,7 @@ Each criterion names the test that proves it and the revert that turns that test
 - **Assigned To**: polish-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Implement Technical Approach 3 (`BackendError(log=)`, whitespace collapse in `_fail`, `OUTAGE_LOG_PREFIX` with a `getMessage()` prefix filter, `_quiet_outage_duplicates`) and the test updates.
+- Implement Technical Approach 3 (`BackendError(log=)`, whitespace collapse in `_fail`, `OUTAGE_LOG_PREFIX` defined directly above `_fail` with a `getMessage()` prefix filter, `_quiet_outage_duplicates`) and the test updates. Before asserting one line in the silent-server and locked-table tests, list their observed stderr records (Test Impact).
 
 ### 4. Ablation validation
 - **Task ID**: validate-ablations
@@ -407,7 +420,7 @@ Each criterion names the test that proves it and the revert that turns that test
 - **Assigned To**: polish-validator
 - **Agent Type**: validator
 - **Parallel**: false
-- For each ablation in SC1, SC2, SC4-SC6b and SC7-SC8: apply the revert, run the named test, confirm it is red, then restore. Run with `POSTGRES_URL` set so the `pg`-fixture hook tests do not skip. A skip is not a red.
+- For each ablation in SC1, SC2, SC2b, SC4-SC6b (including SC4b and SC4c) and SC7-SC8: apply the revert, run the named test, confirm it is red, then restore. Run with `POSTGRES_URL` set so the `pg`-fixture hook tests do not skip. A skip is not a red.
 
 ### 5. Documentation
 - **Task ID**: document-feature
@@ -449,6 +462,11 @@ Each criterion names the test that proves it and the revert that turns that test
 | NIT | critique | `record.msg is OUTAGE_LOG_FORMAT` identity filter is brittle. | Technical Approach 3 (b); Task 3 | Prefix match on `record.getMessage()` against `OUTAGE_LOG_PREFIX`. |
 | NIT | critique | CHANGELOG should list the exit-code changes under Changed. | Documentation (CHANGELOG item) | `### Changed`: 1 -> 4 for unreachable, 1 -> 2 for unparseable DSN. |
 | NIT | critique | Exit-2 docs row should say how to continue after fixing the DSN. | Documentation (migration doc item) | Rerun with `--resume` and the same `--run-dir`. |
+| CONCERN | critique (2nd) | SC4's one-line `UNREACHABLE` assertion likely fails on Linux CI: `_connect`/`_connect_autocommit` call `psycopg.connect` directly, never reach `_fail`'s whitespace collapse, and Linux libpq appends `\n\tIs the server running on that host and accepting TCP/IP connections?`. | Technical Approach 2 (collapse bullet); SC4b; Failure Path; Task 2 | Verified: both wraps are a bare `psycopg.connect` (:1528, :1693). One shared helper builds `" ".join(str(exc).split())` before `_redact`, as at `backends/postgres/__init__.py:430`. SC4b patches `psycopg.connect` to raise `OperationalError("a\n\tb")`. Revert: use `str(exc)` -> red. |
+| CONCERN | critique (2nd) | A short password still garbles a quoted DSN: password `a` turns `postgresql://u:a@data:5432/app` into `postgresql://u:***@d***t***:5432/***pp`. | Technical Approach 1 (password-part bullet); SC2b; Task 1 | Prototyped. The suggested `rpartition("@")` fix still garbles a username containing the password (`***pp:***@`), so the spelling pass is limited to the userinfo password part (first `:` after `://` up to the last `@`). Spans with no `@` are untouched. The multi-`@` spike-1 case still passes. Two assertions, two reverts. |
+| NIT | critique (2nd) | The builder must list stderr records for the silent-server and locked-table hook cases before asserting one line, and the validator must run SC8's reverts on them. | Test Impact (silent/locked bullet); Task 3 | List each logger and line in the PR. Any surviving extra line needs an explicit decision, never a silently weakened assertion. Record which reverts turn each test red. |
+| NIT | critique (2nd) | If the log filter stays, keep `OUTAGE_LOG_PREFIX` next to the format string, or pick the simpler CRITICAL-level alternative. | Technical Approach 3 ((b) decision bullet); Task 3 | Keep the filter, because CRITICAL would also hide the `recovered after` WARNING. Define the constant directly above `_fail`, and have the `logger.error` format start with it. |
+| NIT | critique (2nd) | Exit-4 docs row: either list "backend not installed or configured", or state that the migration tool can't reach that case. Verify which. | Technical Approach 2 (`_import_psycopg` bullet); Documentation (migration doc item); SC4c | Verified. "Not installed" reaches exit 4 only with a maintenance DSN set (through `_import_psycopg`); without one it is a raw `ImportError`. Both wraps now use `_import_psycopg()`, so it is exit 4 either way and listed in row 4. "Not configured" cannot reach 4 (the tool refuses an unset URL itself, exit 2), so it is not listed. |
 
 ---
 
