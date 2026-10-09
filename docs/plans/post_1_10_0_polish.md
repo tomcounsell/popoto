@@ -81,10 +81,10 @@ code and by running it (Spike Results).
 - `src/popoto/backends/postgres/__init__.py:956-983` -- `_fail()`: throttled `logger.error` (logger `POPOTO.postgres`, line 975) then `return BackendUnavailableError(...)` (line 983).
 - `src/popoto/backends/types.py:73-82` -- `BackendError.__init__` calls `PopotoException.__init__`, which logs at ERROR (`src/popoto/redis_db.py:174-176`, logger `POPOTO-REDIS_DB`).
 - `src/popoto/migrate_redis_to_postgres/__init__.py:3807-3858` -- `main()`: catches `InventoryStop` (3), `MigrationRefused` (2), `KeyboardInterrupt` (130); anything else escapes as a traceback, exit 1.
-- `src/popoto/migrate_redis_to_postgres/__init__.py:1528-1535` `_connect`, `1693-1699` `_connect_autocommit` -- raw `psycopg.connect`, no exception mapping.
+- `src/popoto/migrate_redis_to_postgres/__init__.py:1528-1535` `_connect` (callers: `preflight_target` 1714, `verify` 2803, the load at 3530, the final run-record update at 3594), `1693-1699` `_connect_autocommit` (callers `_main_role` 1561, `_lock_target_schema` 1659) -- raw `psycopg.connect`, no exception mapping.
 - `src/popoto/migrate_redis_to_postgres/__init__.py:1568-1587` -- `_check_maintenance_dsn` maps only `MaintenanceDsnMismatchError`/`MaintenanceConnectionError`; a dead *main* DSN escapes as `BackendUnavailableError`.
 - `src/popoto/migrate_redis_to_postgres/__init__.py:3330-3341` -- the run directory is claimed (`run.json`) *before* the first Postgres connect (`_lock_target_schema`).
-- `src/popoto/integrations/cli.py:149-182` -- `_cmd_hook`; `183-216` `_bound_postgres_waits` (the precedent for hook-process-only tuning).
+- `src/popoto/integrations/cli.py:149-184` -- `_cmd_hook`; `187-214` `_bound_postgres_waits` (the precedent for hook-process-only tuning).
 - `src/popoto/integrations/service.py:1144-1160` -- `_record_failure`: the one documented `logger.warning` plus the `POPOTO_MEMORY_LOG` line.
 
 **Cited sibling issues/PRs re-checked:**
@@ -192,46 +192,243 @@ All spikes were run directly at plan time against baseline `fe971a44`, with
 
 
 ## Solution
-TBD
+
+### Key Elements
+
+- **Scoped redaction**: `_redact` rewrites only DSN-shaped text. A message with no DSN shape in it passes through byte-for-byte, whatever the password is.
+- **Exit code `4` for an unreachable Postgres**: the migration tool maps a failed connect, and any `BackendUnavailableError`, to `PostgresUnreachable` -> one `UNREACHABLE: ...` stderr line, exit 4. An unparseable DSN becomes `REFUSED` (exit 2).
+- **One stderr line from a hook**: the backend stops double-logging its outage library-wide; the hook process additionally quiets the two outage records that duplicate its own warning.
+
+### Flow
+
+Hook on dead Postgres -> backend `_fail` (throttled log, quiet exception) -> service `_record_failure` (one WARNING + one `POPOTO_MEMORY_LOG` line) -> exit 0, stderr = 1 line.
+
+Migration on dead Postgres -> `_connect*` raises `PostgresUnreachable` (or the backend raises `BackendUnavailableError`) -> `main()` prints `UNREACHABLE: ...` -> exit 4 -> operator reruns with `--resume` and the same `--run-dir`.
+
+### Technical Approach
+
+**1. `_redact` (`src/popoto/backends/postgres/__init__.py:394`).**
+- Remove the whole-message `message.replace(spelling, "***")` loop (lines 410-412).
+- Add a URL-span pattern (`\b[a-z][a-z0-9+.\-]*://\S+`, same scheme shape as `_URL_USERINFO`). For each URL span in the message, replace the parsed password's spellings (`password`, `quote(password, safe="")`, `quote_plus(password)`) with `***` *inside the span only*, via `re.sub` with a function. This keeps spike-1's `postgresql://u:p@ss@h/d` case correct, which `_URL_USERINFO` alone gets wrong (it stops at the first `@`).
+- Then apply `_PASSWORD_KEYWORD` and `_URL_USERINFO` to the whole message, unchanged. `_PASSWORD_KEYWORD` already replaces the whole `password=` value (quoted or bare), so keyword spans need no spelling pass.
+- The unparseable-DSN branch (`return INVALID_DSN_MESSAGE`) is unchanged.
+- Update the docstring: "anything DSN-shaped" replaces "the parsed password itself ... anywhere", and say why (a short password otherwise rewrites prose).
+- Safety argument, verified at plan time: with the bare loop deleted, all 10 runnable `_LEAK_CASES` tests (sync and async, every case) stay green; only the unit test that asserted bare-prose replacement fails (spike in Test Impact). libpq does not echo the password of a DSN it parsed, and `_require_parseable_dsn` withholds the text of one it could not parse.
+
+**2. Migration exit code (`src/popoto/migrate_redis_to_postgres/__init__.py`).**
+- Add `class PostgresUnreachable(MigrationError)` beside `InventoryStop` (~line 169), with a docstring that names exit code 4.
+- `_connect` and `_connect_autocommit`: keep `_require_parseable_dsn(dsn)`, but catch its `psycopg.OperationalError` and raise `MigrationRefused(INVALID_DSN_MESSAGE) from None`. The message is already password-free. Wrap `psycopg.connect(...)` so that `psycopg.OperationalError` raises `PostgresUnreachable(f"could not connect to Postgres ({_describe_dsn(dsn)}): {_redact(...)}")` from the original exception.
+- `main()` (~line 3840): add `except (PostgresUnreachable, BackendUnavailableError) as exc:`, then `print(f"UNREACHABLE: {exc}. Nothing more was written; once Postgres is reachable, rerun with --resume and the same --run-dir.", file=sys.stderr)` and `return 4`. Import `BackendUnavailableError` lazily inside `main` or at module top, following the module's existing import style. This catch also covers the maintenance-DSN probe (spike-2's `_check_maintenance_dsn` traceback) and a backend outage during the load, where `--resume` is already the documented continuation.
+- The `--resume` hint is load-bearing: spike-2 showed the failed run has already claimed `run.json`, so a plain rerun is `REFUSED`.
+- Update `run_migration`'s docstring "Raises" list.
+
+**3. Hook stderr.**
+- *Library, `src/popoto/backends/types.py:80`*: `BackendError.__init__(self, message, *, log: bool = True)`. When `log` is false, set `self.message` and skip `PopotoException.__init__`'s `logger.error`; always set `self.args = (message,)`. *`backends/postgres/__init__.py:983`*: `_fail` returns `BackendUnavailableError(..., log=False)` and a comment explaining that the outage was just logged, throttled, three lines above. This makes the documented "logged at ERROR once per window, however many calls fail" true. No other raise site changes.
+- *Hook process only, `src/popoto/integrations/cli.py`*: a new `_quiet_outage_duplicates()`, called in `_cmd_hook` right after `_bound_postgres_waits()`, with the same `try/except Exception: pass` shape and a docstring in the same style. It does two things:
+  - (a) `logging.getLogger("psycopg.pool").setLevel(logging.ERROR)`. The pool's connect-retry WARNINGs vary from 1 to N lines with timing, and the last attempt's text is already inside the hook's warning.
+  - (b) It adds a `logging.Filter` to `POPOTO.postgres` that drops only the outage record, matched by identity: `record.msg is OUTAGE_LOG_FORMAT`. To make that possible, hoist `_fail`'s format string to a module constant `OUTAGE_LOG_FORMAT` in `backends/postgres/__init__.py`. Every other `POPOTO.postgres` record still reaches stderr.
+- This is the same "only the hook subcommand changes it" rule `_bound_postgres_waits` documents. The MCP server, the Hermes plugin and host applications are untouched by (a) and (b).
+- Result: the hook's stderr is the one `POPOTO.integrations` warning. The full error, including `last connection attempt: ...`, is still in that warning and in the `POPOTO_MEMORY_LOG` line.
+
 
 ## Failure Path Test Strategy
-TBD
+
+### Exception Handling Coverage
+- `_cmd_hook`'s `except Exception: output = None` and `_quiet_outage_duplicates`'s own `except Exception: pass` are unchanged in kind. The observable behavior is pinned by the stderr line-count assertions (exactly one line, and it is the documented warning) plus the existing `POPOTO_MEMORY_LOG` checks.
+- The migration tool's new `except` in `main()` is pinned by exit-code and stderr assertions (below).
+
+### Empty/Invalid Input Handling
+- `_redact` with no password in the DSN, or with a message that has no DSN shape: it must return the message unchanged (asserted).
+- Unparseable DSN for the migration tool: `REFUSED`, exit 2, message is `INVALID_DSN_MESSAGE`, no traceback (asserted).
+
+### Error State Rendering
+- Every new and changed message is asserted verbatim or by prefix: the `UNREACHABLE:` line, the `--resume` hint, the absence of `Traceback`, and the absence of the garbled `***` inside ordinary words.
+
 
 ## Test Impact
-TBD
+
+- [ ] `tests/postgres/test_postgres_outage.py::test_redact_removes_the_dsn_password_from_a_message`: UPDATE. Two assertions pin the old every-occurrence contract and must move to DSN-shaped inputs. Spike: deleting the bare loop turned exactly this test red, and nothing else among the 12 selected.
+  - `_redact("auth failed for s3cr3t-hunter2", dsn) == "auth failed for ***"` becomes `_redact("dsn postgresql://app:s3cr3t-hunter2@db.internal:5432/agents", dsn) == "dsn postgresql://app:***@db.internal:5432/agents"`.
+  - `_redact("bad p%40ss%3Aw%2Frd and p@ss:w/rd", url_form) == "bad *** and ***"` becomes `_redact("a postgresql://app:p@ss:w/rd@db/agents b postgresql://app:p%40ss%3Aw%2Frd@db/agents", url_form) == "a postgresql://app:***@db/agents b postgresql://app:***@db/agents"`. This is the spike-1 multi-`@` case.
+  - The remaining assertions are unchanged.
+- [ ] `tests/postgres/test_postgres_outage.py::test_error_is_logged_once_per_window`: UPDATE. Today it filters `r.name == "POPOTO.postgres"`, which hides the `POPOTO-REDIS_DB` duplicate (spike-3). Widen it to `caplog.at_level(logging.ERROR)` with no logger argument, and count records at any logger whose `getMessage()` contains `"unavailable"`. Expect 1 after three failing calls, and 2 after one more with the window at 0.
+- [ ] `tests/postgres/test_postgres_harness.py::test_the_hook_survives_postgres_down_and_says_which_backend`: UPDATE. Add `lines = run.stderr.splitlines()`, `assert len(lines) == 1, run.stderr`, and `assert lines[0].startswith("popoto memory injected_read failed (backend: postgres): ")`. Also assert that `h.memory_log` has exactly one line, containing `last connection attempt`. Before adding the memory-log assertion, read `harness_e2e.Harness` to confirm the attribute name.
+- [ ] `tests/postgres/test_postgres_harness.py::test_the_hook_fails_open_within_its_budget_on_a_silent_postgres` and `::test_the_hook_fails_open_within_its_budget_on_a_locked_table`: UPDATE. Add the same one-line-stderr assertion. The locked-table case goes through `_fail` with a statement timeout and no pool retry, so it pins the library half (`log=False`) independently of the psycopg.pool half.
+- All other `_LEAK_CASES` tests: unchanged, and they must stay green. That is the "keep the leak tests green" acceptance item.
+
 
 ## Rabbit Holes
-TBD
+
+- **Reordering `run_migration` so the run directory is claimed only after the first successful connect.** It would remove the need for `--resume`, but it reshuffles the refusal order that the docs and existing tests pin. The `--resume` hint is enough.
+- **Mapping every `psycopg.OperationalError` raised mid-statement during the load to exit 4.** Only connect failures and `BackendUnavailableError` are mapped. A statement that fails on a live connection is a different failure and keeps today's documented "underlying error of a failed load" behavior.
+- **Making `PopotoException` stop auto-logging in general.** Many call sites rely on it. Only `_fail`'s raise opts out, because it has just logged the same text.
+- **A minimum-length threshold for bare-text redaction.** That would be a magic number, and it still garbles a short password that happens to be a whole word. Scoping by DSN shape avoids the question entirely.
+
 
 ## Risks
-TBD
+
+### Risk 1: A message echoes a parsed password outside any DSN shape
+**Impact:** after the change, that password would print unredacted.
+**Mitigation:** libpq does not echo the password of a DSN it parsed, and an unparseable DSN's text is withheld whole (`INVALID_DSN_MESSAGE`). Every `_LEAK_CASES` surface (str, repr, traceback, health, logs; sync and async) stays green with the bare loop removed, as measured at plan time. The URL-span spelling pass still catches the password wherever a DSN is quoted.
+
+### Risk 2: Quieting `psycopg.pool` in the hook hides a non-outage pool warning
+**Impact:** an operator reading only hook stderr misses pool chatter.
+**Mitigation:** this applies only to the hook subprocess, whose documented stderr contract is a single warning. Any failure that matters still reaches `_record_failure` (the warning plus `POPOTO_MEMORY_LOG`). The MCP server and in-process callers keep full logging.
+
 
 ## Race Conditions
-TBD
+
+No race conditions identified. The logging changes run once per hook process before any backend use, and the exit-code mapping is synchronous in `main()`.
+
 
 ## No-Gos (Out of Scope)
-TBD
+
+Nothing deferred -- every relevant item is in scope for this plan. (The items listed under Rabbit Holes are deliberate non-changes to existing documented behavior, not deferred work.)
+
 
 ## Update System
-TBD
+
+No update system changes required. This is library code shipped in the next release, with no new dependencies, config or migration steps.
+
 
 ## Agent Integration
-TBD
+
+No agent integration required. The hook and the migration CLI are existing entry points, and their behavior changes in place.
+
 
 ## Documentation
-TBD
+
+- [ ] `docs/features/redis-to-postgres-migration.md`, "Exit codes and refusals": add a row `4`, "Postgres could not be reached (connect failed or the backend reported an outage). One `UNREACHABLE:` line. Nothing more was written; rerun with `--resume` and the same `--run-dir` once it is reachable." Add "a Postgres DSN that cannot be parsed" to the row `2` cause list.
+- [ ] `docs/features/postgres-backend.md` (~line 2080, "The outage is logged at ERROR once per ..."): add that the raised `BackendUnavailableError` does not log again, so a host app's logs carry one outage line per window.
+- [ ] `docs/features/harness-integration.md` (~line 338): the contract text is already right. Add one sentence saying the hook process does not print `psycopg.pool`'s retry warnings or the backend's own outage line, because the hook's warning carries the same error.
+- [ ] `CHANGELOG.md` `[Unreleased]` / `### Fixed`: three entries (redaction scope, exit code 4 with `REFUSED` for an unparseable DSN, one-line hook stderr plus the once-per-window outage log), each linking #832.
+- [ ] Docstrings: `_redact`, `BackendError.__init__`, `PostgresUnreachable`, `_quiet_outage_duplicates`, `run_migration`.
+
 
 ## Success Criteria
-TBD
+
+Each criterion names the test that proves it and the revert that turns that test red.
+
+- [ ] **SC1, prose is never rewritten.** New `tests/postgres/test_postgres_outage.py::test_redact_leaves_prose_alone_for_a_short_password` (DSN `postgresql://u:a@h:1/d`) asserts three things:
+  - `"PoolTimeout: couldn't get a connection after 5.00 sec"` comes back unchanged.
+  - `"OperationalError: connection failed"` comes back unchanged.
+  - `"host=h password=a b"` becomes `"host=h password=*** b"`.
+
+  *Ablation:* restoring the bare `message.replace` loop turns it red (spike-1 outputs).
+- [ ] **SC2, DSN-shaped spellings are still redacted, including multi-`@`.** The updated `test_redact_removes_the_dsn_password_from_a_message`. *Ablation:* dropping the URL-span spelling pass (leaving only `_URL_USERINFO`) leaves `ss:w/rd@db/agents` in the output, and the test goes red.
+- [ ] **SC3, no leak regresses.** All `test_a_connection_error_never_contains_the_password[*]` and `test_an_async_connection_error_never_contains_the_password[*]` cases are green.
+- [ ] **SC4, exit 4 on an unreachable Postgres.** New `tests/postgres/test_migrate_redis_to_postgres.py::test_an_unreachable_postgres_exits_4_with_one_line`. It uses a fake RDB (a file starting `REDIS0011`), a fixture model, and `POPOTO_POSTGRES_URL=postgresql://app:a@127.0.0.1:1/agents`, then calls `mig.main([...])`. It asserts:
+  - the return value is 4;
+  - exactly one stderr line starts `UNREACHABLE: ` and contains `--resume`;
+  - `Traceback` does not appear;
+  - `Oper***` does not appear.
+
+  It then reruns with `--resume` and the same `--run-dir`, and asserts the return value is 4 again (not 2), which proves the hint is actionable. *Ablation:* deleting the `except (PostgresUnreachable, BackendUnavailableError)` clause makes `main` raise, and the test goes red. Deleting only the `_connect_autocommit` wrap lets a raw `psycopg.OperationalError` escape, and the test also goes red.
+- [ ] **SC5, the maintenance-DSN path also exits 4.** Same test file, `test_an_unreachable_main_dsn_with_a_maintenance_dsn_exits_4`, with `POPOTO_POSTGRES_MAINTENANCE_URL` on port 2. *Ablation:* removing `BackendUnavailableError` from the `except` tuple turns it red (spike-2's traceback).
+- [ ] **SC6, an unparseable DSN is `REFUSED`.** `test_an_unparseable_postgres_dsn_is_refused` (`postgresql://app:Pa%zz@127.0.0.1:1/agents`): returns 2, stderr has `REFUSED: invalid connection string`, and `Pa%zz` does not appear. *Ablation:* removing the `_require_parseable_dsn` -> `MigrationRefused` mapping turns it red.
+- [ ] **SC7, the outage is logged once per window library-wide.** The updated `test_error_is_logged_once_per_window`. *Ablation:* dropping `log=False` at `_fail` gives 4 records instead of 1, and the test goes red.
+- [ ] **SC8, the hook writes exactly one stderr line.** The three updated hook tests in `tests/postgres/test_postgres_harness.py`. *Ablations:* each one alone turns the refused-port test red:
+  - dropping the `psycopg.pool` level change (>= 1 pool warning: a refused port fails every attempt);
+  - dropping the `POPOTO.postgres` filter (the first outage in a fresh process always logs);
+  - dropping `log=False`.
+- [ ] Tests pass (`/do-test`), including `tests/postgres` with `POSTGRES_URL` set.
+- [ ] Documentation updated (`/do-docs`).
+- [ ] `ruff check src/`, `black --check src/ tests/`, and `scripts/mypy_ratchet.py` all pass.
+
 
 ## Team Orchestration
-TBD
+
+### Team Members
+
+- **Builder (polish)**
+  - Name: polish-builder
+  - Role: implement all three fixes and their tests
+  - Agent Type: builder
+  - Domain: security/untrusted-input (redaction)
+  - Resume: true
+
+- **Validator (polish)**
+  - Name: polish-validator
+  - Role: run the ablations in Success Criteria and confirm each one turns its named test red, then restore
+  - Agent Type: validator
+  - Resume: true
+
+- **Documentarian**
+  - Name: polish-docs
+  - Role: Documentation section items
+  - Agent Type: documentarian
+  - Resume: true
+
 
 ## Step by Step Tasks
-TBD
+
+### 1. Scoped redaction
+- **Task ID**: build-redact
+- **Depends On**: none
+- **Validates**: `tests/postgres/test_postgres_outage.py`
+- **Informed By**: spike-1 (multi-`@` case needs the in-span spelling pass)
+- **Assigned To**: polish-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Implement Technical Approach 1, update `test_redact_removes_the_dsn_password_from_a_message`, and add `test_redact_leaves_prose_alone_for_a_short_password`.
+
+### 2. Migration exit code 4
+- **Task ID**: build-migrate-exit
+- **Depends On**: none
+- **Validates**: `tests/postgres/test_migrate_redis_to_postgres.py` (SC4-SC6 tests)
+- **Informed By**: spike-2 (three entry paths; run dir is claimed first)
+- **Assigned To**: polish-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Implement Technical Approach 2 and add the SC4-SC6 tests. Pick a model from `tests/postgres/migrate_fixtures.py` and put each `--run-dir` under `tmp_path`.
+
+### 3. Hook stderr and the once-per-window log
+- **Task ID**: build-hook-stderr
+- **Depends On**: none
+- **Validates**: `tests/postgres/test_postgres_outage.py::test_error_is_logged_once_per_window`, `tests/postgres/test_postgres_harness.py`
+- **Informed By**: spike-3 (four loggers; the pool warning count varies)
+- **Assigned To**: polish-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Implement Technical Approach 3 (`BackendError(log=)`, `OUTAGE_LOG_FORMAT`, `_quiet_outage_duplicates`) and the test updates.
+
+### 4. Ablation validation
+- **Task ID**: validate-ablations
+- **Depends On**: build-redact, build-migrate-exit, build-hook-stderr
+- **Assigned To**: polish-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- For each ablation in SC1, SC2 and SC4-SC8: apply the revert, run the named test, confirm it is red, then restore. Run with `POSTGRES_URL` set so the `pg`-fixture hook tests do not skip. A skip is not a red.
+
+### 5. Documentation
+- **Task ID**: document-feature
+- **Depends On**: validate-ablations
+- **Assigned To**: polish-docs
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Every item in the Documentation section.
+
+### 6. Final Validation
+- **Task ID**: validate-all
+- **Depends On**: document-feature
+- **Assigned To**: polish-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run the Verification table and confirm every Success Criterion.
+
 
 ## Verification
-TBD
+
+| Check | Command | Expected |
+|-------|---------|----------|
+| PG-only tests pass | `POSTGRES_URL=postgresql://localhost:5432/postgres pytest tests/postgres/test_postgres_outage.py tests/postgres/test_postgres_harness.py tests/postgres/test_migrate_redis_to_postgres.py -q` | exit code 0 |
+| Full suite | `pytest -q` | exit code 0 |
+| Lint clean | `ruff check src/` | exit code 0 |
+| Format clean | `black --check src/ tests/` | exit code 0 |
+| Type ratchet | `scripts/mypy_ratchet.py` | exit code 0 |
+| Bare-replace loop gone | `grep -c 'message = message.replace(spelling' src/popoto/backends/postgres/__init__.py` | match count == 0 |
+| Exit code 4 documented | `grep -c '^| .4. |' docs/features/redis-to-postgres-migration.md` | output > 0 |
+
 
 ## Critique Results
 | Severity | Critic | Finding | Addressed By | Implementation Note |
@@ -240,4 +437,11 @@ TBD
 ---
 
 ## Open Questions
-TBD
+
+None blocking. One judgment call is recorded for the critic: the third
+stderr line is fixed in the library (`_fail` stops double-logging) rather
+than only in the hook process. That changes what a host application's logs
+show during an outage (one ERROR per window instead of one per failed call).
+This matches the documented contract, but it is the one change here visible
+outside the hook and the migration CLI.
+
