@@ -176,6 +176,13 @@ class InventoryStop(MigrationError):
         self.reasons = list(reasons)
 
 
+class PostgresUnreachable(MigrationError):
+    """Postgres could not be used: a connect failed (unreachable, refused,
+    authentication, missing database) or the driver is not installed. Exit
+    code 4. A DSN libpq cannot parse is a :class:`MigrationRefused` (2)
+    instead. Rows already loaded are kept; ``--resume`` continues the run."""
+
+
 # -- the throwaway source ------------------------------------------------------
 
 READ_ONLY_COMMANDS = frozenset(
@@ -1525,14 +1532,38 @@ def _qi(name: str) -> str:
     return str(quote_ident(name))
 
 
+def _open_connection(dsn: str, *, autocommit: bool) -> Any:
+    """``psycopg.connect(dsn)`` with the failures the tool reports mapped: a
+    DSN libpq cannot parse is :class:`MigrationRefused` (its error quotes the
+    password fragment, so the text is withheld), a failed connect is
+    :class:`PostgresUnreachable` with the redacted, single-line error. A
+    missing driver raises the backend's ``BackendUnavailableError`` (also exit
+    4). The one place both connect helpers share, so they cannot drift."""
+    from ..backends.postgres import (
+        INVALID_DSN_MESSAGE,
+        _describe_dsn,
+        _import_psycopg,
+        _redact,
+        _require_parseable_dsn,
+    )
+
+    psycopg = _import_psycopg()
+    try:
+        _require_parseable_dsn(dsn)
+    except psycopg.OperationalError:
+        raise MigrationRefused(INVALID_DSN_MESSAGE) from None
+    try:
+        return psycopg.connect(dsn, autocommit=autocommit)
+    except psycopg.OperationalError as exc:
+        text = " ".join(str(exc).split())
+        raise PostgresUnreachable(
+            "could not connect to Postgres ("
+            f"{_describe_dsn(dsn)}): " + _redact(f"{type(exc).__name__}: {text}", dsn)
+        ) from exc
+
+
 def _connect(dsn: str) -> Any:
-    import psycopg
-
-    from ..backends.postgres import _require_parseable_dsn
-
-    # libpq's parse error for a malformed DSN quotes the password fragment.
-    _require_parseable_dsn(dsn)
-    return psycopg.connect(dsn, autocommit=False)
+    return _open_connection(dsn, autocommit=False)
 
 
 def _ensure_tool_tables(conn: Any, schema: str, grant_to: Optional[str] = None) -> None:
@@ -1574,11 +1605,20 @@ def _check_maintenance_dsn(
     if maintenance_dsn is None:
         return
     from ..backends.postgres import (
+        INVALID_DSN_MESSAGE,
+        _import_psycopg,
+        _require_parseable_dsn,
         MaintenanceConnectionError,
         MaintenanceDsnMismatchError,
         PostgresBackend,
     )
 
+    psycopg = _import_psycopg()
+    for candidate in (dsn, maintenance_dsn):
+        try:
+            _require_parseable_dsn(candidate)
+        except psycopg.OperationalError:
+            raise MigrationRefused(INVALID_DSN_MESSAGE) from None
     try:
         PostgresBackend(
             dsn=dsn, schema=schema, maintenance_dsn=maintenance_dsn
@@ -1691,12 +1731,7 @@ def _release_schema_lock(conn: Any, schema: str) -> None:
 
 
 def _connect_autocommit(dsn: str) -> Any:
-    import psycopg
-
-    from ..backends.postgres import _require_parseable_dsn
-
-    _require_parseable_dsn(dsn)
-    return psycopg.connect(dsn, autocommit=True)
+    return _open_connection(dsn, autocommit=True)
 
 
 def preflight_target(
@@ -3284,8 +3319,10 @@ def run_migration(config: MigrationConfig) -> MigrationReport:
     """Run one snapshot end to end; return the signed-off report.
 
     Raises :class:`MigrationRefused` (nothing read or written),
-    :class:`InventoryStop` (the snapshot was read, nothing written), or the
-    underlying error of a failed load -- after which ``--resume`` with the
+    :class:`InventoryStop` (the snapshot was read, nothing written),
+    :class:`PostgresUnreachable` or ``BackendUnavailableError`` (Postgres
+    could not be connected to or the driver is missing; exit 4, continue with
+    ``--resume``), or the underlying error of a failed load -- after which ``--resume`` with the
     same run directory continues where the last committed batch ended."""
     from ..backends.postgres import PostgresBackend, grant_main_role_from_env
 
@@ -3805,6 +3842,8 @@ def console_main(argv: Optional[Sequence[str]] = None) -> int:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    from ..backends.types import BackendUnavailableError
+
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     config = MigrationConfig(
@@ -3843,6 +3882,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except MigrationRefused as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 2
+    except (PostgresUnreachable, BackendUnavailableError) as exc:
+        print(
+            f"UNREACHABLE: Postgres could not be used: {exc}. Any rows "
+            "already loaded are kept; fix the connection and rerun with "
+            "--resume and the same --run-dir.",
+            file=sys.stderr,
+        )
+        return 4
     except KeyboardInterrupt as exc:
         print(
             f"INTERRUPTED ({exc or 'signal 2'}): the throwaway server is stopped "

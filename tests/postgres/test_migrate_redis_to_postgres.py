@@ -2997,3 +2997,115 @@ def test_a_model_without_a_key_field_migrates_clean(tmp_path, monkeypatch, pg, a
     assert {pk: tuple(v) for pk, v in rows.items()} == {
         f"MigAutoKeyed:{k}": (k, i) for k, i in ids.items()
     }
+
+
+# -- #832: an unusable Postgres is exit 4, an unparseable DSN is exit 2 ----------
+
+
+def _dead_postgres_args(tmp_path):
+    rdb = tmp_path / "dump.rdb"
+    rdb.write_bytes(b"REDIS0011")
+    return [
+        "--rdb",
+        str(rdb),
+        "--run-dir",
+        str(tmp_path / "run"),
+        "--source-id",
+        "t832",
+        "--mapping",
+        "tests.postgres.migrate_fixtures:MAPPINGS",
+        "--redis-server",
+        REDIS_SERVER,
+    ]
+
+
+def _dead_env(monkeypatch, dsn, maintenance=None):
+    monkeypatch.setenv("POPOTO_POSTGRES_URL", dsn)
+    if maintenance is None:
+        monkeypatch.delenv("POPOTO_POSTGRES_MAINTENANCE_URL", raising=False)
+    else:
+        monkeypatch.setenv("POPOTO_POSTGRES_MAINTENANCE_URL", maintenance)
+
+
+def test_an_unreachable_postgres_exits_4_with_one_line(tmp_path, monkeypatch, capsys):
+    args = _dead_postgres_args(tmp_path)
+    _dead_env(monkeypatch, "postgresql://app:a@127.0.0.1:1/agents")
+    assert mig.main(args) == 4
+    err = capsys.readouterr().err.strip()
+    assert len(err.splitlines()) == 1, err
+    assert err.startswith("UNREACHABLE: Postgres could not be used: ")
+    assert "--resume" in err
+    assert "Traceback" not in err
+    assert "Oper***" not in err
+    # The failed run already claimed its directory; --resume is the way on.
+    assert mig.main(args + ["--resume"]) == 4
+    assert "UNREACHABLE" in capsys.readouterr().err
+
+
+def test_a_multi_line_connect_error_is_one_line(monkeypatch):
+    import psycopg
+
+    def boom(*a, **k):
+        raise psycopg.OperationalError("a\n\tb")
+
+    monkeypatch.setattr(psycopg, "connect", boom)
+    for connect in (mig._connect, mig._connect_autocommit):
+        with pytest.raises(mig.PostgresUnreachable) as exc:
+            connect("postgresql://app:a@127.0.0.1:1/agents")
+        text = str(exc.value)
+        assert "\n" not in text and "\t" not in text
+        assert text.endswith("OperationalError: a b")
+
+
+def test_a_missing_driver_is_unreachable(tmp_path, monkeypatch, capsys):
+    from popoto.backends.types import BackendUnavailableError
+
+    def missing():
+        raise BackendUnavailableError(
+            "the Postgres backend needs psycopg and psycopg_pool: pip install "
+            "'popoto[postgres]'",
+            log=False,
+        )
+
+    monkeypatch.setitem(sys.modules, "psycopg", None)
+    monkeypatch.setattr("popoto.backends.postgres._import_psycopg", missing)
+    _dead_env(monkeypatch, "postgresql://app:a@127.0.0.1:1/agents")
+    assert mig.main(_dead_postgres_args(tmp_path)) == 4
+    err = capsys.readouterr().err
+    assert err.startswith("UNREACHABLE:") and "pip install" in err
+
+
+def test_an_unreachable_main_dsn_with_a_maintenance_dsn_exits_4(
+    tmp_path, monkeypatch, capsys
+):
+    _dead_env(
+        monkeypatch,
+        "postgresql://app:a@127.0.0.1:1/agents",
+        "postgresql://app:b@127.0.0.1:2/agents",
+    )
+    assert mig.main(_dead_postgres_args(tmp_path)) == 4
+    err = capsys.readouterr().err
+    assert "UNREACHABLE: Postgres could not be used: " in err
+    assert "Traceback" not in err
+
+
+def test_an_unparseable_postgres_dsn_is_refused(tmp_path, monkeypatch, capsys):
+    _dead_env(monkeypatch, "postgresql://app:Pa%zz@127.0.0.1:1/agents")
+    assert mig.main(_dead_postgres_args(tmp_path)) == 2
+    err = capsys.readouterr().err
+    assert "REFUSED: invalid connection string" in err
+    assert "Pa%zz" not in err
+
+
+def test_an_unparseable_postgres_dsn_with_a_maintenance_dsn_is_refused(
+    tmp_path, monkeypatch, capsys
+):
+    _dead_env(
+        monkeypatch,
+        "postgresql://app:Pa%zz@127.0.0.1:1/agents",
+        "postgresql://app:b@127.0.0.1:2/agents",
+    )
+    assert mig.main(_dead_postgres_args(tmp_path)) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("REFUSED: invalid connection string")
+    assert "Pa%zz" not in err

@@ -133,18 +133,46 @@ def test_redact_removes_the_dsn_password_from_a_message():
     from popoto.backends.postgres import INVALID_DSN_MESSAGE, _redact
 
     dsn = "postgresql://app:s3cr3t-hunter2@db.internal:5432/agents"
-    assert _redact("auth failed for s3cr3t-hunter2", dsn) == "auth failed for ***"
+    assert _redact(
+        "dsn postgresql://app:s3cr3t-hunter2@db.internal:5432/agents", dsn
+    ) == ("dsn postgresql://app:***@db.internal:5432/agents")
     assert _redact("nothing to hide", "postgresql://db/agents") == "nothing to hide"
     # A DSN that does not parse: nothing says which part of the text is the
     # secret, so the message is withheld outright.
     assert _redact("Sekr1t", "not a dsn ===") == INVALID_DSN_MESSAGE
     url_form = "postgresql://app:p%40ss%3Aw%2Frd@db/agents"
-    both = _redact("bad p%40ss%3Aw%2Frd and p@ss:w/rd", url_form)
-    assert both == "bad *** and ***", both
+    both = _redact(
+        "a postgresql://app:p@ss:w/rd@db/agents b "
+        "postgresql://app:p%40ss%3Aw%2Frd@db/agents",
+        url_form,
+    )
+    assert both == (
+        "a postgresql://app:***@db/agents b postgresql://app:***@db/agents"
+    ), both
     assert _redact("x password=abc y", "postgresql://db/a") == "x password=*** y"
     assert _redact("at postgresql://u:pw@h/d", "postgresql://db/a") == (
         "at postgresql://u:***@h/d"
     )
+
+
+def test_redact_leaves_prose_alone_for_a_short_password():
+    _needs_psycopg()
+    from popoto.backends.postgres import _redact
+
+    dsn = "postgresql://u:a@h:1/d"
+    pool = "PoolTimeout: couldn't get a connection after 5.00 sec"
+    assert _redact(pool, dsn) == pool
+    assert _redact("OperationalError: connection failed", dsn) == (
+        "OperationalError: connection failed"
+    )
+    assert _redact("host=h password=a b", dsn) == "host=h password=*** b"
+    # A quoted DSN keeps its host, database and user.
+    assert _redact("x postgresql://u:a@data.example/a y", dsn) == (
+        "x postgresql://u:***@data.example/a y"
+    )
+    assert _redact(
+        "x postgresql://app:a@data:5432/app y", "postgresql://app:a@h/d"
+    ) == ("x postgresql://app:***@data:5432/app y")
 
 
 # The 1.10.0 review's leak (#821): libpq's parse errors quote the fragment
@@ -291,18 +319,21 @@ def test_a_missing_database_names_the_cause_and_never_the_password(
 
 def test_error_is_logged_once_per_window(unreachable, caplog, monkeypatch):
     monkeypatch.setattr(Defaults, "PG_OUTAGE_LOG_WINDOW_SECONDS", 3600)
-    with caplog.at_level(logging.ERROR, logger="POPOTO.postgres"):
+
+    def outage_records():
+        return [r for r in caplog.records if "unavailable" in r.getMessage()]
+
+    with caplog.at_level(logging.ERROR):
         for _ in range(3):
             with pytest.raises(BackendUnavailableError):
                 OutageNote.query.count()
-    errors = [r for r in caplog.records if r.name == "POPOTO.postgres"]
-    assert len(errors) == 1, [r.getMessage() for r in errors]
+    errors = outage_records()
+    assert len(errors) == 1, [(r.name, r.getMessage()) for r in errors]
     monkeypatch.setattr(Defaults, "PG_OUTAGE_LOG_WINDOW_SECONDS", 0)
-    with caplog.at_level(logging.ERROR, logger="POPOTO.postgres"):
+    with caplog.at_level(logging.ERROR):
         with pytest.raises(BackendUnavailableError):
             OutageNote.query.count()
-    errors = [r for r in caplog.records if r.name == "POPOTO.postgres"]
-    assert len(errors) == 2
+    assert len(outage_records()) == 2
 
 
 def test_statement_timeout_raises_backend_unavailable(pg, monkeypatch):

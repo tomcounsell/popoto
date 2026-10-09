@@ -156,6 +156,7 @@ def _cmd_hook(args: Any) -> int:
     # No bind_connection here: MemoryService.__init__ owns that, so every
     # entry point resolves POPOTO_MEMORY_URL the same way.
     _bound_postgres_waits()
+    _quiet_outage_duplicates()
     try:
         from . import hooks
 
@@ -182,6 +183,36 @@ def _cmd_hook(args: Any) -> int:
         except Exception:
             pass
     return 0
+
+
+def _quiet_outage_duplicates() -> None:
+    """Keep the hook's stderr to its one documented warning (#832).
+
+    On an unreachable Postgres the hook's ``popoto memory ... failed``
+    warning already carries the full error, including the last connection
+    attempt. Two other records would repeat it, so the hook process drops
+    them: ``psycopg.pool``'s connect-retry WARNINGs (one or more, depending on
+    how many retries fit the budget) and the backend's own throttled outage
+    ERROR on ``POPOTO.postgres``, matched by ``OUTAGE_LOG_PREFIX``. Every other
+    ``POPOTO.postgres`` record (such as the recovery warning) still reaches
+    stderr. Like :func:`_bound_postgres_waits`, this is the hook subprocess
+    only; the MCP server, the Hermes plugin and host applications keep full
+    logging.
+    """
+    try:
+        import logging
+
+        from ..backends.postgres import OUTAGE_LOG_PREFIX
+
+        logging.getLogger("psycopg.pool").setLevel(logging.ERROR)
+
+        class _DropOutage(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:
+                return not record.getMessage().startswith(OUTAGE_LOG_PREFIX)
+
+        logging.getLogger("POPOTO.postgres").addFilter(_DropOutage())
+    except Exception:
+        pass
 
 
 def _bound_postgres_waits() -> None:

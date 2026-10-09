@@ -391,11 +391,17 @@ _PASSWORD_KEYWORD = re.compile(r"(password\s*=\s*)('(?:[^'\\]|\\.)*'?|\S+)", re.
 _URL_USERINFO = re.compile(r"(\b[a-z][a-z0-9+.\-]*://[^:/?#@\s]*:)[^@\s]*@", re.I)
 
 
+_URL_SPAN = re.compile(r"\b[a-z][a-z0-9+.\-]*://\S+", re.I)
+
+
 def _redact(message: str, dsn: str) -> str:
-    """``message`` with anything that could be the DSN's password replaced
-    by ``***``: the parsed password itself and its percent-encoded spellings,
-    any ``password=...`` keyword and any URL userinfo password. libpq does
-    not echo the password of a DSN it parsed; this makes sure of it. A DSN
+    """``message`` with anything DSN-shaped that could carry the DSN's
+    password replaced by ``***``: any ``password=...`` keyword, any URL
+    userinfo password, and the parsed password's spellings (raw,
+    percent-encoded) inside the password part of a URL. libpq does not echo
+    the password of a DSN it parsed; this makes sure of it. Ordinary prose is
+    never rewritten: replacing the password wherever it occurs would turn a
+    short password such as ``a`` into ``couldn't get *** connection``. A DSN
     that does not parse (which :func:`_require_parseable_dsn` refuses before
     connecting) gets the message withheld outright, since nothing says which
     part of its text is the secret."""
@@ -409,8 +415,25 @@ def _redact(message: str, dsn: str) -> str:
         return INVALID_DSN_MESSAGE
     password = str(value) if value else None
     if password:
-        for spelling in {password, quote(password, safe=""), quote_plus(password)}:
-            message = message.replace(spelling, "***")
+        spellings = sorted(
+            {password, quote(password, safe=""), quote_plus(password)},
+            key=len,
+            reverse=True,
+        )
+
+        def _scrub_span(match: "re.Match[str]") -> str:
+            head, at, tail = match.group(0).rpartition("@")
+            if not at:
+                return match.group(0)
+            scheme, sep, rest = head.partition("://")
+            user, colon, pw = rest.partition(":")
+            if not colon:
+                return match.group(0)
+            for spelling in spellings:
+                pw = pw.replace(spelling, "***")
+            return f"{scheme}{sep}{user}{colon}{pw}{at}{tail}"
+
+        message = _URL_SPAN.sub(_scrub_span, message)
     message = _PASSWORD_KEYWORD.sub(r"\1***", message)
     return _URL_USERINFO.sub(r"\1***@", message)
 
@@ -860,6 +883,11 @@ def _wrap_capped_lists(obj: Any, ts: TableSpec) -> None:
 # -- the backend --------------------------------------------------------------
 
 
+# The hook's ``_quiet_outage_duplicates`` matches on this prefix;
+# ``PostgresBackend._fail``'s ERROR format string starts with it.
+OUTAGE_LOG_PREFIX = "popoto Postgres backend unavailable ("
+
+
 class PostgresBackend(
     SearchMixin,
     PostgresMemoryOps,
@@ -957,7 +985,7 @@ class PostgresBackend(
         h = self.health
         h.ok = False
         h.consecutive_failures += 1
-        last_error = f"{type(exc).__name__}: {exc}"
+        last_error = f"{type(exc).__name__}: {' '.join(str(exc).split())}"
         cause = getattr(exc, "popoto_connect_error", None)
         if cause:
             last_error += f" (last connection attempt: {cause})"
@@ -973,14 +1001,18 @@ class PostgresBackend(
         if h._last_logged_at is None or now - h._last_logged_at >= window:
             h._last_logged_at = now
             logger.error(
-                "popoto Postgres backend unavailable (%s); %d consecutive "
+                OUTAGE_LOG_PREFIX + "%s); %d consecutive "
                 "failure(s), %d dropped write(s). Logged once per %.0fs.",
                 h.last_error,
                 h.consecutive_failures,
                 h.dropped_writes,
                 window,
             )
-        return BackendUnavailableError(f"Postgres is unavailable: {h.last_error}")
+        # log=False: the outage was just logged above, throttled; the
+        # exception's own auto-log would repeat it on every failed call.
+        return BackendUnavailableError(
+            f"Postgres is unavailable: {h.last_error}", log=False
+        )
 
     def _ok(self) -> None:
         h = self.health

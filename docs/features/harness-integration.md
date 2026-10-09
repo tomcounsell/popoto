@@ -343,7 +343,10 @@ connect timeout, so an outage costs the prompt about a second once per hook
 process, and the statement timeout, so a held lock (a migration, `maintain`,
 a stuck writer) costs about a second per statement instead of the library's
 30. Only the hook subcommand lowers them; the MCP server and an in-process
-caller such as the Hermes plugin keep the library defaults.
+caller such as the Hermes plugin keep the library defaults. The hook process also does not print
+`psycopg.pool`'s connect-retry warnings or the backend's own outage line,
+because the hook's warning carries the same error; its stderr is that one
+line.
 
 `doctor` creates nothing. Pointed at a schema that does not exist yet, it
 reports the schema as `not created yet` with a record count of 0 and skips its

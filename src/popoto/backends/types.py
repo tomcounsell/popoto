@@ -77,8 +77,13 @@ class BackendError(PopotoException):
     ``Exception``, so ``str(exc)`` would be empty; this class keeps it.
     """
 
-    def __init__(self, message: Any) -> None:
-        super().__init__(message)
+    def __init__(self, message: Any, *, log: bool = True) -> None:
+        """``log=False`` skips ``PopotoException``'s ERROR auto-log, for a
+        raise site that has just logged the same condition itself."""
+        if log:
+            super().__init__(message)
+        else:
+            self.message = message
         self.args = (message,)
 
 
