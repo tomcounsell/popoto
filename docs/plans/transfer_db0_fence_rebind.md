@@ -7,7 +7,7 @@ created: 2026-10-09
 tracking: https://github.com/tomcounsell/popoto/issues/837
 last_comment_id:
 revision_applied: true
-revision_applied_at: 2026-10-09T08:12:45Z
+revision_applied_at: 2026-10-09T08:19:50Z
 ---
 
 # popoto-transfer DB-0 fence arms regardless of startup binding
@@ -293,27 +293,44 @@ database.
 
 - [ ] Update the module docstring of `src/popoto/transfer/cli.py` and the
   `_Db0Fence` docstring to describe arming on every run without
-  `--allow-db0`.
+  `--allow-db0`, the post-resolution refusal keyed on the *current* global
+  binding, and the known residual (a model-built DB-0 client first used
+  mid-transfer is refused with the "partway" warning).
 - [ ] Check `docs/guides/export-import.md` and
   `docs/features/postgres-backend.md` (both mention `--allow-db0`); adjust
   any sentence implying the refusal depends on the startup binding.
-- [ ] CHANGELOG entry under Unreleased (Fixed), plus one line noting the
-  refusal message now names the fenced database (0) rather than the startup
-  binding, so an N→0 refusal reads "database 0", not "database N".
+- [ ] CHANGELOG under Unreleased, three lines:
+  - Fixed: a transfer started on DB N≠0 whose `--model` module rebinds the
+    client to DB 0 is now refused without `--allow-db0` (#837).
+  - Changed: a transfer started on DB 0 whose `--model` module rebinds the
+    global client to DB N≠0 is no longer refused — it no longer touches
+    database 0; any remaining DB-0 command is still refused by the pool
+    guard.
+  - Changed: the refusal message names the fenced database (0) rather than
+    the startup binding, so an N→0 refusal reads "database 0", not
+    "database N".
 
 ## Success Criteria
 
 - [ ] A transfer started on DB N≠0 whose `--model` module rebinds the global
-  client to DB 0 exits 1 with the `--allow-db0` refusal naming database 0,
-  for both `export` and `import`.
-- [ ] The refusal for the rebind case happens before any Redis command:
-  `"partway"` does not appear in stderr.
+  client to DB 0 exits 1 with the `--allow-db0` refusal naming
+  "Redis database 0", for both `export` and `import`, with `"partway"`
+  absent (`test_db0_fence_rebind_to_db0`, `allow_db0=False` cases).
 - [ ] With `--allow-db0` the same run is not refused by the fence
-  (`"refusing to"` absent from stderr; exit code not asserted — dead port),
-  covered by `test_db0_rebind_with_allow_db0_is_not_refused`.
+  (`"refusing to"` absent; exit code not asserted — dead port)
+  (`test_db0_fence_rebind_to_db0`, `allow_db0=True` cases).
+- [ ] An unfenced Redis transfer on the non-zero test DB without
+  `--allow-db0` exits 0 and is not refused, for both `export` and `import`
+  (`test_unfenced_redis_transfer_on_test_db_is_not_refused`, and the Redis
+  leg of `test_round_trip_export_then_import`) — the step-2 witness.
+- [ ] A transfer started on DB 0 whose model module rebinds the global client
+  to DB N≠0 is not refused (`test_db0_fence_allows_rebind_from_db0_to_nonzero`)
+  — the deliberate loosening.
 - [ ] A Postgres-only transfer whose model module rebinds the Redis client
   N→0 still runs without `--allow-db0`
   (`test_postgres_only_rebind_to_db0_runs_without_allow_db0`, Postgres leg).
+- [ ] `_Db0Fence(False, …)` is active and `_Db0Fence(True, …)` is not, on a
+  non-zero binding (`test_db0_fence_arms_on_every_run_without_allow_db0`).
 - [ ] All existing `test_db0_*` tests and
   `test_postgres_only_process_on_db0_transfers_without_allow_db0` pass.
 - [ ] `pytest tests/test_transfer_cli.py` green; `ruff check src/`,
@@ -326,28 +343,47 @@ database.
    `fence.tripped or (fence.active and _uses_redis(model_class) and _pool_db(get_REDIS_DB().connection_pool) == fence.fenced_db)`
    (inline, or via one module-level helper shared by both call sites).
 3. Make `message()` name `self.fenced_db`.
-4. Update the module and class docstrings.
+4. Update the module and class docstrings (including the known residual).
 5. Update the `fenced` fixture: drop the now-no-op `self.active` line and
    rewrite its docstring.
-6. Add the subprocess rebind tests (refused export + import, `--allow-db0`
-   not refused, Postgres-only rebind runs) and the unit test from Test
-   Impact. Model modules live in `tmp_path` and are put on the child's
-   `PYTHONPATH`; the child env drops `POPOTO_BACKEND` and the Postgres DSN
-   vars, the temp model is pinned to Redis (except the Postgres-only case),
-   and the Redis cases carry `redis_only`.
-7. Update docs listed under Documentation and the CHANGELOG.
+6. Add the tests from Test Impact: the step-2 witness
+   (`test_unfenced_redis_transfer_on_test_db_is_not_refused`), the
+   parametrized `test_db0_fence_rebind_to_db0` (export/import ×
+   allow_db0), `test_db0_fence_allows_rebind_from_db0_to_nonzero`,
+   `test_postgres_only_rebind_to_db0_runs_without_allow_db0`, and the shrunk
+   unit test. Temp model modules live in `tmp_path` on the child's
+   `PYTHONPATH` and rebind to the dead port `127.0.0.1:1`; Redis cases scrub
+   the child's backend/Postgres env, pin the model to Redis, and carry
+   `redis_only`.
+7. Update docs listed under Documentation and the CHANGELOG (three lines).
 8. Run `pytest tests/test_transfer_cli.py`, then the full suite, ruff, black,
-   mypy ratchet.
+   mypy ratchet, then the ablations under Verification.
 
 ## Verification
 
-- `pytest tests/test_transfer_cli.py -k db0` — all pass, including the new
-  rebind tests.
-- Revert step 1 locally and confirm the new rebind test fails with a
-  connection error rather than the refusal (proves the test is not vacuous).
-- Revert step 2 locally (keep step 1) and confirm the new rebind test fails
-  on the `"partway"`-absent assertion — the pool guard trips at first
-  command instead of the clean pre-command refusal (proves step 2 is needed).
+Each ablation names the test that must turn red; restore the code after
+each.
+
+- `pytest tests/test_transfer_cli.py -k "db0 or rebind or round_trip or unfenced"`
+  — all pass.
+- **Ablate step 1** (`self.active = self.db == 0 and not allow_db0`): the
+  `allow_db0=False` cases of `test_db0_fence_rebind_to_db0` fail — no guard,
+  no post-resolution refusal, the child dies with `Error 61 connecting to
+  127.0.0.1:1` instead of "refusing to" (this is exactly what current main
+  does, observed on 739a9337).
+- **Ablate step 2** (keep step 1, restore the unnarrowed
+  `fence.tripped or (fence.active and _uses_redis(model_class))`):
+  `test_unfenced_redis_transfer_on_test_db_is_not_refused` and the Redis leg
+  of `test_round_trip_export_then_import` fail with exit 1 and "refusing to";
+  `test_db0_fence_allows_rebind_from_db0_to_nonzero` fails (refused). The
+  rebind-refusal test stays green under this ablation, as expected — it is
+  not step-2 evidence.
+- **Ablate the post-resolution refusal entirely** (keep step 1, condition
+  reduced to `fence.tripped`): `test_db0_fence_rebind_to_db0`
+  (`allow_db0=False`) fails on the `"partway"`-absent assertion — the pool
+  guard trips only at the first transfer command, after `started`.
+- **Ablate step 3** (message prints `self.db`): `test_db0_fence_rebind_to_db0`
+  fails on `"Redis database 0"` (message says database 5).
 - Run the new subprocess tests with `POPOTO_BACKEND=postgres` and
   `POSTGRES_URL` set in the parent shell and confirm the Redis cases still
   refuse (proves the child env scrub works).
@@ -357,7 +393,8 @@ database.
 ## Open Questions
 
 None blocking. Redis Cluster was already refused at startup (`_pool_db`
-reads it as 0), so there is no behaviour change for it.
+reads it as 0), so there is no behaviour change for it. The 0→N loosening is
+treated as intended (see Solution step 2); flag at review if that is wrong.
 
 ## Critique Results
 
@@ -365,8 +402,8 @@ Critique round 2 (2026-10-09), FULL depth, independent roster (3 critics). Verdi
 
 | Severity | Critics | Finding | Addressed By | Implementation Note |
 |----------|---------|---------|--------------|---------------------|
-| BLOCKER | Risk & Robustness, History & Consistency (also verified by the critique runner) | The step-2 ablation is false. If step 2 is reverted while step 1 is kept, the check at cli.py:476/568 reads `fence.tripped or (fence.active and _uses_redis(model_class))` with `active = not allow_db0`, which is True. That check already refuses the rebind model cleanly after resolution, with `started` False, so "partway" never appears. The new rebind test passes with or without step 2, so neither it nor the "Revert step 2" Verification bullet shows that step 2 is needed. This was prior-critique concern (2), and it is still unmet. | pending | Step 2 exists to prevent over-refusal: without the binding conjunct, every Redis-bound transfer on DB N≠0 is refused. Use as the step-2 witness a non-vacuous test with no `fenced` fixture and no `--allow-db0`: an in-process `main(["export", "--model", MODEL_SPEC, ...])` on the test DB that must exit 0 with no "refusing to" (the existing unfenced round-trip tests also qualify; name them). The `fenced` fixture sets `fenced_db = self.db`, so fixture-based tests cannot detect the revert. Recast the "partway"-absent assertion as proof that a post-resolution check exists at all. Its matching ablation is replacing the post-resolution condition with `fence.tripped` alone, or keying it on the startup `fence.db == 0`. Fix the Test Impact sentence "only the post-resolution binding re-check (step 2) gives the clean, pre-command refusal". |
-| CONCERN | Scope & Value | Step 2 loosens an existing refusal without saying so. A run that starts on DB 0 and whose model module rebinds the global client to DB N≠0 is refused today at cli.py:476/568. After the change it runs against DB N. That is probably correct, since the transfer no longer touches DB 0, but the plan has no success criterion, test, or CHANGELOG line for it. | pending | State the 0→N case as deliberately allowed. The pool guard still trips on any leftover DB-0 checkout, so the change is safe. Add a subprocess test: `REDIS_URL=redis://127.0.0.1:1/0`, and a temp module calling `set_REDIS_DB_settings(host="127.0.0.1", port=1, db=5)` that defines a Redis-pinned model. Assert "refusing to" is not in stderr; do not assert exit 0 (dead port). Add a CHANGELOG sentence. |
-| CONCERN | Risk & Robustness | The Solution step 2 sentence about a model that builds a separate DB-0 client (the global binding stays N) presents that case as covered. It passes the post-resolution check and is refused only at first checkout, after `fence.started = True` (cli.py:479). That run prints the "partway" warning and may leave a partial export or import. This is not a regression, but the plan does not say it. | pending | Say plainly that this shape refuses with "partway". `test_db0_fence_refuses_a_client_the_model_module_builds` (tests/test_transfer_cli.py:824) covers only an import-time command, before `started` is set. If you pin the in-transfer shape, assert `"partway" in err`. Do not widen step 2 to inspect non-global clients (Rabbit Holes). |
-| NIT | Scope & Value | The test additions are heavy for a one-line arming change plus one conjunct. The new unit test partly duplicates `test_db0_fence_refuses_every_client_and_restores_the_pools`. | pending | Parametrize the rebind refusal over export/import and fold in the `--allow-db0` case. Shrink the unit test to asserting that `_Db0Fence(False, ...)` on a non-zero DB is `active` and `_Db0Fence(True, ...)` is not. |
-| NIT | Critique runner | The Postgres-only rebind test does not name its dead-port rebind target or the Postgres env it needs (POPOTO_BACKEND/POPOTO_POSTGRES_URL/SCHEMA, as in `test_postgres_only_process_on_db0_transfers_without_allow_db0`). | pending | Rebind with `set_REDIS_DB_settings(host="127.0.0.1", port=1, db=0)`, so a fence miss shows up as a connection error rather than a write to DB 0. Set the Postgres env the same way the existing test does. |
+| BLOCKER | Risk & Robustness, History & Consistency (also verified by the critique runner) | The step-2 ablation is false. If step 2 is reverted while step 1 is kept, the check at cli.py:476/568 reads `fence.tripped or (fence.active and _uses_redis(model_class))` with `active = not allow_db0`, which is True. That check already refuses the rebind model cleanly after resolution, with `started` False, so "partway" never appears. The new rebind test passes with or without step 2, so neither it nor the "Revert step 2" Verification bullet shows that step 2 is needed. This was prior-critique concern (2), and it is still unmet. | Solution step 2 ("What step 2 is for"); Test Impact "Step-2 witness" (`test_unfenced_redis_transfer_on_test_db_is_not_refused` + Redis leg of `test_round_trip_export_then_import`); "partway" recast in `test_db0_fence_rebind_to_db0`; Verification ablations rewritten | Step 2 exists to prevent over-refusal: without the binding conjunct, every Redis-bound transfer on DB N≠0 is refused. Use as the step-2 witness a non-vacuous test with no `fenced` fixture and no `--allow-db0`: an in-process `main(["export", "--model", MODEL_SPEC, ...])` on the test DB that must exit 0 with no "refusing to" (the existing unfenced round-trip tests also qualify; name them). The `fenced` fixture sets `fenced_db = self.db`, so fixture-based tests cannot detect the revert. Recast the "partway"-absent assertion as proof that a post-resolution check exists at all. Its matching ablation is replacing the post-resolution condition with `fence.tripped` alone, or keying it on the startup `fence.db == 0`. Fix the Test Impact sentence "only the post-resolution binding re-check (step 2) gives the clean, pre-command refusal". |
+| CONCERN | Scope & Value | Step 2 loosens an existing refusal without saying so. A run that starts on DB 0 and whose model module rebinds the global client to DB N≠0 is refused today at cli.py:476/568. After the change it runs against DB N. That is probably correct, since the transfer no longer touches DB 0, but the plan has no success criterion, test, or CHANGELOG line for it. | Solution step 2 ("Deliberate loosening", confirmed refused today on 739a9337); `test_db0_fence_allows_rebind_from_db0_to_nonzero`; Success Criteria; CHANGELOG "Changed" line | State the 0→N case as deliberately allowed. The pool guard still trips on any leftover DB-0 checkout, so the change is safe. Add a subprocess test: `REDIS_URL=redis://127.0.0.1:1/0`, and a temp module calling `set_REDIS_DB_settings(host="127.0.0.1", port=1, db=5)` that defines a Redis-pinned model. Assert "refusing to" is not in stderr; do not assert exit 0 (dead port). Add a CHANGELOG sentence. |
+| CONCERN | Risk & Robustness | The Solution step 2 sentence about a model that builds a separate DB-0 client (the global binding stays N) presents that case as covered. It passes the post-resolution check and is refused only at first checkout, after `fence.started = True` (cli.py:479). That run prints the "partway" warning and may leave a partial export or import. This is not a regression, but the plan does not say it. | Solution step 2 ("Known residual"); Documentation (docstring states residual) | Say plainly that this shape refuses with "partway". `test_db0_fence_refuses_a_client_the_model_module_builds` (tests/test_transfer_cli.py:824) covers only an import-time command, before `started` is set. If you pin the in-transfer shape, assert `"partway" in err`. Do not widen step 2 to inspect non-global clients (Rabbit Holes). |
+| NIT | Scope & Value | The test additions are heavy for a one-line arming change plus one conjunct. The new unit test partly duplicates `test_db0_fence_refuses_every_client_and_restores_the_pools`. | Test Impact: `test_db0_fence_rebind_to_db0` parametrized export/import × allow_db0; unit test shrunk to `test_db0_fence_arms_on_every_run_without_allow_db0` | Parametrize the rebind refusal over export/import and fold in the `--allow-db0` case. Shrink the unit test to asserting that `_Db0Fence(False, ...)` on a non-zero DB is `active` and `_Db0Fence(True, ...)` is not. |
+| NIT | Critique runner | The Postgres-only rebind test does not name its dead-port rebind target or the Postgres env it needs (POPOTO_BACKEND/POPOTO_POSTGRES_URL/SCHEMA, as in `test_postgres_only_process_on_db0_transfers_without_allow_db0`). | Test Impact: `test_postgres_only_rebind_to_db0_runs_without_allow_db0` names target and env | Rebind with `set_REDIS_DB_settings(host="127.0.0.1", port=1, db=0)`, so a fence miss shows up as a connection error rather than a write to DB 0. Set the Postgres env the same way the existing test does. |
