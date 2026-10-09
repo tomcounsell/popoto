@@ -3939,11 +3939,6 @@ pinned by a test on both backends (see
 before writing anything (exit code 3, #829); clear the archive first or accept
 losing the restore window. See the
 <a href="../redis-to-postgres-migration/">migration guide</a>.</p>
-<p><strong>Decision-log summary drift on Redis.</strong> <code>DecisionLog.turn_summary</code> is exact on
-Postgres. On Redis, a <code>pending</code> write over a row that is already terminal
-leaves the summary over-counting until <code>rebuild_turn_summary</code> runs; the
-Postgres answer is the right one. A fix for the Redis side is open (#831), and
-until it lands the divergence below stands.</p>
 <p><strong>Harness session state does not migrate.</strong> The
 <a href="../harness-integration/">harness integration</a> runs on Postgres with no Redis
 commands (see its <a href="../harness-integration/#on-postgres">On Postgres</a> section).
@@ -4919,9 +4914,11 @@ method has the same semantics on both backends: rows, return values, the
 guard, <code>list_pending</code> and the claim. <code>turn_summary</code> means the same thing on
 both (a rollup of the rows' current terminal states, zero counts absent,
 <code>pending</code> never counted, an empty or <code>NULL</code> reason counted as <code>reason:</code>), and
-Postgres always returns exactly that. Redis can drift from it in one case,
-listed in the divergence table below: a <code>pending</code> write over a row that is
-already terminal (#822). <code>DecisionLog.rebuild_turn_summary</code> repairs it.</p>
+both backends return exactly that. Redis keeps it in a hash that every
+state-changing write updates atomically with the row, the <code>pending</code> write
+included: a <code>pending</code> write over a row that is already terminal takes that
+row's counts back out (#822). A hash written by a version before #811 or #822
+can disagree with its rows; <code>DecisionLog.rebuild_turn_summary</code> repairs it.</p>
 <p>Construction refuses only the split trail, whenever <code>auditable_extraction</code> is
 set: a log that would land in Redis while the memory model is on Postgres, or
 a journal entry model in a different store from the log, in either direction
@@ -7123,11 +7120,6 @@ cast to the column's type.</p>
 <td><code>DefaultMemory</code>'s eviction counter</td>
 <td>a Redis string <code>MemoryService.status()</code> reads</td>
 <td>a <code>popoto_counter</code> row, which <code>MemoryService.status()</code> reads on Postgres: a Postgres-bound <code>DefaultMemory</code> needs no Redis</td>
-</tr>
-<tr>
-<td><code>DecisionLog.turn_summary</code> after a <code>pending</code> write over a terminal row: an unclaimed non-<code>accept</code> verdict landing between <code>assemble</code>'s row read and its <code>write_pending</code></td>
-<td><code>write_pending</code> is a plain save, so it overwrites the terminal row without taking back its <code>state:</code>/<code>reason:</code> counts, and the next terminal write treats <code>pending</code> as new: <code>reject</code> then <code>pending</code> then <code>accept</code> leaves <code>{state:reject: 1, state:accept: 1, ...}</code> for one <code>accept</code> row. The rows are right; the hash over-counts until <code>DecisionLog.rebuild_turn_summary(agent_id, turn_id)</code> recomputes it</td>
-<td>derived from the rows with <code>GROUP BY</code> on read: <code>{state:accept: 1, reason:accepted: 1}</code>, and <code>rebuild_turn_summary</code> returns the same. Pinned on both legs: <code>test_auditable_extraction.py::TestAssemblyAgainstTheRealJournal::test_a_pending_write_over_a_terminal_row_is_a_documented_divergence</code></td>
 </tr>
 <tr>
 <td><code>ProvenanceJournal</code> with a caller <code>pipeline=</code></td>

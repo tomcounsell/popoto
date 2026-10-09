@@ -3949,8 +3949,10 @@ of the backend page describes.</p>
 <code>DecisionLog</code> and <code>AssemblyEvent.create</code> (Redis 8.10, PostgreSQL 18.6): the
 dry run and the load were <code>clean</code> with no <code>--accept-unclassified</code>, and
 <code>turn_summary</code> on Postgres matched the Redis result. On a Redis store whose
-summary has drifted (a <code>pending</code> write over a terminal row, #822; the Redis fix
-is open as #831), the two differ and Postgres, which counts the rows, is right.</p>
+summary was written by a version before #811 or #822 (a terminal-to-terminal
+write, or a <code>pending</code> write over a terminal row), the two can differ and
+Postgres, which counts the rows, is right; <code>rebuild_turn_summary</code> repairs the
+Redis side.</p>
 <h2 id="what-the-report-counts">What the report counts<a class="headerlink" href="#what-the-report-counts" title="Permanent link">&para;</a></h2>
 <p>Every lossy or estimated case has a counter. A counter that stays at zero is
 omitted.</p>
