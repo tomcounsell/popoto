@@ -5239,10 +5239,10 @@ scope (an M1/M5 change).</p>
 <a id="__codelineno-0-1583" name="__codelineno-0-1583"></a>    <span class="k">try</span><span class="p">:</span>
 <a id="__codelineno-0-1584" name="__codelineno-0-1584"></a>        <span class="n">disjoins</span> <span class="o">=</span> <span class="n">_live_disjoins</span><span class="p">(</span><span class="n">agent_id</span><span class="p">)</span>
 <a id="__codelineno-0-1585" name="__codelineno-0-1585"></a>    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
-<a id="__codelineno-0-1586" name="__codelineno-0-1586"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"question_queue: M5 reconciliation unavailable; no disjoins"</span><span class="p">)</span>
+<a id="__codelineno-0-1586" name="__codelineno-0-1586"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"question_queue: reconciliation unavailable; no disjoins"</span><span class="p">)</span>
 <a id="__codelineno-0-1587" name="__codelineno-0-1587"></a>        <span class="k">return</span> <span class="mi">0</span>
 <a id="__codelineno-0-1588" name="__codelineno-0-1588"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-1589" name="__codelineno-0-1589"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">"question_queue: reading M5 disjoins failed"</span><span class="p">)</span>
+<a id="__codelineno-0-1589" name="__codelineno-0-1589"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">"question_queue: reading reconciliation disjoins failed"</span><span class="p">)</span>
 <a id="__codelineno-0-1590" name="__codelineno-0-1590"></a>        <span class="k">return</span> <span class="mi">0</span>
 <a id="__codelineno-0-1591" name="__codelineno-0-1591"></a>    <span class="n">proposed</span> <span class="o">=</span> <span class="mi">0</span>
 <a id="__codelineno-0-1592" name="__codelineno-0-1592"></a>    <span class="k">for</span> <span class="n">disjunction_id</span><span class="p">,</span> <span class="n">side_a</span><span class="p">,</span> <span class="n">side_b</span> <span class="ow">in</span> <span class="n">disjoins</span><span class="p">:</span>

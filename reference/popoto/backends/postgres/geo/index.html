@@ -4483,7 +4483,7 @@ unit of the last such leaf; <code>None</code> for both when no leaf asked.</p>
 <a id="__codelineno-0-754" name="__codelineno-0-754"></a>
 <a id="__codelineno-0-755" name="__codelineno-0-755"></a>        <span class="k">raise</span> <span class="n">BackendCapabilityError</span><span class="p">(</span>
 <a id="__codelineno-0-756" name="__codelineno-0-756"></a>            <span class="sa">f</span><span class="s2">"a GeoField radius filter on </span><span class="si">{</span><span class="n">c</span><span class="o">.</span><span class="n">field</span><span class="si">!r}</span><span class="s2"> scopes filter() and count() "</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a>            <span class="s2">"on Postgres; it cannot scope a ranking or search yet (#759 M5)"</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>            <span class="s2">"on Postgres; it cannot scope a ranking or search there"</span>
 <a id="__codelineno-0-758" name="__codelineno-0-758"></a>        <span class="p">)</span>
 <a id="__codelineno-0-759" name="__codelineno-0-759"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">c</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">keys</span><span class="p">:</span>
 <a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="k">return</span> <span class="s2">"FALSE"</span>

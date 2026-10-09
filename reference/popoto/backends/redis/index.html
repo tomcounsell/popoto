@@ -4862,7 +4862,7 @@ its key on Redis).</p>
 <a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">        """</span>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a>        <span class="k">if</span> <span class="n">expiry</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-227" name="__codelineno-0-227"></a>            <span class="k">raise</span> <span class="n">BackendCapabilityError</span><span class="p">(</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>                <span class="s2">"save(expiry=) is not routed in #759 M1a; set Meta.ttl or the "</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>                <span class="s2">"the backend save takes no per-call expiry; set Meta.ttl or the "</span>
 <a id="__codelineno-0-229" name="__codelineno-0-229"></a>                <span class="s2">"instance's _ttl/_expire_at"</span>
 <a id="__codelineno-0-230" name="__codelineno-0-230"></a>            <span class="p">)</span>
 <a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="n">update_fields</span> <span class="o">=</span> <span class="n">fields</span>
@@ -5801,7 +5801,7 @@ its key on Redis).</p>
 <a id="__codelineno-0-1164" name="__codelineno-0-1164"></a>
 <a id="__codelineno-0-1165" name="__codelineno-0-1165"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_unrouted</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">served_by</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BackendCapabilityError</span><span class="p">:</span>
 <a id="__codelineno-0-1166" name="__codelineno-0-1166"></a>        <span class="k">return</span> <span class="n">BackendCapabilityError</span><span class="p">(</span>
-<a id="__codelineno-0-1167" name="__codelineno-0-1167"></a>            <span class="sa">f</span><span class="s2">"RedisBackend.</span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2"> is not routed in #759 M1a: on Redis it is "</span>
+<a id="__codelineno-0-1167" name="__codelineno-0-1167"></a>            <span class="sa">f</span><span class="s2">"RedisBackend.</span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2"> is not routed: on Redis it is "</span>
 <a id="__codelineno-0-1168" name="__codelineno-0-1168"></a>            <span class="sa">f</span><span class="s2">"still served directly by </span><span class="si">{</span><span class="n">served_by</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-1169" name="__codelineno-0-1169"></a>        <span class="p">)</span>
 <a id="__codelineno-0-1170" name="__codelineno-0-1170"></a>
@@ -6447,7 +6447,7 @@ Options: <code>ignore_errors</code> and the hook <code>**kwargs</code>.</p>
 <a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    """</span>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="k">if</span> <span class="n">expiry</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="k">raise</span> <span class="n">BackendCapabilityError</span><span class="p">(</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="s2">"save(expiry=) is not routed in #759 M1a; set Meta.ttl or the "</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="s2">"the backend save takes no per-call expiry; set Meta.ttl or the "</span>
 <a id="__codelineno-0-229" name="__codelineno-0-229"></a>            <span class="s2">"instance's _ttl/_expire_at"</span>
 <a id="__codelineno-0-230" name="__codelineno-0-230"></a>        <span class="p">)</span>
 <a id="__codelineno-0-231" name="__codelineno-0-231"></a>    <span class="n">update_fields</span> <span class="o">=</span> <span class="n">fields</span>

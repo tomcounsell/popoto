@@ -4120,21 +4120,30 @@ both would claim stdout.</p>
 </tbody>
 </table>
 <h3 id="refusing-database-0">Refusing database 0<a class="headerlink" href="#refusing-database-0" title="Permanent link">&para;</a></h3>
-<p>Both subcommands refuse to run when the effective Redis database is 0, unless
-<code>--allow-db0</code> is passed:</p>
+<p>Both subcommands refuse to touch Redis when the effective Redis database is 0,
+unless <code>--allow-db0</code> is passed:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span>import<span class="w"> </span>--model<span class="w"> </span>myapp.models:Memory<span class="w"> </span>--in<span class="w"> </span>memories.jsonl
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="go">popoto-transfer: refusing to write to database 0 -- this is often a live store, not</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="go">a test database.</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="go">popoto-transfer: refusing to write to Redis database 0 -- this is often a live store,</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="go">not a test database.</span>
 <a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="go">  Pass --allow-db0 to proceed anyway, or point at a different database, e.g.</span>
 <a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="go">  REDIS_URL=redis://localhost:6379/1</span>
 </code></pre></div>
 <p>The check reads the database off the live connection pool, not an environment
 variable, so it catches the unset-<code>REDIS_URL</code> fallback (which also binds database 0)
-as well as an explicit <code>…/0</code> URL. It runs before the operator's <code>--model</code> module is
-imported and before any Redis command is issued.</p>
-<p>The check applies to a Postgres-bound model too, because it runs before the model is
-imported and so cannot know the model's backend. When transferring a Postgres model,
-set <code>REDIS_URL</code> to a non-zero database or pass <code>--allow-db0</code>.</p>
+as well as an explicit <code>…/0</code> URL.</p>
+<p>The refusal applies only to a transfer that uses Redis. A model bound to Postgres
+(<code>Meta.backend = "postgres"</code>, or <code>POPOTO_BACKEND=postgres</code> for the process) is
+exported and imported without <code>--allow-db0</code>, so a Postgres-only deployment needs
+neither the flag nor a placeholder <code>REDIS_URL</code>. That is enforced, not assumed: while
+Redis is on database 0, from before the <code>--model</code> module is imported until the run
+ends, every Redis connection pool in the process (sync or async, including a client
+the model module builds itself) refuses to hand out a connection to database 0. Any
+Redis command the model module or the transfer would issue there, a pipeline
+included, is refused with the message above before it reaches the server. A
+Redis-bound model is refused as soon as it is resolved, before its first command,
+and so is a model whose module touched database 0 on import, even if it caught the
+refusal. A command refused partway through a run is reported as such, since records
+handled before it may already have been written or exported.</p>
 <h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
 <p>Export and import work on a model with <code>Meta.backend = "postgres"</code>, through the same
 Python API and the same <code>popoto-transfer</code> CLI. The JSON Lines format is the same on both
@@ -4158,7 +4167,7 @@ whole import inside your transaction (see
 <li>Postgres keeps no confirmed access log. <code>access_count</code> and <code>last_accessed</code> cross; the
   log does not.</li>
 <li>A model with a <code>DataFrameField</code> cannot be bound to Postgres.</li>
-<li>The database-0 refusal above still applies.</li>
+<li>The database-0 refusal above does not apply: it covers only transfers that use Redis.</li>
 </ul>
 <p>Every row is in
 <a href="../../features/postgres-backend/#cross-backend-migration-notes-for-756">Cross-backend migration notes</a>.

@@ -4186,7 +4186,7 @@ asking for one raises :class:<code>~popoto.backends.BackendCapabilityError</code
 <a id="__codelineno-0-953" name="__codelineno-0-953"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">backend</span><span class="p">,</span> <span class="n">PostgresBackend</span><span class="p">):</span>
 <a id="__codelineno-0-954" name="__codelineno-0-954"></a>        <span class="k">raise</span> <span class="n">BackendCapabilityError</span><span class="p">(</span>
 <a id="__codelineno-0-955" name="__codelineno-0-955"></a>            <span class="sa">f</span><span class="s2">"no async backend for the </span><span class="si">{</span><span class="n">backend</span><span class="o">.</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> backend: AsyncBackend is "</span>
-<a id="__codelineno-0-956" name="__codelineno-0-956"></a>            <span class="s2">"Postgres's (#759 M5); Redis-bound models use their async_* methods "</span>
+<a id="__codelineno-0-956" name="__codelineno-0-956"></a>            <span class="s2">"Postgres-only; Redis-bound models use their async_* methods "</span>
 <a id="__codelineno-0-957" name="__codelineno-0-957"></a>            <span class="s2">"directly"</span>
 <a id="__codelineno-0-958" name="__codelineno-0-958"></a>        <span class="p">)</span>
 <a id="__codelineno-0-959" name="__codelineno-0-959"></a>    <span class="n">twin</span> <span class="o">=</span> <span class="n">async_backend</span><span class="p">(</span><span class="n">backend</span><span class="p">)</span>
