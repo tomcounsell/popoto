@@ -4297,11 +4297,15 @@ row per run, with its status, progress and final report) and
 </tr>
 <tr>
 <td><code>2</code></td>
-<td>Refused; nothing is written to Postgres. The causes are: no <code>POPOTO_POSTGRES_URL</code> (outside <code>--dry-run</code>); a <code>--source-id</code> that is not 1-100 characters of <code>[A-Za-z0-9_.@-]</code>; no <code>--model</code> or <code>--mapping</code>, or a model named twice; a <code>--content-dir</code> that is not a directory; a bad RDB; a missing <code>redis-server</code>; a model Postgres cannot store (<code>DataFrameField</code>); a target schema that already holds rows (pass <code>--merge</code> or <code>--resume</code>, or <code>--resume --merge</code> when a resumed run's table also holds rows it did not write); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing <code>--report-key</code>; a <code>--resume</code> whose run directory has no <code>run.json</code>; a maintenance DSN that reaches a different database from the main one; a throwaway server or watchdog that fails to start; or an empty snapshot (<code>--allow-empty</code>).</td>
+<td>Refused; nothing is written to Postgres. The causes are: no <code>POPOTO_POSTGRES_URL</code> (outside <code>--dry-run</code>); a <code>--source-id</code> that is not 1-100 characters of <code>[A-Za-z0-9_.@-]</code>; no <code>--model</code> or <code>--mapping</code>, or a model named twice; a <code>--content-dir</code> that is not a directory; a bad RDB; a Postgres DSN that cannot be parsed (fix the DSN and rerun with <code>--resume</code> and the same <code>--run-dir</code>: the failed run already claimed it); a missing <code>redis-server</code>; a model Postgres cannot store (<code>DataFrameField</code>); a target schema that already holds rows (pass <code>--merge</code> or <code>--resume</code>, or <code>--resume --merge</code> when a resumed run's table also holds rows it did not write); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing <code>--report-key</code>; a <code>--resume</code> whose run directory has no <code>run.json</code>; a maintenance DSN that reaches a different database from the main one; a throwaway server or watchdog that fails to start; or an empty snapshot (<code>--allow-empty</code>).</td>
 </tr>
 <tr>
 <td><code>3</code></td>
 <td>The inventory stopped the run. Nothing was written.</td>
+</tr>
+<tr>
+<td><code>4</code></td>
+<td>Postgres could not be used: a connect, authentication or missing-database failure, an outage mid-load, or the Postgres driver is not installed. One <code>UNREACHABLE:</code> line, no traceback. Any rows already loaded are kept; fix the connection and rerun with <code>--resume</code> and the same <code>--run-dir</code>.</td>
 </tr>
 <tr>
 <td><code>130</code></td>

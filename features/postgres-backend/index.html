@@ -6094,7 +6094,9 @@ tracks the outage:</p>
 <a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1">#  'dropped_writes': 2, 'last_error': 'PoolTimeout: ...'}</span>
 </code></pre></div>
 <p>The outage is logged at ERROR once per <code>Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS</code>
-(60 s), however many calls fail within that window. After a successful call
+(60 s), however many calls fail within that window. The
+<code>BackendUnavailableError</code> each failed call raises does not log a second time,
+so a host application's logs carry one outage line per window. After a successful call
 the record resets, and a recovery is logged at WARNING.</p>
 <p><strong>A busy pool is not an outage.</strong> When every connection the pool may hold
 (<code>Defaults.PG_POOL_MAX_SIZE</code>) is checked out by other callers -- more

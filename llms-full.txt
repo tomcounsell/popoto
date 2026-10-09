@@ -2142,7 +2142,10 @@ connect timeout, so an outage costs the prompt about a second once per hook
 process, and the statement timeout, so a held lock (a migration, `maintain`,
 a stuck writer) costs about a second per statement instead of the library's
 30. Only the hook subcommand lowers them; the MCP server and an in-process
-caller such as the Hermes plugin keep the library defaults.
+caller such as the Hermes plugin keep the library defaults. The hook process also does not print
+`psycopg.pool`'s connect-retry warnings or the backend's own outage line,
+because the hook's warning carries the same error; its stderr is that one
+line.
 
 `doctor` creates nothing. Pointed at a schema that does not exist yet, it
 reports the schema as `not created yet` with a record count of 0 and skips its
@@ -25819,7 +25822,9 @@ backend.health.as_dict()
 ```
 
 The outage is logged at ERROR once per `Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS`
-(60 s), however many calls fail within that window. After a successful call
+(60 s), however many calls fail within that window. The
+`BackendUnavailableError` each failed call raises does not log a second time,
+so a host application's logs carry one outage line per window. After a successful call
 the record resets, and a recovery is logged at WARNING.
 
 **A busy pool is not an outage.** When every connection the pool may hold
@@ -27600,8 +27605,9 @@ row per run, with its status, progress and final report) and
 |---|---|
 | `0` | `clean`, or a finished `--dry-run`. |
 | `1` | The load finished but verification found a mismatch. Read `report.txt`. |
-| `2` | Refused; nothing is written to Postgres. The causes are: no `POPOTO_POSTGRES_URL` (outside `--dry-run`); a `--source-id` that is not 1-100 characters of `[A-Za-z0-9_.@-]`; no `--model` or `--mapping`, or a model named twice; a `--content-dir` that is not a directory; a bad RDB; a missing `redis-server`; a model Postgres cannot store (`DataFrameField`); a target schema that already holds rows (pass `--merge` or `--resume`, or `--resume --merge` when a resumed run's table also holds rows it did not write); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing `--report-key`; a `--resume` whose run directory has no `run.json`; a maintenance DSN that reaches a different database from the main one; a throwaway server or watchdog that fails to start; or an empty snapshot (`--allow-empty`). |
+| `2` | Refused; nothing is written to Postgres. The causes are: no `POPOTO_POSTGRES_URL` (outside `--dry-run`); a `--source-id` that is not 1-100 characters of `[A-Za-z0-9_.@-]`; no `--model` or `--mapping`, or a model named twice; a `--content-dir` that is not a directory; a bad RDB; a Postgres DSN that cannot be parsed (fix the DSN and rerun with `--resume` and the same `--run-dir`: the failed run already claimed it); a missing `redis-server`; a model Postgres cannot store (`DataFrameField`); a target schema that already holds rows (pass `--merge` or `--resume`, or `--resume --merge` when a resumed run's table also holds rows it did not write); a target schema another run is loading (the advisory lock); a run directory that belongs to another run, or one a dry run already claimed; a short or missing `--report-key`; a `--resume` whose run directory has no `run.json`; a maintenance DSN that reaches a different database from the main one; a throwaway server or watchdog that fails to start; or an empty snapshot (`--allow-empty`). |
 | `3` | The inventory stopped the run. Nothing was written. |
+| `4` | Postgres could not be used: a connect, authentication or missing-database failure, an outage mid-load, or the Postgres driver is not installed. One `UNREACHABLE:` line, no traceback. Any rows already loaded are kept; fix the connection and rerun with `--resume` and the same `--run-dir`. |
 | `130` | Interrupted by `SIGTERM`, `SIGHUP` or `SIGINT`. The throwaway server is stopped and its copies are removed. Continue with `--resume` and the same `--run-dir`. |
 
 See [Prerequisites](#prerequisites) for what the tool needs before it
