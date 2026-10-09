@@ -352,7 +352,55 @@ for _, field in ipairs(order) do
 end
 return out
 """
-"""Repair script for a drifted summary hash (pre-#811 hashes, and #822)."""
+"""Repair script for a summary hash that disagrees with its rows.
+
+Hashes written before the #811 fix (a terminal-to-terminal write), and
+hashes written before the #822 fix (a ``pending`` write over a terminal row,
+which used to be a plain save that left the row's counts in place).
+"""
+
+
+PENDING_WRITE_LUA = """
+-- The pending write (phase 1 of the two-phase accept), atomic with the
+-- summary. The summary counts terminal states only, so a pending row
+-- contributes nothing to it -- which means a pending write that lands on a
+-- row that is ALREADY terminal must take back that row's state:/reason:
+-- counts in the same step, or the hash keeps them and the terminal write
+-- that follows (which treats pending as new) counts the row twice (#822).
+-- KEYS[1..6] = as TERMINAL_WRITE_LUA: the row hash, the per-turn summary
+--              hash, the model's class set, and the KeyField index Sets
+--              for agent_id, candidate_id and turn_id
+-- ARGV[1]    = msgpack-packed 'pending'
+-- ARGV[2 ..] = flat field/packed-value pairs for the row
+--
+-- Unguarded on purpose: it overwrites any row, an assembled accept
+-- included, exactly as the plain Model.save() it replaces did. The take-back
+-- mirrors TERMINAL_WRITE_LUA's (an empty state was never counted); keep the
+-- 'state:' / 'reason:' prefixes in step with it.
+local prev_state = redis.call('HGET', KEYS[1], 'state')
+if prev_state and prev_state ~= ARGV[1] then
+    local decoded_state = cmsgpack.unpack(prev_state)
+    if decoded_state ~= '' then
+        local prev_reason = redis.call('HGET', KEYS[1], 'reason_code')
+        local old_fields = {
+            'state:' .. decoded_state,
+            'reason:' .. (prev_reason and cmsgpack.unpack(prev_reason) or ''),
+        }
+        for _, f in ipairs(old_fields) do
+            if redis.call('HINCRBY', KEYS[2], f, -1) <= 0 then
+                redis.call('HDEL', KEYS[2], f)
+            end
+        end
+    end
+end
+
+redis.call('SADD', KEYS[3], KEYS[1])
+redis.call('SADD', KEYS[4], KEYS[1])
+redis.call('SADD', KEYS[5], KEYS[1])
+redis.call('SADD', KEYS[6], KEYS[1])
+redis.call('HSET', KEYS[1], unpack(ARGV, 2))
+return 1
+"""
 
 
 def _packb(value: str) -> bytes:
@@ -492,12 +540,15 @@ class DecisionLog:
         pipelined with it -- that ordering is what guarantees no candidate
         can reach an irreversible side effect with zero decision-log rows.
 
-        No summary update accompanies it: the per-turn summary aggregates
-        terminal states only, and ``pending`` is never counted into it. On
-        Redis that also means a ``pending`` write over an already-terminal
-        row does not take that row's counts back out: the documented #822
-        drift, repaired by :meth:`rebuild_turn_summary` (see
-        :meth:`turn_summary`).
+        ``pending`` is never counted into the per-turn summary, which
+        aggregates terminal states only. A ``pending`` write over a row that
+        is already terminal (an unclaimed non-``accept`` write can land
+        between :meth:`assemble`'s row read and this call) therefore takes
+        that row's counts back out, in the same atomic step as the row write:
+        ``PENDING_WRITE_LUA`` on Redis, while Postgres derives the summary
+        from the rows on read. Either way :meth:`turn_summary` stays the
+        rollup of the rows (#822). Like the plain save it replaced, the write
+        is unguarded: it overwrites any row.
 
         Args:
             agent_id: Owning agent. Never ``None``.
@@ -521,7 +572,28 @@ class DecisionLog:
             detail_code="",
             written_at=time.time(),
         )
-        record.save()
+        if self._backend is not None:
+            record.save()
+        else:
+            row_fields: List[bytes] = []
+            for field_name, packed in encode_popoto_model_obj(record).items():
+                row_fields.append(field_name)
+                row_fields.append(packed)
+            run_lua(
+                self._redis,
+                PENDING_WRITE_LUA,
+                # numkeys: row + summary + class set + one index Set per
+                # KeyField, the same six keys TERMINAL_WRITE_LUA takes.
+                6,
+                self.row_key(agent_id, candidate.turn_id, candidate.candidate_id),
+                self.summary_key(agent_id, candidate.turn_id),
+                DecisionRecord._meta.db_class_set_key.redis_key,
+                *self.key_field_index_keys(
+                    agent_id, candidate.turn_id, candidate.candidate_id
+                ),
+                _packb(Verdict.PENDING.value),
+                *row_fields,
+            )
         logger.debug(
             "decision log: pending row committed for %s/%s",
             agent_id,
@@ -1168,15 +1240,14 @@ class DecisionLog:
 
         Redis keeps a hash that ``TERMINAL_WRITE_LUA`` maintains atomically
         with the row; Postgres derives it on read with an indexed
-        ``GROUP BY`` and cannot drift. Both return the same dict for the same
-        sequence of writes, with one documented Redis-only exception (#822):
-        :meth:`write_pending` is a plain save with no summary step, so a
-        ``pending`` write over a row that is already terminal leaves that
-        row's counts in the hash, and the next terminal write counts the row
-        again. It is reachable when an unclaimed non-``accept`` write lands
-        between :meth:`assemble`'s row read and its ``write_pending``. The
-        hash over-counts until :meth:`rebuild_turn_summary` recomputes it;
-        Postgres is unaffected.
+        ``GROUP BY`` and cannot drift. Every Redis write that changes a row's
+        state updates the hash in the same script as the row:
+        ``TERMINAL_WRITE_LUA`` for terminal writes and ``PENDING_WRITE_LUA``
+        for :meth:`write_pending`, which takes back the counts of a terminal
+        row it overwrites (#822). Both backends therefore return the same
+        dict for the same sequence of writes, in any interleaving. A hash
+        written by an earlier version can still disagree with its rows; see
+        :meth:`rebuild_turn_summary`.
         """
         if self._backend is not None:
             return self._pg_turn_summary(agent_id, turn_id)
@@ -1193,12 +1264,16 @@ class DecisionLog:
     def rebuild_turn_summary(self, agent_id: str, turn_id: str) -> Dict[str, int]:
         """Recompute a turn's summary from its detail rows and return it.
 
-        The repair for Redis summary hashes that disagree with their rows:
-        hashes written before the #811 fix (a terminal-to-terminal write),
-        and the Redis-only drift after a ``pending`` write over a terminal
-        row (#822, see :meth:`turn_summary`). Run it per turn once every
-        process runs the fixed version; until then a mixed fleet may
-        undercount.
+        The repair for Redis summary hashes that disagree with their rows,
+        which current code never produces: hashes written before the #811
+        fix (a terminal-to-terminal write that left the old state counted),
+        and before the #822 fix (a ``pending`` write over a terminal row was
+        a plain save that left the row's counts in place). Run it per turn
+        once every process runs the fixed version. During a rolling upgrade
+        an old process can still write either shape, and a new process's
+        take-back can then remove a count the hash does not hold for that
+        row, so a mixed fleet's hash may be off in either direction until
+        it is rebuilt.
         One ``EVAL`` (``TURN_SUMMARY_REBUILD_LUA``), so concurrent terminal
         writes serialize around it. An operator call, never on the hot path.
 
@@ -1415,6 +1490,7 @@ __all__ = [
     "Metrics",
     "AuditableExtractionConfig",
     "TERMINAL_WRITE_LUA",
+    "PENDING_WRITE_LUA",
     "SUMMARY_KEY_PREFIX",
     "hash_candidate_text",
 ]
