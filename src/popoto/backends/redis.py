@@ -1164,7 +1164,7 @@ class RedisBackend:
 
     def _unrouted(self, method: str, served_by: str) -> BackendCapabilityError:
         return BackendCapabilityError(
-            f"RedisBackend.{method} is not routed in #759 M1a: on Redis it is "
+            f"RedisBackend.{method} is not routed: on Redis it is "
             f"still served directly by {served_by}"
         )
 

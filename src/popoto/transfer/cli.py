@@ -280,10 +280,13 @@ class _Db0Fence:
     Reads the database off the live connection pool rather than an
     environment variable, so this catches both an explicit
     ``REDIS_URL=…/0`` and the unset-``REDIS_URL`` fallback (which also binds
-    database 0). While the fence is entered and :attr:`active`, the pool's
-    ``get_connection`` raises instead of handing out a connection; every
-    command, pipelines included, goes through it, so nothing reaches the
-    server. Entering issues no Redis command.
+    database 0). While the fence is entered and :attr:`active`, every
+    redis-py connection pool, sync or async, refuses to hand out a
+    connection to database 0: ``get_connection`` raises on the pool classes
+    themselves, so a client the ``--model`` module builds or rebinds is
+    fenced too. Every command, pipelines and pub/sub included, checks a
+    connection out first, so nothing reaches the server. A pool bound to
+    another database is unaffected. Entering issues no Redis command.
 
     Args:
         allow_db0: Whether ``--allow-db0`` was passed.
@@ -295,32 +298,39 @@ class _Db0Fence:
         from popoto.redis_db import get_REDIS_DB
 
         self.verb = verb
-        self.pool = get_REDIS_DB().connection_pool
-        self.db = int(self.pool.connection_kwargs.get("db", 0) or 0)
+        self.db = _pool_db(get_REDIS_DB().connection_pool)
+        #: The database no pool may hand out a connection to while armed.
+        self.fenced_db = 0
         self.active = self.db == 0 and not allow_db0
-        #: Set when something asked the fenced pool for a connection.
+        #: Set when something asked a fenced pool for a connection.
         self.tripped = False
-        self._saved: "tuple[bool, Any]" = (False, None)
+        #: Set once the transfer itself begins, after the model resolved.
+        self.started = False
+        self._saved: "list[tuple[type, Any]]" = []
 
     def __enter__(self) -> "_Db0Fence":
         if self.active:
-            own = vars(self.pool)
-            self._saved = ("get_connection" in own, own.get("get_connection"))
-
-            def refuse(*args: Any, **kwargs: Any) -> Any:
-                self.tripped = True
-                raise CLIError(self.message())
-
-            self.pool.get_connection = refuse  # type: ignore[method-assign]
+            for cls in _pool_classes():
+                original = vars(cls)["get_connection"]
+                self._saved.append((cls, original))
+                setattr(cls, "get_connection", self._guard(original))
         return self
 
     def __exit__(self, *exc_info: Any) -> None:
-        if self.active:
-            had_own, original = self._saved
-            if had_own:
-                self.pool.get_connection = original  # type: ignore[method-assign]
-            else:
-                del self.pool.get_connection
+        while self._saved:
+            cls, original = self._saved.pop()
+            setattr(cls, "get_connection", original)
+
+    def _guard(self, original: Any) -> Any:
+        fence = self
+
+        def get_connection(pool: Any, *args: Any, **kwargs: Any) -> Any:
+            if _pool_db(pool) == fence.fenced_db:
+                fence.tripped = True
+                raise CLIError(fence.message())
+            return original(pool, *args, **kwargs)
+
+        return get_connection
 
     def message(self) -> str:
         return (
@@ -333,7 +343,36 @@ class _Db0Fence:
     def refuse(self) -> int:
         """Print the refusal and return the exit code for it."""
         sys.stderr.write(f"popoto-transfer: {self.message()}\n")
+        if self.started:
+            sys.stderr.write(
+                "popoto-transfer: the refused command came partway through "
+                "the run, so records handled before it may already have been "
+                "written or exported\n"
+            )
         return 1
+
+
+def _pool_db(pool: Any) -> int:
+    return int(getattr(pool, "connection_kwargs", {}).get("db", 0) or 0)
+
+
+def _pool_classes() -> "list[type]":
+    """Every redis-py pool class that defines its own ``get_connection``,
+    sync and async. Fencing the classes rather than one pool instance covers
+    a client the model module builds or rebinds after the fence is up."""
+    import redis.asyncio.connection as async_connection
+    import redis.connection as sync_connection
+
+    found = []
+    for module in (sync_connection, async_connection):
+        for value in vars(module).values():
+            if (
+                isinstance(value, type)
+                and "get_connection" in vars(value)
+                and not value.__name__.endswith("Interface")
+            ):
+                found.append(value)
+    return found
 
 
 def _uses_redis(model_class: Any) -> bool:
@@ -432,9 +471,12 @@ def _run_export(args: Any, fence: _Db0Fence) -> int:
             return 1
         sys.stderr.write(f"popoto-transfer export: {exc}\n")
         return 1
-    if fence.active and _uses_redis(model_class):
+    # A trip the model module caught while importing still refuses the run,
+    # before any record is read or written.
+    if fence.tripped or (fence.active and _uses_redis(model_class)):
         fence.tripped = True
         return 1
+    fence.started = True
 
     from ..backends.types import OUTAGE_ERRORS
     from ..exceptions import ModelException
@@ -521,9 +563,12 @@ def _run_import(args: Any, fence: _Db0Fence) -> int:
             return 1
         sys.stderr.write(f"popoto-transfer import: {exc}\n")
         return 1
-    if fence.active and _uses_redis(model_class):
+    # A trip the model module caught while importing still refuses the run,
+    # before any record is read or written.
+    if fence.tripped or (fence.active and _uses_redis(model_class)):
         fence.tripped = True
         return 1
+    fence.started = True
 
     in_path = args.in_path
     try:

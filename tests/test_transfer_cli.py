@@ -680,12 +680,12 @@ def test_help_via_subprocess_module_invocation():
 
 @pytest.fixture
 def fenced(monkeypatch):
-    """Arm the database-0 fence over the test lane's own pool.
+    """Arm the database-0 fence over the test lane's own database.
 
     The fence is armed as if the process were bound to database 0, but the
-    pool it fences is the test database's, so a command the fence fails to
-    stop still never reaches database 0. Any Redis connection checkout while
-    armed trips it, whichever path the caller took to the client.
+    database it fences is the test database, so a command the fence fails to
+    stop still never reaches database 0. Any connection checkout to that
+    database while armed trips it, whichever client the caller built.
     """
     from popoto.transfer import cli
 
@@ -693,6 +693,7 @@ def fenced(monkeypatch):
 
     def armed_init(self, allow_db0, verb):
         original_init(self, allow_db0, verb)
+        self.fenced_db = self.db
         self.active = not allow_db0
 
     monkeypatch.setattr(cli._Db0Fence, "__init__", armed_init)
@@ -735,13 +736,23 @@ def test_db0_fence_passes_with_allow_db0(fenced, tmp_path, capsys):
     assert code == 0, capsys.readouterr().err
 
 
-@pytest.mark.redis_only(reason="fences the Redis pool directly")
-def test_db0_fence_refuses_commands_and_pipelines_and_restores_the_pool():
-    from popoto.transfer.cli import CLIError, _Db0Fence
+@pytest.mark.redis_only(reason="fences the Redis pools directly")
+def test_db0_fence_refuses_every_client_and_restores_the_pools():
+    """Commands, pipelines, a client built after the fence went up, and an
+    async client are all refused; a pool on another database is not; leaving
+    the fence restores every pool class."""
+    import asyncio
 
+    import redis
+    import redis.asyncio
+
+    from popoto.transfer.cli import CLIError, _Db0Fence, _pool_classes
+
+    originals = {cls: vars(cls)["get_connection"] for cls in _pool_classes()}
+    live = get_REDIS_DB().connection_pool.connection_kwargs
     fence = _Db0Fence(allow_db0=False, verb="read from")
+    fence.fenced_db = fence.db
     fence.active = True
-    pool = get_REDIS_DB().connection_pool
     with fence:
         with pytest.raises(CLIError, match="--allow-db0"):
             get_REDIS_DB().ping()
@@ -750,8 +761,86 @@ def test_db0_fence_refuses_commands_and_pipelines_and_restores_the_pool():
         pipe.get("x")
         with pytest.raises(CLIError):
             pipe.execute()
-    assert "get_connection" not in vars(pool)
+        rebound = redis.Redis(**sibling_client_kwargs(live, db=fence.db))
+        with pytest.raises(CLIError):
+            rebound.ping()
+
+        async def async_ping():
+            client = redis.asyncio.Redis(**sibling_client_kwargs(live, db=fence.db))
+            try:
+                await client.ping()
+            finally:
+                await client.aclose()
+
+        with pytest.raises(CLIError):
+            asyncio.run(async_ping())
+        other_db = 14 if fence.db != 14 else 13
+        assert redis.Redis(**sibling_client_kwargs(live, db=other_db)).ping()
+    assert {cls: vars(cls)["get_connection"] for cls in originals} == originals
     assert get_REDIS_DB().ping()
+
+
+def _model_module(tmp_path, monkeypatch, name, body):
+    (tmp_path / f"{name}.py").write_text(body)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, name, raising=False)
+    return f"{name}:TransferCliItem"
+
+
+def test_db0_fence_refuses_after_a_trip_the_model_module_caught(
+    fenced, backend, tmp_path, monkeypatch, capsys
+):
+    """A model module that touches Redis on import and swallows the refusal
+    still gets the run refused, before any record is written."""
+    if backend.name != "postgres":
+        pytest.skip("a Redis-bound model is refused on resolution anyway")
+    TransferCliItem.create(name="a", payload="x")
+    out = tmp_path / "out.jsonl"
+    assert (
+        main(["export", "--model", MODEL_SPEC, "--out", str(out), "--allow-db0"]) == 0
+    )
+    TransferCliItem.query.get(name="a").delete()
+    capsys.readouterr()
+
+    spec = _model_module(
+        tmp_path,
+        monkeypatch,
+        "db0_caught_trip_models",
+        "import popoto\n"
+        "try:\n"
+        "    popoto.get_redis().ping()\n"
+        "except Exception:\n"
+        "    pass\n"
+        "from tests.test_transfer_cli import TransferCliItem\n",
+    )
+    code = main(["import", "--model", spec, "--in", str(out)])
+    err = capsys.readouterr().err
+    assert code == 1, err
+    assert "refusing to write to Redis database" in err
+    assert "partway" not in err
+    assert TransferCliItem.query.filter(name="a") == []
+
+
+def test_db0_fence_refuses_a_client_the_model_module_builds(
+    fenced, tmp_path, monkeypatch, capsys
+):
+    """A model module that builds its own client on the fenced database is
+    refused too: the fence is on the pool classes, not one pool."""
+    live = get_REDIS_DB().connection_pool.connection_kwargs
+    kwargs = sibling_client_kwargs(live, db=live.get("db", 0))
+    spec = _model_module(
+        tmp_path,
+        monkeypatch,
+        "db0_own_client_models",
+        "import redis\n"
+        f"redis.Redis(**{kwargs!r}).set('db0-fence-probe', '1')\n"
+        "from tests.test_transfer_cli import TransferCliItem\n",
+    )
+    code = main(["export", "--model", spec, "--out", str(tmp_path / "o.jsonl")])
+    err = capsys.readouterr().err
+    assert code == 1, err
+    assert "refusing to read from Redis database" in err
+    assert get_REDIS_DB().get("db0-fence-probe") is None
 
 
 def test_postgres_only_process_on_db0_transfers_without_allow_db0(backend, tmp_path):

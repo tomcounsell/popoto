@@ -458,10 +458,14 @@ The refusal applies only to a transfer that uses Redis. A model bound to Postgre
 exported and imported without `--allow-db0`, so a Postgres-only deployment needs
 neither the flag nor a placeholder `REDIS_URL`. That is enforced, not assumed: while
 Redis is on database 0, from before the `--model` module is imported until the run
-ends, popoto's connection pool refuses to hand out a connection. Any Redis command
-the model module or the transfer would issue, a pipeline included, is refused with
-the message above before it reaches the server. A Redis-bound model is refused as
-soon as it is resolved, before its first command.
+ends, every Redis connection pool in the process (sync or async, including a client
+the model module builds itself) refuses to hand out a connection to database 0. Any
+Redis command the model module or the transfer would issue there, a pipeline
+included, is refused with the message above before it reaches the server. A
+Redis-bound model is refused as soon as it is resolved, before its first command,
+and so is a model whose module touched database 0 on import, even if it caught the
+refusal. A command refused partway through a run is reported as such, since records
+handled before it may already have been written or exported.
 
 ## On Postgres
 
