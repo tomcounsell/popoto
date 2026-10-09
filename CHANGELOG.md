@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `popoto-transfer`: a transfer started on DB N≠0 whose `--model` module
+  rebinds the client to DB 0 is now refused without `--allow-db0` (#837).
+
+### Changed
+
+- `popoto-transfer`: a transfer started on DB 0 whose `--model` module rebinds
+  the global client to DB N≠0 is no longer refused -- it no longer touches
+  database 0; any remaining DB-0 command is still refused by the pool guard.
+- `popoto-transfer`: the refusal message names the fenced database (0) rather
+  than the startup binding.
+
 ## [1.10.0] - 2026-10-09
 
 ### Highlights: Postgres-native backend

@@ -680,10 +680,10 @@ def test_help_via_subprocess_module_invocation():
 
 @pytest.fixture
 def fenced(monkeypatch):
-    """Arm the database-0 fence over the test lane's own database.
+    """Retarget the database-0 fence at the test lane's own database.
 
-    The fence is armed as if the process were bound to database 0, but the
-    database it fences is the test database, so a command the fence fails to
+    The fence arms on every run without ``--allow-db0``; this only moves the
+    database it fences to the test database, so a command the fence fails to
     stop still never reaches database 0. Any connection checkout to that
     database while armed trips it, whichever client the caller built.
     """
@@ -694,7 +694,6 @@ def fenced(monkeypatch):
     def armed_init(self, allow_db0, verb):
         original_init(self, allow_db0, verb)
         self.fenced_db = self.db
-        self.active = not allow_db0
 
     monkeypatch.setattr(cli._Db0Fence, "__init__", armed_init)
 
@@ -881,3 +880,180 @@ def test_postgres_only_process_on_db0_transfers_without_allow_db0(backend, tmp_p
         assert "refusing" not in result.stderr
 
     assert out.read_text().count("\n") >= 2
+
+
+# ---------------------------------------------------------------------------
+# The fence arms on intent, not on the startup binding (#837)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.redis_only(reason="the Redis leg is what the fence guards")
+@pytest.mark.parametrize("verb", ["export", "import"])
+def test_unfenced_redis_transfer_on_test_db_is_not_refused(verb, tmp_path, capsys):
+    """Step-2 witness: with the fence armed on every run, a Redis transfer on
+    the non-zero test database must still run. Without the live-binding
+    conjunct on the post-resolution check this is refused."""
+    assert get_REDIS_DB().connection_pool.connection_kwargs.get("db", 0) != 0
+    TransferCliItem.create(name="a", payload="x")
+    out = tmp_path / "out.jsonl"
+    if verb == "export":
+        argv = ["export", "--model", MODEL_SPEC, "--out", str(out)]
+    else:
+        assert main(["export", "--model", MODEL_SPEC, "--out", str(out)]) == 0
+        TransferCliItem.query.get(name="a").delete()
+        argv = ["import", "--model", MODEL_SPEC, "--in", str(out)]
+    capsys.readouterr()
+    code = main(argv)
+    err = capsys.readouterr().err
+    assert code == 0, err
+    assert "refusing to" not in err
+
+
+def test_db0_fence_arms_on_every_run_without_allow_db0():
+    from popoto.transfer.cli import _Db0Fence
+
+    assert get_REDIS_DB().connection_pool.connection_kwargs.get("db", 0) != 0
+    assert _Db0Fence(False, "read from").active is True
+    assert _Db0Fence(True, "read from").active is False
+
+
+_REBIND_MODULE = """\
+import popoto
+from popoto.redis_db import set_REDIS_DB_settings
+
+set_REDIS_DB_settings(host="127.0.0.1", port=1, db={target})
+
+
+class RebindItem(popoto.Model):
+    class Meta:
+        backend = "redis"
+
+    name = popoto.UniqueKeyField()
+"""
+
+_BACKEND_ENV = (
+    "POPOTO_BACKEND",
+    "POSTGRES_URL",
+    "POPOTO_POSTGRES_URL",
+    "POPOTO_POSTGRES_SCHEMA",
+    "POPOTO_POSTGRES_LISTEN_URL",
+    "POPOTO_POSTGRES_MAINTENANCE_URL",
+)
+
+
+def _rebind_child(tmp_path, startup_db, target_db, argv_for, redis_pinned=True):
+    """Run the CLI in a child whose model module rebinds the global client to
+    ``target_db`` on the dead port 127.0.0.1:1, so a fence miss is a
+    connection error and never a write to a real database."""
+    (tmp_path / "rebind_models.py").write_text(_REBIND_MODULE.format(target=target_db))
+    env = _child_env(db=startup_db)
+    env["REDIS_URL"] = f"redis://127.0.0.1:1/{startup_db}"
+    env["PYTHONPATH"] = os.pathsep.join([str(tmp_path), env["PYTHONPATH"]])
+    if redis_pinned:
+        for key in _BACKEND_ENV:
+            env.pop(key, None)
+    return subprocess.run(
+        [sys.executable, "-m", "popoto.transfer.cli", *argv_for],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+@pytest.mark.redis_only(reason="the rebound client is a Redis client")
+@pytest.mark.parametrize("allow_db0", [False, True])
+@pytest.mark.parametrize("verb", ["export", "import"])
+def test_db0_fence_rebind_to_db0(verb, allow_db0, tmp_path):
+    spec = "rebind_models:RebindItem"
+    if verb == "export":
+        argv = ["export", "--model", spec, "--out", str(tmp_path / "o.jsonl")]
+    else:
+        src = tmp_path / "in.jsonl"
+        manifest = build_manifest(
+            model_name="RebindItem",
+            filter_repr=None,
+            filter_kwargs={},
+            matched_count=0,
+            fields={},
+            mixins={},
+            embedding_provenance={},
+        )
+        src.write_text(dump_line(manifest))
+        argv = ["import", "--model", spec, "--in", str(src)]
+    if allow_db0:
+        argv.append("--allow-db0")
+    result = _rebind_child(tmp_path, startup_db=5, target_db=0, argv_for=argv)
+    err = result.stderr
+    assert "Traceback" not in err, err
+    if allow_db0:
+        assert "refusing to" not in err, err
+    else:
+        assert result.returncode == 1, err
+        assert "refusing to" in err and "--allow-db0" in err, err
+        assert "Redis database 0" in err, err
+        assert "partway" not in err, err
+
+
+@pytest.mark.redis_only(reason="the rebound client is a Redis client")
+def test_db0_fence_allows_rebind_from_db0_to_nonzero(tmp_path):
+    """Deliberate loosening: a run that starts on 0 but is rebound away from 0
+    by the model module no longer touches database 0."""
+    result = _rebind_child(
+        tmp_path,
+        startup_db=0,
+        target_db=5,
+        argv_for=[
+            "export",
+            "--model",
+            "rebind_models:RebindItem",
+            "--out",
+            str(tmp_path / "o.jsonl"),
+        ],
+    )
+    assert "refusing to" not in result.stderr, result.stderr
+    assert "Traceback" not in result.stderr, result.stderr
+
+
+def test_postgres_only_rebind_to_db0_runs_without_allow_db0(backend, tmp_path):
+    if backend.name != "postgres":
+        pytest.skip("the Postgres-only deployment shape")
+    from popoto.backends import get_backend
+
+    pg = get_backend(TransferCliItem)
+    (tmp_path / "pg_rebind_models.py").write_text(
+        "import popoto\n"
+        "from popoto.redis_db import set_REDIS_DB_settings\n"
+        'set_REDIS_DB_settings(host="127.0.0.1", port=1, db=0)\n'
+        "\n\n"
+        "class PgRebindItem(popoto.Model):\n"
+        "    name = popoto.UniqueKeyField()\n"
+    )
+    env = _child_env(db=5)
+    env.update(
+        REDIS_URL="redis://127.0.0.1:1/5",
+        POPOTO_BACKEND="postgres",
+        POPOTO_POSTGRES_URL=pg.dsn,
+        POPOTO_POSTGRES_SCHEMA=pg.schema,
+    )
+    env["PYTHONPATH"] = os.pathsep.join([str(tmp_path), env["PYTHONPATH"]])
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "popoto.transfer.cli",
+            "export",
+            "--model",
+            "pg_rebind_models:PgRebindItem",
+            "--out",
+            str(tmp_path / "o.jsonl"),
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "refusing" not in result.stderr
