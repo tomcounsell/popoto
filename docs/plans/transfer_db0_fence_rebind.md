@@ -7,7 +7,7 @@ created: 2026-10-09
 tracking: https://github.com/tomcounsell/popoto/issues/837
 last_comment_id:
 revision_applied: true
-revision_applied_at: 2026-10-09T08:19:50Z
+revision_applied_at: 2026-10-09T08:28:43Z
 ---
 
 # popoto-transfer DB-0 fence arms regardless of startup binding
@@ -98,10 +98,16 @@ Arm on intent, refuse on the pool's own database:
 2. **Re-read the binding after the model resolves.** Replace the
    post-resolution check in both `_run_export` and `_run_import`
    (`fence.active and _uses_redis(model_class)`) with one that also requires
-   the *current* global binding to be the fenced database — an inline
-   expression `_pool_db(get_REDIS_DB().connection_pool) == fence.fenced_db`
-   (or, if both call sites want it, a module-level helper beside `_pool_db`;
-   not a single-use method on `_Db0Fence`).
+   the *current* global binding to be the fenced database. Route both
+   binding reads (this one and `__init__`'s at cli.py:301) through one
+   module-level helper beside `_pool_db` (not a method on `_Db0Fence`), e.g.
+   `_bound_db()` returning
+   `_pool_db(getattr(get_REDIS_DB(), "connection_pool", None))`, and compare
+   `_bound_db() == fence.fenced_db`. The `getattr` is load-bearing: a client
+   with no `connection_pool` (e.g. `redis.cluster.RedisCluster`, see
+   `pytest_plugin.py:233-235`) makes the bare `.connection_pool` read raise
+   `AttributeError`; `_pool_db(None)` returns 0, so a pool-less binding
+   counts as database 0 and is refused without `--allow-db0`.
 
    **What step 2 is for: preventing over-refusal.** Once step 1 makes
    `active` true on every run without `--allow-db0`, the existing check
@@ -148,9 +154,14 @@ Arm on intent, refuse on the pool's own database:
 `self.db` (startup binding) can be kept for the `fenced` test fixture, which
 sets `fenced_db = self.db`; it is no longer used for the arming decision.
 
-**Redis Cluster:** `_pool_db` already reads a cluster binding as database 0,
-so a cluster run was already armed at startup. This change does not alter
-cluster behaviour; only the N→0 rebind case and the message wording change.
+**Redis Cluster (correction):** `RedisCluster` has no `connection_pool`, so
+today `_Db0Fence.__init__` (cli.py:301) raises `AttributeError` on a cluster
+binding before any refusal; it was never "read as database 0". With the
+`_bound_db()` helper both reads tolerate a pool-less client and treat it as
+database 0: a cluster-bound run (startup, or rebound by the model module) is
+refused cleanly without `--allow-db0` instead of crashing. No cluster
+special-casing beyond the `getattr`; whether the class-level pool guard
+covers cluster node pools is out of scope.
 
 ## Test Impact
 
@@ -233,7 +244,8 @@ database.
     post-resolution refusal (condition reduced to `fence.tripped`) or keying
     it on the startup binding (`fence.db == 0`): then the pool guard trips
     only at the transfer's first command, after `started`, and `"partway"`
-    appears.
+    appears (export case; the manifest-only import case issues no command,
+    so under that ablation it fails on exit code instead).
 - [ ] NEW `test_db0_fence_allows_rebind_from_db0_to_nonzero` — `redis_only`,
   export only. Child `REDIS_URL=redis://127.0.0.1:1/0`, module calls
   `set_REDIS_DB_settings(host="127.0.0.1", port=1, db=5)`, Redis-pinned
@@ -265,9 +277,10 @@ database.
 
 - Do not try to fix #722 (core ORM binding DB 0 from an inherited
   `REDIS_URL`) here — that is a library-wide default change.
-- Redis Cluster / Sentinel pools: a cluster binding already reads as
-  database 0 via `_pool_db`, so it was already armed at startup; this change
-  does not alter cluster behaviour. Do not add cluster special-casing.
+- Redis Cluster / Sentinel pools: beyond the `getattr(..., "connection_pool",
+  None)` in `_bound_db()` (which turns today's `AttributeError` into a
+  DB-0-style refusal), do not add cluster special-casing or try to fence
+  cluster node pools.
 - Do not refactor the guard into a context var or per-client hook — the
   class-level patch is what makes clients built by the model module fenced.
 
@@ -338,10 +351,12 @@ database.
 
 ## Step by Step Tasks
 
-1. In `_Db0Fence.__init__`, arm with `self.active = not allow_db0`.
+1. Add module-level `_bound_db()` returning
+   `_pool_db(getattr(get_REDIS_DB(), "connection_pool", None))`. In
+   `_Db0Fence.__init__`, set `self.db = _bound_db()` and arm with
+   `self.active = not allow_db0`.
 2. In `_run_export` and `_run_import`, change the post-resolution refusal to
-   `fence.tripped or (fence.active and _uses_redis(model_class) and _pool_db(get_REDIS_DB().connection_pool) == fence.fenced_db)`
-   (inline, or via one module-level helper shared by both call sites).
+   `fence.tripped or (fence.active and _uses_redis(model_class) and _bound_db() == fence.fenced_db)`.
 3. Make `message()` name `self.fenced_db`.
 4. Update the module and class docstrings (including the known residual).
 5. Update the `fenced` fixture: drop the now-no-op `self.active` line and
@@ -354,7 +369,8 @@ database.
    unit test. Temp model modules live in `tmp_path` on the child's
    `PYTHONPATH` and rebind to the dead port `127.0.0.1:1`; Redis cases scrub
    the child's backend/Postgres env, pin the model to Redis, and carry
-   `redis_only`.
+   `@pytest.mark.redis_only(reason="...")` — always with `reason=`, as at
+   tests/test_transfer_cli.py:739.
 7. Update docs listed under Documentation and the CHANGELOG (three lines).
 8. Run `pytest tests/test_transfer_cli.py`, then the full suite, ruff, black,
    mypy ratchet, then the ablations under Verification.
@@ -368,9 +384,11 @@ each.
   — all pass.
 - **Ablate step 1** (`self.active = self.db == 0 and not allow_db0`): the
   `allow_db0=False` cases of `test_db0_fence_rebind_to_db0` fail — no guard,
-  no post-resolution refusal, the child dies with `Error 61 connecting to
-  127.0.0.1:1` instead of "refusing to" (this is exactly what current main
-  does, observed on 739a9337).
+  no post-resolution refusal. The export case dies with `Error 61 connecting
+  to 127.0.0.1:1` instead of "refusing to" (what current main does, observed
+  on 739a9337); the import case, whose manifest-only input issues no Redis
+  command, most likely exits 0 — it fails on the exit-code and
+  "refusing to" assertions, not on "Error 61".
 - **Ablate step 2** (keep step 1, restore the unnarrowed
   `fence.tripped or (fence.active and _uses_redis(model_class))`):
   `test_unfenced_redis_transfer_on_test_db_is_not_refused` and the Redis leg
@@ -380,8 +398,11 @@ each.
   not step-2 evidence.
 - **Ablate the post-resolution refusal entirely** (keep step 1, condition
   reduced to `fence.tripped`): `test_db0_fence_rebind_to_db0`
-  (`allow_db0=False`) fails on the `"partway"`-absent assertion — the pool
-  guard trips only at the first transfer command, after `started`.
+  (`allow_db0=False`) fails. The export case fails on the `"partway"`-absent
+  assertion — the pool guard trips only at the first transfer command, after
+  `started`. The import case issues no Redis command on its manifest-only
+  input, so nothing trips and it fails on the exit-code / "refusing to"
+  assertions, not "partway".
 - **Ablate step 3** (message prints `self.db`): `test_db0_fence_rebind_to_db0`
   fails on `"Redis database 0"` (message says database 5).
 - Run the new subprocess tests with `POPOTO_BACKEND=postgres` and
@@ -392,8 +413,9 @@ each.
 
 ## Open Questions
 
-None blocking. Redis Cluster was already refused at startup (`_pool_db`
-reads it as 0), so there is no behaviour change for it. The 0→N loosening is
+None blocking. A Redis Cluster binding crashes today with `AttributeError`
+at cli.py:301; after `_bound_db()` it is refused as database 0 unless
+`--allow-db0` (small, intended behaviour change). The 0→N loosening is
 treated as intended (see Solution step 2); flag at review if that is wrong.
 
 ## Critique Results
@@ -407,3 +429,11 @@ Critique round 2 (2026-10-09), FULL depth, independent roster (3 critics). Verdi
 | CONCERN | Risk & Robustness | The Solution step 2 sentence about a model that builds a separate DB-0 client (the global binding stays N) presents that case as covered. It passes the post-resolution check and is refused only at first checkout, after `fence.started = True` (cli.py:479). That run prints the "partway" warning and may leave a partial export or import. This is not a regression, but the plan does not say it. | Solution step 2 ("Known residual"); Documentation (docstring states residual) | Say plainly that this shape refuses with "partway". `test_db0_fence_refuses_a_client_the_model_module_builds` (tests/test_transfer_cli.py:824) covers only an import-time command, before `started` is set. If you pin the in-transfer shape, assert `"partway" in err`. Do not widen step 2 to inspect non-global clients (Rabbit Holes). |
 | NIT | Scope & Value | The test additions are heavy for a one-line arming change plus one conjunct. The new unit test partly duplicates `test_db0_fence_refuses_every_client_and_restores_the_pools`. | Test Impact: `test_db0_fence_rebind_to_db0` parametrized export/import × allow_db0; unit test shrunk to `test_db0_fence_arms_on_every_run_without_allow_db0` | Parametrize the rebind refusal over export/import and fold in the `--allow-db0` case. Shrink the unit test to asserting that `_Db0Fence(False, ...)` on a non-zero DB is `active` and `_Db0Fence(True, ...)` is not. |
 | NIT | Critique runner | The Postgres-only rebind test does not name its dead-port rebind target or the Postgres env it needs (POPOTO_BACKEND/POPOTO_POSTGRES_URL/SCHEMA, as in `test_postgres_only_process_on_db0_transfers_without_allow_db0`). | Test Impact: `test_postgres_only_rebind_to_db0_runs_without_allow_db0` names target and env | Rebind with `set_REDIS_DB_settings(host="127.0.0.1", port=1, db=0)`, so a fence miss shows up as a connection error rather than a write to DB 0. Set the Postgres env the same way the existing test does. |
+
+Critique round 3 (2026-10-09): READY TO BUILD (with concerns), 0 blockers.
+
+| Severity | Finding | Addressed By |
+|----------|---------|--------------|
+| CONCERN | Cluster claim wrong: `RedisCluster` has no `connection_pool`, so cli.py:301 already raises `AttributeError`, and step 2's expression would repeat it. | Solution step 2 (`_bound_db()` helper with `getattr(..., None)`); Redis Cluster correction; Rabbit Holes; Open Questions; Tasks 1-2 |
+| NIT | Import ablation wording: manifest-only import issues no Redis command, so it fails on exit code (not "partway") and likely exits 0 under step-1 revert (not "Error 61"). | Verification ablations; Test Impact "partway" note |
+| NIT | New tests must pass `reason=` to `redis_only`. | Task 6 |
