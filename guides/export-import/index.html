@@ -4120,7 +4120,7 @@ both would claim stdout.</p>
 </tbody>
 </table>
 <h3 id="refusing-database-0">Refusing database 0<a class="headerlink" href="#refusing-database-0" title="Permanent link">&para;</a></h3>
-<p>Both subcommands refuse to touch Redis when the effective Redis database is 0,
+<p>Both subcommands refuse to touch Redis database 0,
 unless <code>--allow-db0</code> is passed:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="gp">$ </span>popoto-transfer<span class="w"> </span>import<span class="w"> </span>--model<span class="w"> </span>myapp.models:Memory<span class="w"> </span>--in<span class="w"> </span>memories.jsonl
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="go">popoto-transfer: refusing to write to Redis database 0 -- this is often a live store,</span>
@@ -4134,15 +4134,20 @@ as well as an explicit <code>…/0</code> URL.</p>
 <p>The refusal applies only to a transfer that uses Redis. A model bound to Postgres
 (<code>Meta.backend = "postgres"</code>, or <code>POPOTO_BACKEND=postgres</code> for the process) is
 exported and imported without <code>--allow-db0</code>, so a Postgres-only deployment needs
-neither the flag nor a placeholder <code>REDIS_URL</code>. That is enforced, not assumed: while
-Redis is on database 0, from before the <code>--model</code> module is imported until the run
-ends, every Redis connection pool in the process (sync or async, including a client
-the model module builds itself) refuses to hand out a connection to database 0. Any
+neither the flag nor a placeholder <code>REDIS_URL</code>. That is enforced, not assumed: on every
+run without <code>--allow-db0</code>, whatever database the process started on, from before the
+<code>--model</code> module is imported until the run ends, every Redis connection pool in the
+process (sync or async, including a client the model module builds itself) refuses to
+hand out a connection to database 0. Any
 Redis command the model module or the transfer would issue there, a pipeline
 included, is refused with the message above before it reaches the server. A
 Redis-bound model is refused as soon as it is resolved, before its first command,
-and so is a model whose module touched database 0 on import, even if it caught the
-refusal. A command refused partway through a run is reported as such, since records
+if the global client is bound to database 0 at that moment (so a <code>--model</code> module that
+rebinds the client to database 0 is refused, and one that rebinds it away from
+database 0 is not), and so is a model whose module touched database 0 on import, even
+if it caught the refusal. A model module that builds its own database-0 client while
+the global client stays elsewhere is refused at that client's first connection, which
+mid-transfer is a "partway" refusal. A command refused partway through a run is reported as such, since records
 handled before it may already have been written or exported.</p>
 <h2 id="on-postgres">On Postgres<a class="headerlink" href="#on-postgres" title="Permanent link">&para;</a></h2>
 <p>Export and import work on a model with <code>Meta.backend = "postgres"</code>, through the same
