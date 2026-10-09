@@ -1583,10 +1583,10 @@ def propose_from_disjunctions(agent_id: str, turn: int) -> int:
     try:
         disjoins = _live_disjoins(agent_id)
     except ImportError:
-        logger.info("question_queue: M5 reconciliation unavailable; no disjoins")
+        logger.info("question_queue: reconciliation unavailable; no disjoins")
         return 0
     except Exception:
-        logger.exception("question_queue: reading M5 disjoins failed")
+        logger.exception("question_queue: reading reconciliation disjoins failed")
         return 0
     proposed = 0
     for disjunction_id, side_a, side_b in disjoins:

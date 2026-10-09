@@ -2113,7 +2113,7 @@ class Model(metaclass=ModelBase):
             ``dict[bytes, bytes]`` as returned by ``HGETALL``. Empty dict
             when the key does not exist.
         """
-        _require_redis(cls, "load_raw_hash", "a Redis-only debug API (plan §1)")
+        _require_redis(cls, "load_raw_hash", "a Redis-only debug API")
         return get_REDIS_DB().hgetall(redis_key)
 
     def delete(

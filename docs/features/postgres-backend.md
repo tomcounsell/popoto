@@ -1751,6 +1751,12 @@ transfer paths now go through the backend on a Postgres model:
 Redis. `preserve_keys=False` mints keys and remaps `Relationship` values the
 same way on both backends.
 
+`popoto-transfer`'s database-0 refusal applies only to a transfer that uses
+Redis: a Postgres-bound model transfers without `--allow-db0` even when Redis
+is unset or on database 0, and the CLI refuses any Redis command such a run
+would issue instead of letting it reach database 0
+([Refusing database 0](../guides/export-import.md#refusing-database-0)).
+
 **Cross-backend.** An export taken from a Redis-bound model imports into the
 same model bound to Postgres. A re-export then matches the Redis export, and
 `to_dict()` matches for every record. This is pinned for a plain model

@@ -754,7 +754,7 @@ def within_sql(c: Cond, params: list[Any]) -> str:
 
         raise BackendCapabilityError(
             f"a GeoField radius filter on {c.field!r} scopes filter() and count() "
-            "on Postgres; it cannot scope a ranking or search yet (#759 M5)"
+            "on Postgres; it cannot scope a ranking or search there"
         )
     if not c.value.keys:
         return "FALSE"

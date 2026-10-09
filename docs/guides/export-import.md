@@ -438,25 +438,34 @@ both would claim stdout.
 
 ### Refusing database 0
 
-Both subcommands refuse to run when the effective Redis database is 0, unless
-`--allow-db0` is passed:
+Both subcommands refuse to touch Redis when the effective Redis database is 0,
+unless `--allow-db0` is passed:
 
 ```console
 $ popoto-transfer import --model myapp.models:Memory --in memories.jsonl
-popoto-transfer: refusing to write to database 0 -- this is often a live store, not
-a test database.
+popoto-transfer: refusing to write to Redis database 0 -- this is often a live store,
+not a test database.
   Pass --allow-db0 to proceed anyway, or point at a different database, e.g.
   REDIS_URL=redis://localhost:6379/1
 ```
 
 The check reads the database off the live connection pool, not an environment
 variable, so it catches the unset-`REDIS_URL` fallback (which also binds database 0)
-as well as an explicit `…/0` URL. It runs before the operator's `--model` module is
-imported and before any Redis command is issued.
+as well as an explicit `…/0` URL.
 
-The check applies to a Postgres-bound model too, because it runs before the model is
-imported and so cannot know the model's backend. When transferring a Postgres model,
-set `REDIS_URL` to a non-zero database or pass `--allow-db0`.
+The refusal applies only to a transfer that uses Redis. A model bound to Postgres
+(`Meta.backend = "postgres"`, or `POPOTO_BACKEND=postgres` for the process) is
+exported and imported without `--allow-db0`, so a Postgres-only deployment needs
+neither the flag nor a placeholder `REDIS_URL`. That is enforced, not assumed: while
+Redis is on database 0, from before the `--model` module is imported until the run
+ends, every Redis connection pool in the process (sync or async, including a client
+the model module builds itself) refuses to hand out a connection to database 0. Any
+Redis command the model module or the transfer would issue there, a pipeline
+included, is refused with the message above before it reaches the server. A
+Redis-bound model is refused as soon as it is resolved, before its first command,
+and so is a model whose module touched database 0 on import, even if it caught the
+refusal. A command refused partway through a run is reported as such, since records
+handled before it may already have been written or exported.
 
 ## On Postgres
 
@@ -484,7 +493,7 @@ whole import inside your transaction (see
 - Postgres keeps no confirmed access log. `access_count` and `last_accessed` cross; the
   log does not.
 - A model with a `DataFrameField` cannot be bound to Postgres.
-- The database-0 refusal above still applies.
+- The database-0 refusal above does not apply: it covers only transfers that use Redis.
 
 Every row is in
 [Cross-backend migration notes](../features/postgres-backend.md#cross-backend-migration-notes-for-756).

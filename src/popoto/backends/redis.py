@@ -225,7 +225,7 @@ class RedisBackend:
         """
         if expiry is not None:
             raise BackendCapabilityError(
-                "save(expiry=) is not routed in #759 M1a; set Meta.ttl or the "
+                "the backend save takes no per-call expiry; set Meta.ttl or the "
                 "instance's _ttl/_expire_at"
             )
         update_fields = fields
@@ -1164,7 +1164,7 @@ class RedisBackend:
 
     def _unrouted(self, method: str, served_by: str) -> BackendCapabilityError:
         return BackendCapabilityError(
-            f"RedisBackend.{method} is not routed in #759 M1a: on Redis it is "
+            f"RedisBackend.{method} is not routed: on Redis it is "
             f"still served directly by {served_by}"
         )
 

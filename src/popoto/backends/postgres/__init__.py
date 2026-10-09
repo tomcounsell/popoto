@@ -2600,15 +2600,6 @@ class PostgresBackend(
         )
         return int(rows[0][0])
 
-    # -- D-H: later milestones ---------------------------------------------------
-
-    def _later(self, method: str, milestone: str) -> BackendCapabilityError:
-        return BackendCapabilityError(
-            f"PostgresBackend.{method} arrives in #759 {milestone}; this model is "
-            "bound to Postgres, which supports records and queries (groups A-C) "
-            "in this release"
-        )
-
     def field_call(
         self,
         spec: ModelSpec,

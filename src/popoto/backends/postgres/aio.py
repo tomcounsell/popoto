@@ -953,7 +953,7 @@ def get_async_backend(model: Any = None) -> AsyncPostgresBackend:
     if not isinstance(backend, PostgresBackend):
         raise BackendCapabilityError(
             f"no async backend for the {backend.name!r} backend: AsyncBackend is "
-            "Postgres's (#759 M5); Redis-bound models use their async_* methods "
+            "Postgres-only; Redis-bound models use their async_* methods "
             "directly"
         )
     twin = async_backend(backend)

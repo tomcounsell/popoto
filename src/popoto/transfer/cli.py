@@ -10,13 +10,21 @@ Two subcommands:
     ``--in`` (a file, or ``-`` for stdin) and prints the reconciliation
     report to stderr.
 
-Both subcommands refuse to run against Redis database 0 unless ``--allow-db0``
-is passed. Database 0 is, on many machines running this ORM, a live store
-rather than a test database, and an import writes to it. The guard reads the
+Both subcommands refuse to touch Redis database 0 unless ``--allow-db0`` is
+passed. Database 0 is, on many machines running this ORM, a live store rather
+than a test database, and an import writes to it. The guard reads the
 database off the live connection pool -- not an environment variable -- so it
-catches the unset-``REDIS_URL`` fallback as well as an explicit ``…/0`` URL,
-and it runs before the operator's ``--model`` module is imported and before
-any Redis command is issued.
+catches the unset-``REDIS_URL`` fallback as well as an explicit ``…/0`` URL.
+
+The refusal applies to transfers that use Redis. A model bound to another
+backend (``Meta.backend = "postgres"``, or ``POPOTO_BACKEND=postgres``) is
+transferred without ``--allow-db0`` when Redis is on database 0, because the
+transfer never contacts Redis. That is enforced rather than assumed: from
+before the ``--model`` module is imported until the run ends, the Redis
+connection pool refuses to hand out a connection (a pipeline included), so
+any Redis command the model module or the transfer would issue is refused
+before it reaches database 0. A Redis-bound model is refused once it is
+resolved, before its first command.
 
 The human-readable summary always goes to **stderr**, never stdout, so that
 ``--out -`` can stream JSON Lines on stdout without the summary corrupting
@@ -27,7 +35,7 @@ stdout for a machine-readable summary instead, and is refused together with
 
 Submodule imports (``redis``, the transfer drivers, the model registry) are
 kept out of module scope and inside the functions that need them, so argument
-parsing and the database-0 guard run before any of them is touched. This does
+parsing and the database-0 fence run before any of them is touched. This does
 not make ``--help`` cheap: the console-script entry point imports
 ``popoto.transfer.cli``, which imports the ``popoto`` package, so the ORM is
 already resolved by the time :func:`main` is called.
@@ -266,35 +274,113 @@ def resolve_model(spec: str) -> Any:
     return obj
 
 
-def _check_db0(allow_db0: bool, verb: str) -> "int | None":
-    """Refuse to proceed against Redis database 0 unless opted in.
+class _Db0Fence:
+    """Refuse every Redis command on database 0 unless opted in.
 
     Reads the database off the live connection pool rather than an
     environment variable, so this catches both an explicit
     ``REDIS_URL=…/0`` and the unset-``REDIS_URL`` fallback (which also binds
-    database 0). Runs before any Redis command is issued and before the
-    operator's ``--model`` module is imported.
+    database 0). While the fence is entered and :attr:`active`, every
+    redis-py connection pool, sync or async, refuses to hand out a
+    connection to database 0: ``get_connection`` raises on the pool classes
+    themselves, so a client the ``--model`` module builds or rebinds is
+    fenced too. Every command, pipelines and pub/sub included, checks a
+    connection out first, so nothing reaches the server. A pool bound to
+    another database is unaffected. Entering issues no Redis command.
 
     Args:
         allow_db0: Whether ``--allow-db0`` was passed.
         verb: ``"read from"`` for export or ``"write to"`` for import,
             naming the consequence in the refusal message.
-
-    Returns:
-        ``1`` if the run must be refused, ``None`` if it may proceed.
     """
-    from popoto.redis_db import POPOTO_REDIS_DB
 
-    db = int(POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db", 0) or 0)
-    if db != 0 or allow_db0:
-        return None
-    sys.stderr.write(
-        f"popoto-transfer: refusing to {verb} database {db} -- this is "
-        "often a live store, not a test database.\n"
-        "  Pass --allow-db0 to proceed anyway, or point at a different "
-        f"database, e.g. {DB0_ALTERNATIVE}\n"
-    )
-    return 1
+    def __init__(self, allow_db0: bool, verb: str) -> None:
+        from popoto.redis_db import get_REDIS_DB
+
+        self.verb = verb
+        self.db = _pool_db(get_REDIS_DB().connection_pool)
+        #: The database no pool may hand out a connection to while armed.
+        self.fenced_db = 0
+        self.active = self.db == 0 and not allow_db0
+        #: Set when something asked a fenced pool for a connection.
+        self.tripped = False
+        #: Set once the transfer itself begins, after the model resolved.
+        self.started = False
+        self._saved: "list[tuple[type, Any]]" = []
+
+    def __enter__(self) -> "_Db0Fence":
+        if self.active:
+            for cls in _pool_classes():
+                original = vars(cls)["get_connection"]
+                self._saved.append((cls, original))
+                setattr(cls, "get_connection", self._guard(original))
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        while self._saved:
+            cls, original = self._saved.pop()
+            setattr(cls, "get_connection", original)
+
+    def _guard(self, original: Any) -> Any:
+        fence = self
+
+        def get_connection(pool: Any, *args: Any, **kwargs: Any) -> Any:
+            if _pool_db(pool) == fence.fenced_db:
+                fence.tripped = True
+                raise CLIError(fence.message())
+            return original(pool, *args, **kwargs)
+
+        return get_connection
+
+    def message(self) -> str:
+        return (
+            f"refusing to {self.verb} Redis database {self.db} -- this is "
+            "often a live store, not a test database.\n"
+            "  Pass --allow-db0 to proceed anyway, or point at a different "
+            f"database, e.g. {DB0_ALTERNATIVE}"
+        )
+
+    def refuse(self) -> int:
+        """Print the refusal and return the exit code for it."""
+        sys.stderr.write(f"popoto-transfer: {self.message()}\n")
+        if self.started:
+            sys.stderr.write(
+                "popoto-transfer: the refused command came partway through "
+                "the run, so records handled before it may already have been "
+                "written or exported\n"
+            )
+        return 1
+
+
+def _pool_db(pool: Any) -> int:
+    return int(getattr(pool, "connection_kwargs", {}).get("db", 0) or 0)
+
+
+def _pool_classes() -> "list[type]":
+    """Every redis-py pool class that defines its own ``get_connection``,
+    sync and async. Fencing the classes rather than one pool instance covers
+    a client the model module builds or rebinds after the fence is up."""
+    import redis.asyncio.connection as async_connection
+    import redis.connection as sync_connection
+
+    found = []
+    for module in (sync_connection, async_connection):
+        for value in vars(module).values():
+            if (
+                isinstance(value, type)
+                and "get_connection" in vars(value)
+                and not value.__name__.endswith("Interface")
+            ):
+                found.append(value)
+    return found
+
+
+def _uses_redis(model_class: Any) -> bool:
+    """Whether a transfer of ``model_class`` reads or writes Redis. Resolving
+    the backend issues no Redis command."""
+    from ..backends.routing import non_redis_backend
+
+    return non_redis_backend(model_class) is None
 
 
 def _parse_filters(pairs: "Optional[List[str]]") -> "dict[str, Any]":
@@ -362,10 +448,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 def _cmd_export(args: Any) -> int:
     """Run the ``export`` subcommand."""
-    refusal = _check_db0(args.allow_db0, "read from")
-    if refusal is not None:
-        return refusal
-
     if args.json and args.out == "-":
         sys.stderr.write(
             "popoto-transfer export: --json and --out - both write to "
@@ -374,12 +456,27 @@ def _cmd_export(args: Any) -> int:
         )
         return 1
 
+    with _Db0Fence(args.allow_db0, "read from") as fence:
+        code = _run_export(args, fence)
+    return fence.refuse() if fence.tripped else code
+
+
+def _run_export(args: Any, fence: _Db0Fence) -> int:
+    """The ``export`` subcommand inside the database-0 fence."""
     try:
         model_class = resolve_model(args.model)
         filters = _parse_filters(args.filter)
     except CLIError as exc:
+        if fence.tripped:
+            return 1
         sys.stderr.write(f"popoto-transfer export: {exc}\n")
         return 1
+    # A trip the model module caught while importing still refuses the run,
+    # before any record is read or written.
+    if fence.tripped or (fence.active and _uses_redis(model_class)):
+        fence.tripped = True
+        return 1
+    fence.started = True
 
     from ..backends.types import OUTAGE_ERRORS
     from ..exceptions import ModelException
@@ -408,6 +505,7 @@ def _cmd_export(args: Any) -> int:
         TimeoutError,
         OSError,
         KeyboardInterrupt,
+        CLIError,
     ) + OUTAGE_ERRORS
     try:
         result = export_records(
@@ -415,7 +513,15 @@ def _cmd_export(args: Any) -> int:
         )
     except failures as exc:
         message = "interrupted" if isinstance(exc, KeyboardInterrupt) else str(exc)
-        sys.stderr.write(f"popoto-transfer export: {message}\n")
+        if not fence.tripped:
+            sys.stderr.write(f"popoto-transfer export: {message}\n")
+        if part_path is not None:
+            stream.close()
+            _unlink_quietly(part_path)
+        return 1
+
+    if fence.tripped:
+        # A record's Redis read was refused and recorded as an export error.
         if part_path is not None:
             stream.close()
             _unlink_quietly(part_path)
@@ -443,15 +549,26 @@ def _cmd_export(args: Any) -> int:
 
 def _cmd_import(args: Any) -> int:
     """Run the ``import`` subcommand."""
-    refusal = _check_db0(args.allow_db0, "write to")
-    if refusal is not None:
-        return refusal
+    with _Db0Fence(args.allow_db0, "write to") as fence:
+        code = _run_import(args, fence)
+    return fence.refuse() if fence.tripped else code
 
+
+def _run_import(args: Any, fence: _Db0Fence) -> int:
+    """The ``import`` subcommand inside the database-0 fence."""
     try:
         model_class = resolve_model(args.model)
     except CLIError as exc:
+        if fence.tripped:
+            return 1
         sys.stderr.write(f"popoto-transfer import: {exc}\n")
         return 1
+    # A trip the model module caught while importing still refuses the run,
+    # before any record is read or written.
+    if fence.tripped or (fence.active and _uses_redis(model_class)):
+        fence.tripped = True
+        return 1
+    fence.started = True
 
     in_path = args.in_path
     try:
@@ -471,6 +588,7 @@ def _cmd_import(args: Any) -> int:
         QueryException,
         TimeoutError,
         OSError,
+        CLIError,
     ) + OUTAGE_ERRORS
     try:
         report = import_records(
@@ -487,7 +605,8 @@ def _cmd_import(args: Any) -> int:
         # this run have already been written. Its own message says so; it
         # is printed verbatim rather than replaced with a message implying
         # the run was a no-op.
-        sys.stderr.write(f"popoto-transfer import: {exc}\n")
+        if not fence.tripped:
+            sys.stderr.write(f"popoto-transfer import: {exc}\n")
         return 1
     except KeyboardInterrupt:
         sys.stderr.write(

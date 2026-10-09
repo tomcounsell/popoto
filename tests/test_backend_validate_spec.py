@@ -234,7 +234,7 @@ def test_postgres_refuses_a_dataframe_field_with_its_reason():
         validate_spec(spec, "postgres")
     message = str(info.value)
     assert "frame (DataFrameField)" in message
-    assert "not stored on Postgres in v2" in message
+    assert "not stored on Postgres" in message
     assert "DictField or a BytesField" in message
 
 

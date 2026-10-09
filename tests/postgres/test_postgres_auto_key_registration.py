@@ -9,7 +9,8 @@ it with no migration and no ``SchemaDriftError`` even under
 ``POPOTO_SCHEMA_AUTO=0``. The rare one was created by a query before any
 instance existed, so it has no ``_auto_key`` column (and so no rows): the
 new code's first use gains the column additively, exactly as the old code's
-first instance did.
+first instance did -- and under ``POPOTO_SCHEMA_AUTO=0`` that first use (a
+query now, not only a save) raises ``SchemaDriftError`` instead.
 """
 
 import pytest
@@ -87,3 +88,45 @@ def test_a_table_a_query_created_before_any_instance_gains_the_column(pg, admin)
     assert stored[0] == compile_table(PgAkKeyless._meta.spec, pg.schema).fingerprint()
     record = PgAkKeyless.create(title="new")
     assert [r._auto_key for r in PgAkKeyless.query.all()] == [record._auto_key]
+
+
+def test_a_query_created_table_under_schema_auto_off_raises_drift(
+    pg, admin, monkeypatch
+):
+    """The rare table shape with ``POPOTO_SCHEMA_AUTO=0``: an explicit refusal.
+
+    A table a query created before any instance has no ``_auto_key`` column.
+    Under the old code a query against it still matched (the spec had no
+    ``_auto_key`` either) and only the first instance hit the additive change;
+    now ``_auto_key`` is in the spec from class creation, so the *first use*
+    needs that change. With automatic DDL off that is a ``SchemaDriftError``
+    naming ``POPOTO_SCHEMA_AUTO=0`` -- never a silent write to a table missing
+    the key column -- and the table and its registry row are left untouched.
+    Re-enabling automatic DDL lets the same first use migrate it.
+    """
+    from popoto.backends.types import SchemaDriftError
+
+    class PgAkStrict(popoto.Model):
+        title = popoto.StringField(default="")
+
+    strict_options = ModelOptions("PgAkStrict")
+    strict_options.add_field("title", PgAkStrict._meta.fields["title"])
+    strict_options.mixins = PgAkStrict._meta.mixins
+    strict = compile_table(build_model_spec(strict_options), pg.schema)
+    assert "_auto_key" not in strict.column_map()
+    assert ensure_table(admin, strict, auto=True) == "created"
+    stored = _registry(admin, pg.schema, strict.table)
+
+    monkeypatch.setenv("POPOTO_SCHEMA_AUTO", "0")
+    pg.forget_tables()
+    with pytest.raises(SchemaDriftError, match="POPOTO_SCHEMA_AUTO=0"):
+        PgAkStrict.query.count()
+    with pytest.raises(SchemaDriftError, match="POPOTO_SCHEMA_AUTO=0"):
+        PgAkStrict.create(title="refused")
+    assert _registry(admin, pg.schema, strict.table) == stored
+
+    monkeypatch.setenv("POPOTO_SCHEMA_AUTO", "1")
+    pg.forget_tables()
+    assert PgAkStrict.query.count() == 0
+    record = PgAkStrict.create(title="new")
+    assert [r._auto_key for r in PgAkStrict.query.all()] == [record._auto_key]

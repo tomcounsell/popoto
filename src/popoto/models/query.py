@@ -915,8 +915,7 @@ class QueryBuilder:
                     )
                 raise BackendCapabilityError(
                     "composite_score index 'priority': the WriteFilter priority "
-                    "tier is not stored on Postgres (a no-op there, #759 plan §5 "
-                    "M2)"
+                    "tier is not stored on Postgres (a no-op there)"
                 )
             if field_name in ("access_count", "access_score"):
                 if not issubclass(model_class, AccessTrackerMixin):
@@ -2869,8 +2868,8 @@ class Query:
         """
         if (clean or catchall) and _decoded_backend(self.model_class):
             raise BackendCapabilityError(
-                "Query.keys(clean=/catchall=) scans Redis keys and is Redis-only "
-                f"(plan §1); {self.model_class.__name__} is bound to "
+                "Query.keys(clean=/catchall=) scans Redis keys and is Redis-only"
+                f"; {self.model_class.__name__} is bound to "
                 f"{get_backend(self.model_class).name!r}"
             )
         if clean:
@@ -3846,8 +3845,8 @@ class Query:
         backend = get_backend(self.model_class)
         if backend.name == "redis":
             raise BackendCapabilityError(
-                f"{self.model_class.__name__}.query.recall() is Postgres-only "
-                "(#759 plan §1.1); on Redis use keyword_search / "
+                f"{self.model_class.__name__}.query.recall() is Postgres-only"
+                "; on Redis use keyword_search / "
                 "semantic_search and fuse()"
             )
         rows = backend.recall(  # type: ignore[attr-defined]
@@ -3934,7 +3933,7 @@ class Query:
         if backend.name == "redis":
             raise BackendCapabilityError(
                 f"{self.model_class.__name__}.query.top_by_relevance() is "
-                "Postgres-only (#759 plan §1.1); on Redis use top_by_decay()"
+                "Postgres-only; on Redis use top_by_decay()"
             )
         arm = self._relevance_arm(field_name)
         if arm is False:
