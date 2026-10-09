@@ -9,11 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Postgres error redaction rewrites only DSN-shaped text (URL passwords,
+  `password=` values), so a short password no longer garbles ordinary words in
+  an error message (#832).
+- A hook on an unreachable Postgres writes exactly one stderr line, as
+  documented, and the backend's outage ERROR is logged once per
+  `Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS` library-wide, not once per failed
+  call (#832).
 - `popoto-transfer`: a transfer started on DB N≠0 whose `--model` module
   rebinds the client to DB 0 is now refused without `--allow-db0` (#837).
 
 ### Changed
 
+- `popoto-migrate-redis-to-postgres` exit codes (#832): an unreachable or
+  unusable Postgres now exits `4` with one `UNREACHABLE:` line (was `1` with a
+  traceback), and an unparseable Postgres DSN exits `2` with `REFUSED:` (was
+  `1` with a traceback). `1` is again only a verification mismatch.
 - `popoto-transfer`: a transfer started on DB 0 whose `--model` module rebinds
   the global client to DB N≠0 is no longer refused -- it no longer touches
   database 0; any remaining DB-0 command is still refused by the pool guard.

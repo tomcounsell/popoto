@@ -334,7 +334,12 @@ def test_the_hook_survives_postgres_down_and_says_which_backend(
     # default (Defaults.PG_CONNECT_TIMEOUT_SECONDS, 5 s) alone exceeds this.
     assert elapsed < 4.5, f"{elapsed:.1f}s on the prompt path"
     assert run.stdout == ""
-    assert "(backend: postgres)" in run.stderr
+    assert len(run.stderr.splitlines()) == 1, run.stderr
+    assert run.stderr.startswith(
+        "popoto memory injected_read failed (backend: postgres): "
+    ), run.stderr
+    lines = h.memory_log.read_text().splitlines()
+    assert len(lines) == 1 and "last connection attempt" in lines[0], lines
     doctor = h.run(["doctor"])
     assert doctor.returncode == 1
     assert "  postgres       UNREACHABLE\n" in doctor.stdout
@@ -373,7 +378,10 @@ def test_the_hook_fails_open_within_its_budget_on_a_silent_postgres(
         silent.close()
     assert run.returncode == 0
     assert run.stdout == ""
-    assert "(backend: postgres)" in run.stderr
+    assert len(run.stderr.splitlines()) == 1, run.stderr
+    assert run.stderr.startswith(
+        "popoto memory injected_read failed (backend: postgres): "
+    ), run.stderr
     assert elapsed >= 0.9, f"{elapsed:.2f}s: the silent server never held the hook"
     assert elapsed < 4.5, f"{elapsed:.1f}s on the prompt path"
     assert h.redis_attempts() == ""
@@ -433,7 +441,10 @@ def test_the_hook_fails_open_within_its_budget_on_a_locked_table(
     assert run.returncode == 0, run.stderr
     assert elapsed >= 0.9, f"{elapsed:.2f}s: the lock never held the hook"
     assert elapsed < 4.5, f"{elapsed:.1f}s on the prompt path"
-    assert "(backend: postgres)" in run.stderr
+    assert len(run.stderr.splitlines()) == 1, run.stderr
+    assert run.stderr.startswith(
+        "popoto memory injected_read failed (backend: postgres): "
+    ), run.stderr
     assert h.redis_attempts() == ""
 
 

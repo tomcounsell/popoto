@@ -2078,7 +2078,9 @@ backend.health.as_dict()
 ```
 
 The outage is logged at ERROR once per `Defaults.PG_OUTAGE_LOG_WINDOW_SECONDS`
-(60 s), however many calls fail within that window. After a successful call
+(60 s), however many calls fail within that window. The
+`BackendUnavailableError` each failed call raises does not log a second time,
+so a host application's logs carry one outage line per window. After a successful call
 the record resets, and a recovery is logged at WARNING.
 
 **A busy pool is not an outage.** When every connection the pool may hold
