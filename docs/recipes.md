@@ -355,7 +355,8 @@ pip install -e ".[benchmark]"
 # Run LongMemEval-S benchmark (downloads ~264 MB on first run)
 python -m tests.benchmarks.run_external --dataset longmemeval-s
 
-# Run LoCoMo benchmark
+# Run LoCoMo benchmark. LoCoMo is no longer on Hugging Face: save your own copy
+# of locomo10.json as ~/.cache/popoto_benchmarks/locomo.json, or pass --fixture PATH.
 python -m tests.benchmarks.run_external --dataset locomo
 
 # Quick smoke test (fixture-based, no download)
