@@ -12,9 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 
 - The LoCoMo benchmark dataset (`snap-research/locomo`) is no longer on Hugging
-  Face. `docs/benchmarks.md`, `docs/recipes.md`, and `tests/benchmarks/README.md` now
-  say so where
-  they show how to run LoCoMo: a full run needs a local copy of
+  Face. `docs/benchmarks.md`, `docs/recipes.md`, and `tests/benchmarks/README.md`
+  now say so where they show how to run LoCoMo: a full run needs a local copy of
   `locomo10.json`, saved as `~/.cache/popoto_benchmarks/locomo.json` or passed
   with `--fixture`.
 
