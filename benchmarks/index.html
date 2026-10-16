@@ -3576,32 +3576,35 @@ included in the JSON report for reproducibility.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Full LongMemEval-S run (downloads dataset on first run, ~264 MB):</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Full LoCoMo run:</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>locomo
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Limit to N questions (faster, good for CI smoke tests).</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># By default --limit takes a *representative* sample across the whole</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="c1"># dataset (--sample stride), so small runs reflect every question_type</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># rather than the first N records (which are all one easy category):</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">20</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># Strongest small-run guarantee — every category proportionally represented:</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">12</span><span class="w"> </span>--sample<span class="w"> </span>stratified<span class="w"> </span>--seed<span class="w"> </span><span class="m">0</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Full LoCoMo run. The snap-research/locomo dataset is no longer on Hugging Face,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># so this works only with a copy of locomo10.json you already have, saved as</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1"># ~/.cache/popoto_benchmarks/locomo.json or passed with --fixture PATH.</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># The bundled sample (tests/benchmarks/datasets/fixtures/locomo_sample.json) runs offline.</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>locomo
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># Limit to N questions (faster, good for CI smoke tests).</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="c1"># By default --limit takes a *representative* sample across the whole</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="c1"># dataset (--sample stride), so small runs reflect every question_type</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># rather than the first N records (which are all one easy category):</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">20</span>
 <a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="c1"># Reproduce a legacy contiguous-prefix run (warns):</span>
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">20</span><span class="w"> </span>--sample<span class="w"> </span>head
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="c1"># Strongest small-run guarantee — every category proportionally represented:</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">12</span><span class="w"> </span>--sample<span class="w"> </span>stratified<span class="w"> </span>--seed<span class="w"> </span><span class="m">0</span>
 <a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="c1"># Dry-run (no report saved):</span>
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">5</span><span class="w"> </span>--dry-run
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="c1"># Reproduce a legacy contiguous-prefix run (warns):</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">20</span><span class="w"> </span>--sample<span class="w"> </span>head
 <a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="c1"># Offline testing using fixture files (no download required):</span>
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="w">    </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="w">    </span>--fixture<span class="w"> </span>tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>
-<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="w">    </span>--dataset<span class="w"> </span>locomo<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="w">    </span>--fixture<span class="w"> </span>tests/benchmarks/datasets/fixtures/locomo_sample.json
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="c1"># Dry-run (no report saved):</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">5</span><span class="w"> </span>--dry-run
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="c1"># Offline testing using fixture files (no download required):</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="w">    </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="w">    </span>--fixture<span class="w"> </span>tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a><span class="w">    </span>--dataset<span class="w"> </span>locomo<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a><span class="w">    </span>--fixture<span class="w"> </span>tests/benchmarks/datasets/fixtures/locomo_sample.json
 </code></pre></div>
 <h3 id="cli-flags">CLI Flags<a class="headerlink" href="#cli-flags" title="Permanent link">&para;</a></h3>
 <table>
@@ -4649,13 +4652,15 @@ calls (~$0.0004/item under the harness's documented token assumptions); a full
 LoCoMo judged run (1986 QA) is ~$0.8, a <code>--limit 200</code> slice ~$0.08. The harness
 prints this estimate (sized by <code>--limit</code>, or the dataset's full size when
 unlimited) before running.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Judged run over a representative 200-question LoCoMo slice (lexical retrieval):</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>sk-...
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>locomo<span class="w"> </span>--judged<span class="w"> </span>--limit<span class="w"> </span><span class="m">200</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># Hybrid retrieval + judged accuracy (writes locomo_&lt;date&gt;_hybrid_judged.*):</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>locomo<span class="w"> </span>--judged<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span>--retrieval-mode<span class="w"> </span>hybrid<span class="w"> </span>--limit<span class="w"> </span><span class="m">200</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># LoCoMo needs a local copy of the dataset (no longer on Hugging Face);</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># see Running the Benchmark above.</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Judged run over a representative 200-question LoCoMo slice (lexical retrieval):</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>sk-...
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>locomo<span class="w"> </span>--judged<span class="w"> </span>--limit<span class="w"> </span><span class="m">200</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># Hybrid retrieval + judged accuracy (writes locomo_&lt;date&gt;_hybrid_judged.*):</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>locomo<span class="w"> </span>--judged<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span>--retrieval-mode<span class="w"> </span>hybrid<span class="w"> </span>--limit<span class="w"> </span><span class="m">200</span>
 </code></pre></div>
 <p>The <code>judged</code> block reports <code>judged_accuracy</code> (fraction CORRECT over scored
 items), a per-<code>question_type</code> breakdown, and separate counts for judge errors
