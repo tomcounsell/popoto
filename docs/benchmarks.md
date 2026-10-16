@@ -89,7 +89,10 @@ Disk space: ~300 MB for dataset cache (`~/.cache/popoto_benchmarks/`).
 # Full LongMemEval-S run (downloads dataset on first run, ~264 MB):
 python -m tests.benchmarks.run_external --dataset longmemeval-s
 
-# Full LoCoMo run:
+# Full LoCoMo run. The snap-research/locomo dataset is no longer on Hugging Face,
+# so this works only with a copy of locomo10.json you already have, saved as
+# ~/.cache/popoto_benchmarks/locomo.json or passed with --fixture PATH.
+# The bundled sample (tests/benchmarks/datasets/fixtures/locomo_sample.json) runs offline.
 python -m tests.benchmarks.run_external --dataset locomo
 
 # Limit to N questions (faster, good for CI smoke tests).
@@ -759,6 +762,8 @@ prints this estimate (sized by `--limit`, or the dataset's full size when
 unlimited) before running.
 
 ```bash
+# LoCoMo needs a local copy of the dataset (no longer on Hugging Face);
+# see Running the Benchmark above.
 # Judged run over a representative 200-question LoCoMo slice (lexical retrieval):
 export OPENAI_API_KEY=sk-...
 python -m tests.benchmarks.run_external --dataset locomo --judged --limit 200

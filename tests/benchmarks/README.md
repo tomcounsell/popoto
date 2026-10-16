@@ -82,6 +82,8 @@ python -m tests.benchmarks.run_sweeps --tier all --interactions
 
 # External benchmark (requires dataset download + Redis):
 python -m tests.benchmarks.run_external --dataset longmemeval-s
+# LoCoMo is no longer on Hugging Face: save your own copy of locomo10.json as
+# ~/.cache/popoto_benchmarks/locomo.json, or pass --fixture PATH.
 python -m tests.benchmarks.run_external --dataset locomo
 
 # Point the external harness at a different bench DB (default 14):
