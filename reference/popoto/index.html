@@ -79216,8 +79216,8 @@ KeyMutationError to prevent accidental identity changes.</p>
 proceeds even if it would otherwise be rejected by the
 model's write filter. Default False preserves today's
 behavior exactly (gate is honored). CAUTION: save() accepts
-arbitrary <strong>kwargs, so a misspelled keyword such as
-skip_write_filtr=True is silently absorbed into </strong>kwargs and
+arbitrary **kwargs, so a misspelled keyword such as
+skip_write_filtr=True is silently absorbed into **kwargs and
 has NO effect -- the gate remains enforced with no error or
 warning. Double-check the spelling at call sites that rely
 on this flag.</p>
