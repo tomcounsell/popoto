@@ -10,7 +10,10 @@ additions:
   never publish results that do not exist as committed artifacts);
 * ``_warn_orphan_artifacts`` turns the previously-silent "unmapped artifact"
   gap into a loud stderr warning, without raising and without touching the real
-  ``results/external/`` tree (the scan root is injectable).
+  ``results/external/`` tree (the scan root is injectable);
+* the scan is recursive under ``external/`` (#723), and a directory listed in
+  ``UNPUBLISHED_DIRS`` (or the injected ``unpublished`` mapping) is skipped on
+  purpose, along with everything below it.
 
 The generator lives under ``docs/scripts/`` (not an importable package) and its
 ``main()`` is guarded so ``import`` does not trigger the full build-time run.
@@ -231,6 +234,108 @@ def test_orphan_scan_ignores_lone_json(gen, tmp_path, capsys):
 
     assert orphans == []
     assert "WARNING" not in capsys.readouterr().err
+
+
+def _write_nested(root: Path, rel: str, text: str = "# placeholder\n") -> None:
+    path = root / "external" / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def test_orphan_scan_warns_on_nested_orphan(gen, tmp_path, capsys):
+    """An unmapped ``_latest`` artifact one directory down is reported (#723)."""
+    _write_nested(tmp_path, "study_x/foo_latest.md")
+
+    orphans = gen._warn_orphan_artifacts(gen.SPECS, root=tmp_path, unpublished={})
+
+    assert orphans == ["external/study_x/foo_latest"]
+    err = capsys.readouterr().err
+    assert "WARNING" in err
+    assert "external/study_x/foo_latest" in err
+
+
+def test_orphan_scan_warns_two_levels_deep(gen, tmp_path, capsys):
+    _write_nested(tmp_path, "a/b/foo_latest.md")
+
+    orphans = gen._warn_orphan_artifacts(gen.SPECS, root=tmp_path, unpublished={})
+
+    assert orphans == ["external/a/b/foo_latest"]
+
+
+def test_orphan_scan_silent_in_unpublished_dir(gen, tmp_path, capsys):
+    """A directory marked unpublished stays quiet on purpose."""
+    _write_nested(tmp_path, "study_x/foo_latest.md")
+
+    orphans = gen._warn_orphan_artifacts(
+        gen.SPECS, root=tmp_path, unpublished={"external/study_x": "archive"}
+    )
+
+    assert orphans == []
+    assert "WARNING" not in capsys.readouterr().err
+
+
+def test_orphan_scan_unpublished_covers_subdirectories(gen, tmp_path, capsys):
+    _write_nested(tmp_path, "study_x/sub/foo_latest.md")
+
+    orphans = gen._warn_orphan_artifacts(
+        gen.SPECS, root=tmp_path, unpublished={"external/study_x": "archive"}
+    )
+
+    assert orphans == []
+    assert "WARNING" not in capsys.readouterr().err
+
+
+def test_orphan_scan_unpublished_matches_whole_segments(gen, tmp_path, capsys):
+    """Marking ``study_x`` must not also silence ``study_x10``."""
+    _write_nested(tmp_path, "study_x10/foo_latest.md")
+
+    orphans = gen._warn_orphan_artifacts(
+        gen.SPECS, root=tmp_path, unpublished={"external/study_x": "archive"}
+    )
+
+    assert orphans == ["external/study_x10/foo_latest"]
+
+
+def test_orphan_scan_unpublished_leaves_siblings_loud(gen, tmp_path, capsys):
+    _write_nested(tmp_path, "study_x/foo_latest.md")
+    _write_nested(tmp_path, "study_y/foo_latest.md")
+    _write_nested(tmp_path, "top_latest.md")
+
+    orphans = gen._warn_orphan_artifacts(
+        gen.SPECS, root=tmp_path, unpublished={"external/study_x": "archive"}
+    )
+
+    assert orphans == ["external/study_y/foo_latest", "external/top_latest"]
+
+
+def test_orphan_scan_ignores_nested_lone_json(gen, tmp_path, capsys):
+    """The recursive scan keeps the ``.md``-only rule."""
+    _write_nested(tmp_path, "study_x/bar_latest.json", "{}")
+
+    orphans = gen._warn_orphan_artifacts(gen.SPECS, root=tmp_path, unpublished={})
+
+    assert orphans == []
+    assert "WARNING" not in capsys.readouterr().err
+
+
+def test_unpublished_dirs_match_committed_tree(gen, capsys):
+    """``UNPUBLISHED_DIRS`` names real directories and is what quiets them.
+
+    Uses the absolute results root so the result does not depend on the
+    pytest cwd. Without the list, the committed study archives are reported;
+    with the default list, none of them are.
+    """
+    root = _REPO_ROOT / gen.RESULTS_ROOT
+    for rel in gen.UNPUBLISHED_DIRS:
+        assert (root / rel).is_dir(), f"stale UNPUBLISHED_DIRS entry {rel!r}"
+
+    unmarked = gen._warn_orphan_artifacts(gen.SPECS, root=root, unpublished={})
+    for rel in gen.UNPUBLISHED_DIRS:
+        assert any(s.startswith(rel + "/") for s in unmarked), rel
+
+    marked = gen._warn_orphan_artifacts(gen.SPECS, root=root)
+    for rel in gen.UNPUBLISHED_DIRS:
+        assert not any(s.startswith(rel + "/") for s in marked), rel
 
 
 def test_no_broken_symlinks_under_results():

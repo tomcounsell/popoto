@@ -61,9 +61,12 @@ A page is emitted only when its artifact is committed. The ``_vector`` pages
 in #455/PR #467) therefore appear on the docs site the moment a
 ``{dataset}_latest_vector.{json,md}`` artifact lands under
 ``tests/benchmarks/results/external/`` — no code edit required at that point.
-Any ``*_latest*`` artifact not covered by a ``Spec`` is reported as a loud
-build-time warning by ``_warn_orphan_artifacts`` (never raised), so a new
-retrieval mode can never be silently dropped from the site.
+Any ``*_latest*`` artifact anywhere under ``external/`` (subdirectories
+included) not covered by a ``Spec`` is reported as a loud build-time warning by
+``_warn_orphan_artifacts`` (never raised), so a new retrieval mode can never be
+silently dropped from the site. A subdirectory that is deliberately not a page
+(a study archive cited from prose) is listed in ``UNPUBLISHED_DIRS`` with its
+reason, and the scan skips it.
 
 Valkey-safety: this generator writes only framing prose plus the embedded
 harness markdown. It introduces no Redis-module command strings (the search,
@@ -76,6 +79,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -302,6 +306,19 @@ SPECS: tuple[Spec, ...] = (
     ),
 )
 
+# Directories under RESULTS_ROOT that hold ``*_latest*`` artifacts on purpose
+# without a generated page, mapped to the reason. ``_warn_orphan_artifacts``
+# skips each listed directory and everything below it.
+UNPUBLISHED_DIRS: dict[str, str] = {
+    "external/validity_586": (
+        "#586 three-arm validity study archive; cited from docs/benchmarks.md "
+        "and tests/benchmarks/README.md, not a page"
+    ),
+    "external/graph_eval_484": (
+        "#484 graph-eval study archive; cited from docs/benchmarks.md, not a page"
+    ),
+}
+
 
 def _resolve(stem: str, ext: str) -> Path:
     """Return the artifact path for ``<stem>.<ext>`` under RESULTS_ROOT."""
@@ -364,8 +381,7 @@ def _write_page(spec: Spec) -> dict | None:
     md_path = _resolve(spec.stem, "md")
     if not md_path.exists():
         print(
-            f"[gen_benchmark_pages] skipping {spec.slug}: "
-            f"missing artifact {md_path}",
+            f"[gen_benchmark_pages] skipping {spec.slug}: missing artifact {md_path}",
             file=sys.stderr,
         )
         return None
@@ -485,8 +501,7 @@ def _external_table(rows: list[dict]) -> str:
     if not external:
         return "_No LongMemEval-S / LoCoMo artifacts available._"
     header = (
-        "| Benchmark | Recall@1 | Recall@5 | Recall@10 | MRR |\n"
-        "|---|---|---|---|---|\n"
+        "| Benchmark | Recall@1 | Recall@5 | Recall@10 | MRR |\n|---|---|---|---|---|\n"
     )
     lines = []
     for r in external:
@@ -555,7 +570,9 @@ def _write_summary(rows: list[dict]) -> None:
 
 
 def _warn_orphan_artifacts(
-    specs: tuple[Spec, ...], root: Path = RESULTS_ROOT
+    specs: tuple[Spec, ...],
+    root: Path = RESULTS_ROOT,
+    unpublished: Mapping[str, str] = UNPUBLISHED_DIRS,
 ) -> list[str]:
     """Warn (never raise) about ``external/`` artifacts no ``Spec`` publishes.
 
@@ -566,12 +583,16 @@ def _warn_orphan_artifacts(
     results can land in the repo yet never appear on the docs site.
 
     This scan converts that silent gap into a **loud** one. It globs
-    ``root/external/*_latest*.md`` (the artifact whose presence would drive a
-    page), and for every artifact whose ``RESULTS_ROOT``-relative stem is not the
+    ``root/external/**/*_latest*.md`` recursively (the artifact whose presence
+    would drive a page), and for every artifact whose ``RESULTS_ROOT``-relative stem is not the
     ``stem`` of some ``Spec``, prints a build-time WARNING to stderr. It never
     raises — ``mkdocs build --strict`` stays green — and it never publishes; a
     human still authors the ``Spec`` (with deterministic order and framing). The
     warning simply makes the omission visible in the deploy log.
+
+    Artifacts inside a directory listed in ``unpublished`` (``RESULTS_ROOT``-
+    relative, matched on whole path segments, subdirectories included) are
+    deliberately unpublished and skipped. It defaults to ``UNPUBLISHED_DIRS``.
 
     ``root`` is injectable (defaults to ``RESULTS_ROOT``) so tests can point it
     at a ``tmp_path`` and never touch the committed ``results/external/`` tree.
@@ -584,11 +605,13 @@ def _warn_orphan_artifacts(
     mapped = {spec.stem for spec in specs}
     external_dir = root / "external"
     orphans: list[str] = []
-    for md_path in sorted(external_dir.glob("*_latest*.md")):
+    for md_path in sorted(external_dir.rglob("*_latest*.md")):
         # Stem relative to RESULTS_ROOT, preserving the ``external/`` prefix and
         # dropping the ``.md`` suffix, so it compares equal to a ``Spec.stem``
         # such as ``external/longmemeval_s_latest_vector``.
         stem = md_path.relative_to(root).with_suffix("").as_posix()
+        if any(stem.startswith(d + "/") for d in unpublished):
+            continue
         if stem not in mapped:
             orphans.append(stem)
             print(
