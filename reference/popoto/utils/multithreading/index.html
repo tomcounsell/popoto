@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -29,10 +29,10 @@
       
     
     
-      <link rel="stylesheet" href="../../../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -3417,97 +3417,97 @@ connections are managed differently.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/utils/multithreading.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-42">42</a></span>
-<span class="normal"><a href="#__codelineno-0-43">43</a></span>
-<span class="normal"><a href="#__codelineno-0-44">44</a></span>
-<span class="normal"><a href="#__codelineno-0-45">45</a></span>
-<span class="normal"><a href="#__codelineno-0-46">46</a></span>
-<span class="normal"><a href="#__codelineno-0-47">47</a></span>
-<span class="normal"><a href="#__codelineno-0-48">48</a></span>
-<span class="normal"><a href="#__codelineno-0-49">49</a></span>
-<span class="normal"><a href="#__codelineno-0-50">50</a></span>
-<span class="normal"><a href="#__codelineno-0-51">51</a></span>
-<span class="normal"><a href="#__codelineno-0-52">52</a></span>
-<span class="normal"><a href="#__codelineno-0-53">53</a></span>
-<span class="normal"><a href="#__codelineno-0-54">54</a></span>
-<span class="normal"><a href="#__codelineno-0-55">55</a></span>
-<span class="normal"><a href="#__codelineno-0-56">56</a></span>
-<span class="normal"><a href="#__codelineno-0-57">57</a></span>
-<span class="normal"><a href="#__codelineno-0-58">58</a></span>
-<span class="normal"><a href="#__codelineno-0-59">59</a></span>
-<span class="normal"><a href="#__codelineno-0-60">60</a></span>
-<span class="normal"><a href="#__codelineno-0-61">61</a></span>
-<span class="normal"><a href="#__codelineno-0-62">62</a></span>
-<span class="normal"><a href="#__codelineno-0-63">63</a></span>
-<span class="normal"><a href="#__codelineno-0-64">64</a></span>
-<span class="normal"><a href="#__codelineno-0-65">65</a></span>
-<span class="normal"><a href="#__codelineno-0-66">66</a></span>
-<span class="normal"><a href="#__codelineno-0-67">67</a></span>
-<span class="normal"><a href="#__codelineno-0-68">68</a></span>
-<span class="normal"><a href="#__codelineno-0-69">69</a></span>
-<span class="normal"><a href="#__codelineno-0-70">70</a></span>
-<span class="normal"><a href="#__codelineno-0-71">71</a></span>
-<span class="normal"><a href="#__codelineno-0-72">72</a></span>
-<span class="normal"><a href="#__codelineno-0-73">73</a></span>
-<span class="normal"><a href="#__codelineno-0-74">74</a></span>
-<span class="normal"><a href="#__codelineno-0-75">75</a></span>
-<span class="normal"><a href="#__codelineno-0-76">76</a></span>
-<span class="normal"><a href="#__codelineno-0-77">77</a></span>
-<span class="normal"><a href="#__codelineno-0-78">78</a></span>
-<span class="normal"><a href="#__codelineno-0-79">79</a></span>
-<span class="normal"><a href="#__codelineno-0-80">80</a></span>
-<span class="normal"><a href="#__codelineno-0-81">81</a></span>
-<span class="normal"><a href="#__codelineno-0-82">82</a></span>
-<span class="normal"><a href="#__codelineno-0-83">83</a></span>
-<span class="normal"><a href="#__codelineno-0-84">84</a></span>
-<span class="normal"><a href="#__codelineno-0-85">85</a></span>
-<span class="normal"><a href="#__codelineno-0-86">86</a></span>
-<span class="normal"><a href="#__codelineno-0-87">87</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="k">def</span><span class="w"> </span><span class="nf">start_new_thread</span><span class="p">(</span><span class="n">function</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">:</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43"></a><span class="w">    </span><span class="sd">"""</span>
-<a id="__codelineno-0-44" name="__codelineno-0-44"></a><span class="sd">    Decorator that runs a function in a background daemon thread.</span>
-<a id="__codelineno-0-45" name="__codelineno-0-45"></a>
-<a id="__codelineno-0-46" name="__codelineno-0-46"></a><span class="sd">    This decorator transforms a synchronous function into one that returns</span>
-<a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="sd">    immediately while the actual work continues in the background. It's</span>
-<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">    particularly useful for Redis operations where you don't need to wait</span>
-<a id="__codelineno-0-49" name="__codelineno-0-49"></a><span class="sd">    for confirmation, such as publishing events or updating caches.</span>
-<a id="__codelineno-0-50" name="__codelineno-0-50"></a>
-<a id="__codelineno-0-51" name="__codelineno-0-51"></a><span class="sd">    The decorated function will:</span>
-<a id="__codelineno-0-52" name="__codelineno-0-52"></a><span class="sd">        - Start immediately in a new thread</span>
-<a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="sd">        - Run as a daemon (won't prevent program exit)</span>
-<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="sd">        - Not return any value to the caller (fire-and-forget pattern)</span>
-<a id="__codelineno-0-55" name="__codelineno-0-55"></a>
-<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">        @start_new_thread</span>
-<a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">        def publish_event(channel, message):</span>
-<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">            redis_client.publish(channel, message)</span>
-<a id="__codelineno-0-60" name="__codelineno-0-60"></a>
-<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">        # Returns immediately, publish happens in background</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">        publish_event("updates", "model_saved")</span>
-<a id="__codelineno-0-63" name="__codelineno-0-63"></a>
-<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    Warning:</span>
-<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">        When using this with Django's ORM alongside Popoto, you must close</span>
-<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">        the database connection at the end of your function to prevent</span>
-<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">        connection leaks::</span>
-<a id="__codelineno-0-68" name="__codelineno-0-68"></a>
-<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">            from django.db import connection</span>
-<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">            connection.close()</span>
-<a id="__codelineno-0-71" name="__codelineno-0-71"></a>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">        This is not needed for pure Popoto/Redis operations since Redis</span>
-<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">        connections are managed differently.</span>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">        function: The function to wrap for background execution.</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">        A wrapper function that spawns the original in a daemon thread.</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">    """</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">decorator</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a>        <span class="n">t</span> <span class="o">=</span> <span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">function</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a>        <span class="n">t</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a>        <span class="n">t</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a>    <span class="k">return</span> <span class="n">decorator</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-42">42</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-43">43</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-44">44</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-45">45</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-46">46</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-47">47</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-48">48</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-49">49</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-50">50</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-51">51</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-52">52</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-53">53</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-54">54</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-55">55</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-56">56</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-57">57</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-58">58</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-59">59</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-60">60</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-61">61</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-62">62</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-63">63</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-64">64</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-65">65</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-66">66</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-67">67</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-68">68</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-69">69</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-70">70</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-71">71</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-72">72</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-73">73</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-74">74</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-75">75</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-76">76</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-77">77</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-78">78</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-79">79</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-80">80</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-81">81</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-82">82</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-83">83</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-84">84</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-85">85</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-86">86</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.start_new_thread--source--__codelineno-0-87">87</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-42" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-42"></a><span class="k">def</span><span class="w"> </span><span class="nf">start_new_thread</span><span class="p">(</span><span class="n">function</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">:</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-43" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-43"></a><span class="w">    </span><span class="sd">"""</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-44" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-44"></a><span class="sd">    Decorator that runs a function in a background daemon thread.</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-45" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-45"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-46" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-46"></a><span class="sd">    This decorator transforms a synchronous function into one that returns</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-47" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-47"></a><span class="sd">    immediately while the actual work continues in the background. It's</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-48" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-48"></a><span class="sd">    particularly useful for Redis operations where you don't need to wait</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-49" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-49"></a><span class="sd">    for confirmation, such as publishing events or updating caches.</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-50" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-50"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-51" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-51"></a><span class="sd">    The decorated function will:</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-52" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-52"></a><span class="sd">        - Start immediately in a new thread</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-53" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-53"></a><span class="sd">        - Run as a daemon (won't prevent program exit)</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-54" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-54"></a><span class="sd">        - Not return any value to the caller (fire-and-forget pattern)</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-55" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-55"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-56" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-56"></a><span class="sd">    Example:</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-57" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-57"></a><span class="sd">        @start_new_thread</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-58" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-58"></a><span class="sd">        def publish_event(channel, message):</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-59" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-59"></a><span class="sd">            redis_client.publish(channel, message)</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-60" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-60"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-61" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-61"></a><span class="sd">        # Returns immediately, publish happens in background</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-62" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-62"></a><span class="sd">        publish_event("updates", "model_saved")</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-63" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-63"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-64" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-64"></a><span class="sd">    Warning:</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-65" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-65"></a><span class="sd">        When using this with Django's ORM alongside Popoto, you must close</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-66" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-66"></a><span class="sd">        the database connection at the end of your function to prevent</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-67" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-67"></a><span class="sd">        connection leaks::</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-68" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-68"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-69" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-69"></a><span class="sd">            from django.db import connection</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-70" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-70"></a><span class="sd">            connection.close()</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-71" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-71"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-72" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-72"></a><span class="sd">        This is not needed for pure Popoto/Redis operations since Redis</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-73" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-73"></a><span class="sd">        connections are managed differently.</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-74" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-74"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-75" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-75"></a><span class="sd">    Args:</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-76" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-76"></a><span class="sd">        function: The function to wrap for background execution.</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-77" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-77"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-78" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-78"></a><span class="sd">    Returns:</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-79" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-79"></a><span class="sd">        A wrapper function that spawns the original in a daemon thread.</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-80" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-80"></a><span class="sd">    """</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-81" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-81"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-82" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-82"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">decorator</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-83" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-83"></a>        <span class="n">t</span> <span class="o">=</span> <span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">function</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-84" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-84"></a>        <span class="n">t</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-85" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-85"></a>        <span class="n">t</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-86" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-86"></a>
+<a id="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-87" name="popoto.utils.multithreading.start_new_thread--source--__codelineno-0-87"></a>    <span class="k">return</span> <span class="n">decorator</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3639,119 +3639,119 @@ For multi-argument functions, pass tuples and unpack in function.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/utils/multithreading.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-90"> 90</a></span>
-<span class="normal"><a href="#__codelineno-0-91"> 91</a></span>
-<span class="normal"><a href="#__codelineno-0-92"> 92</a></span>
-<span class="normal"><a href="#__codelineno-0-93"> 93</a></span>
-<span class="normal"><a href="#__codelineno-0-94"> 94</a></span>
-<span class="normal"><a href="#__codelineno-0-95"> 95</a></span>
-<span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
-<span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
-<span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
-<span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
-<span class="normal"><a href="#__codelineno-0-100">100</a></span>
-<span class="normal"><a href="#__codelineno-0-101">101</a></span>
-<span class="normal"><a href="#__codelineno-0-102">102</a></span>
-<span class="normal"><a href="#__codelineno-0-103">103</a></span>
-<span class="normal"><a href="#__codelineno-0-104">104</a></span>
-<span class="normal"><a href="#__codelineno-0-105">105</a></span>
-<span class="normal"><a href="#__codelineno-0-106">106</a></span>
-<span class="normal"><a href="#__codelineno-0-107">107</a></span>
-<span class="normal"><a href="#__codelineno-0-108">108</a></span>
-<span class="normal"><a href="#__codelineno-0-109">109</a></span>
-<span class="normal"><a href="#__codelineno-0-110">110</a></span>
-<span class="normal"><a href="#__codelineno-0-111">111</a></span>
-<span class="normal"><a href="#__codelineno-0-112">112</a></span>
-<span class="normal"><a href="#__codelineno-0-113">113</a></span>
-<span class="normal"><a href="#__codelineno-0-114">114</a></span>
-<span class="normal"><a href="#__codelineno-0-115">115</a></span>
-<span class="normal"><a href="#__codelineno-0-116">116</a></span>
-<span class="normal"><a href="#__codelineno-0-117">117</a></span>
-<span class="normal"><a href="#__codelineno-0-118">118</a></span>
-<span class="normal"><a href="#__codelineno-0-119">119</a></span>
-<span class="normal"><a href="#__codelineno-0-120">120</a></span>
-<span class="normal"><a href="#__codelineno-0-121">121</a></span>
-<span class="normal"><a href="#__codelineno-0-122">122</a></span>
-<span class="normal"><a href="#__codelineno-0-123">123</a></span>
-<span class="normal"><a href="#__codelineno-0-124">124</a></span>
-<span class="normal"><a href="#__codelineno-0-125">125</a></span>
-<span class="normal"><a href="#__codelineno-0-126">126</a></span>
-<span class="normal"><a href="#__codelineno-0-127">127</a></span>
-<span class="normal"><a href="#__codelineno-0-128">128</a></span>
-<span class="normal"><a href="#__codelineno-0-129">129</a></span>
-<span class="normal"><a href="#__codelineno-0-130">130</a></span>
-<span class="normal"><a href="#__codelineno-0-131">131</a></span>
-<span class="normal"><a href="#__codelineno-0-132">132</a></span>
-<span class="normal"><a href="#__codelineno-0-133">133</a></span>
-<span class="normal"><a href="#__codelineno-0-134">134</a></span>
-<span class="normal"><a href="#__codelineno-0-135">135</a></span>
-<span class="normal"><a href="#__codelineno-0-136">136</a></span>
-<span class="normal"><a href="#__codelineno-0-137">137</a></span>
-<span class="normal"><a href="#__codelineno-0-138">138</a></span>
-<span class="normal"><a href="#__codelineno-0-139">139</a></span>
-<span class="normal"><a href="#__codelineno-0-140">140</a></span>
-<span class="normal"><a href="#__codelineno-0-141">141</a></span>
-<span class="normal"><a href="#__codelineno-0-142">142</a></span>
-<span class="normal"><a href="#__codelineno-0-143">143</a></span>
-<span class="normal"><a href="#__codelineno-0-144">144</a></span>
-<span class="normal"><a href="#__codelineno-0-145">145</a></span>
-<span class="normal"><a href="#__codelineno-0-146">146</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_all_multithreaded</span><span class="p">(</span><span class="n">function_def</span><span class="p">,</span> <span class="n">list_of_params</span><span class="p">):</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a><span class="w">    </span><span class="sd">"""</span>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a><span class="sd">    Execute a function across multiple inputs using a thread pool.</span>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a><span class="sd">    This function provides a simple way to parallelize Redis operations when</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a><span class="sd">    you need to process multiple items. It uses a thread pool to limit</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="sd">    concurrency, preventing resource exhaustion while still achieving</span>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a><span class="sd">    parallelism.</span>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="sd">    The thread pool approach is well-suited for Popoto workloads because:</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="sd">        - Redis operations are I/O-bound, not CPU-bound</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="sd">        - Network latency dominates, so parallelism hides wait time</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a><span class="sd">        - Redis can handle many concurrent connections efficiently</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a><span class="sd">    Example:</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a><span class="sd">        # Fetch multiple models in parallel</span>
-<a id="__codelineno-0-106" name="__codelineno-0-106"></a><span class="sd">        def fetch_user(user_id):</span>
-<a id="__codelineno-0-107" name="__codelineno-0-107"></a><span class="sd">            return User.query.get(id=user_id)</span>
-<a id="__codelineno-0-108" name="__codelineno-0-108"></a>
-<a id="__codelineno-0-109" name="__codelineno-0-109"></a><span class="sd">        users = run_all_multithreaded(fetch_user, [1, 2, 3, 4, 5])</span>
-<a id="__codelineno-0-110" name="__codelineno-0-110"></a>
-<a id="__codelineno-0-111" name="__codelineno-0-111"></a><span class="sd">        # Process with multiple parameters using tuples</span>
-<a id="__codelineno-0-112" name="__codelineno-0-112"></a><span class="sd">        def save_with_ttl(args):</span>
-<a id="__codelineno-0-113" name="__codelineno-0-113"></a><span class="sd">            model, ttl = args</span>
-<a id="__codelineno-0-114" name="__codelineno-0-114"></a><span class="sd">            model.save(expire=ttl)</span>
-<a id="__codelineno-0-115" name="__codelineno-0-115"></a><span class="sd">            return model</span>
-<a id="__codelineno-0-116" name="__codelineno-0-116"></a>
-<a id="__codelineno-0-117" name="__codelineno-0-117"></a><span class="sd">        results = run_all_multithreaded(save_with_ttl, [</span>
-<a id="__codelineno-0-118" name="__codelineno-0-118"></a><span class="sd">            (model1, 3600),</span>
-<a id="__codelineno-0-119" name="__codelineno-0-119"></a><span class="sd">            (model2, 7200),</span>
-<a id="__codelineno-0-120" name="__codelineno-0-120"></a><span class="sd">        ])</span>
-<a id="__codelineno-0-121" name="__codelineno-0-121"></a>
-<a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="sd">    Design Notes:</span>
-<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="sd">        - Uses dynamic thread pool sizing based on input size and CPU count</span>
-<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">        - Blocks until all operations complete (unlike start_new_thread)</span>
-<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">        - Preserves result ordering matching input parameter order</span>
-<a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">        - Uses multiprocessing.dummy which provides Pool interface over threads</span>
-<a id="__codelineno-0-127" name="__codelineno-0-127"></a>
-<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">        function_def: The function to execute for each parameter set.</span>
-<a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">        list_of_params: Iterable of parameters to pass to the function.</span>
-<a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">            For single-argument functions, pass values directly.</span>
-<a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">            For multi-argument functions, pass tuples and unpack in function.</span>
-<a id="__codelineno-0-133" name="__codelineno-0-133"></a>
-<a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">        List of results from each function call, in the same order as inputs.</span>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">    """</span>
-<a id="__codelineno-0-137" name="__codelineno-0-137"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">multiprocessing.dummy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Pool</span> <span class="k">as</span> <span class="n">ThreadPool</span>
-<a id="__codelineno-0-138" name="__codelineno-0-138"></a>
-<a id="__codelineno-0-139" name="__codelineno-0-139"></a>    <span class="n">pool</span> <span class="o">=</span> <span class="n">ThreadPool</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">list_of_params</span><span class="p">),</span> <span class="n">os</span><span class="o">.</span><span class="n">cpu_count</span><span class="p">()</span> <span class="ow">or</span> <span class="mi">4</span><span class="p">))</span>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a>
-<a id="__codelineno-0-141" name="__codelineno-0-141"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">function_def</span><span class="p">,</span> <span class="n">list_of_params</span><span class="p">)</span>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a>    <span class="n">pool</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a>    <span class="n">pool</span><span class="o">.</span><span class="n">join</span><span class="p">()</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>
-<a id="__codelineno-0-146" name="__codelineno-0-146"></a>    <span class="k">return</span> <span class="n">results</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-90"> 90</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-91"> 91</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-92"> 92</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-93"> 93</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-94"> 94</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-95"> 95</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-96"> 96</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-97"> 97</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-98"> 98</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-99"> 99</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-100">100</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-101">101</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-102">102</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-103">103</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-104">104</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-105">105</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-106">106</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-107">107</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-108">108</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-109">109</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-110">110</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-111">111</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-112">112</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-113">113</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-114">114</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-115">115</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-116">116</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-117">117</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-118">118</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-119">119</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-120">120</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-121">121</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-122">122</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-123">123</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-124">124</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-125">125</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-126">126</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-127">127</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-128">128</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-129">129</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-130">130</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-131">131</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-132">132</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-133">133</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-135">135</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-137">137</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-138">138</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-139">139</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-140">140</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-141">141</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-142">142</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-143">143</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-144">144</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-145">145</a></span>
+<span class="normal"><a href="#popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-146">146</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-90" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-90"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_all_multithreaded</span><span class="p">(</span><span class="n">function_def</span><span class="p">,</span> <span class="n">list_of_params</span><span class="p">):</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-91" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-91"></a><span class="w">    </span><span class="sd">"""</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-92" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-92"></a><span class="sd">    Execute a function across multiple inputs using a thread pool.</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-93" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-93"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-94" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-94"></a><span class="sd">    This function provides a simple way to parallelize Redis operations when</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-95" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-95"></a><span class="sd">    you need to process multiple items. It uses a thread pool to limit</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-96" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-96"></a><span class="sd">    concurrency, preventing resource exhaustion while still achieving</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-97" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-97"></a><span class="sd">    parallelism.</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-98" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-98"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-99" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-99"></a><span class="sd">    The thread pool approach is well-suited for Popoto workloads because:</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-100" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-100"></a><span class="sd">        - Redis operations are I/O-bound, not CPU-bound</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-101" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-101"></a><span class="sd">        - Network latency dominates, so parallelism hides wait time</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-102" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-102"></a><span class="sd">        - Redis can handle many concurrent connections efficiently</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-103" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-103"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-104" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-104"></a><span class="sd">    Example:</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-105" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-105"></a><span class="sd">        # Fetch multiple models in parallel</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-106" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-106"></a><span class="sd">        def fetch_user(user_id):</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-107" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-107"></a><span class="sd">            return User.query.get(id=user_id)</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-108" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-108"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-109" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-109"></a><span class="sd">        users = run_all_multithreaded(fetch_user, [1, 2, 3, 4, 5])</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-110" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-110"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-111" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-111"></a><span class="sd">        # Process with multiple parameters using tuples</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-112" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-112"></a><span class="sd">        def save_with_ttl(args):</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-113" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-113"></a><span class="sd">            model, ttl = args</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-114" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-114"></a><span class="sd">            model.save(expire=ttl)</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-115" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-115"></a><span class="sd">            return model</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-116" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-116"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-117" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-117"></a><span class="sd">        results = run_all_multithreaded(save_with_ttl, [</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-118" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-118"></a><span class="sd">            (model1, 3600),</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-119" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-119"></a><span class="sd">            (model2, 7200),</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-120" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-120"></a><span class="sd">        ])</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-121" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-121"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-122" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-122"></a><span class="sd">    Design Notes:</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-123" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-123"></a><span class="sd">        - Uses dynamic thread pool sizing based on input size and CPU count</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-124" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-124"></a><span class="sd">        - Blocks until all operations complete (unlike start_new_thread)</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-125" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-125"></a><span class="sd">        - Preserves result ordering matching input parameter order</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-126" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-126"></a><span class="sd">        - Uses multiprocessing.dummy which provides Pool interface over threads</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-127" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-127"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-128" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-128"></a><span class="sd">    Args:</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-129" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-129"></a><span class="sd">        function_def: The function to execute for each parameter set.</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-130" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-130"></a><span class="sd">        list_of_params: Iterable of parameters to pass to the function.</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-131" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-131"></a><span class="sd">            For single-argument functions, pass values directly.</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-132" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-132"></a><span class="sd">            For multi-argument functions, pass tuples and unpack in function.</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-133" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-133"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-134" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-134"></a><span class="sd">    Returns:</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-135" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-135"></a><span class="sd">        List of results from each function call, in the same order as inputs.</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-136" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-136"></a><span class="sd">    """</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-137" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-137"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">multiprocessing.dummy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Pool</span> <span class="k">as</span> <span class="n">ThreadPool</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-138" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-138"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-139" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-139"></a>    <span class="n">pool</span> <span class="o">=</span> <span class="n">ThreadPool</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">list_of_params</span><span class="p">),</span> <span class="n">os</span><span class="o">.</span><span class="n">cpu_count</span><span class="p">()</span> <span class="ow">or</span> <span class="mi">4</span><span class="p">))</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-140" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-140"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-141" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-141"></a>    <span class="n">results</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">function_def</span><span class="p">,</span> <span class="n">list_of_params</span><span class="p">)</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-142" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-142"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-143" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-143"></a>    <span class="n">pool</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-144" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-144"></a>    <span class="n">pool</span><span class="o">.</span><span class="n">join</span><span class="p">()</span>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-145" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-145"></a>
+<a id="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-146" name="popoto.utils.multithreading.run_all_multithreaded--source--__codelineno-0-146"></a>    <span class="k">return</span> <span class="n">results</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3820,10 +3820,10 @@ For multi-argument functions, pass tuples and unpack in function.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../../../js/open_in_new_tab.js"></script>
       

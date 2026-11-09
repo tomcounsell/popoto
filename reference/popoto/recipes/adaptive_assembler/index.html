@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -29,10 +29,10 @@
       
     
     
-      <link rel="stylesheet" href="../../../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -3457,417 +3457,417 @@ Defaults to a fresh <code>random.Random()</code> (non-seeded).</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/recipes/adaptive_assembler.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-73"> 73</a></span>
-<span class="normal"><a href="#__codelineno-0-74"> 74</a></span>
-<span class="normal"><a href="#__codelineno-0-75"> 75</a></span>
-<span class="normal"><a href="#__codelineno-0-76"> 76</a></span>
-<span class="normal"><a href="#__codelineno-0-77"> 77</a></span>
-<span class="normal"><a href="#__codelineno-0-78"> 78</a></span>
-<span class="normal"><a href="#__codelineno-0-79"> 79</a></span>
-<span class="normal"><a href="#__codelineno-0-80"> 80</a></span>
-<span class="normal"><a href="#__codelineno-0-81"> 81</a></span>
-<span class="normal"><a href="#__codelineno-0-82"> 82</a></span>
-<span class="normal"><a href="#__codelineno-0-83"> 83</a></span>
-<span class="normal"><a href="#__codelineno-0-84"> 84</a></span>
-<span class="normal"><a href="#__codelineno-0-85"> 85</a></span>
-<span class="normal"><a href="#__codelineno-0-86"> 86</a></span>
-<span class="normal"><a href="#__codelineno-0-87"> 87</a></span>
-<span class="normal"><a href="#__codelineno-0-88"> 88</a></span>
-<span class="normal"><a href="#__codelineno-0-89"> 89</a></span>
-<span class="normal"><a href="#__codelineno-0-90"> 90</a></span>
-<span class="normal"><a href="#__codelineno-0-91"> 91</a></span>
-<span class="normal"><a href="#__codelineno-0-92"> 92</a></span>
-<span class="normal"><a href="#__codelineno-0-93"> 93</a></span>
-<span class="normal"><a href="#__codelineno-0-94"> 94</a></span>
-<span class="normal"><a href="#__codelineno-0-95"> 95</a></span>
-<span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
-<span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
-<span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
-<span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
-<span class="normal"><a href="#__codelineno-0-100">100</a></span>
-<span class="normal"><a href="#__codelineno-0-101">101</a></span>
-<span class="normal"><a href="#__codelineno-0-102">102</a></span>
-<span class="normal"><a href="#__codelineno-0-103">103</a></span>
-<span class="normal"><a href="#__codelineno-0-104">104</a></span>
-<span class="normal"><a href="#__codelineno-0-105">105</a></span>
-<span class="normal"><a href="#__codelineno-0-106">106</a></span>
-<span class="normal"><a href="#__codelineno-0-107">107</a></span>
-<span class="normal"><a href="#__codelineno-0-108">108</a></span>
-<span class="normal"><a href="#__codelineno-0-109">109</a></span>
-<span class="normal"><a href="#__codelineno-0-110">110</a></span>
-<span class="normal"><a href="#__codelineno-0-111">111</a></span>
-<span class="normal"><a href="#__codelineno-0-112">112</a></span>
-<span class="normal"><a href="#__codelineno-0-113">113</a></span>
-<span class="normal"><a href="#__codelineno-0-114">114</a></span>
-<span class="normal"><a href="#__codelineno-0-115">115</a></span>
-<span class="normal"><a href="#__codelineno-0-116">116</a></span>
-<span class="normal"><a href="#__codelineno-0-117">117</a></span>
-<span class="normal"><a href="#__codelineno-0-118">118</a></span>
-<span class="normal"><a href="#__codelineno-0-119">119</a></span>
-<span class="normal"><a href="#__codelineno-0-120">120</a></span>
-<span class="normal"><a href="#__codelineno-0-121">121</a></span>
-<span class="normal"><a href="#__codelineno-0-122">122</a></span>
-<span class="normal"><a href="#__codelineno-0-123">123</a></span>
-<span class="normal"><a href="#__codelineno-0-124">124</a></span>
-<span class="normal"><a href="#__codelineno-0-125">125</a></span>
-<span class="normal"><a href="#__codelineno-0-126">126</a></span>
-<span class="normal"><a href="#__codelineno-0-127">127</a></span>
-<span class="normal"><a href="#__codelineno-0-128">128</a></span>
-<span class="normal"><a href="#__codelineno-0-129">129</a></span>
-<span class="normal"><a href="#__codelineno-0-130">130</a></span>
-<span class="normal"><a href="#__codelineno-0-131">131</a></span>
-<span class="normal"><a href="#__codelineno-0-132">132</a></span>
-<span class="normal"><a href="#__codelineno-0-133">133</a></span>
-<span class="normal"><a href="#__codelineno-0-134">134</a></span>
-<span class="normal"><a href="#__codelineno-0-135">135</a></span>
-<span class="normal"><a href="#__codelineno-0-136">136</a></span>
-<span class="normal"><a href="#__codelineno-0-137">137</a></span>
-<span class="normal"><a href="#__codelineno-0-138">138</a></span>
-<span class="normal"><a href="#__codelineno-0-139">139</a></span>
-<span class="normal"><a href="#__codelineno-0-140">140</a></span>
-<span class="normal"><a href="#__codelineno-0-141">141</a></span>
-<span class="normal"><a href="#__codelineno-0-142">142</a></span>
-<span class="normal"><a href="#__codelineno-0-143">143</a></span>
-<span class="normal"><a href="#__codelineno-0-144">144</a></span>
-<span class="normal"><a href="#__codelineno-0-145">145</a></span>
-<span class="normal"><a href="#__codelineno-0-146">146</a></span>
-<span class="normal"><a href="#__codelineno-0-147">147</a></span>
-<span class="normal"><a href="#__codelineno-0-148">148</a></span>
-<span class="normal"><a href="#__codelineno-0-149">149</a></span>
-<span class="normal"><a href="#__codelineno-0-150">150</a></span>
-<span class="normal"><a href="#__codelineno-0-151">151</a></span>
-<span class="normal"><a href="#__codelineno-0-152">152</a></span>
-<span class="normal"><a href="#__codelineno-0-153">153</a></span>
-<span class="normal"><a href="#__codelineno-0-154">154</a></span>
-<span class="normal"><a href="#__codelineno-0-155">155</a></span>
-<span class="normal"><a href="#__codelineno-0-156">156</a></span>
-<span class="normal"><a href="#__codelineno-0-157">157</a></span>
-<span class="normal"><a href="#__codelineno-0-158">158</a></span>
-<span class="normal"><a href="#__codelineno-0-159">159</a></span>
-<span class="normal"><a href="#__codelineno-0-160">160</a></span>
-<span class="normal"><a href="#__codelineno-0-161">161</a></span>
-<span class="normal"><a href="#__codelineno-0-162">162</a></span>
-<span class="normal"><a href="#__codelineno-0-163">163</a></span>
-<span class="normal"><a href="#__codelineno-0-164">164</a></span>
-<span class="normal"><a href="#__codelineno-0-165">165</a></span>
-<span class="normal"><a href="#__codelineno-0-166">166</a></span>
-<span class="normal"><a href="#__codelineno-0-167">167</a></span>
-<span class="normal"><a href="#__codelineno-0-168">168</a></span>
-<span class="normal"><a href="#__codelineno-0-169">169</a></span>
-<span class="normal"><a href="#__codelineno-0-170">170</a></span>
-<span class="normal"><a href="#__codelineno-0-171">171</a></span>
-<span class="normal"><a href="#__codelineno-0-172">172</a></span>
-<span class="normal"><a href="#__codelineno-0-173">173</a></span>
-<span class="normal"><a href="#__codelineno-0-174">174</a></span>
-<span class="normal"><a href="#__codelineno-0-175">175</a></span>
-<span class="normal"><a href="#__codelineno-0-176">176</a></span>
-<span class="normal"><a href="#__codelineno-0-177">177</a></span>
-<span class="normal"><a href="#__codelineno-0-178">178</a></span>
-<span class="normal"><a href="#__codelineno-0-179">179</a></span>
-<span class="normal"><a href="#__codelineno-0-180">180</a></span>
-<span class="normal"><a href="#__codelineno-0-181">181</a></span>
-<span class="normal"><a href="#__codelineno-0-182">182</a></span>
-<span class="normal"><a href="#__codelineno-0-183">183</a></span>
-<span class="normal"><a href="#__codelineno-0-184">184</a></span>
-<span class="normal"><a href="#__codelineno-0-185">185</a></span>
-<span class="normal"><a href="#__codelineno-0-186">186</a></span>
-<span class="normal"><a href="#__codelineno-0-187">187</a></span>
-<span class="normal"><a href="#__codelineno-0-188">188</a></span>
-<span class="normal"><a href="#__codelineno-0-189">189</a></span>
-<span class="normal"><a href="#__codelineno-0-190">190</a></span>
-<span class="normal"><a href="#__codelineno-0-191">191</a></span>
-<span class="normal"><a href="#__codelineno-0-192">192</a></span>
-<span class="normal"><a href="#__codelineno-0-193">193</a></span>
-<span class="normal"><a href="#__codelineno-0-194">194</a></span>
-<span class="normal"><a href="#__codelineno-0-195">195</a></span>
-<span class="normal"><a href="#__codelineno-0-196">196</a></span>
-<span class="normal"><a href="#__codelineno-0-197">197</a></span>
-<span class="normal"><a href="#__codelineno-0-198">198</a></span>
-<span class="normal"><a href="#__codelineno-0-199">199</a></span>
-<span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span>
-<span class="normal"><a href="#__codelineno-0-202">202</a></span>
-<span class="normal"><a href="#__codelineno-0-203">203</a></span>
-<span class="normal"><a href="#__codelineno-0-204">204</a></span>
-<span class="normal"><a href="#__codelineno-0-205">205</a></span>
-<span class="normal"><a href="#__codelineno-0-206">206</a></span>
-<span class="normal"><a href="#__codelineno-0-207">207</a></span>
-<span class="normal"><a href="#__codelineno-0-208">208</a></span>
-<span class="normal"><a href="#__codelineno-0-209">209</a></span>
-<span class="normal"><a href="#__codelineno-0-210">210</a></span>
-<span class="normal"><a href="#__codelineno-0-211">211</a></span>
-<span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span>
-<span class="normal"><a href="#__codelineno-0-214">214</a></span>
-<span class="normal"><a href="#__codelineno-0-215">215</a></span>
-<span class="normal"><a href="#__codelineno-0-216">216</a></span>
-<span class="normal"><a href="#__codelineno-0-217">217</a></span>
-<span class="normal"><a href="#__codelineno-0-218">218</a></span>
-<span class="normal"><a href="#__codelineno-0-219">219</a></span>
-<span class="normal"><a href="#__codelineno-0-220">220</a></span>
-<span class="normal"><a href="#__codelineno-0-221">221</a></span>
-<span class="normal"><a href="#__codelineno-0-222">222</a></span>
-<span class="normal"><a href="#__codelineno-0-223">223</a></span>
-<span class="normal"><a href="#__codelineno-0-224">224</a></span>
-<span class="normal"><a href="#__codelineno-0-225">225</a></span>
-<span class="normal"><a href="#__codelineno-0-226">226</a></span>
-<span class="normal"><a href="#__codelineno-0-227">227</a></span>
-<span class="normal"><a href="#__codelineno-0-228">228</a></span>
-<span class="normal"><a href="#__codelineno-0-229">229</a></span>
-<span class="normal"><a href="#__codelineno-0-230">230</a></span>
-<span class="normal"><a href="#__codelineno-0-231">231</a></span>
-<span class="normal"><a href="#__codelineno-0-232">232</a></span>
-<span class="normal"><a href="#__codelineno-0-233">233</a></span>
-<span class="normal"><a href="#__codelineno-0-234">234</a></span>
-<span class="normal"><a href="#__codelineno-0-235">235</a></span>
-<span class="normal"><a href="#__codelineno-0-236">236</a></span>
-<span class="normal"><a href="#__codelineno-0-237">237</a></span>
-<span class="normal"><a href="#__codelineno-0-238">238</a></span>
-<span class="normal"><a href="#__codelineno-0-239">239</a></span>
-<span class="normal"><a href="#__codelineno-0-240">240</a></span>
-<span class="normal"><a href="#__codelineno-0-241">241</a></span>
-<span class="normal"><a href="#__codelineno-0-242">242</a></span>
-<span class="normal"><a href="#__codelineno-0-243">243</a></span>
-<span class="normal"><a href="#__codelineno-0-244">244</a></span>
-<span class="normal"><a href="#__codelineno-0-245">245</a></span>
-<span class="normal"><a href="#__codelineno-0-246">246</a></span>
-<span class="normal"><a href="#__codelineno-0-247">247</a></span>
-<span class="normal"><a href="#__codelineno-0-248">248</a></span>
-<span class="normal"><a href="#__codelineno-0-249">249</a></span>
-<span class="normal"><a href="#__codelineno-0-250">250</a></span>
-<span class="normal"><a href="#__codelineno-0-251">251</a></span>
-<span class="normal"><a href="#__codelineno-0-252">252</a></span>
-<span class="normal"><a href="#__codelineno-0-253">253</a></span>
-<span class="normal"><a href="#__codelineno-0-254">254</a></span>
-<span class="normal"><a href="#__codelineno-0-255">255</a></span>
-<span class="normal"><a href="#__codelineno-0-256">256</a></span>
-<span class="normal"><a href="#__codelineno-0-257">257</a></span>
-<span class="normal"><a href="#__codelineno-0-258">258</a></span>
-<span class="normal"><a href="#__codelineno-0-259">259</a></span>
-<span class="normal"><a href="#__codelineno-0-260">260</a></span>
-<span class="normal"><a href="#__codelineno-0-261">261</a></span>
-<span class="normal"><a href="#__codelineno-0-262">262</a></span>
-<span class="normal"><a href="#__codelineno-0-263">263</a></span>
-<span class="normal"><a href="#__codelineno-0-264">264</a></span>
-<span class="normal"><a href="#__codelineno-0-265">265</a></span>
-<span class="normal"><a href="#__codelineno-0-266">266</a></span>
-<span class="normal"><a href="#__codelineno-0-267">267</a></span>
-<span class="normal"><a href="#__codelineno-0-268">268</a></span>
-<span class="normal"><a href="#__codelineno-0-269">269</a></span>
-<span class="normal"><a href="#__codelineno-0-270">270</a></span>
-<span class="normal"><a href="#__codelineno-0-271">271</a></span>
-<span class="normal"><a href="#__codelineno-0-272">272</a></span>
-<span class="normal"><a href="#__codelineno-0-273">273</a></span>
-<span class="normal"><a href="#__codelineno-0-274">274</a></span>
-<span class="normal"><a href="#__codelineno-0-275">275</a></span>
-<span class="normal"><a href="#__codelineno-0-276">276</a></span>
-<span class="normal"><a href="#__codelineno-0-277">277</a></span>
-<span class="normal"><a href="#__codelineno-0-278">278</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="k">class</span><span class="w"> </span><span class="nc">AdaptiveAssembler</span><span class="p">:</span>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="w">    </span><span class="sd">"""Wraps a ``ContextAssembler`` with a keep/revert quality loop.</span>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">    Every ``window_size`` calls under the current baseline weights, the</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">    assembler proposes a symmetric perturbation (shift</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">    ``weight_perturbation`` from one weight key to another). It then</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">    gathers another ``window_size`` samples under the candidate, compares</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">    the rolling means, and either keeps the candidate as the new baseline</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="sd">    or reverts to the original.</span>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">        inner: An existing ``ContextAssembler`` to wrap. The</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">            ``AdaptiveAssembler`` may swap this out with a re-constructed</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a><span class="sd">            instance when changing weights; callers should access weights</span>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">            via ``self.current_weights`` rather than capturing a direct</span>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a><span class="sd">            reference to ``inner``.</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="sd">        window_size: Number of calls per rolling window. Smaller windows</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="sd">            adapt faster but noisier; larger windows converge more slowly</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a><span class="sd">            but more reliably. Default</span>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a><span class="sd">            ``Defaults.ADAPTIVE_QUALITY_WINDOW_SIZE`` (20).</span>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a><span class="sd">        quality_metric: Callable that scalarizes a ``RetrievalQuality``</span>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a><span class="sd">            into a single float. Default ``fok_score * avg_confidence``.</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a><span class="sd">            If the metric raises on a given quality, the sample is logged</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="sd">            and skipped rather than crashing the loop.</span>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a><span class="sd">        weight_perturbation: How much weight to shift per proposal.</span>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a><span class="sd">            Default 0.05.</span>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="sd">        rng: Optional ``random.Random`` instance for deterministic tests.</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="sd">            Defaults to a fresh ``random.Random()`` (non-seeded).</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="sd">    """</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a>        <span class="n">inner</span><span class="p">:</span> <span class="n">ContextAssembler</span><span class="p">,</span>
-<a id="__codelineno-0-106" name="__codelineno-0-106"></a>        <span class="n">window_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">ADAPTIVE_QUALITY_WINDOW_SIZE</span><span class="p">,</span>
-<a id="__codelineno-0-107" name="__codelineno-0-107"></a>        <span class="n">quality_metric</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">RetrievalQuality</span><span class="p">],</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-108" name="__codelineno-0-108"></a>        <span class="n">weight_perturbation</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
-<a id="__codelineno-0-109" name="__codelineno-0-109"></a>        <span class="n">rng</span><span class="p">:</span> <span class="n">random</span><span class="o">.</span><span class="n">Random</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-110" name="__codelineno-0-110"></a>    <span class="p">):</span>
-<a id="__codelineno-0-111" name="__codelineno-0-111"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">inner</span> <span class="o">=</span> <span class="n">inner</span>
-<a id="__codelineno-0-112" name="__codelineno-0-112"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_window_size</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">window_size</span><span class="p">)</span>
-<a id="__codelineno-0-113" name="__codelineno-0-113"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_quality_metric</span> <span class="o">=</span> <span class="n">quality_metric</span> <span class="ow">or</span> <span class="n">_default_quality_metric</span>
-<a id="__codelineno-0-114" name="__codelineno-0-114"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_weight_perturbation</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">weight_perturbation</span><span class="p">)</span>
-<a id="__codelineno-0-115" name="__codelineno-0-115"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_rng</span> <span class="o">=</span> <span class="n">rng</span> <span class="k">if</span> <span class="n">rng</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">random</span><span class="o">.</span><span class="n">Random</span><span class="p">()</span>
-<a id="__codelineno-0-116" name="__codelineno-0-116"></a>
-<a id="__codelineno-0-117" name="__codelineno-0-117"></a>        <span class="c1"># Snapshot the starting weights as the "original" to revert to.</span>
-<a id="__codelineno-0-118" name="__codelineno-0-118"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_original_weights</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">inner</span><span class="o">.</span><span class="n">score_weights</span><span class="p">)</span>
-<a id="__codelineno-0-119" name="__codelineno-0-119"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-120" name="__codelineno-0-120"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-121" name="__codelineno-0-121"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-122" name="__codelineno-0-122"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-123" name="__codelineno-0-123"></a>
-<a id="__codelineno-0-124" name="__codelineno-0-124"></a>    <span class="c1"># ------------------------------------------------------------------</span>
-<a id="__codelineno-0-125" name="__codelineno-0-125"></a>    <span class="c1"># Public API</span>
-<a id="__codelineno-0-126" name="__codelineno-0-126"></a>    <span class="c1"># ------------------------------------------------------------------</span>
-<a id="__codelineno-0-127" name="__codelineno-0-127"></a>
-<a id="__codelineno-0-128" name="__codelineno-0-128"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">assemble</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_cues</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AssemblyResult</span><span class="p">:</span>
-<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="w">        </span><span class="sd">"""Delegate to the wrapped assembler, recording quality per call.</span>
-<a id="__codelineno-0-130" name="__codelineno-0-130"></a>
-<a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">        Forces ``assess_quality=True`` (overriding any caller kwarg) so</span>
-<a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">        quality is always computed. Appends the scalarized metric to</span>
-<a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="sd">        whichever rolling window is active (baseline or candidate), then</span>
-<a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">        checks whether a state transition is due.</span>
-<a id="__codelineno-0-135" name="__codelineno-0-135"></a>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">        Returns the inner ``AssemblyResult`` unchanged.</span>
-<a id="__codelineno-0-137" name="__codelineno-0-137"></a><span class="sd">        """</span>
-<a id="__codelineno-0-138" name="__codelineno-0-138"></a>        <span class="n">kwargs</span><span class="p">[</span><span class="s2">"assess_quality"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-139" name="__codelineno-0-139"></a>        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">inner</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="n">query_cues</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a>
-<a id="__codelineno-0-141" name="__codelineno-0-141"></a>        <span class="n">quality</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"quality"</span><span class="p">)</span>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a>        <span class="k">if</span> <span class="n">quality</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a>            <span class="c1"># Defensive: inner didn't produce a RetrievalQuality (e.g.,</span>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a>            <span class="c1"># _compute_quality swallowed an exception and attached a bare</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>            <span class="c1"># one, or assess_quality was somehow dropped). Skip sample.</span>
-<a id="__codelineno-0-146" name="__codelineno-0-146"></a>            <span class="k">return</span> <span class="n">result</span>
-<a id="__codelineno-0-147" name="__codelineno-0-147"></a>
-<a id="__codelineno-0-148" name="__codelineno-0-148"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-149" name="__codelineno-0-149"></a>            <span class="n">score</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_quality_metric</span><span class="p">(</span><span class="n">quality</span><span class="p">))</span>
-<a id="__codelineno-0-150" name="__codelineno-0-150"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-151" name="__codelineno-0-151"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-152" name="__codelineno-0-152"></a>                <span class="s2">"quality_metric raised on </span><span class="si">%r</span><span class="s2"> — skipping sample: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">quality</span><span class="p">,</span> <span class="n">e</span>
-<a id="__codelineno-0-153" name="__codelineno-0-153"></a>            <span class="p">)</span>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a>            <span class="k">return</span> <span class="n">result</span>
-<a id="__codelineno-0-155" name="__codelineno-0-155"></a>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">score</span><span class="p">)</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">score</span><span class="p">)</span>
-<a id="__codelineno-0-160" name="__codelineno-0-160"></a>
-<a id="__codelineno-0-161" name="__codelineno-0-161"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_maybe_advance</span><span class="p">()</span>
-<a id="__codelineno-0-162" name="__codelineno-0-162"></a>        <span class="k">return</span> <span class="n">result</span>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a>    <span class="nd">@property</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">current_weights</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
-<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="w">        </span><span class="sd">"""Return a copy of the currently-active score_weights."""</span>
-<a id="__codelineno-0-167" name="__codelineno-0-167"></a>        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">inner</span><span class="o">.</span><span class="n">score_weights</span><span class="p">)</span>
-<a id="__codelineno-0-168" name="__codelineno-0-168"></a>
-<a id="__codelineno-0-169" name="__codelineno-0-169"></a>    <span class="nd">@property</span>
-<a id="__codelineno-0-170" name="__codelineno-0-170"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">baseline_quality</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="w">        </span><span class="sd">"""Rolling-window mean quality under baseline weights, or None."""</span>
-<a id="__codelineno-0-172" name="__codelineno-0-172"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a>
-<a id="__codelineno-0-174" name="__codelineno-0-174"></a>    <span class="nd">@property</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">is_testing_candidate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="w">        </span><span class="sd">"""True when the assembler is currently gathering a candidate window."""</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a>    <span class="c1"># ------------------------------------------------------------------</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a>    <span class="c1"># Internal state machine</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a>    <span class="c1"># ------------------------------------------------------------------</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_maybe_advance</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="w">        </span><span class="sd">"""Advance the keep/revert state machine if a window just filled."""</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a>            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_window_size</span><span class="p">:</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="o">=</span> <span class="n">statistics</span><span class="o">.</span><span class="n">fmean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="p">)</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_start_candidate</span><span class="p">()</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>            <span class="k">return</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a>        <span class="c1"># candidate is under test</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_window_size</span><span class="p">:</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a>            <span class="n">candidate_mean</span> <span class="o">=</span> <span class="n">statistics</span><span class="o">.</span><span class="n">fmean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="p">)</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>            <span class="n">baseline</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a>            <span class="k">if</span> <span class="n">baseline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">candidate_mean</span> <span class="o">&gt;=</span> <span class="n">baseline</span><span class="p">:</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_keep_candidate</span><span class="p">(</span><span class="n">candidate_mean</span><span class="p">)</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_revert_candidate</span><span class="p">()</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_start_candidate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a><span class="w">        </span><span class="sd">"""Propose a candidate weight perturbation and swap inner."""</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>        <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_propose_candidate</span><span class="p">()</span>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a>        <span class="k">if</span> <span class="n">candidate</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a>            <span class="c1"># No valid perturbation found this round; retry next window.</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>            <span class="k">return</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="o">=</span> <span class="n">candidate</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">inner</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_construct_inner</span><span class="p">(</span><span class="n">candidate</span><span class="p">)</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_keep_candidate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">candidate_mean</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="w">        </span><span class="sd">"""Accept the candidate as the new baseline."""</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a>        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>            <span class="s2">"AdaptiveAssembler: keep candidate (</span><span class="si">%.4f</span><span class="s2"> &gt;= </span><span class="si">%.4f</span><span class="s2"> baseline)"</span><span class="p">,</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>            <span class="n">candidate_mean</span><span class="p">,</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">,</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>        <span class="p">)</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_original_weights</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span><span class="p">)</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="o">=</span> <span class="n">candidate_mean</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>        <span class="c1"># inner already has the candidate weights — no swap needed.</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_revert_candidate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="w">        </span><span class="sd">"""Reject the candidate; restore inner to the baseline weights."""</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="s2">"AdaptiveAssembler: revert candidate (baseline=</span><span class="si">%.4f</span><span class="s2">)"</span><span class="p">,</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">,</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>        <span class="p">)</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">inner</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_construct_inner</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_original_weights</span><span class="p">)</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="c1"># ------------------------------------------------------------------</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>    <span class="c1"># Proposal + construction helpers</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="c1"># ------------------------------------------------------------------</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_propose_candidate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="w">        </span><span class="sd">"""Symmetric perturbation: shift weight_perturbation between two keys.</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a><span class="sd">        Returns a new weights dict or None if clamping makes every</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">        proposal a no-op after several retries.</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">        """</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a>        <span class="n">keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_original_weights</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a>            <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a>        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a>            <span class="n">key_from</span><span class="p">,</span> <span class="n">key_to</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rng</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>            <span class="n">candidate</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_original_weights</span><span class="p">)</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a>            <span class="n">raw_from</span> <span class="o">=</span> <span class="n">candidate</span><span class="p">[</span><span class="n">key_from</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weight_perturbation</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a>            <span class="n">raw_to</span> <span class="o">=</span> <span class="n">candidate</span><span class="p">[</span><span class="n">key_to</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weight_perturbation</span>
-<a id="__codelineno-0-255" name="__codelineno-0-255"></a>            <span class="n">new_from</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">_WEIGHT_FLOOR</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">_WEIGHT_CEILING</span><span class="p">,</span> <span class="n">raw_from</span><span class="p">))</span>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a>            <span class="n">new_to</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">_WEIGHT_FLOOR</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">_WEIGHT_CEILING</span><span class="p">,</span> <span class="n">raw_to</span><span class="p">))</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a>            <span class="c1"># If clamping made the proposal a no-op (e.g., key_from was</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a>            <span class="c1"># already at the floor), retry with another pair.</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a>            <span class="k">if</span> <span class="n">new_from</span> <span class="o">==</span> <span class="n">candidate</span><span class="p">[</span><span class="n">key_from</span><span class="p">]</span> <span class="ow">and</span> <span class="n">new_to</span> <span class="o">==</span> <span class="n">candidate</span><span class="p">[</span><span class="n">key_to</span><span class="p">]:</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a>            <span class="n">candidate</span><span class="p">[</span><span class="n">key_from</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_from</span>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a>            <span class="n">candidate</span><span class="p">[</span><span class="n">key_to</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_to</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a>            <span class="k">return</span> <span class="n">candidate</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a>        <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_construct_inner</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">score_weights</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">ContextAssembler</span><span class="p">:</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="w">        </span><span class="sd">"""Build a new ContextAssembler with the given score_weights.</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">        We shallow-copy ``self.inner`` and overwrite ``score_weights`` on</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        the copy. This is simpler and more robust than snapshotting every</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        constructor arg (the assembler has ~8 knobs and caches detected</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">        field capabilities on the instance). The copy preserves the</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">        detected-field cache — detected capabilities are a function of</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">        ``model_class``, not weights, so they are safe to share.</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">        """</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="n">new_inner</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">inner</span><span class="p">)</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>        <span class="n">new_inner</span><span class="o">.</span><span class="n">score_weights</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">score_weights</span><span class="p">)</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a>        <span class="k">return</span> <span class="n">new_inner</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-73"> 73</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-74"> 74</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-75"> 75</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-76"> 76</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-77"> 77</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-78"> 78</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-79"> 79</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-80"> 80</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-81"> 81</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-82"> 82</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-83"> 83</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-84"> 84</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-85"> 85</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-86"> 86</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-87"> 87</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-88"> 88</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-89"> 89</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-90"> 90</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-91"> 91</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-92"> 92</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-93"> 93</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-94"> 94</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-95"> 95</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-96"> 96</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-97"> 97</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-98"> 98</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-99"> 99</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-100">100</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-101">101</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-102">102</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-103">103</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-104">104</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-105">105</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-106">106</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-107">107</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-108">108</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-109">109</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-110">110</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-111">111</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-112">112</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-113">113</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-114">114</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-115">115</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-116">116</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-117">117</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-118">118</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-119">119</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-120">120</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-121">121</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-122">122</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-123">123</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-124">124</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-125">125</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-126">126</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-127">127</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-128">128</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-129">129</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-130">130</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-131">131</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-132">132</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-133">133</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-135">135</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-137">137</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-138">138</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-139">139</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-140">140</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-141">141</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-142">142</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-143">143</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-144">144</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-145">145</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-146">146</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-147">147</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-148">148</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-149">149</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-150">150</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-151">151</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-152">152</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-153">153</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-154">154</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-155">155</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-156">156</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-157">157</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-158">158</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-159">159</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-160">160</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-161">161</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-162">162</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-163">163</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-164">164</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-165">165</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-166">166</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-167">167</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-238">238</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-239">239</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-240">240</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-241">241</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-242">242</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-243">243</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-244">244</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-245">245</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-246">246</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-247">247</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-248">248</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-249">249</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-250">250</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-251">251</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-252">252</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-253">253</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-254">254</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-255">255</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-256">256</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-257">257</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-258">258</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-259">259</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-260">260</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-261">261</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-262">262</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-263">263</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-264">264</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-265">265</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-266">266</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-267">267</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-268">268</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-269">269</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-270">270</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-271">271</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-272">272</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-273">273</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-274">274</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-275">275</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-276">276</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-278">278</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-73" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-73"></a><span class="k">class</span><span class="w"> </span><span class="nc">AdaptiveAssembler</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-74" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-74"></a><span class="w">    </span><span class="sd">"""Wraps a ``ContextAssembler`` with a keep/revert quality loop.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-75" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-75"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-76" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-76"></a><span class="sd">    Every ``window_size`` calls under the current baseline weights, the</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-77" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-77"></a><span class="sd">    assembler proposes a symmetric perturbation (shift</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-78" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-78"></a><span class="sd">    ``weight_perturbation`` from one weight key to another). It then</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-79" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-79"></a><span class="sd">    gathers another ``window_size`` samples under the candidate, compares</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-80" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-80"></a><span class="sd">    the rolling means, and either keeps the candidate as the new baseline</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-81" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-81"></a><span class="sd">    or reverts to the original.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-82" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-82"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-83" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-83"></a><span class="sd">    Args:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-84" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-84"></a><span class="sd">        inner: An existing ``ContextAssembler`` to wrap. The</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-85" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-85"></a><span class="sd">            ``AdaptiveAssembler`` may swap this out with a re-constructed</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-86" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-86"></a><span class="sd">            instance when changing weights; callers should access weights</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-87" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-87"></a><span class="sd">            via ``self.current_weights`` rather than capturing a direct</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-88" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-88"></a><span class="sd">            reference to ``inner``.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-89" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-89"></a><span class="sd">        window_size: Number of calls per rolling window. Smaller windows</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-90" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-90"></a><span class="sd">            adapt faster but noisier; larger windows converge more slowly</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-91" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-91"></a><span class="sd">            but more reliably. Default</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-92" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-92"></a><span class="sd">            ``Defaults.ADAPTIVE_QUALITY_WINDOW_SIZE`` (20).</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-93" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-93"></a><span class="sd">        quality_metric: Callable that scalarizes a ``RetrievalQuality``</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-94" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-94"></a><span class="sd">            into a single float. Default ``fok_score * avg_confidence``.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-95" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-95"></a><span class="sd">            If the metric raises on a given quality, the sample is logged</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-96" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-96"></a><span class="sd">            and skipped rather than crashing the loop.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-97" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-97"></a><span class="sd">        weight_perturbation: How much weight to shift per proposal.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-98" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-98"></a><span class="sd">            Default 0.05.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-99" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-99"></a><span class="sd">        rng: Optional ``random.Random`` instance for deterministic tests.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-100" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-100"></a><span class="sd">            Defaults to a fresh ``random.Random()`` (non-seeded).</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-101" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-101"></a><span class="sd">    """</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-102" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-102"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-103" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-103"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-104" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-104"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-105" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-105"></a>        <span class="n">inner</span><span class="p">:</span> <span class="n">ContextAssembler</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-106" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-106"></a>        <span class="n">window_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">ADAPTIVE_QUALITY_WINDOW_SIZE</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-107" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-107"></a>        <span class="n">quality_metric</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">RetrievalQuality</span><span class="p">],</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-108" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-108"></a>        <span class="n">weight_perturbation</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-109" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-109"></a>        <span class="n">rng</span><span class="p">:</span> <span class="n">random</span><span class="o">.</span><span class="n">Random</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-110" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-110"></a>    <span class="p">):</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-111" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-111"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">inner</span> <span class="o">=</span> <span class="n">inner</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-112" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-112"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_window_size</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">window_size</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-113" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-113"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_quality_metric</span> <span class="o">=</span> <span class="n">quality_metric</span> <span class="ow">or</span> <span class="n">_default_quality_metric</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-114" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-114"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_weight_perturbation</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">weight_perturbation</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-115" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-115"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_rng</span> <span class="o">=</span> <span class="n">rng</span> <span class="k">if</span> <span class="n">rng</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">random</span><span class="o">.</span><span class="n">Random</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-116" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-116"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-117" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-117"></a>        <span class="c1"># Snapshot the starting weights as the "original" to revert to.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-118" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-118"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_original_weights</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">inner</span><span class="o">.</span><span class="n">score_weights</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-119" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-119"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-120" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-120"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-121" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-121"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-122" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-122"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-123" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-123"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-124" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-124"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-125" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-125"></a>    <span class="c1"># Public API</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-126" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-126"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-127" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-127"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-128" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-128"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">assemble</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_cues</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AssemblyResult</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-129" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-129"></a><span class="w">        </span><span class="sd">"""Delegate to the wrapped assembler, recording quality per call.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-130" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-130"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-131" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-131"></a><span class="sd">        Forces ``assess_quality=True`` (overriding any caller kwarg) so</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-132" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-132"></a><span class="sd">        quality is always computed. Appends the scalarized metric to</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-133" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-133"></a><span class="sd">        whichever rolling window is active (baseline or candidate), then</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-134" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-134"></a><span class="sd">        checks whether a state transition is due.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-135" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-135"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-136" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-136"></a><span class="sd">        Returns the inner ``AssemblyResult`` unchanged.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-137" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-137"></a><span class="sd">        """</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-138" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-138"></a>        <span class="n">kwargs</span><span class="p">[</span><span class="s2">"assess_quality"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-139" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-139"></a>        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">inner</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="n">query_cues</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-140" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-140"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-141" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-141"></a>        <span class="n">quality</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"quality"</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-142" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-142"></a>        <span class="k">if</span> <span class="n">quality</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-143" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-143"></a>            <span class="c1"># Defensive: inner didn't produce a RetrievalQuality (e.g.,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-144" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-144"></a>            <span class="c1"># _compute_quality swallowed an exception and attached a bare</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-145" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-145"></a>            <span class="c1"># one, or assess_quality was somehow dropped). Skip sample.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-146" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-146"></a>            <span class="k">return</span> <span class="n">result</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-147" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-147"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-148" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-148"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-149" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-149"></a>            <span class="n">score</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_quality_metric</span><span class="p">(</span><span class="n">quality</span><span class="p">))</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-150" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-150"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-151" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-151"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-152" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-152"></a>                <span class="s2">"quality_metric raised on </span><span class="si">%r</span><span class="s2"> — skipping sample: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">quality</span><span class="p">,</span> <span class="n">e</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-153" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-153"></a>            <span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-154" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-154"></a>            <span class="k">return</span> <span class="n">result</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-155" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-155"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-156" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-156"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-157" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-157"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">score</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-158" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-158"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-159" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-159"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">score</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-160" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-160"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-161" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-161"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_maybe_advance</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-162" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-162"></a>        <span class="k">return</span> <span class="n">result</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-163" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-163"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-164" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-164"></a>    <span class="nd">@property</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-165" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-165"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">current_weights</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-166" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-166"></a><span class="w">        </span><span class="sd">"""Return a copy of the currently-active score_weights."""</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-167" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-167"></a>        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">inner</span><span class="o">.</span><span class="n">score_weights</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-168" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-168"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-169" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-169"></a>    <span class="nd">@property</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-170" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-170"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">baseline_quality</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-171" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-171"></a><span class="w">        </span><span class="sd">"""Rolling-window mean quality under baseline weights, or None."""</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-172" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-172"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-173" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-173"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-174" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-174"></a>    <span class="nd">@property</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-175" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-175"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">is_testing_candidate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-176" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-176"></a><span class="w">        </span><span class="sd">"""True when the assembler is currently gathering a candidate window."""</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-177" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-177"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-178" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-178"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-179" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-179"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-180" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-180"></a>    <span class="c1"># Internal state machine</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-181" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-181"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-182" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-182"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-183" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-183"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_maybe_advance</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-184" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-184"></a><span class="w">        </span><span class="sd">"""Advance the keep/revert state machine if a window just filled."""</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-185" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-185"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-186" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-186"></a>            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_window_size</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-187" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-187"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="o">=</span> <span class="n">statistics</span><span class="o">.</span><span class="n">fmean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-188" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-188"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-189" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-189"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_start_candidate</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-190" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-190"></a>            <span class="k">return</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-191" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-191"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-192" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-192"></a>        <span class="c1"># candidate is under test</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-193" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-193"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_window_size</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-194" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-194"></a>            <span class="n">candidate_mean</span> <span class="o">=</span> <span class="n">statistics</span><span class="o">.</span><span class="n">fmean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-195" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-195"></a>            <span class="n">baseline</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-196" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-196"></a>            <span class="k">if</span> <span class="n">baseline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">candidate_mean</span> <span class="o">&gt;=</span> <span class="n">baseline</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-197" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-197"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_keep_candidate</span><span class="p">(</span><span class="n">candidate_mean</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-198" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-198"></a>            <span class="k">else</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-199" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-199"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_revert_candidate</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-200" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-200"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-201" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-201"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_start_candidate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-202" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-202"></a><span class="w">        </span><span class="sd">"""Propose a candidate weight perturbation and swap inner."""</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-203" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-203"></a>        <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_propose_candidate</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-204" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-204"></a>        <span class="k">if</span> <span class="n">candidate</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-205" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-205"></a>            <span class="c1"># No valid perturbation found this round; retry next window.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-206" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-206"></a>            <span class="k">return</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-207" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-207"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="o">=</span> <span class="n">candidate</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-208" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-208"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">inner</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_construct_inner</span><span class="p">(</span><span class="n">candidate</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-209" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-209"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-210" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-210"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_keep_candidate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">candidate_mean</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-211" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-211"></a><span class="w">        </span><span class="sd">"""Accept the candidate as the new baseline."""</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-212" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-212"></a>        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-213" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-213"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-214" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-214"></a>            <span class="s2">"AdaptiveAssembler: keep candidate (</span><span class="si">%.4f</span><span class="s2"> &gt;= </span><span class="si">%.4f</span><span class="s2"> baseline)"</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-215" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-215"></a>            <span class="n">candidate_mean</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-216" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-216"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-217" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-217"></a>        <span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-218" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-218"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_original_weights</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-219" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-219"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="o">=</span> <span class="n">candidate_mean</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-220" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-220"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-221" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-221"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-222" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-222"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-223" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-223"></a>        <span class="c1"># inner already has the candidate weights — no swap needed.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-224" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-224"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-225" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-225"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_revert_candidate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-226" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-226"></a><span class="w">        </span><span class="sd">"""Reject the candidate; restore inner to the baseline weights."""</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-227" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-227"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-228" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-228"></a>            <span class="s2">"AdaptiveAssembler: revert candidate (baseline=</span><span class="si">%.4f</span><span class="s2">)"</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-229" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-229"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_baseline_quality</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-230" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-230"></a>        <span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-231" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-231"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">inner</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_construct_inner</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_original_weights</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-232" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-232"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-233" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-233"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-234" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-234"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-235" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-235"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-236" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-236"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-237" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-237"></a>    <span class="c1"># Proposal + construction helpers</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-238" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-238"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-239" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-239"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-240" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-240"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_propose_candidate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-241" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-241"></a><span class="w">        </span><span class="sd">"""Symmetric perturbation: shift weight_perturbation between two keys.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-242" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-242"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-243" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-243"></a><span class="sd">        Returns a new weights dict or None if clamping makes every</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-244" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-244"></a><span class="sd">        proposal a no-op after several retries.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-245" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-245"></a><span class="sd">        """</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-246" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-246"></a>        <span class="n">keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_original_weights</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-247" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-247"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-248" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-248"></a>            <span class="k">return</span> <span class="kc">None</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-249" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-249"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-250" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-250"></a>        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-251" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-251"></a>            <span class="n">key_from</span><span class="p">,</span> <span class="n">key_to</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rng</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-252" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-252"></a>            <span class="n">candidate</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_original_weights</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-253" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-253"></a>            <span class="n">raw_from</span> <span class="o">=</span> <span class="n">candidate</span><span class="p">[</span><span class="n">key_from</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weight_perturbation</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-254" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-254"></a>            <span class="n">raw_to</span> <span class="o">=</span> <span class="n">candidate</span><span class="p">[</span><span class="n">key_to</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weight_perturbation</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-255" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-255"></a>            <span class="n">new_from</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">_WEIGHT_FLOOR</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">_WEIGHT_CEILING</span><span class="p">,</span> <span class="n">raw_from</span><span class="p">))</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-256" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-256"></a>            <span class="n">new_to</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">_WEIGHT_FLOOR</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">_WEIGHT_CEILING</span><span class="p">,</span> <span class="n">raw_to</span><span class="p">))</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-257" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-257"></a>            <span class="c1"># If clamping made the proposal a no-op (e.g., key_from was</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-258" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-258"></a>            <span class="c1"># already at the floor), retry with another pair.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-259" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-259"></a>            <span class="k">if</span> <span class="n">new_from</span> <span class="o">==</span> <span class="n">candidate</span><span class="p">[</span><span class="n">key_from</span><span class="p">]</span> <span class="ow">and</span> <span class="n">new_to</span> <span class="o">==</span> <span class="n">candidate</span><span class="p">[</span><span class="n">key_to</span><span class="p">]:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-260" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-260"></a>                <span class="k">continue</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-261" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-261"></a>            <span class="n">candidate</span><span class="p">[</span><span class="n">key_from</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_from</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-262" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-262"></a>            <span class="n">candidate</span><span class="p">[</span><span class="n">key_to</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_to</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-263" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-263"></a>            <span class="k">return</span> <span class="n">candidate</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-264" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-264"></a>        <span class="k">return</span> <span class="kc">None</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-265" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-265"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-266" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-266"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_construct_inner</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">score_weights</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">ContextAssembler</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-267" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-267"></a><span class="w">        </span><span class="sd">"""Build a new ContextAssembler with the given score_weights.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-268" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-268"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-269" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-269"></a><span class="sd">        We shallow-copy ``self.inner`` and overwrite ``score_weights`` on</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-270" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-270"></a><span class="sd">        the copy. This is simpler and more robust than snapshotting every</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-271" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-271"></a><span class="sd">        constructor arg (the assembler has ~8 knobs and caches detected</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-272" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-272"></a><span class="sd">        field capabilities on the instance). The copy preserves the</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-273" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-273"></a><span class="sd">        detected-field cache — detected capabilities are a function of</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-274" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-274"></a><span class="sd">        ``model_class``, not weights, so they are safe to share.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-275" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-275"></a><span class="sd">        """</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-276" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-276"></a>        <span class="n">new_inner</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">inner</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-277" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-277"></a>        <span class="n">new_inner</span><span class="o">.</span><span class="n">score_weights</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">score_weights</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-278" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler--source--__codelineno-0-278"></a>        <span class="k">return</span> <span class="n">new_inner</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3971,75 +3971,75 @@ checks whether a state transition is due.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/recipes/adaptive_assembler.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-128">128</a></span>
-<span class="normal"><a href="#__codelineno-0-129">129</a></span>
-<span class="normal"><a href="#__codelineno-0-130">130</a></span>
-<span class="normal"><a href="#__codelineno-0-131">131</a></span>
-<span class="normal"><a href="#__codelineno-0-132">132</a></span>
-<span class="normal"><a href="#__codelineno-0-133">133</a></span>
-<span class="normal"><a href="#__codelineno-0-134">134</a></span>
-<span class="normal"><a href="#__codelineno-0-135">135</a></span>
-<span class="normal"><a href="#__codelineno-0-136">136</a></span>
-<span class="normal"><a href="#__codelineno-0-137">137</a></span>
-<span class="normal"><a href="#__codelineno-0-138">138</a></span>
-<span class="normal"><a href="#__codelineno-0-139">139</a></span>
-<span class="normal"><a href="#__codelineno-0-140">140</a></span>
-<span class="normal"><a href="#__codelineno-0-141">141</a></span>
-<span class="normal"><a href="#__codelineno-0-142">142</a></span>
-<span class="normal"><a href="#__codelineno-0-143">143</a></span>
-<span class="normal"><a href="#__codelineno-0-144">144</a></span>
-<span class="normal"><a href="#__codelineno-0-145">145</a></span>
-<span class="normal"><a href="#__codelineno-0-146">146</a></span>
-<span class="normal"><a href="#__codelineno-0-147">147</a></span>
-<span class="normal"><a href="#__codelineno-0-148">148</a></span>
-<span class="normal"><a href="#__codelineno-0-149">149</a></span>
-<span class="normal"><a href="#__codelineno-0-150">150</a></span>
-<span class="normal"><a href="#__codelineno-0-151">151</a></span>
-<span class="normal"><a href="#__codelineno-0-152">152</a></span>
-<span class="normal"><a href="#__codelineno-0-153">153</a></span>
-<span class="normal"><a href="#__codelineno-0-154">154</a></span>
-<span class="normal"><a href="#__codelineno-0-155">155</a></span>
-<span class="normal"><a href="#__codelineno-0-156">156</a></span>
-<span class="normal"><a href="#__codelineno-0-157">157</a></span>
-<span class="normal"><a href="#__codelineno-0-158">158</a></span>
-<span class="normal"><a href="#__codelineno-0-159">159</a></span>
-<span class="normal"><a href="#__codelineno-0-160">160</a></span>
-<span class="normal"><a href="#__codelineno-0-161">161</a></span>
-<span class="normal"><a href="#__codelineno-0-162">162</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="k">def</span><span class="w"> </span><span class="nf">assemble</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_cues</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AssemblyResult</span><span class="p">:</span>
-<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="w">    </span><span class="sd">"""Delegate to the wrapped assembler, recording quality per call.</span>
-<a id="__codelineno-0-130" name="__codelineno-0-130"></a>
-<a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">    Forces ``assess_quality=True`` (overriding any caller kwarg) so</span>
-<a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="sd">    quality is always computed. Appends the scalarized metric to</span>
-<a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="sd">    whichever rolling window is active (baseline or candidate), then</span>
-<a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="sd">    checks whether a state transition is due.</span>
-<a id="__codelineno-0-135" name="__codelineno-0-135"></a>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a><span class="sd">    Returns the inner ``AssemblyResult`` unchanged.</span>
-<a id="__codelineno-0-137" name="__codelineno-0-137"></a><span class="sd">    """</span>
-<a id="__codelineno-0-138" name="__codelineno-0-138"></a>    <span class="n">kwargs</span><span class="p">[</span><span class="s2">"assess_quality"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-139" name="__codelineno-0-139"></a>    <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">inner</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="n">query_cues</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a>
-<a id="__codelineno-0-141" name="__codelineno-0-141"></a>    <span class="n">quality</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"quality"</span><span class="p">)</span>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a>    <span class="k">if</span> <span class="n">quality</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a>        <span class="c1"># Defensive: inner didn't produce a RetrievalQuality (e.g.,</span>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a>        <span class="c1"># _compute_quality swallowed an exception and attached a bare</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>        <span class="c1"># one, or assess_quality was somehow dropped). Skip sample.</span>
-<a id="__codelineno-0-146" name="__codelineno-0-146"></a>        <span class="k">return</span> <span class="n">result</span>
-<a id="__codelineno-0-147" name="__codelineno-0-147"></a>
-<a id="__codelineno-0-148" name="__codelineno-0-148"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-149" name="__codelineno-0-149"></a>        <span class="n">score</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_quality_metric</span><span class="p">(</span><span class="n">quality</span><span class="p">))</span>
-<a id="__codelineno-0-150" name="__codelineno-0-150"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-151" name="__codelineno-0-151"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-152" name="__codelineno-0-152"></a>            <span class="s2">"quality_metric raised on </span><span class="si">%r</span><span class="s2"> — skipping sample: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">quality</span><span class="p">,</span> <span class="n">e</span>
-<a id="__codelineno-0-153" name="__codelineno-0-153"></a>        <span class="p">)</span>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a>        <span class="k">return</span> <span class="n">result</span>
-<a id="__codelineno-0-155" name="__codelineno-0-155"></a>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">score</span><span class="p">)</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">score</span><span class="p">)</span>
-<a id="__codelineno-0-160" name="__codelineno-0-160"></a>
-<a id="__codelineno-0-161" name="__codelineno-0-161"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_maybe_advance</span><span class="p">()</span>
-<a id="__codelineno-0-162" name="__codelineno-0-162"></a>    <span class="k">return</span> <span class="n">result</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-128">128</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-129">129</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-130">130</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-131">131</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-132">132</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-133">133</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-135">135</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-137">137</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-138">138</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-139">139</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-140">140</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-141">141</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-142">142</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-143">143</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-144">144</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-145">145</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-146">146</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-147">147</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-148">148</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-149">149</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-150">150</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-151">151</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-152">152</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-153">153</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-154">154</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-155">155</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-156">156</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-157">157</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-158">158</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-159">159</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-160">160</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-161">161</a></span>
+<span class="normal"><a href="#popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-162">162</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-128" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-128"></a><span class="k">def</span><span class="w"> </span><span class="nf">assemble</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_cues</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AssemblyResult</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-129" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-129"></a><span class="w">    </span><span class="sd">"""Delegate to the wrapped assembler, recording quality per call.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-130" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-130"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-131" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-131"></a><span class="sd">    Forces ``assess_quality=True`` (overriding any caller kwarg) so</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-132" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-132"></a><span class="sd">    quality is always computed. Appends the scalarized metric to</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-133" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-133"></a><span class="sd">    whichever rolling window is active (baseline or candidate), then</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-134" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-134"></a><span class="sd">    checks whether a state transition is due.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-135" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-135"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-136" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-136"></a><span class="sd">    Returns the inner ``AssemblyResult`` unchanged.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-137" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-137"></a><span class="sd">    """</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-138" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-138"></a>    <span class="n">kwargs</span><span class="p">[</span><span class="s2">"assess_quality"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-139" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-139"></a>    <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">inner</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="n">query_cues</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-140" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-140"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-141" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-141"></a>    <span class="n">quality</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"quality"</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-142" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-142"></a>    <span class="k">if</span> <span class="n">quality</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-143" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-143"></a>        <span class="c1"># Defensive: inner didn't produce a RetrievalQuality (e.g.,</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-144" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-144"></a>        <span class="c1"># _compute_quality swallowed an exception and attached a bare</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-145" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-145"></a>        <span class="c1"># one, or assess_quality was somehow dropped). Skip sample.</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-146" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-146"></a>        <span class="k">return</span> <span class="n">result</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-147" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-147"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-148" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-148"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-149" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-149"></a>        <span class="n">score</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_quality_metric</span><span class="p">(</span><span class="n">quality</span><span class="p">))</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-150" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-150"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-151" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-151"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-152" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-152"></a>            <span class="s2">"quality_metric raised on </span><span class="si">%r</span><span class="s2"> — skipping sample: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">quality</span><span class="p">,</span> <span class="n">e</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-153" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-153"></a>        <span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-154" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-154"></a>        <span class="k">return</span> <span class="n">result</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-155" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-155"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-156" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-156"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_weights</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-157" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-157"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_current_window</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">score</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-158" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-158"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-159" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-159"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_candidate_window</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">score</span><span class="p">)</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-160" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-160"></a>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-161" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-161"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_maybe_advance</span><span class="p">()</span>
+<a id="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-162" name="popoto.recipes.adaptive_assembler.AdaptiveAssembler.assemble--source--__codelineno-0-162"></a>    <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4117,10 +4117,10 @@ checks whether a state transition is due.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../../../js/open_in_new_tab.js"></script>
       

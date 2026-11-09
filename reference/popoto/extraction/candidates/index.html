@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -29,10 +29,10 @@
       
     
     
-      <link rel="stylesheet" href="../../../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -3367,59 +3367,59 @@ text.</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/extraction/candidates.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-48">48</a></span>
-<span class="normal"><a href="#__codelineno-0-49">49</a></span>
-<span class="normal"><a href="#__codelineno-0-50">50</a></span>
-<span class="normal"><a href="#__codelineno-0-51">51</a></span>
-<span class="normal"><a href="#__codelineno-0-52">52</a></span>
-<span class="normal"><a href="#__codelineno-0-53">53</a></span>
-<span class="normal"><a href="#__codelineno-0-54">54</a></span>
-<span class="normal"><a href="#__codelineno-0-55">55</a></span>
-<span class="normal"><a href="#__codelineno-0-56">56</a></span>
-<span class="normal"><a href="#__codelineno-0-57">57</a></span>
-<span class="normal"><a href="#__codelineno-0-58">58</a></span>
-<span class="normal"><a href="#__codelineno-0-59">59</a></span>
-<span class="normal"><a href="#__codelineno-0-60">60</a></span>
-<span class="normal"><a href="#__codelineno-0-61">61</a></span>
-<span class="normal"><a href="#__codelineno-0-62">62</a></span>
-<span class="normal"><a href="#__codelineno-0-63">63</a></span>
-<span class="normal"><a href="#__codelineno-0-64">64</a></span>
-<span class="normal"><a href="#__codelineno-0-65">65</a></span>
-<span class="normal"><a href="#__codelineno-0-66">66</a></span>
-<span class="normal"><a href="#__codelineno-0-67">67</a></span>
-<span class="normal"><a href="#__codelineno-0-68">68</a></span>
-<span class="normal"><a href="#__codelineno-0-69">69</a></span>
-<span class="normal"><a href="#__codelineno-0-70">70</a></span>
-<span class="normal"><a href="#__codelineno-0-71">71</a></span>
-<span class="normal"><a href="#__codelineno-0-72">72</a></span>
-<span class="normal"><a href="#__codelineno-0-73">73</a></span>
-<span class="normal"><a href="#__codelineno-0-74">74</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-49" name="__codelineno-0-49"></a><span class="k">class</span><span class="w"> </span><span class="nc">Candidate</span><span class="p">:</span>
-<a id="__codelineno-0-50" name="__codelineno-0-50"></a><span class="w">    </span><span class="sd">"""One deterministically enumerated span of a turn.</span>
-<a id="__codelineno-0-51" name="__codelineno-0-51"></a>
-<a id="__codelineno-0-52" name="__codelineno-0-52"></a><span class="sd">    Attributes:</span>
-<a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="sd">        text: The verbatim span. Byte-identical to</span>
-<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="sd">            ``turn_text[start:end]`` -- nothing is normalized, distilled or</span>
-<a id="__codelineno-0-55" name="__codelineno-0-55"></a><span class="sd">            rewritten (that is M4's job).</span>
-<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">        turn_id: Id of the turn this span came from.</span>
-<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">        candidate_id: ``f"{turn_id}:{generator_rule}:{ordinal}"``. Unique</span>
-<a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">            within a turn, deterministic, and deliberately **low-entropy**:</span>
-<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">            it is written to the provenance journal as a ``cand:`` subject</span>
-<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">            tag, and the journal's write-time firewall blocks high-entropy</span>
-<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">            tags such as hex digests. Never make this a hash.</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">        start: Character offset of the span's first character in the turn</span>
-<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">            text.</span>
-<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">        end: Character offset one past the span's last character.</span>
-<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">        generator_rule: Which rule produced this candidate --</span>
-<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">            ``"sentence"`` or ``"entity"``.</span>
-<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">    """</span>
-<a id="__codelineno-0-68" name="__codelineno-0-68"></a>
-<a id="__codelineno-0-69" name="__codelineno-0-69"></a>    <span class="n">text</span><span class="p">:</span> <span class="nb">str</span>
-<a id="__codelineno-0-70" name="__codelineno-0-70"></a>    <span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span>
-<a id="__codelineno-0-71" name="__codelineno-0-71"></a>    <span class="n">candidate_id</span><span class="p">:</span> <span class="nb">str</span>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a>    <span class="n">start</span><span class="p">:</span> <span class="nb">int</span>
-<a id="__codelineno-0-73" name="__codelineno-0-73"></a>    <span class="n">end</span><span class="p">:</span> <span class="nb">int</span>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a>    <span class="n">generator_rule</span><span class="p">:</span> <span class="nb">str</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-48">48</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-49">49</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-50">50</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-51">51</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-52">52</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-53">53</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-54">54</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-55">55</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-56">56</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-57">57</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-58">58</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-59">59</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-60">60</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-61">61</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-62">62</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-63">63</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-64">64</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-65">65</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-66">66</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-67">67</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-68">68</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-69">69</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-70">70</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-71">71</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-72">72</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-73">73</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.Candidate--source--__codelineno-0-74">74</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-48" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-48"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-49" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-49"></a><span class="k">class</span><span class="w"> </span><span class="nc">Candidate</span><span class="p">:</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-50" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-50"></a><span class="w">    </span><span class="sd">"""One deterministically enumerated span of a turn.</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-51" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-51"></a>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-52" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-52"></a><span class="sd">    Attributes:</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-53" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-53"></a><span class="sd">        text: The verbatim span. Byte-identical to</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-54" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-54"></a><span class="sd">            ``turn_text[start:end]`` -- nothing is normalized, distilled or</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-55" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-55"></a><span class="sd">            rewritten (that is M4's job).</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-56" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-56"></a><span class="sd">        turn_id: Id of the turn this span came from.</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-57" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-57"></a><span class="sd">        candidate_id: ``f"{turn_id}:{generator_rule}:{ordinal}"``. Unique</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-58" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-58"></a><span class="sd">            within a turn, deterministic, and deliberately **low-entropy**:</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-59" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-59"></a><span class="sd">            it is written to the provenance journal as a ``cand:`` subject</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-60" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-60"></a><span class="sd">            tag, and the journal's write-time firewall blocks high-entropy</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-61" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-61"></a><span class="sd">            tags such as hex digests. Never make this a hash.</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-62" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-62"></a><span class="sd">        start: Character offset of the span's first character in the turn</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-63" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-63"></a><span class="sd">            text.</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-64" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-64"></a><span class="sd">        end: Character offset one past the span's last character.</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-65" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-65"></a><span class="sd">        generator_rule: Which rule produced this candidate --</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-66" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-66"></a><span class="sd">            ``"sentence"`` or ``"entity"``.</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-67" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-67"></a><span class="sd">    """</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-68" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-68"></a>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-69" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-69"></a>    <span class="n">text</span><span class="p">:</span> <span class="nb">str</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-70" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-70"></a>    <span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-71" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-71"></a>    <span class="n">candidate_id</span><span class="p">:</span> <span class="nb">str</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-72" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-72"></a>    <span class="n">start</span><span class="p">:</span> <span class="nb">int</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-73" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-73"></a>    <span class="n">end</span><span class="p">:</span> <span class="nb">int</span>
+<a id="popoto.extraction.candidates.Candidate--source--__codelineno-0-74" name="popoto.extraction.candidates.Candidate--source--__codelineno-0-74"></a>    <span class="n">generator_rule</span><span class="p">:</span> <span class="nb">str</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3612,61 +3612,61 @@ of every <code>candidate_id</code>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/extraction/candidates.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-77"> 77</a></span>
-<span class="normal"><a href="#__codelineno-0-78"> 78</a></span>
-<span class="normal"><a href="#__codelineno-0-79"> 79</a></span>
-<span class="normal"><a href="#__codelineno-0-80"> 80</a></span>
-<span class="normal"><a href="#__codelineno-0-81"> 81</a></span>
-<span class="normal"><a href="#__codelineno-0-82"> 82</a></span>
-<span class="normal"><a href="#__codelineno-0-83"> 83</a></span>
-<span class="normal"><a href="#__codelineno-0-84"> 84</a></span>
-<span class="normal"><a href="#__codelineno-0-85"> 85</a></span>
-<span class="normal"><a href="#__codelineno-0-86"> 86</a></span>
-<span class="normal"><a href="#__codelineno-0-87"> 87</a></span>
-<span class="normal"><a href="#__codelineno-0-88"> 88</a></span>
-<span class="normal"><a href="#__codelineno-0-89"> 89</a></span>
-<span class="normal"><a href="#__codelineno-0-90"> 90</a></span>
-<span class="normal"><a href="#__codelineno-0-91"> 91</a></span>
-<span class="normal"><a href="#__codelineno-0-92"> 92</a></span>
-<span class="normal"><a href="#__codelineno-0-93"> 93</a></span>
-<span class="normal"><a href="#__codelineno-0-94"> 94</a></span>
-<span class="normal"><a href="#__codelineno-0-95"> 95</a></span>
-<span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
-<span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
-<span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
-<span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
-<span class="normal"><a href="#__codelineno-0-100">100</a></span>
-<span class="normal"><a href="#__codelineno-0-101">101</a></span>
-<span class="normal"><a href="#__codelineno-0-102">102</a></span>
-<span class="normal"><a href="#__codelineno-0-103">103</a></span>
-<span class="normal"><a href="#__codelineno-0-104">104</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="k">def</span><span class="w"> </span><span class="nf">generate_candidates</span><span class="p">(</span><span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Candidate</span><span class="p">]:</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="w">    </span><span class="sd">"""Enumerate the complete v1 candidate set for one turn.</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="sd">        turn_id: Id of the turn being extracted. Becomes the first segment</span>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">            of every ``candidate_id``.</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">        text: The turn's raw text.</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a><span class="sd">        Sentence candidates in document order, followed by entity</span>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">        candidates in document order. Empty list when ``text`` is empty,</span>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a><span class="sd">        whitespace-only or not a string -- an empty turn produces *zero*</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="sd">        candidates, and the caller (not this module) logs the</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="sd">        ``reject(empty_turn)`` row. This module has no decision-log</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a><span class="sd">        dependency.</span>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a><span class="sd">    """</span>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a>        <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a>    <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a>        <span class="n">_make</span><span class="p">(</span><span class="n">turn_id</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">span</span><span class="p">,</span> <span class="n">SENTENCE_RULE</span><span class="p">,</span> <span class="n">ordinal</span><span class="p">)</span>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a>        <span class="k">for</span> <span class="n">ordinal</span><span class="p">,</span> <span class="n">span</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">_sentence_spans</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a>    <span class="p">]</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="n">candidates</span> <span class="o">+=</span> <span class="p">[</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a>        <span class="n">_make</span><span class="p">(</span><span class="n">turn_id</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">span</span><span class="p">,</span> <span class="n">ENTITY_RULE</span><span class="p">,</span> <span class="n">ordinal</span><span class="p">)</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a>        <span class="k">for</span> <span class="n">ordinal</span><span class="p">,</span> <span class="n">span</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">_entity_spans</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>    <span class="p">]</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="k">return</span> <span class="n">candidates</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-77"> 77</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-78"> 78</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-79"> 79</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-80"> 80</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-81"> 81</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-82"> 82</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-83"> 83</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-84"> 84</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-85"> 85</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-86"> 86</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-87"> 87</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-88"> 88</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-89"> 89</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-90"> 90</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-91"> 91</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-92"> 92</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-93"> 93</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-94"> 94</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-95"> 95</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-96"> 96</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-97"> 97</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-98"> 98</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-99"> 99</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-100">100</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-101">101</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-102">102</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-103">103</a></span>
+<span class="normal"><a href="#popoto.extraction.candidates.generate_candidates--source--__codelineno-0-104">104</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-77" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-77"></a><span class="k">def</span><span class="w"> </span><span class="nf">generate_candidates</span><span class="p">(</span><span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Candidate</span><span class="p">]:</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-78" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-78"></a><span class="w">    </span><span class="sd">"""Enumerate the complete v1 candidate set for one turn.</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-79" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-79"></a>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-80" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-80"></a><span class="sd">    Args:</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-81" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-81"></a><span class="sd">        turn_id: Id of the turn being extracted. Becomes the first segment</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-82" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-82"></a><span class="sd">            of every ``candidate_id``.</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-83" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-83"></a><span class="sd">        text: The turn's raw text.</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-84" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-84"></a>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-85" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-85"></a><span class="sd">    Returns:</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-86" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-86"></a><span class="sd">        Sentence candidates in document order, followed by entity</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-87" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-87"></a><span class="sd">        candidates in document order. Empty list when ``text`` is empty,</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-88" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-88"></a><span class="sd">        whitespace-only or not a string -- an empty turn produces *zero*</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-89" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-89"></a><span class="sd">        candidates, and the caller (not this module) logs the</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-90" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-90"></a><span class="sd">        ``reject(empty_turn)`` row. This module has no decision-log</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-91" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-91"></a><span class="sd">        dependency.</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-92" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-92"></a><span class="sd">    """</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-93" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-93"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-94" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-94"></a>        <span class="k">return</span> <span class="p">[]</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-95" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-95"></a>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-96" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-96"></a>    <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-97" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-97"></a>        <span class="n">_make</span><span class="p">(</span><span class="n">turn_id</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">span</span><span class="p">,</span> <span class="n">SENTENCE_RULE</span><span class="p">,</span> <span class="n">ordinal</span><span class="p">)</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-98" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-98"></a>        <span class="k">for</span> <span class="n">ordinal</span><span class="p">,</span> <span class="n">span</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">_sentence_spans</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-99" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-99"></a>    <span class="p">]</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-100" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-100"></a>    <span class="n">candidates</span> <span class="o">+=</span> <span class="p">[</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-101" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-101"></a>        <span class="n">_make</span><span class="p">(</span><span class="n">turn_id</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">span</span><span class="p">,</span> <span class="n">ENTITY_RULE</span><span class="p">,</span> <span class="n">ordinal</span><span class="p">)</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-102" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-102"></a>        <span class="k">for</span> <span class="n">ordinal</span><span class="p">,</span> <span class="n">span</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">_entity_spans</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-103" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-103"></a>    <span class="p">]</span>
+<a id="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-104" name="popoto.extraction.candidates.generate_candidates--source--__codelineno-0-104"></a>    <span class="k">return</span> <span class="n">candidates</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3735,10 +3735,10 @@ of every <code>candidate_id</code>.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../../../js/open_in_new_tab.js"></script>
       

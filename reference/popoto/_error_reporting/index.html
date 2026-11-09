@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -29,10 +29,10 @@
       
     
     
-      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -3298,69 +3298,69 @@ popoto.enable_error_reporting()
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/_error_reporting.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-61">61</a></span>
-<span class="normal"><a href="#__codelineno-0-62">62</a></span>
-<span class="normal"><a href="#__codelineno-0-63">63</a></span>
-<span class="normal"><a href="#__codelineno-0-64">64</a></span>
-<span class="normal"><a href="#__codelineno-0-65">65</a></span>
-<span class="normal"><a href="#__codelineno-0-66">66</a></span>
-<span class="normal"><a href="#__codelineno-0-67">67</a></span>
-<span class="normal"><a href="#__codelineno-0-68">68</a></span>
-<span class="normal"><a href="#__codelineno-0-69">69</a></span>
-<span class="normal"><a href="#__codelineno-0-70">70</a></span>
-<span class="normal"><a href="#__codelineno-0-71">71</a></span>
-<span class="normal"><a href="#__codelineno-0-72">72</a></span>
-<span class="normal"><a href="#__codelineno-0-73">73</a></span>
-<span class="normal"><a href="#__codelineno-0-74">74</a></span>
-<span class="normal"><a href="#__codelineno-0-75">75</a></span>
-<span class="normal"><a href="#__codelineno-0-76">76</a></span>
-<span class="normal"><a href="#__codelineno-0-77">77</a></span>
-<span class="normal"><a href="#__codelineno-0-78">78</a></span>
-<span class="normal"><a href="#__codelineno-0-79">79</a></span>
-<span class="normal"><a href="#__codelineno-0-80">80</a></span>
-<span class="normal"><a href="#__codelineno-0-81">81</a></span>
-<span class="normal"><a href="#__codelineno-0-82">82</a></span>
-<span class="normal"><a href="#__codelineno-0-83">83</a></span>
-<span class="normal"><a href="#__codelineno-0-84">84</a></span>
-<span class="normal"><a href="#__codelineno-0-85">85</a></span>
-<span class="normal"><a href="#__codelineno-0-86">86</a></span>
-<span class="normal"><a href="#__codelineno-0-87">87</a></span>
-<span class="normal"><a href="#__codelineno-0-88">88</a></span>
-<span class="normal"><a href="#__codelineno-0-89">89</a></span>
-<span class="normal"><a href="#__codelineno-0-90">90</a></span>
-<span class="normal"><a href="#__codelineno-0-91">91</a></span>
-<span class="normal"><a href="#__codelineno-0-92">92</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="k">def</span><span class="w"> </span><span class="nf">enable_error_reporting</span><span class="p">(</span><span class="n">dsn</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="w">    </span><span class="sd">"""Enable opt-in error reporting to the Popoto maintainers.</span>
-<a id="__codelineno-0-63" name="__codelineno-0-63"></a>
-<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    When enabled, exceptions originating in Popoto code are reported to</span>
-<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    a Sentry project maintained by the Popoto authors. This helps</span>
-<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">    identify and fix bugs that users encounter in the wild.</span>
-<a id="__codelineno-0-67" name="__codelineno-0-67"></a>
-<a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">    **This is entirely opt-in.** You must call this function explicitly</span>
-<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">    for any reporting to occur. If ``sentry-sdk`` is not installed, this</span>
-<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    function silently does nothing.</span>
-<a id="__codelineno-0-71" name="__codelineno-0-71"></a>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">    The reporter uses an isolated Sentry client that does **not**</span>
-<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">    interfere with your application's own ``sentry_sdk.init()`` or</span>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    global Sentry configuration.</span>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">        dsn: Optional Sentry DSN override. By default, errors are</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">            reported to the Popoto maintainers' Sentry project. Set</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">            ``POPOTO_SENTRY_DSN`` env var or pass a DSN here to</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">            redirect reports to your own project instead.</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">    Example::</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">        import popoto</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a><span class="sd">        popoto.enable_error_reporting()</span>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">    """</span>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a>        <span class="n">_do_enable</span><span class="p">(</span><span class="n">dsn</span><span class="p">)</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a>        <span class="c1"># Never let reporter setup interfere with the library.</span>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a>        <span class="k">pass</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-61">61</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-62">62</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-63">63</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-64">64</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-65">65</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-66">66</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-67">67</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-68">68</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-69">69</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-70">70</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-71">71</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-72">72</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-73">73</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-74">74</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-75">75</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-76">76</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-77">77</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-78">78</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-79">79</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-80">80</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-81">81</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-82">82</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-83">83</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-84">84</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-85">85</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-86">86</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-87">87</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-88">88</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-89">89</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-90">90</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-91">91</a></span>
+<span class="normal"><a href="#popoto._error_reporting.enable_error_reporting--source--__codelineno-0-92">92</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-61" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-61"></a><span class="k">def</span><span class="w"> </span><span class="nf">enable_error_reporting</span><span class="p">(</span><span class="n">dsn</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-62" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-62"></a><span class="w">    </span><span class="sd">"""Enable opt-in error reporting to the Popoto maintainers.</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-63" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-63"></a>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-64" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-64"></a><span class="sd">    When enabled, exceptions originating in Popoto code are reported to</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-65" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-65"></a><span class="sd">    a Sentry project maintained by the Popoto authors. This helps</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-66" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-66"></a><span class="sd">    identify and fix bugs that users encounter in the wild.</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-67" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-67"></a>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-68" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-68"></a><span class="sd">    **This is entirely opt-in.** You must call this function explicitly</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-69" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-69"></a><span class="sd">    for any reporting to occur. If ``sentry-sdk`` is not installed, this</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-70" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-70"></a><span class="sd">    function silently does nothing.</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-71" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-71"></a>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-72" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-72"></a><span class="sd">    The reporter uses an isolated Sentry client that does **not**</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-73" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-73"></a><span class="sd">    interfere with your application's own ``sentry_sdk.init()`` or</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-74" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-74"></a><span class="sd">    global Sentry configuration.</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-75" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-75"></a>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-76" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-76"></a><span class="sd">    Args:</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-77" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-77"></a><span class="sd">        dsn: Optional Sentry DSN override. By default, errors are</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-78" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-78"></a><span class="sd">            reported to the Popoto maintainers' Sentry project. Set</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-79" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-79"></a><span class="sd">            ``POPOTO_SENTRY_DSN`` env var or pass a DSN here to</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-80" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-80"></a><span class="sd">            redirect reports to your own project instead.</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-81" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-81"></a>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-82" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-82"></a><span class="sd">    Example::</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-83" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-83"></a>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-84" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-84"></a><span class="sd">        import popoto</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-85" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-85"></a>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-86" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-86"></a><span class="sd">        popoto.enable_error_reporting()</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-87" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-87"></a><span class="sd">    """</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-88" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-88"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-89" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-89"></a>        <span class="n">_do_enable</span><span class="p">(</span><span class="n">dsn</span><span class="p">)</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-90" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-90"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-91" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-91"></a>        <span class="c1"># Never let reporter setup interfere with the library.</span>
+<a id="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-92" name="popoto._error_reporting.enable_error_reporting--source--__codelineno-0-92"></a>        <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3385,49 +3385,49 @@ internal error occurs.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/_error_reporting.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-126">126</a></span>
-<span class="normal"><a href="#__codelineno-0-127">127</a></span>
-<span class="normal"><a href="#__codelineno-0-128">128</a></span>
-<span class="normal"><a href="#__codelineno-0-129">129</a></span>
-<span class="normal"><a href="#__codelineno-0-130">130</a></span>
-<span class="normal"><a href="#__codelineno-0-131">131</a></span>
-<span class="normal"><a href="#__codelineno-0-132">132</a></span>
-<span class="normal"><a href="#__codelineno-0-133">133</a></span>
-<span class="normal"><a href="#__codelineno-0-134">134</a></span>
-<span class="normal"><a href="#__codelineno-0-135">135</a></span>
-<span class="normal"><a href="#__codelineno-0-136">136</a></span>
-<span class="normal"><a href="#__codelineno-0-137">137</a></span>
-<span class="normal"><a href="#__codelineno-0-138">138</a></span>
-<span class="normal"><a href="#__codelineno-0-139">139</a></span>
-<span class="normal"><a href="#__codelineno-0-140">140</a></span>
-<span class="normal"><a href="#__codelineno-0-141">141</a></span>
-<span class="normal"><a href="#__codelineno-0-142">142</a></span>
-<span class="normal"><a href="#__codelineno-0-143">143</a></span>
-<span class="normal"><a href="#__codelineno-0-144">144</a></span>
-<span class="normal"><a href="#__codelineno-0-145">145</a></span>
-<span class="normal"><a href="#__codelineno-0-146">146</a></span>
-<span class="normal"><a href="#__codelineno-0-147">147</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="k">def</span><span class="w"> </span><span class="nf">capture_exception</span><span class="p">(</span><span class="n">exc</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="ne">BaseException</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="w">    </span><span class="sd">"""Capture an exception and send it to the Popoto Sentry project.</span>
-<a id="__codelineno-0-128" name="__codelineno-0-128"></a>
-<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">    This is a no-op if error reporting has not been enabled or if any</span>
-<a id="__codelineno-0-130" name="__codelineno-0-130"></a><span class="sd">    internal error occurs.</span>
-<a id="__codelineno-0-131" name="__codelineno-0-131"></a><span class="sd">    """</span>
-<a id="__codelineno-0-132" name="__codelineno-0-132"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-133" name="__codelineno-0-133"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">_enabled</span> <span class="ow">or</span> <span class="n">_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-134" name="__codelineno-0-134"></a>            <span class="k">return</span>
-<a id="__codelineno-0-135" name="__codelineno-0-135"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">sentry_sdk.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">event_from_exception</span>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a>
-<a id="__codelineno-0-137" name="__codelineno-0-137"></a>        <span class="k">if</span> <span class="n">exc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-138" name="__codelineno-0-138"></a>            <span class="n">exc_info</span> <span class="o">=</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">),</span> <span class="n">exc</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">__traceback__</span><span class="p">)</span>
-<a id="__codelineno-0-139" name="__codelineno-0-139"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a>            <span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
-<a id="__codelineno-0-141" name="__codelineno-0-141"></a>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a>            <span class="n">exc_info</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">()</span>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a>        <span class="n">event</span><span class="p">,</span> <span class="n">hint</span> <span class="o">=</span> <span class="n">event_from_exception</span><span class="p">(</span><span class="n">exc_info</span><span class="p">,</span> <span class="n">client_options</span><span class="o">=</span><span class="n">_client</span><span class="o">.</span><span class="n">options</span><span class="p">)</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>        <span class="n">_client</span><span class="o">.</span><span class="n">capture_event</span><span class="p">(</span><span class="n">event</span><span class="p">,</span> <span class="n">hint</span><span class="o">=</span><span class="n">hint</span><span class="p">)</span>
-<a id="__codelineno-0-146" name="__codelineno-0-146"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-147" name="__codelineno-0-147"></a>        <span class="k">pass</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-126">126</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-127">127</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-128">128</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-129">129</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-130">130</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-131">131</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-132">132</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-133">133</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-135">135</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-137">137</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-138">138</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-139">139</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-140">140</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-141">141</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-142">142</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-143">143</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-144">144</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-145">145</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-146">146</a></span>
+<span class="normal"><a href="#popoto._error_reporting.capture_exception--source--__codelineno-0-147">147</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto._error_reporting.capture_exception--source--__codelineno-0-126" name="popoto._error_reporting.capture_exception--source--__codelineno-0-126"></a><span class="k">def</span><span class="w"> </span><span class="nf">capture_exception</span><span class="p">(</span><span class="n">exc</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="ne">BaseException</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-127" name="popoto._error_reporting.capture_exception--source--__codelineno-0-127"></a><span class="w">    </span><span class="sd">"""Capture an exception and send it to the Popoto Sentry project.</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-128" name="popoto._error_reporting.capture_exception--source--__codelineno-0-128"></a>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-129" name="popoto._error_reporting.capture_exception--source--__codelineno-0-129"></a><span class="sd">    This is a no-op if error reporting has not been enabled or if any</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-130" name="popoto._error_reporting.capture_exception--source--__codelineno-0-130"></a><span class="sd">    internal error occurs.</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-131" name="popoto._error_reporting.capture_exception--source--__codelineno-0-131"></a><span class="sd">    """</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-132" name="popoto._error_reporting.capture_exception--source--__codelineno-0-132"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-133" name="popoto._error_reporting.capture_exception--source--__codelineno-0-133"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">_enabled</span> <span class="ow">or</span> <span class="n">_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-134" name="popoto._error_reporting.capture_exception--source--__codelineno-0-134"></a>            <span class="k">return</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-135" name="popoto._error_reporting.capture_exception--source--__codelineno-0-135"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">sentry_sdk.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">event_from_exception</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-136" name="popoto._error_reporting.capture_exception--source--__codelineno-0-136"></a>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-137" name="popoto._error_reporting.capture_exception--source--__codelineno-0-137"></a>        <span class="k">if</span> <span class="n">exc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-138" name="popoto._error_reporting.capture_exception--source--__codelineno-0-138"></a>            <span class="n">exc_info</span> <span class="o">=</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">),</span> <span class="n">exc</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">__traceback__</span><span class="p">)</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-139" name="popoto._error_reporting.capture_exception--source--__codelineno-0-139"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-140" name="popoto._error_reporting.capture_exception--source--__codelineno-0-140"></a>            <span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-141" name="popoto._error_reporting.capture_exception--source--__codelineno-0-141"></a>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-142" name="popoto._error_reporting.capture_exception--source--__codelineno-0-142"></a>            <span class="n">exc_info</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">()</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-143" name="popoto._error_reporting.capture_exception--source--__codelineno-0-143"></a>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-144" name="popoto._error_reporting.capture_exception--source--__codelineno-0-144"></a>        <span class="n">event</span><span class="p">,</span> <span class="n">hint</span> <span class="o">=</span> <span class="n">event_from_exception</span><span class="p">(</span><span class="n">exc_info</span><span class="p">,</span> <span class="n">client_options</span><span class="o">=</span><span class="n">_client</span><span class="o">.</span><span class="n">options</span><span class="p">)</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-145" name="popoto._error_reporting.capture_exception--source--__codelineno-0-145"></a>        <span class="n">_client</span><span class="o">.</span><span class="n">capture_event</span><span class="p">(</span><span class="n">event</span><span class="p">,</span> <span class="n">hint</span><span class="o">=</span><span class="n">hint</span><span class="p">)</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-146" name="popoto._error_reporting.capture_exception--source--__codelineno-0-146"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="popoto._error_reporting.capture_exception--source--__codelineno-0-147" name="popoto._error_reporting.capture_exception--source--__codelineno-0-147"></a>        <span class="k">pass</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3496,10 +3496,10 @@ internal error occurs.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../../js/open_in_new_tab.js"></script>
       

@@ -13356,6 +13356,16 @@ leaderboard-comparable accuracy numbers (see
 | **LongMemEval-S** | 500 | ~48 per question | Single ground-truth session per question |
 | **LoCoMo** | 1986 QA pairs | 10 dialogues | Multi-session dict schema; image turns ingested via BLIP caption so image-evidence stays retrievable |
 
+A third dataset, **dated**, measures a deployment's own memory as it stood
+on the day each question was asked: one corpus of dated records shared by
+every question, a question's history being its project's records from
+before its `asked_on` (undated records stand before every question), with
+question types such as long-term, episodic and seasonal. It has no public
+copy: the corpus and questions are the deployment's own and stay private,
+passed with `--fixture PATH` and written with `--output DIR` outside this
+repository. `tests/benchmarks/datasets/fixtures/dated_sample.json` is a
+made-up example of the format (`tests/benchmarks/datasets/dated.py`).
+
 ### Metrics
 
 | Metric | Definition |

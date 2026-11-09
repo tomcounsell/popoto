@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -29,10 +29,10 @@
       
     
     
-      <link rel="stylesheet" href="../../../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -3489,105 +3489,105 @@ module docstring.</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/extraction/resolution_log.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-56"> 56</a></span>
-<span class="normal"><a href="#__codelineno-0-57"> 57</a></span>
-<span class="normal"><a href="#__codelineno-0-58"> 58</a></span>
-<span class="normal"><a href="#__codelineno-0-59"> 59</a></span>
-<span class="normal"><a href="#__codelineno-0-60"> 60</a></span>
-<span class="normal"><a href="#__codelineno-0-61"> 61</a></span>
-<span class="normal"><a href="#__codelineno-0-62"> 62</a></span>
-<span class="normal"><a href="#__codelineno-0-63"> 63</a></span>
-<span class="normal"><a href="#__codelineno-0-64"> 64</a></span>
-<span class="normal"><a href="#__codelineno-0-65"> 65</a></span>
-<span class="normal"><a href="#__codelineno-0-66"> 66</a></span>
-<span class="normal"><a href="#__codelineno-0-67"> 67</a></span>
-<span class="normal"><a href="#__codelineno-0-68"> 68</a></span>
-<span class="normal"><a href="#__codelineno-0-69"> 69</a></span>
-<span class="normal"><a href="#__codelineno-0-70"> 70</a></span>
-<span class="normal"><a href="#__codelineno-0-71"> 71</a></span>
-<span class="normal"><a href="#__codelineno-0-72"> 72</a></span>
-<span class="normal"><a href="#__codelineno-0-73"> 73</a></span>
-<span class="normal"><a href="#__codelineno-0-74"> 74</a></span>
-<span class="normal"><a href="#__codelineno-0-75"> 75</a></span>
-<span class="normal"><a href="#__codelineno-0-76"> 76</a></span>
-<span class="normal"><a href="#__codelineno-0-77"> 77</a></span>
-<span class="normal"><a href="#__codelineno-0-78"> 78</a></span>
-<span class="normal"><a href="#__codelineno-0-79"> 79</a></span>
-<span class="normal"><a href="#__codelineno-0-80"> 80</a></span>
-<span class="normal"><a href="#__codelineno-0-81"> 81</a></span>
-<span class="normal"><a href="#__codelineno-0-82"> 82</a></span>
-<span class="normal"><a href="#__codelineno-0-83"> 83</a></span>
-<span class="normal"><a href="#__codelineno-0-84"> 84</a></span>
-<span class="normal"><a href="#__codelineno-0-85"> 85</a></span>
-<span class="normal"><a href="#__codelineno-0-86"> 86</a></span>
-<span class="normal"><a href="#__codelineno-0-87"> 87</a></span>
-<span class="normal"><a href="#__codelineno-0-88"> 88</a></span>
-<span class="normal"><a href="#__codelineno-0-89"> 89</a></span>
-<span class="normal"><a href="#__codelineno-0-90"> 90</a></span>
-<span class="normal"><a href="#__codelineno-0-91"> 91</a></span>
-<span class="normal"><a href="#__codelineno-0-92"> 92</a></span>
-<span class="normal"><a href="#__codelineno-0-93"> 93</a></span>
-<span class="normal"><a href="#__codelineno-0-94"> 94</a></span>
-<span class="normal"><a href="#__codelineno-0-95"> 95</a></span>
-<span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
-<span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
-<span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
-<span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
-<span class="normal"><a href="#__codelineno-0-100">100</a></span>
-<span class="normal"><a href="#__codelineno-0-101">101</a></span>
-<span class="normal"><a href="#__codelineno-0-102">102</a></span>
-<span class="normal"><a href="#__codelineno-0-103">103</a></span>
-<span class="normal"><a href="#__codelineno-0-104">104</a></span>
-<span class="normal"><a href="#__codelineno-0-105">105</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResolutionRecord</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="w">    </span><span class="sd">"""One candidate's reference-resolution row.</span>
-<a id="__codelineno-0-58" name="__codelineno-0-58"></a>
-<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">    ``agent_id`` + ``turn_id`` + ``candidate_id`` form the composite key,</span>
-<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">    exactly mirroring :class:`~popoto.extraction.decision_log.DecisionRecord`.</span>
-<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">    Writing the same tuple twice transitions one row rather than creating</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">    two. See the module docstring for why ``AutoKeyField`` is forbidden</span>
-<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">    here.</span>
-<a id="__codelineno-0-64" name="__codelineno-0-64"></a>
-<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    Every field below is a plain (non-indexed) field, matching</span>
-<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">    ``DecisionRecord``'s convention -- this row is read by identity</span>
-<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">    (``ResolutionLog.get``), never scanned or filtered by field value.</span>
-<a id="__codelineno-0-68" name="__codelineno-0-68"></a>
-<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">    Attributes:</span>
-<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">        agent_id: Owning agent. KeyField.</span>
-<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">        turn_id: The turn the candidate was generated from. KeyField.</span>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">        candidate_id: ``{turn_id}:{generator_rule}:{ordinal}``. KeyField.</span>
-<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">        status: The aggregate :class:`~popoto.extraction.resolution.</span>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">            ResolutionStatus` value (``resolved | assumed | evidence_gap |</span>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="sd">            indeterminate``).</span>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">        statement: The rewritten statement written to the journal.</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">        verbatim: The original candidate text, unmodified.</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">        references_json: ``json.dumps`` of the flattened reference list --</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">            see :func:`_serialise_references`. JSON, not msgpack; see the</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">            module docstring.</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="sd">        valid_from: The onset instant as an epoch float, or ``None``.</span>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">        entry_id: The journal entry id this resolution was written for.</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">        speaker: Who spoke the turn, from the resolution's ``TurnContext``.</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">        captured_at: Epoch seconds the turn was captured.</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">        timezone: IANA timezone name the resolution ran against.</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a><span class="sd">        window_truncated: Whether the conversational window was truncated.</span>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">        degraded: Whether this was a fail-open fallback resolution.</span>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a><span class="sd">        written_at: Unix timestamp this row was last written.</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="sd">    """</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a>    <span class="n">turn_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a>    <span class="n">candidate_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a>    <span class="n">status</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a>    <span class="n">statement</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a>    <span class="n">verbatim</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a>    <span class="n">references_json</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">"[]"</span><span class="p">)</span>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a>    <span class="n">valid_from</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a>    <span class="n">entry_id</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="n">speaker</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a>    <span class="n">captured_at</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a>    <span class="n">timezone</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>    <span class="n">window_truncated</span> <span class="o">=</span> <span class="n">BooleanField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="n">degraded</span> <span class="o">=</span> <span class="n">BooleanField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a>    <span class="n">written_at</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-56"> 56</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-57"> 57</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-58"> 58</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-59"> 59</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-60"> 60</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-61"> 61</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-62"> 62</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-63"> 63</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-64"> 64</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-65"> 65</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-66"> 66</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-67"> 67</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-68"> 68</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-69"> 69</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-70"> 70</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-71"> 71</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-72"> 72</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-73"> 73</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-74"> 74</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-75"> 75</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-76"> 76</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-77"> 77</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-78"> 78</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-79"> 79</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-80"> 80</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-81"> 81</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-82"> 82</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-83"> 83</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-84"> 84</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-85"> 85</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-86"> 86</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-87"> 87</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-88"> 88</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-89"> 89</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-90"> 90</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-91"> 91</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-92"> 92</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-93"> 93</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-94"> 94</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-95"> 95</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-96"> 96</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-97"> 97</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-98"> 98</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-99"> 99</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-100">100</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-101">101</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-102">102</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-103">103</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-104">104</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-105">105</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-56" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-56"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResolutionRecord</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-57" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-57"></a><span class="w">    </span><span class="sd">"""One candidate's reference-resolution row.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-58" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-58"></a>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-59" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-59"></a><span class="sd">    ``agent_id`` + ``turn_id`` + ``candidate_id`` form the composite key,</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-60" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-60"></a><span class="sd">    exactly mirroring :class:`~popoto.extraction.decision_log.DecisionRecord`.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-61" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-61"></a><span class="sd">    Writing the same tuple twice transitions one row rather than creating</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-62" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-62"></a><span class="sd">    two. See the module docstring for why ``AutoKeyField`` is forbidden</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-63" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-63"></a><span class="sd">    here.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-64" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-64"></a>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-65" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-65"></a><span class="sd">    Every field below is a plain (non-indexed) field, matching</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-66" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-66"></a><span class="sd">    ``DecisionRecord``'s convention -- this row is read by identity</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-67" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-67"></a><span class="sd">    (``ResolutionLog.get``), never scanned or filtered by field value.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-68" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-68"></a>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-69" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-69"></a><span class="sd">    Attributes:</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-70" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-70"></a><span class="sd">        agent_id: Owning agent. KeyField.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-71" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-71"></a><span class="sd">        turn_id: The turn the candidate was generated from. KeyField.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-72" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-72"></a><span class="sd">        candidate_id: ``{turn_id}:{generator_rule}:{ordinal}``. KeyField.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-73" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-73"></a><span class="sd">        status: The aggregate :class:`~popoto.extraction.resolution.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-74" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-74"></a><span class="sd">            ResolutionStatus` value (``resolved | assumed | evidence_gap |</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-75" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-75"></a><span class="sd">            indeterminate``).</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-76" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-76"></a><span class="sd">        statement: The rewritten statement written to the journal.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-77" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-77"></a><span class="sd">        verbatim: The original candidate text, unmodified.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-78" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-78"></a><span class="sd">        references_json: ``json.dumps`` of the flattened reference list --</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-79" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-79"></a><span class="sd">            see :func:`_serialise_references`. JSON, not msgpack; see the</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-80" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-80"></a><span class="sd">            module docstring.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-81" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-81"></a><span class="sd">        valid_from: The onset instant as an epoch float, or ``None``.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-82" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-82"></a><span class="sd">        entry_id: The journal entry id this resolution was written for.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-83" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-83"></a><span class="sd">        speaker: Who spoke the turn, from the resolution's ``TurnContext``.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-84" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-84"></a><span class="sd">        captured_at: Epoch seconds the turn was captured.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-85" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-85"></a><span class="sd">        timezone: IANA timezone name the resolution ran against.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-86" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-86"></a><span class="sd">        window_truncated: Whether the conversational window was truncated.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-87" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-87"></a><span class="sd">        degraded: Whether this was a fail-open fallback resolution.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-88" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-88"></a><span class="sd">        written_at: Unix timestamp this row was last written.</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-89" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-89"></a><span class="sd">    """</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-90" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-90"></a>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-91" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-91"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-92" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-92"></a>    <span class="n">turn_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-93" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-93"></a>    <span class="n">candidate_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-94" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-94"></a>    <span class="n">status</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-95" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-95"></a>    <span class="n">statement</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-96" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-96"></a>    <span class="n">verbatim</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-97" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-97"></a>    <span class="n">references_json</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">"[]"</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-98" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-98"></a>    <span class="n">valid_from</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-99" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-99"></a>    <span class="n">entry_id</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-100" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-100"></a>    <span class="n">speaker</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-101" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-101"></a>    <span class="n">captured_at</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-102" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-102"></a>    <span class="n">timezone</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-103" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-103"></a>    <span class="n">window_truncated</span> <span class="o">=</span> <span class="n">BooleanField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-104" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-104"></a>    <span class="n">degraded</span> <span class="o">=</span> <span class="n">BooleanField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-105" name="popoto.extraction.resolution_log.ResolutionRecord--source--__codelineno-0-105"></a>    <span class="n">written_at</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3651,221 +3651,221 @@ row = log.get("agent-7", "t-41", "t-41:sentence:0")
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/extraction/resolution_log.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-134">134</a></span>
-<span class="normal"><a href="#__codelineno-0-135">135</a></span>
-<span class="normal"><a href="#__codelineno-0-136">136</a></span>
-<span class="normal"><a href="#__codelineno-0-137">137</a></span>
-<span class="normal"><a href="#__codelineno-0-138">138</a></span>
-<span class="normal"><a href="#__codelineno-0-139">139</a></span>
-<span class="normal"><a href="#__codelineno-0-140">140</a></span>
-<span class="normal"><a href="#__codelineno-0-141">141</a></span>
-<span class="normal"><a href="#__codelineno-0-142">142</a></span>
-<span class="normal"><a href="#__codelineno-0-143">143</a></span>
-<span class="normal"><a href="#__codelineno-0-144">144</a></span>
-<span class="normal"><a href="#__codelineno-0-145">145</a></span>
-<span class="normal"><a href="#__codelineno-0-146">146</a></span>
-<span class="normal"><a href="#__codelineno-0-147">147</a></span>
-<span class="normal"><a href="#__codelineno-0-148">148</a></span>
-<span class="normal"><a href="#__codelineno-0-149">149</a></span>
-<span class="normal"><a href="#__codelineno-0-150">150</a></span>
-<span class="normal"><a href="#__codelineno-0-151">151</a></span>
-<span class="normal"><a href="#__codelineno-0-152">152</a></span>
-<span class="normal"><a href="#__codelineno-0-153">153</a></span>
-<span class="normal"><a href="#__codelineno-0-154">154</a></span>
-<span class="normal"><a href="#__codelineno-0-155">155</a></span>
-<span class="normal"><a href="#__codelineno-0-156">156</a></span>
-<span class="normal"><a href="#__codelineno-0-157">157</a></span>
-<span class="normal"><a href="#__codelineno-0-158">158</a></span>
-<span class="normal"><a href="#__codelineno-0-159">159</a></span>
-<span class="normal"><a href="#__codelineno-0-160">160</a></span>
-<span class="normal"><a href="#__codelineno-0-161">161</a></span>
-<span class="normal"><a href="#__codelineno-0-162">162</a></span>
-<span class="normal"><a href="#__codelineno-0-163">163</a></span>
-<span class="normal"><a href="#__codelineno-0-164">164</a></span>
-<span class="normal"><a href="#__codelineno-0-165">165</a></span>
-<span class="normal"><a href="#__codelineno-0-166">166</a></span>
-<span class="normal"><a href="#__codelineno-0-167">167</a></span>
-<span class="normal"><a href="#__codelineno-0-168">168</a></span>
-<span class="normal"><a href="#__codelineno-0-169">169</a></span>
-<span class="normal"><a href="#__codelineno-0-170">170</a></span>
-<span class="normal"><a href="#__codelineno-0-171">171</a></span>
-<span class="normal"><a href="#__codelineno-0-172">172</a></span>
-<span class="normal"><a href="#__codelineno-0-173">173</a></span>
-<span class="normal"><a href="#__codelineno-0-174">174</a></span>
-<span class="normal"><a href="#__codelineno-0-175">175</a></span>
-<span class="normal"><a href="#__codelineno-0-176">176</a></span>
-<span class="normal"><a href="#__codelineno-0-177">177</a></span>
-<span class="normal"><a href="#__codelineno-0-178">178</a></span>
-<span class="normal"><a href="#__codelineno-0-179">179</a></span>
-<span class="normal"><a href="#__codelineno-0-180">180</a></span>
-<span class="normal"><a href="#__codelineno-0-181">181</a></span>
-<span class="normal"><a href="#__codelineno-0-182">182</a></span>
-<span class="normal"><a href="#__codelineno-0-183">183</a></span>
-<span class="normal"><a href="#__codelineno-0-184">184</a></span>
-<span class="normal"><a href="#__codelineno-0-185">185</a></span>
-<span class="normal"><a href="#__codelineno-0-186">186</a></span>
-<span class="normal"><a href="#__codelineno-0-187">187</a></span>
-<span class="normal"><a href="#__codelineno-0-188">188</a></span>
-<span class="normal"><a href="#__codelineno-0-189">189</a></span>
-<span class="normal"><a href="#__codelineno-0-190">190</a></span>
-<span class="normal"><a href="#__codelineno-0-191">191</a></span>
-<span class="normal"><a href="#__codelineno-0-192">192</a></span>
-<span class="normal"><a href="#__codelineno-0-193">193</a></span>
-<span class="normal"><a href="#__codelineno-0-194">194</a></span>
-<span class="normal"><a href="#__codelineno-0-195">195</a></span>
-<span class="normal"><a href="#__codelineno-0-196">196</a></span>
-<span class="normal"><a href="#__codelineno-0-197">197</a></span>
-<span class="normal"><a href="#__codelineno-0-198">198</a></span>
-<span class="normal"><a href="#__codelineno-0-199">199</a></span>
-<span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span>
-<span class="normal"><a href="#__codelineno-0-202">202</a></span>
-<span class="normal"><a href="#__codelineno-0-203">203</a></span>
-<span class="normal"><a href="#__codelineno-0-204">204</a></span>
-<span class="normal"><a href="#__codelineno-0-205">205</a></span>
-<span class="normal"><a href="#__codelineno-0-206">206</a></span>
-<span class="normal"><a href="#__codelineno-0-207">207</a></span>
-<span class="normal"><a href="#__codelineno-0-208">208</a></span>
-<span class="normal"><a href="#__codelineno-0-209">209</a></span>
-<span class="normal"><a href="#__codelineno-0-210">210</a></span>
-<span class="normal"><a href="#__codelineno-0-211">211</a></span>
-<span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span>
-<span class="normal"><a href="#__codelineno-0-214">214</a></span>
-<span class="normal"><a href="#__codelineno-0-215">215</a></span>
-<span class="normal"><a href="#__codelineno-0-216">216</a></span>
-<span class="normal"><a href="#__codelineno-0-217">217</a></span>
-<span class="normal"><a href="#__codelineno-0-218">218</a></span>
-<span class="normal"><a href="#__codelineno-0-219">219</a></span>
-<span class="normal"><a href="#__codelineno-0-220">220</a></span>
-<span class="normal"><a href="#__codelineno-0-221">221</a></span>
-<span class="normal"><a href="#__codelineno-0-222">222</a></span>
-<span class="normal"><a href="#__codelineno-0-223">223</a></span>
-<span class="normal"><a href="#__codelineno-0-224">224</a></span>
-<span class="normal"><a href="#__codelineno-0-225">225</a></span>
-<span class="normal"><a href="#__codelineno-0-226">226</a></span>
-<span class="normal"><a href="#__codelineno-0-227">227</a></span>
-<span class="normal"><a href="#__codelineno-0-228">228</a></span>
-<span class="normal"><a href="#__codelineno-0-229">229</a></span>
-<span class="normal"><a href="#__codelineno-0-230">230</a></span>
-<span class="normal"><a href="#__codelineno-0-231">231</a></span>
-<span class="normal"><a href="#__codelineno-0-232">232</a></span>
-<span class="normal"><a href="#__codelineno-0-233">233</a></span>
-<span class="normal"><a href="#__codelineno-0-234">234</a></span>
-<span class="normal"><a href="#__codelineno-0-235">235</a></span>
-<span class="normal"><a href="#__codelineno-0-236">236</a></span>
-<span class="normal"><a href="#__codelineno-0-237">237</a></span>
-<span class="normal"><a href="#__codelineno-0-238">238</a></span>
-<span class="normal"><a href="#__codelineno-0-239">239</a></span>
-<span class="normal"><a href="#__codelineno-0-240">240</a></span>
-<span class="normal"><a href="#__codelineno-0-241">241</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-134" name="__codelineno-0-134"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResolutionLog</span><span class="p">:</span>
-<a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="w">    </span><span class="sd">"""Writer/reader over :class:`ResolutionRecord` rows.</span>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a>
-<a id="__codelineno-0-137" name="__codelineno-0-137"></a><span class="sd">    Stateless -- every method takes the identity it operates on -- so one</span>
-<a id="__codelineno-0-138" name="__codelineno-0-138"></a><span class="sd">    instance can serve any agent.</span>
-<a id="__codelineno-0-139" name="__codelineno-0-139"></a>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a><span class="sd">    Example::</span>
-<a id="__codelineno-0-141" name="__codelineno-0-141"></a>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a><span class="sd">        log = ResolutionLog()</span>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a><span class="sd">        log.write(</span>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a><span class="sd">            agent_id="agent-7",</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a><span class="sd">            turn_id="t-41",</span>
-<a id="__codelineno-0-146" name="__codelineno-0-146"></a><span class="sd">            candidate_id="t-41:sentence:0",</span>
-<a id="__codelineno-0-147" name="__codelineno-0-147"></a><span class="sd">            resolution=resolution,</span>
-<a id="__codelineno-0-148" name="__codelineno-0-148"></a><span class="sd">            entry_id=entry.entry_id,</span>
-<a id="__codelineno-0-149" name="__codelineno-0-149"></a><span class="sd">        )</span>
-<a id="__codelineno-0-150" name="__codelineno-0-150"></a><span class="sd">        row = log.get("agent-7", "t-41", "t-41:sentence:0")</span>
-<a id="__codelineno-0-151" name="__codelineno-0-151"></a><span class="sd">    """</span>
-<a id="__codelineno-0-152" name="__codelineno-0-152"></a>
-<a id="__codelineno-0-153" name="__codelineno-0-153"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">write</span><span class="p">(</span>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-155" name="__codelineno-0-155"></a>        <span class="n">agent_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a>        <span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>        <span class="n">candidate_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a>        <span class="n">resolution</span><span class="p">:</span> <span class="s2">"Resolution"</span><span class="p">,</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a>        <span class="n">entry_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">,</span>
-<a id="__codelineno-0-160" name="__codelineno-0-160"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="w">        </span><span class="sd">"""Serialise ``resolution`` into a :class:`ResolutionRecord` row.</span>
-<a id="__codelineno-0-162" name="__codelineno-0-162"></a>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">        Idempotent by composite key: a second call with the same</span>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">        ``(agent_id, turn_id, candidate_id)`` overwrites the row in place</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">        rather than creating a duplicate, because ``agent_id``/``turn_id``/</span>
-<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">        ``candidate_id`` are the model's ``KeyField``s.</span>
-<a id="__codelineno-0-167" name="__codelineno-0-167"></a>
-<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">        This method **never raises**. Any exception -- a bad</span>
-<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">        ``resolution`` shape, a Redis error, anything -- is caught, logged</span>
-<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">        as a ``POPOTO.extraction`` warning, and turned into a ``False``</span>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">        return. The sidecar is not load-bearing: by the time this runs,</span>
-<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">        the candidate's accept/reject outcome and its journal subject tags</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="sd">        are already committed, and a sidecar write failure must never flip</span>
-<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">        that outcome (plan Race 2).</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a>
-<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">            agent_id: Owning agent.</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">            turn_id: The turn the candidate was generated from.</span>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">            candidate_id: The candidate's identity.</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">            resolution: The :class:`~popoto.extraction.resolution.</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">                Resolution` to persist.</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">            entry_id: The journal entry id, if the candidate was accepted.</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">            ``True`` on a successful write, ``False`` on any failure.</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">        """</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>            <span class="n">context</span> <span class="o">=</span> <span class="n">resolution</span><span class="o">.</span><span class="n">context</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>            <span class="n">record</span> <span class="o">=</span> <span class="n">ResolutionRecord</span><span class="p">(</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>                <span class="n">agent_id</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>                <span class="n">turn_id</span><span class="o">=</span><span class="n">turn_id</span><span class="p">,</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a>                <span class="n">candidate_id</span><span class="o">=</span><span class="n">candidate_id</span><span class="p">,</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>                <span class="n">status</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">value</span><span class="p">,</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a>                <span class="n">statement</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">statement</span><span class="p">,</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>                <span class="n">verbatim</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">verbatim</span><span class="p">,</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a>                <span class="n">references_json</span><span class="o">=</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>                    <span class="n">_serialise_references</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">references</span><span class="p">)</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>                <span class="p">),</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a>                <span class="n">valid_from</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">valid_from</span><span class="p">,</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>                <span class="n">entry_id</span><span class="o">=</span><span class="n">entry_id</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>                <span class="n">speaker</span><span class="o">=</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">speaker</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a>                <span class="n">captured_at</span><span class="o">=</span><span class="n">context</span><span class="o">.</span><span class="n">captured_at</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>                <span class="n">timezone</span><span class="o">=</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">timezone</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a>                <span class="n">window_truncated</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">window_truncated</span><span class="p">),</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a>                <span class="n">degraded</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">degraded</span><span class="p">),</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>                <span class="n">written_at</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>            <span class="p">)</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>            <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>            <span class="k">return</span> <span class="kc">True</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a>                <span class="s2">"ResolutionLog.write failed for agent_id=</span><span class="si">%r</span><span class="s2"> turn_id=</span><span class="si">%r</span><span class="s2"> "</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a>                <span class="s2">"candidate_id=</span><span class="si">%r</span><span class="s2">; sidecar row not written"</span><span class="p">,</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>                <span class="n">agent_id</span><span class="p">,</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>                <span class="n">turn_id</span><span class="p">,</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>                <span class="n">candidate_id</span><span class="p">,</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>                <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>            <span class="p">)</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a>            <span class="k">return</span> <span class="kc">False</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">agent_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">candidate_id</span><span class="p">:</span> <span class="nb">str</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ResolutionRecord</span><span class="p">]:</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="w">        </span><span class="sd">"""Return the row for this candidate, or ``None`` if absent.</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">            agent_id: Owning agent.</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">            turn_id: The turn the candidate was generated from.</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">            candidate_id: The candidate's identity.</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">            The :class:`ResolutionRecord`, or ``None`` if no row exists.</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">        """</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="k">return</span> <span class="n">cast</span><span class="p">(</span>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>            <span class="n">Optional</span><span class="p">[</span><span class="n">ResolutionRecord</span><span class="p">],</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>            <span class="n">ResolutionRecord</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>                <span class="n">agent_id</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>                <span class="n">turn_id</span><span class="o">=</span><span class="n">turn_id</span><span class="p">,</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>                <span class="n">candidate_id</span><span class="o">=</span><span class="n">candidate_id</span><span class="p">,</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>            <span class="p">),</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>        <span class="p">)</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-134">134</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-135">135</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-136">136</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-137">137</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-138">138</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-139">139</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-140">140</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-141">141</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-142">142</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-143">143</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-144">144</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-145">145</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-146">146</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-147">147</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-148">148</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-149">149</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-150">150</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-151">151</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-152">152</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-153">153</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-154">154</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-155">155</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-156">156</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-157">157</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-158">158</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-159">159</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-160">160</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-161">161</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-162">162</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-163">163</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-164">164</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-165">165</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-166">166</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-167">167</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-238">238</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-239">239</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-240">240</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-241">241</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-134" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-134"></a><span class="k">class</span><span class="w"> </span><span class="nc">ResolutionLog</span><span class="p">:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-135" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-135"></a><span class="w">    </span><span class="sd">"""Writer/reader over :class:`ResolutionRecord` rows.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-136" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-136"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-137" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-137"></a><span class="sd">    Stateless -- every method takes the identity it operates on -- so one</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-138" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-138"></a><span class="sd">    instance can serve any agent.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-139" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-139"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-140" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-140"></a><span class="sd">    Example::</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-141" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-141"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-142" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-142"></a><span class="sd">        log = ResolutionLog()</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-143" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-143"></a><span class="sd">        log.write(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-144" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-144"></a><span class="sd">            agent_id="agent-7",</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-145" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-145"></a><span class="sd">            turn_id="t-41",</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-146" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-146"></a><span class="sd">            candidate_id="t-41:sentence:0",</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-147" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-147"></a><span class="sd">            resolution=resolution,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-148" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-148"></a><span class="sd">            entry_id=entry.entry_id,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-149" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-149"></a><span class="sd">        )</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-150" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-150"></a><span class="sd">        row = log.get("agent-7", "t-41", "t-41:sentence:0")</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-151" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-151"></a><span class="sd">    """</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-152" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-152"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-153" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-153"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">write</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-154" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-154"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-155" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-155"></a>        <span class="n">agent_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-156" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-156"></a>        <span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-157" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-157"></a>        <span class="n">candidate_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-158" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-158"></a>        <span class="n">resolution</span><span class="p">:</span> <span class="s2">"Resolution"</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-159" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-159"></a>        <span class="n">entry_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-160" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-160"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-161" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-161"></a><span class="w">        </span><span class="sd">"""Serialise ``resolution`` into a :class:`ResolutionRecord` row.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-162" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-162"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-163" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-163"></a><span class="sd">        Idempotent by composite key: a second call with the same</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-164" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-164"></a><span class="sd">        ``(agent_id, turn_id, candidate_id)`` overwrites the row in place</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-165" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-165"></a><span class="sd">        rather than creating a duplicate, because ``agent_id``/``turn_id``/</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-166" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-166"></a><span class="sd">        ``candidate_id`` are the model's ``KeyField``s.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-167" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-167"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-168" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-168"></a><span class="sd">        This method **never raises**. Any exception -- a bad</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-169" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-169"></a><span class="sd">        ``resolution`` shape, a Redis error, anything -- is caught, logged</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-170" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-170"></a><span class="sd">        as a ``POPOTO.extraction`` warning, and turned into a ``False``</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-171" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-171"></a><span class="sd">        return. The sidecar is not load-bearing: by the time this runs,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-172" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-172"></a><span class="sd">        the candidate's accept/reject outcome and its journal subject tags</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-173" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-173"></a><span class="sd">        are already committed, and a sidecar write failure must never flip</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-174" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-174"></a><span class="sd">        that outcome (plan Race 2).</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-175" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-175"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-176" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-176"></a><span class="sd">        Args:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-177" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-177"></a><span class="sd">            agent_id: Owning agent.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-178" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-178"></a><span class="sd">            turn_id: The turn the candidate was generated from.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-179" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-179"></a><span class="sd">            candidate_id: The candidate's identity.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-180" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-180"></a><span class="sd">            resolution: The :class:`~popoto.extraction.resolution.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-181" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-181"></a><span class="sd">                Resolution` to persist.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-182" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-182"></a><span class="sd">            entry_id: The journal entry id, if the candidate was accepted.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-183" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-183"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-184" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-184"></a><span class="sd">        Returns:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-185" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-185"></a><span class="sd">            ``True`` on a successful write, ``False`` on any failure.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-186" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-186"></a><span class="sd">        """</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-187" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-187"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-188" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-188"></a>            <span class="n">context</span> <span class="o">=</span> <span class="n">resolution</span><span class="o">.</span><span class="n">context</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-189" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-189"></a>            <span class="n">record</span> <span class="o">=</span> <span class="n">ResolutionRecord</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-190" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-190"></a>                <span class="n">agent_id</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-191" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-191"></a>                <span class="n">turn_id</span><span class="o">=</span><span class="n">turn_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-192" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-192"></a>                <span class="n">candidate_id</span><span class="o">=</span><span class="n">candidate_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-193" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-193"></a>                <span class="n">status</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">value</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-194" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-194"></a>                <span class="n">statement</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">statement</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-195" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-195"></a>                <span class="n">verbatim</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">verbatim</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-196" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-196"></a>                <span class="n">references_json</span><span class="o">=</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-197" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-197"></a>                    <span class="n">_serialise_references</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">references</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-198" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-198"></a>                <span class="p">),</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-199" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-199"></a>                <span class="n">valid_from</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">valid_from</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-200" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-200"></a>                <span class="n">entry_id</span><span class="o">=</span><span class="n">entry_id</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-201" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-201"></a>                <span class="n">speaker</span><span class="o">=</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">speaker</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-202" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-202"></a>                <span class="n">captured_at</span><span class="o">=</span><span class="n">context</span><span class="o">.</span><span class="n">captured_at</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-203" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-203"></a>                <span class="n">timezone</span><span class="o">=</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">timezone</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-204" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-204"></a>                <span class="n">window_truncated</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">window_truncated</span><span class="p">),</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-205" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-205"></a>                <span class="n">degraded</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">degraded</span><span class="p">),</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-206" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-206"></a>                <span class="n">written_at</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-207" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-207"></a>            <span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-208" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-208"></a>            <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-209" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-209"></a>            <span class="k">return</span> <span class="kc">True</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-210" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-210"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-211" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-211"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-212" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-212"></a>                <span class="s2">"ResolutionLog.write failed for agent_id=</span><span class="si">%r</span><span class="s2"> turn_id=</span><span class="si">%r</span><span class="s2"> "</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-213" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-213"></a>                <span class="s2">"candidate_id=</span><span class="si">%r</span><span class="s2">; sidecar row not written"</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-214" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-214"></a>                <span class="n">agent_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-215" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-215"></a>                <span class="n">turn_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-216" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-216"></a>                <span class="n">candidate_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-217" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-217"></a>                <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-218" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-218"></a>            <span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-219" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-219"></a>            <span class="k">return</span> <span class="kc">False</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-220" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-220"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-221" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-221"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-222" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-222"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">agent_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">candidate_id</span><span class="p">:</span> <span class="nb">str</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-223" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-223"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ResolutionRecord</span><span class="p">]:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-224" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-224"></a><span class="w">        </span><span class="sd">"""Return the row for this candidate, or ``None`` if absent.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-225" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-225"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-226" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-226"></a><span class="sd">        Args:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-227" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-227"></a><span class="sd">            agent_id: Owning agent.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-228" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-228"></a><span class="sd">            turn_id: The turn the candidate was generated from.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-229" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-229"></a><span class="sd">            candidate_id: The candidate's identity.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-230" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-230"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-231" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-231"></a><span class="sd">        Returns:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-232" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-232"></a><span class="sd">            The :class:`ResolutionRecord`, or ``None`` if no row exists.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-233" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-233"></a><span class="sd">        """</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-234" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-234"></a>        <span class="k">return</span> <span class="n">cast</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-235" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-235"></a>            <span class="n">Optional</span><span class="p">[</span><span class="n">ResolutionRecord</span><span class="p">],</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-236" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-236"></a>            <span class="n">ResolutionRecord</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-237" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-237"></a>                <span class="n">agent_id</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-238" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-238"></a>                <span class="n">turn_id</span><span class="o">=</span><span class="n">turn_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-239" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-239"></a>                <span class="n">candidate_id</span><span class="o">=</span><span class="n">candidate_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-240" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-240"></a>            <span class="p">),</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-241" name="popoto.extraction.resolution_log.ResolutionLog--source--__codelineno-0-241"></a>        <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -4033,139 +4033,139 @@ Resolution</code> to persist.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/extraction/resolution_log.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-153">153</a></span>
-<span class="normal"><a href="#__codelineno-0-154">154</a></span>
-<span class="normal"><a href="#__codelineno-0-155">155</a></span>
-<span class="normal"><a href="#__codelineno-0-156">156</a></span>
-<span class="normal"><a href="#__codelineno-0-157">157</a></span>
-<span class="normal"><a href="#__codelineno-0-158">158</a></span>
-<span class="normal"><a href="#__codelineno-0-159">159</a></span>
-<span class="normal"><a href="#__codelineno-0-160">160</a></span>
-<span class="normal"><a href="#__codelineno-0-161">161</a></span>
-<span class="normal"><a href="#__codelineno-0-162">162</a></span>
-<span class="normal"><a href="#__codelineno-0-163">163</a></span>
-<span class="normal"><a href="#__codelineno-0-164">164</a></span>
-<span class="normal"><a href="#__codelineno-0-165">165</a></span>
-<span class="normal"><a href="#__codelineno-0-166">166</a></span>
-<span class="normal"><a href="#__codelineno-0-167">167</a></span>
-<span class="normal"><a href="#__codelineno-0-168">168</a></span>
-<span class="normal"><a href="#__codelineno-0-169">169</a></span>
-<span class="normal"><a href="#__codelineno-0-170">170</a></span>
-<span class="normal"><a href="#__codelineno-0-171">171</a></span>
-<span class="normal"><a href="#__codelineno-0-172">172</a></span>
-<span class="normal"><a href="#__codelineno-0-173">173</a></span>
-<span class="normal"><a href="#__codelineno-0-174">174</a></span>
-<span class="normal"><a href="#__codelineno-0-175">175</a></span>
-<span class="normal"><a href="#__codelineno-0-176">176</a></span>
-<span class="normal"><a href="#__codelineno-0-177">177</a></span>
-<span class="normal"><a href="#__codelineno-0-178">178</a></span>
-<span class="normal"><a href="#__codelineno-0-179">179</a></span>
-<span class="normal"><a href="#__codelineno-0-180">180</a></span>
-<span class="normal"><a href="#__codelineno-0-181">181</a></span>
-<span class="normal"><a href="#__codelineno-0-182">182</a></span>
-<span class="normal"><a href="#__codelineno-0-183">183</a></span>
-<span class="normal"><a href="#__codelineno-0-184">184</a></span>
-<span class="normal"><a href="#__codelineno-0-185">185</a></span>
-<span class="normal"><a href="#__codelineno-0-186">186</a></span>
-<span class="normal"><a href="#__codelineno-0-187">187</a></span>
-<span class="normal"><a href="#__codelineno-0-188">188</a></span>
-<span class="normal"><a href="#__codelineno-0-189">189</a></span>
-<span class="normal"><a href="#__codelineno-0-190">190</a></span>
-<span class="normal"><a href="#__codelineno-0-191">191</a></span>
-<span class="normal"><a href="#__codelineno-0-192">192</a></span>
-<span class="normal"><a href="#__codelineno-0-193">193</a></span>
-<span class="normal"><a href="#__codelineno-0-194">194</a></span>
-<span class="normal"><a href="#__codelineno-0-195">195</a></span>
-<span class="normal"><a href="#__codelineno-0-196">196</a></span>
-<span class="normal"><a href="#__codelineno-0-197">197</a></span>
-<span class="normal"><a href="#__codelineno-0-198">198</a></span>
-<span class="normal"><a href="#__codelineno-0-199">199</a></span>
-<span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span>
-<span class="normal"><a href="#__codelineno-0-202">202</a></span>
-<span class="normal"><a href="#__codelineno-0-203">203</a></span>
-<span class="normal"><a href="#__codelineno-0-204">204</a></span>
-<span class="normal"><a href="#__codelineno-0-205">205</a></span>
-<span class="normal"><a href="#__codelineno-0-206">206</a></span>
-<span class="normal"><a href="#__codelineno-0-207">207</a></span>
-<span class="normal"><a href="#__codelineno-0-208">208</a></span>
-<span class="normal"><a href="#__codelineno-0-209">209</a></span>
-<span class="normal"><a href="#__codelineno-0-210">210</a></span>
-<span class="normal"><a href="#__codelineno-0-211">211</a></span>
-<span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span>
-<span class="normal"><a href="#__codelineno-0-214">214</a></span>
-<span class="normal"><a href="#__codelineno-0-215">215</a></span>
-<span class="normal"><a href="#__codelineno-0-216">216</a></span>
-<span class="normal"><a href="#__codelineno-0-217">217</a></span>
-<span class="normal"><a href="#__codelineno-0-218">218</a></span>
-<span class="normal"><a href="#__codelineno-0-219">219</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-153" name="__codelineno-0-153"></a><span class="k">def</span><span class="w"> </span><span class="nf">write</span><span class="p">(</span>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-155" name="__codelineno-0-155"></a>    <span class="n">agent_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a>    <span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>    <span class="n">candidate_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a>    <span class="n">resolution</span><span class="p">:</span> <span class="s2">"Resolution"</span><span class="p">,</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a>    <span class="n">entry_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">,</span>
-<a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="w">    </span><span class="sd">"""Serialise ``resolution`` into a :class:`ResolutionRecord` row.</span>
-<a id="__codelineno-0-162" name="__codelineno-0-162"></a>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">    Idempotent by composite key: a second call with the same</span>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">    ``(agent_id, turn_id, candidate_id)`` overwrites the row in place</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">    rather than creating a duplicate, because ``agent_id``/``turn_id``/</span>
-<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">    ``candidate_id`` are the model's ``KeyField``s.</span>
-<a id="__codelineno-0-167" name="__codelineno-0-167"></a>
-<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">    This method **never raises**. Any exception -- a bad</span>
-<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">    ``resolution`` shape, a Redis error, anything -- is caught, logged</span>
-<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">    as a ``POPOTO.extraction`` warning, and turned into a ``False``</span>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">    return. The sidecar is not load-bearing: by the time this runs,</span>
-<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">    the candidate's accept/reject outcome and its journal subject tags</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="sd">    are already committed, and a sidecar write failure must never flip</span>
-<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">    that outcome (plan Race 2).</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a>
-<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">        agent_id: Owning agent.</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">        turn_id: The turn the candidate was generated from.</span>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">        candidate_id: The candidate's identity.</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">        resolution: The :class:`~popoto.extraction.resolution.</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">            Resolution` to persist.</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">        entry_id: The journal entry id, if the candidate was accepted.</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">        ``True`` on a successful write, ``False`` on any failure.</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">    """</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>        <span class="n">context</span> <span class="o">=</span> <span class="n">resolution</span><span class="o">.</span><span class="n">context</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>        <span class="n">record</span> <span class="o">=</span> <span class="n">ResolutionRecord</span><span class="p">(</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>            <span class="n">agent_id</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>            <span class="n">turn_id</span><span class="o">=</span><span class="n">turn_id</span><span class="p">,</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a>            <span class="n">candidate_id</span><span class="o">=</span><span class="n">candidate_id</span><span class="p">,</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>            <span class="n">status</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">value</span><span class="p">,</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a>            <span class="n">statement</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">statement</span><span class="p">,</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>            <span class="n">verbatim</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">verbatim</span><span class="p">,</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a>            <span class="n">references_json</span><span class="o">=</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>                <span class="n">_serialise_references</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">references</span><span class="p">)</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>            <span class="p">),</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a>            <span class="n">valid_from</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">valid_from</span><span class="p">,</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>            <span class="n">entry_id</span><span class="o">=</span><span class="n">entry_id</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>            <span class="n">speaker</span><span class="o">=</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">speaker</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a>            <span class="n">captured_at</span><span class="o">=</span><span class="n">context</span><span class="o">.</span><span class="n">captured_at</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>            <span class="n">timezone</span><span class="o">=</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">timezone</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a>            <span class="n">window_truncated</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">window_truncated</span><span class="p">),</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a>            <span class="n">degraded</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">degraded</span><span class="p">),</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>            <span class="n">written_at</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>        <span class="p">)</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>        <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>        <span class="k">return</span> <span class="kc">True</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a>            <span class="s2">"ResolutionLog.write failed for agent_id=</span><span class="si">%r</span><span class="s2"> turn_id=</span><span class="si">%r</span><span class="s2"> "</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a>            <span class="s2">"candidate_id=</span><span class="si">%r</span><span class="s2">; sidecar row not written"</span><span class="p">,</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>            <span class="n">agent_id</span><span class="p">,</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a>            <span class="n">turn_id</span><span class="p">,</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>            <span class="n">candidate_id</span><span class="p">,</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a>            <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>        <span class="p">)</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a>        <span class="k">return</span> <span class="kc">False</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-153">153</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-154">154</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-155">155</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-156">156</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-157">157</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-158">158</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-159">159</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-160">160</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-161">161</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-162">162</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-163">163</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-164">164</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-165">165</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-166">166</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-167">167</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-219">219</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-153" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-153"></a><span class="k">def</span><span class="w"> </span><span class="nf">write</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-154" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-154"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-155" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-155"></a>    <span class="n">agent_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-156" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-156"></a>    <span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-157" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-157"></a>    <span class="n">candidate_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-158" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-158"></a>    <span class="n">resolution</span><span class="p">:</span> <span class="s2">"Resolution"</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-159" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-159"></a>    <span class="n">entry_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-160" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-160"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-161" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-161"></a><span class="w">    </span><span class="sd">"""Serialise ``resolution`` into a :class:`ResolutionRecord` row.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-162" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-162"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-163" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-163"></a><span class="sd">    Idempotent by composite key: a second call with the same</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-164" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-164"></a><span class="sd">    ``(agent_id, turn_id, candidate_id)`` overwrites the row in place</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-165" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-165"></a><span class="sd">    rather than creating a duplicate, because ``agent_id``/``turn_id``/</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-166" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-166"></a><span class="sd">    ``candidate_id`` are the model's ``KeyField``s.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-167" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-167"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-168" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-168"></a><span class="sd">    This method **never raises**. Any exception -- a bad</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-169" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-169"></a><span class="sd">    ``resolution`` shape, a Redis error, anything -- is caught, logged</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-170" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-170"></a><span class="sd">    as a ``POPOTO.extraction`` warning, and turned into a ``False``</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-171" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-171"></a><span class="sd">    return. The sidecar is not load-bearing: by the time this runs,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-172" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-172"></a><span class="sd">    the candidate's accept/reject outcome and its journal subject tags</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-173" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-173"></a><span class="sd">    are already committed, and a sidecar write failure must never flip</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-174" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-174"></a><span class="sd">    that outcome (plan Race 2).</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-175" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-175"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-176" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-176"></a><span class="sd">    Args:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-177" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-177"></a><span class="sd">        agent_id: Owning agent.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-178" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-178"></a><span class="sd">        turn_id: The turn the candidate was generated from.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-179" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-179"></a><span class="sd">        candidate_id: The candidate's identity.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-180" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-180"></a><span class="sd">        resolution: The :class:`~popoto.extraction.resolution.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-181" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-181"></a><span class="sd">            Resolution` to persist.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-182" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-182"></a><span class="sd">        entry_id: The journal entry id, if the candidate was accepted.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-183" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-183"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-184" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-184"></a><span class="sd">    Returns:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-185" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-185"></a><span class="sd">        ``True`` on a successful write, ``False`` on any failure.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-186" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-186"></a><span class="sd">    """</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-187" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-187"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-188" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-188"></a>        <span class="n">context</span> <span class="o">=</span> <span class="n">resolution</span><span class="o">.</span><span class="n">context</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-189" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-189"></a>        <span class="n">record</span> <span class="o">=</span> <span class="n">ResolutionRecord</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-190" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-190"></a>            <span class="n">agent_id</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-191" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-191"></a>            <span class="n">turn_id</span><span class="o">=</span><span class="n">turn_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-192" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-192"></a>            <span class="n">candidate_id</span><span class="o">=</span><span class="n">candidate_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-193" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-193"></a>            <span class="n">status</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">value</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-194" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-194"></a>            <span class="n">statement</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">statement</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-195" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-195"></a>            <span class="n">verbatim</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">verbatim</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-196" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-196"></a>            <span class="n">references_json</span><span class="o">=</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-197" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-197"></a>                <span class="n">_serialise_references</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">references</span><span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-198" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-198"></a>            <span class="p">),</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-199" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-199"></a>            <span class="n">valid_from</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">valid_from</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-200" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-200"></a>            <span class="n">entry_id</span><span class="o">=</span><span class="n">entry_id</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-201" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-201"></a>            <span class="n">speaker</span><span class="o">=</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">speaker</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-202" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-202"></a>            <span class="n">captured_at</span><span class="o">=</span><span class="n">context</span><span class="o">.</span><span class="n">captured_at</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-203" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-203"></a>            <span class="n">timezone</span><span class="o">=</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">timezone</span> <span class="k">if</span> <span class="n">context</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-204" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-204"></a>            <span class="n">window_truncated</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">window_truncated</span><span class="p">),</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-205" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-205"></a>            <span class="n">degraded</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">degraded</span><span class="p">),</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-206" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-206"></a>            <span class="n">written_at</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-207" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-207"></a>        <span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-208" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-208"></a>        <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-209" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-209"></a>        <span class="k">return</span> <span class="kc">True</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-210" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-210"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-211" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-211"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-212" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-212"></a>            <span class="s2">"ResolutionLog.write failed for agent_id=</span><span class="si">%r</span><span class="s2"> turn_id=</span><span class="si">%r</span><span class="s2"> "</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-213" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-213"></a>            <span class="s2">"candidate_id=</span><span class="si">%r</span><span class="s2">; sidecar row not written"</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-214" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-214"></a>            <span class="n">agent_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-215" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-215"></a>            <span class="n">turn_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-216" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-216"></a>            <span class="n">candidate_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-217" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-217"></a>            <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-218" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-218"></a>        <span class="p">)</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-219" name="popoto.extraction.resolution_log.ResolutionLog.write--source--__codelineno-0-219"></a>        <span class="k">return</span> <span class="kc">False</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4274,47 +4274,47 @@ Resolution</code> to persist.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/extraction/resolution_log.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-221">221</a></span>
-<span class="normal"><a href="#__codelineno-0-222">222</a></span>
-<span class="normal"><a href="#__codelineno-0-223">223</a></span>
-<span class="normal"><a href="#__codelineno-0-224">224</a></span>
-<span class="normal"><a href="#__codelineno-0-225">225</a></span>
-<span class="normal"><a href="#__codelineno-0-226">226</a></span>
-<span class="normal"><a href="#__codelineno-0-227">227</a></span>
-<span class="normal"><a href="#__codelineno-0-228">228</a></span>
-<span class="normal"><a href="#__codelineno-0-229">229</a></span>
-<span class="normal"><a href="#__codelineno-0-230">230</a></span>
-<span class="normal"><a href="#__codelineno-0-231">231</a></span>
-<span class="normal"><a href="#__codelineno-0-232">232</a></span>
-<span class="normal"><a href="#__codelineno-0-233">233</a></span>
-<span class="normal"><a href="#__codelineno-0-234">234</a></span>
-<span class="normal"><a href="#__codelineno-0-235">235</a></span>
-<span class="normal"><a href="#__codelineno-0-236">236</a></span>
-<span class="normal"><a href="#__codelineno-0-237">237</a></span>
-<span class="normal"><a href="#__codelineno-0-238">238</a></span>
-<span class="normal"><a href="#__codelineno-0-239">239</a></span>
-<span class="normal"><a href="#__codelineno-0-240">240</a></span>
-<span class="normal"><a href="#__codelineno-0-241">241</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>    <span class="bp">self</span><span class="p">,</span> <span class="n">agent_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">candidate_id</span><span class="p">:</span> <span class="nb">str</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ResolutionRecord</span><span class="p">]:</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="w">    </span><span class="sd">"""Return the row for this candidate, or ``None`` if absent.</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">        agent_id: Owning agent.</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">        turn_id: The turn the candidate was generated from.</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">        candidate_id: The candidate's identity.</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">        The :class:`ResolutionRecord`, or ``None`` if no row exists.</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">    """</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="n">Optional</span><span class="p">[</span><span class="n">ResolutionRecord</span><span class="p">],</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>        <span class="n">ResolutionRecord</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>            <span class="n">agent_id</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>            <span class="n">turn_id</span><span class="o">=</span><span class="n">turn_id</span><span class="p">,</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>            <span class="n">candidate_id</span><span class="o">=</span><span class="n">candidate_id</span><span class="p">,</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>        <span class="p">),</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-238">238</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-239">239</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-240">240</a></span>
+<span class="normal"><a href="#popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-241">241</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-221" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-221"></a><span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-222" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-222"></a>    <span class="bp">self</span><span class="p">,</span> <span class="n">agent_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">turn_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">candidate_id</span><span class="p">:</span> <span class="nb">str</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-223" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-223"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ResolutionRecord</span><span class="p">]:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-224" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-224"></a><span class="w">    </span><span class="sd">"""Return the row for this candidate, or ``None`` if absent.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-225" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-225"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-226" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-226"></a><span class="sd">    Args:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-227" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-227"></a><span class="sd">        agent_id: Owning agent.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-228" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-228"></a><span class="sd">        turn_id: The turn the candidate was generated from.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-229" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-229"></a><span class="sd">        candidate_id: The candidate's identity.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-230" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-230"></a>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-231" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-231"></a><span class="sd">    Returns:</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-232" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-232"></a><span class="sd">        The :class:`ResolutionRecord`, or ``None`` if no row exists.</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-233" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-233"></a><span class="sd">    """</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-234" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-234"></a>    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-235" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-235"></a>        <span class="n">Optional</span><span class="p">[</span><span class="n">ResolutionRecord</span><span class="p">],</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-236" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-236"></a>        <span class="n">ResolutionRecord</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-237" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-237"></a>            <span class="n">agent_id</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-238" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-238"></a>            <span class="n">turn_id</span><span class="o">=</span><span class="n">turn_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-239" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-239"></a>            <span class="n">candidate_id</span><span class="o">=</span><span class="n">candidate_id</span><span class="p">,</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-240" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-240"></a>        <span class="p">),</span>
+<a id="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-241" name="popoto.extraction.resolution_log.ResolutionLog.get--source--__codelineno-0-241"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4392,10 +4392,10 @@ Resolution</code> to persist.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../../../js/open_in_new_tab.js"></script>
       
