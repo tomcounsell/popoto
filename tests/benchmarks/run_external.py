@@ -18,6 +18,9 @@ Usage:
     python -m tests.benchmarks.run_external --dataset longmemeval-s --limit 12 --sample stratified --seed 0
     python -m tests.benchmarks.run_external --dataset locomo --limit 10
 
+    # A deployment's own dated memory, from a private fixture (dated.py):
+    python -m tests.benchmarks.run_external --dataset dated --fixture PATH --output DIR
+
     # Dry-run (ingests but prints results without saving report):
     python -m tests.benchmarks.run_external --dataset longmemeval-s --limit 5 --dry-run
 
@@ -48,6 +51,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from tests.benchmarks.datasets import BenchmarkItem, ground_truth_unit
 from tests.benchmarks.datasets.longmemeval_s import iter_items as iter_longmemeval
 from tests.benchmarks.datasets.locomo import iter_items as iter_locomo
+from tests.benchmarks.datasets.dated import iter_items as iter_dated
 from tests.benchmarks.metrics.retrieval import (
     leaderboard_parity_slice,
     mean_reciprocal_rank,
@@ -73,7 +77,7 @@ RESULTS_DIR = Path(__file__).parent / "results" / "external"
 # is read.
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-DATASET_CHOICES = ("longmemeval-s", "locomo")
+DATASET_CHOICES = ("longmemeval-s", "locomo", "dated")
 
 # Full-dataset question counts, used only to size the judged-run cost estimate
 # when ``--limit`` is not given (otherwise the estimate would read ~$0 on exactly
@@ -1338,6 +1342,14 @@ def _run_benchmark(args, bench_db):
             sample=args.sample,
             seed=args.seed,
         )
+    elif args.dataset == "dated":
+        dataset_slug = "dated"
+        items = iter_dated(
+            fixture_path=args.fixture,
+            limit=load_limit,
+            sample=args.sample,
+            seed=args.seed,
+        )
     else:
         logger.error("Unknown dataset: %s", args.dataset)
         return 1
@@ -1349,7 +1361,11 @@ def _run_benchmark(args, bench_db):
     # rather than reimplementing per-dataset item counting here.
     corpus_sampled_from = None
     if args.fixture is not None:
-        loader = iter_longmemeval if args.dataset == "longmemeval-s" else iter_locomo
+        loader = {
+            "longmemeval-s": iter_longmemeval,
+            "locomo": iter_locomo,
+            "dated": iter_dated,
+        }[args.dataset]
         corpus_sampled_from = len(
             loader(
                 fixture_path=args.fixture,
