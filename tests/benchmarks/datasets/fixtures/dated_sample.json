@@ -1,0 +1,16 @@
+{
+  "version": "sample",
+  "records": [
+    {"id": "r1", "text": "The bakery's invoices go out as PDF attachments.", "project": "bakery", "at": "2026-05-04T09:00:00+00:00"},
+    {"id": "r2", "text": "From now on the bakery's invoices go out as payment links, not PDFs.", "project": "bakery", "at": "2026-07-06T09:00:00+00:00"},
+    {"id": "r3", "text": "The bakery closes for inventory on the last Friday of each month.", "project": "bakery", "at": null},
+    {"id": "r4", "text": "The garage wants its weekly update every Monday morning.", "project": "garage", "at": "2026-05-11T08:00:00+00:00"},
+    {"id": "r5", "text": "The garage's weekly update moved to Tuesdays.", "project": "garage", "at": "2026-08-04T08:00:00+00:00"}
+  ],
+  "questions": [
+    {"id": "q1", "type": "long-term", "asked_on": "2026-06-01", "project": "bakery", "query": "how do the bakery's invoices go out", "gold": ["r1"]},
+    {"id": "q2", "type": "long-term", "asked_on": "2026-08-01", "project": "bakery", "query": "how do the bakery's invoices go out", "gold": ["r2"]},
+    {"id": "q3", "type": "seasonal-calendar", "asked_on": "2026-09-01", "project": "garage", "query": "which day does the garage get its weekly update", "gold": ["r5"]},
+    {"id": "q4", "type": "confinement", "asked_on": "2026-09-01", "project": "garage", "query": "bakery invoices", "gold": []}
+  ]
+}

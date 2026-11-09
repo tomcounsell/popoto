@@ -3,6 +3,7 @@
 Provides BenchmarkItem namedtuple and adapter generators for:
 - LongMemEval-S (longmemeval_s.py)
 - LoCoMo (locomo.py)
+- dated, a deployment's own dated memory (dated.py), from a private fixture
 
 All adapters yield BenchmarkItem namedtuples with a standard shape
 so the ExternalScenario base class and run_external.py CLI can treat
@@ -41,6 +42,7 @@ _DATASET_GROUND_TRUTH_UNIT = {
     "longmemeval-s": "session",
     "longmemeval_s": "session",
     "locomo": "turn",
+    "dated": "turn",
 }
 
 # Unit used when a dataset name is unknown (e.g. hand-built fixtures in tests).
